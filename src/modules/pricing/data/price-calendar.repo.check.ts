@@ -26,6 +26,7 @@ const { upsertPrices, bulkUpdatePrices, getPriceMonth } = await import('./price-
 const { priceNights } = await import('./nightly-price.ts');
 
 const sql = getSql();
+
 const A = '__pc2__a';
 const B = '__pc2__b';
 const PROP = (o: string) => `${o}_prop`;
@@ -37,31 +38,60 @@ const D2 = '2026-11-26';
 const D3 = '2026-11-27';
 const D4 = '2026-11-28';
 
+/**
+ * Той самий `sql`, але завжди в контексті орендаря — як у застосунку.
+ *
+ * Прямий `sql.*` без орендаря під роллю застосунку (`alisio_app`, FORCE RLS)
+ * або відхиляється політикою (запис), або мовчки бачить порожньо (читання):
+ * твердження лишається зеленим, нічого не перевіривши (INC-014). Місця, де
+ * сцена свідомо стає ІНШИМ орендарем, лишаються явними
+ * `runWithOrganization(…)`.
+ */
+const asOrg = {
+  run: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.run(q, params as any)),
+  row: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.row<any>(q, params as any)),
+  rows: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.rows<any>(q, params as any)),
+};
+
+/**
+ * Засів і прибирання — В КОНТЕКСТІ ОРЕНДАРЯ, як це робить застосунок.
+ *
+ * Під роллю застосунку (`alisio_app`, FORCE RLS) запис без орендаря на
+ * зʼєднанні політика відхиляє, а видалення мовчки чіпає НУЛЬ рядків — і
+ * наступний `DELETE` падає вже на чужому ключі. Під суперкористувачем
+ * проходить і те, і те, тому гейт був зелений і про політики не свідчив
+ * (INC-014). Рядок `organizations` лишається поза контекстом: ця таблиця
+ * орендаря НАЗИВАЄ, політики на ній немає за побудовою.
+ */
 async function cleanup() {
   for (const o of [A, B]) {
-    await sql.run('DELETE FROM price_calendar WHERE unit_type_id = ?', [UT(o)]);
-    await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [PROP(o)]);
-    await sql.run('DELETE FROM unit_types WHERE id = ?', [UT(o)]);
-    await sql.run('DELETE FROM categories WHERE property_id = ?', [PROP(o)]);
-    await sql.run('DELETE FROM properties WHERE organization_id = ?', [o]);
+    await runWithOrganization(o, async () => {
+      await sql.run('DELETE FROM price_calendar WHERE unit_type_id = ?', [UT(o)]);
+      await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [PROP(o)]);
+      await sql.run('DELETE FROM unit_types WHERE id = ?', [UT(o)]);
+      await sql.run('DELETE FROM categories WHERE property_id = ?', [PROP(o)]);
+      await sql.run('DELETE FROM properties WHERE organization_id = ?', [o]);
+    });
     await sql.run('DELETE FROM organizations WHERE id = ?', [o]);
   }
 }
 async function seed(o: string) {
   await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [o, o, o]);
-  await sql.run('INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)', [PROP(o), o, o, PROP(o)]);
-  await sql.run('INSERT INTO categories (id, property_id, name, type) VALUES (?, ?, ?, ?)', [`${o}_cat`, PROP(o), 'Rooms', 'room']);
-  await sql.run(
-    `INSERT INTO unit_types (id, property_id, category_id, name, code, max_adults, max_children, max_occupancy, base_occupancy)
-     VALUES (?, ?, ?, 'Double', 'DBL', 2, 0, 2, 2)`,
-    [UT(o), PROP(o), `${o}_cat`],
-  );
-  for (const [id, code, name] of [[BAR(o), 'BAR', 'Best Available'], [BB(o), 'BB', 'Bed & Breakfast']]) {
+  await runWithOrganization(o, async () => {
+    await sql.run('INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)', [PROP(o), o, o, PROP(o)]);
+    await sql.run('INSERT INTO categories (id, property_id, name, type) VALUES (?, ?, ?, ?)', [`${o}_cat`, PROP(o), 'Rooms', 'room']);
     await sql.run(
-      `INSERT INTO rate_plans (id, property_id, name, code, pricing_model, currency, priority) VALUES (?, ?, ?, ?, 'standard', 'USD', 1)`,
-      [id, PROP(o), name, code],
+      `INSERT INTO unit_types (id, property_id, category_id, name, code, max_adults, max_children, max_occupancy, base_occupancy)
+       VALUES (?, ?, ?, 'Double', 'DBL', 2, 0, 2, 2)`,
+      [UT(o), PROP(o), `${o}_cat`],
     );
-  }
+    for (const [id, code, name] of [[BAR(o), 'BAR', 'Best Available'], [BB(o), 'BB', 'Bed & Breakfast']]) {
+      await sql.run(
+        `INSERT INTO rate_plans (id, property_id, name, code, pricing_model, currency, priority) VALUES (?, ?, ?, ?, 'standard', 'USD', 1)`,
+        [id, PROP(o), name, code],
+      );
+    }
+  });
 }
 const quote = (o: string, ratePlanId: string | undefined, date = D1) => runWithOrganization(o, () =>
   priceNights({ unitTypeId: UT(o), checkIn: date, nights: 1, adults: 2, children: 0, ratePlanId }));
@@ -148,7 +178,7 @@ try {
   const D3 = '2026-11-27';
   const D4 = '2026-11-28';
   await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D3, min_stay: 2 }]));
-  const bare = await sql.row<any>('SELECT base_price FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D3]);
+  const bare = await asOrg.row('SELECT base_price FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D3]);
   assert.ok(bare, 'рядок обмеження існує');
   assert.strictEqual(bare.base_price, null, `ціни немає — NULL, не ${bare.base_price}`);
   const unpriced = await quote(A, BAR(A), D3);
@@ -180,13 +210,13 @@ try {
   // без жодного з полів ціни рядок має тримати обидва.
   await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, base_price: 100, weekend_price: 130 }]));
   await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, min_stay: 2 }]));
-  const kept = await sql.row<any>('SELECT base_price, weekend_price, min_stay FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D1]);
+  const kept = await asOrg.row('SELECT base_price, weekend_price, min_stay FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D1]);
   assert.strictEqual(Number(kept.base_price), 100, 'базова ціна пережила збереження обмеження');
   assert.strictEqual(kept.weekend_price == null ? null : Number(kept.weekend_price), 130, `ціна вихідних затерлась збереженням обмеження без поля ціни: ${kept.weekend_price}`);
   assert.strictEqual(Number(kept.min_stay), 2, 'а обмеження записане');
   // Явний `null` — це «прибрати ціну вихідних», і його треба вміти сказати.
   await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, weekend_price: null }]));
-  const cleared = await sql.row<any>('SELECT weekend_price FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D1]);
+  const cleared = await asOrg.row('SELECT weekend_price FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D1]);
   assert.strictEqual(cleared.weekend_price, null, 'явний null прибирає ціну вихідних');
   console.log('  ok  збереження обмеження без поля ціни не чіпає ні базову ціну, ні ціну вихідних; явний null прибирає');
 
@@ -250,13 +280,13 @@ try {
   // 2, а не стає 1; явний `null` максимуму прибирає його, ціна при цьому ціла.
   await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, base_price: 100, min_stay: 2, max_stay: 5 }]));
   await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, base_price: null }]));
-  const nulled = await sql.row<any>('SELECT base_price, min_stay, max_stay FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D1]);
+  const nulled = await asOrg.row('SELECT base_price, min_stay, max_stay FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D1]);
   assert.strictEqual(nulled.base_price, null, `явний null ціни мав прибрати її, а лишилось ${nulled.base_price} — маска каже «зникла», база тримає`);
   assert.deepStrictEqual((await quote(A, BAR(A), D1)).missing, [D1], 'ніч без ціни — у missing');
   assert.strictEqual(Number(nulled.min_stay), 2, `мінімум, якого в запиті немає, лишається 2, а не ${nulled.min_stay}`);
   assert.strictEqual(Number(nulled.max_stay), 5, 'максимум, якого в запиті немає, лишається');
   await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, base_price: 100, max_stay: null }]));
-  const cleared2 = await sql.row<any>('SELECT base_price, min_stay, max_stay FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D1]);
+  const cleared2 = await asOrg.row('SELECT base_price, min_stay, max_stay FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D1]);
   assert.strictEqual(cleared2.max_stay, null, 'явний null максимуму прибирає його');
   assert.strictEqual(Number(cleared2.base_price), 100, 'ціна записана');
   assert.strictEqual(Number(cleared2.min_stay), 2, 'мінімум не зачеплений');
@@ -306,7 +336,7 @@ try {
     assert.strictEqual((await quote(A, BAR(A), D3)).restrictions.minStay, 1,
       'сусідній тариф мусить лишитись на мінімумі ТИПУ (1): зміна ціни одного тарифу не переносить чуже обмеження на всі');
     assert.strictEqual((await quote(A, BB(A), D3)).restrictions.minStay, 10, 'а власний мінімум пари лишається її власним');
-    const typeRow = await sql.row<any>('SELECT min_stay FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D3]);
+    const typeRow = await asOrg.row('SELECT min_stay FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D3]);
     assert.strictEqual(Number(typeRow.min_stay), 1, `у базовому рядку типу мусить лишитись 1, а лежить ${typeRow.min_stay}`);
 
     // А ось що робило давнє тіло «вся форма»: те саме значення, названий тип
@@ -364,6 +394,254 @@ try {
       'обидва екрани (день і масовий) перекладають цю відмову, інакше оператор бачить «Не вдалося зберегти»');
   }
   console.log('  ok  мінімум ночей: нуль і відʼємне — відмова з назвою, одиниця пишеться, null скидає; хендлери й екрани її називають');
+
+  // ── 15. Простий режим: 333 доходить до ночі, у тому числі до вихідних ──
+  //
+  // Наскрізна сцена приводу Блоку 6. Сцена 5a `day-edit.check` доводить, що
+  // тіло несе `weekend_price: null`; тут доводиться, що після ЗАПИСУ цим
+  // тілом ніч справді коштує 333 — і в пʼятницю, і в суботу, а не 115.
+  // Проміжок навмисно перетинає межу тижня: 27.11 — пʼятниця, 28.11 —
+  // субота, 25–26.11 — будні. З одного дня ця сцена була б зелена й на коді,
+  // де правило вихідних не зачеплене взагалі.
+  await runWithOrganization(A, async () => {
+    const { buildDayPayload } = await import('../ui/day-edit.ts');
+    const DAYS = [D1, D2, D3, D4];
+    for (const date of DAYS) {
+      await upsertPrices(UT(A), [{ date, base_price: 100, weekend_price: 115 }]);
+    }
+    const before = await priceNights({ unitTypeId: UT(A), checkIn: D3, nights: 1, adults: 2 });
+    assert.strictEqual(before.nights[0]?.price, 115, 'до правки пʼятниця коштує 115 — інакше сцена нічого не про вихідні');
+
+    // Те, що робить оператор у простому режимі: ввів 333, більше нічого.
+    const opened = { base_price: 100, weekend_price: 115, min_stay: 1, closed: false, cta: false, ctd: false };
+    const body = buildDayPayload(
+      opened,
+      { basePrice: 333, weekendPrice: 115, minStay: 1, closed: false, cta: false, ctd: false },
+      { ratePlanSelected: false, allPlans: false, inherit: false, advanced: false },
+    );
+    for (const date of DAYS) await upsertPrices(UT(A), [{ date, ...body }]);
+
+    for (const date of DAYS) {
+      const q = await priceNights({ unitTypeId: UT(A), checkIn: date, nights: 1, adults: 2 });
+      assert.strictEqual(q.nights[0]?.price, 333,
+        `${date}: оператор поставив 333 у простому режимі — ніч мусить коштувати 333, а не ${q.nights[0]?.price}`);
+    }
+
+    // І сітка місяця показує те саме число з тим самим підписом джерела.
+    const month = await getPriceMonth(UT(A), 11, 2026);
+    for (const date of DAYS) {
+      const day = month.days.find((d) => d.date === date)!;
+      assert.strictEqual(day.effective_price, 333, `${date}: у сітці теж 333`);
+      assert.strictEqual(day.price_column, 'base', `${date}: і підпис каже «базова», бо ціни вихідних більше немає`);
+    }
+    console.log('  ok  простий режим: 333 доходить до ночі й до сітки, у тому числі в пʼятницю й суботу');
+  });
+
+  // ── 16. Число І підпис клітинки — з того самого резолвера ────────────
+  //
+  // Блок 6 гейт 3, і рецензія раунду 9 (Р9.2, блокер). Підпис — це відповідь
+  // на «чому тут це число», тож обидва мусять приходити з ТОГО САМОГО
+  // резолвера, що цінує ніч. Найгостріше це видно на матриці: сітка місяця
+  // знає лише рядки календаря, і доти клітинка малювала 100 із сітки, а
+  // підпис «матриця заселеності» — з резолвера гостя, який казав 120.
+  //
+  // Осі (інваріант 26): три різні джерела на трьох датах — базова, ціна
+  // вихідних і матриця, — три різні числа, і на матричній даті число сітки
+  // (100) арифметично несумісне з ціною гостя (120). З одним джерелом або з
+  // рівними числами твердження зелене й на коді, що бере число не звідти.
+  await runWithOrganization(A, async () => {
+    const { monthGuestPrices } = await import('./month-origins.ts');
+    const { cellPrice } = await import('../ui/price-origin.ts');
+    const { createPrice } = await import('./occupancy-price.repo.ts');
+    // 25.11 — середа (базова), 27.11 — пʼятниця (ціна вихідних).
+    await upsertPrices(UT(A), [{ date: D1, base_price: 100, weekend_price: null }]);
+    await upsertPrices(UT(A), [{ date: D3, base_price: 100, weekend_price: 115 }]);
+
+    const before = await monthGuestPrices(UT(A), 11, 2026);
+    assert.strictEqual(before[D1]?.origin, 'unit_type', `${D1}: середа — базова ціна типу, а не ${before[D1]?.origin}`);
+    assert.strictEqual(before[D1]?.price, 100, `${D1}: і число те саме`);
+    assert.strictEqual(before[D3]?.origin, 'unit_type_weekend', `${D3}: пʼятниця — ціна вихідних, а не ${before[D3]?.origin}`);
+    assert.strictEqual(before[D3]?.price, 115, `${D3}: і число — 115, з колонки вихідних`);
+
+    // А тепер матриця заселеності на дві особи: вона перекриває календар.
+    await createPrice(PROP(A), { unit_type_id: UT(A), persons: 2, price_gross: 120 });
+    const after = await monthGuestPrices(UT(A), 11, 2026);
+    assert.strictEqual(after[D1]?.origin, 'matrix', `${D1}: матриця перекриває календар — підпис мусить казати «матриця», а не ${after[D1]?.origin}`);
+    assert.strictEqual(after[D1]?.price, 120, `${D1}: і число мусить бути 120 — стільки платить гість, а не ${after[D1]?.price}`);
+
+    // Ось і сам розрив, який бачив контролер: сітка каже 100, гість платить
+    // 120. Клітинка мусить показати 120 з підписом «матриця», а не 100 з ним.
+    const month = await getPriceMonth(UT(A), 11, 2026);
+    const gridDay = month.days.find((d) => d.date === D1)!;
+    assert.strictEqual(gridDay.effective_price, 100,
+      'сітка календаря й далі каже 100 — саме тому число не можна брати з неї');
+    const cell = cellPrice({ effective_price: gridDay.effective_price, guest: after[D1] });
+    assert.strictEqual(cell.price, 120, 'клітинка показує 120 — те, що платить гість, а не 100 з рядка');
+    assert.strictEqual(cell.origin, 'matrix', 'і підпис під цим самим числом');
+
+    // І сам резолвер називає те саме — доказ, що це не збіг у перекладі.
+    const night = await priceNights({ unitTypeId: UT(A), checkIn: D1, nights: 1, adults: 2 });
+    assert.strictEqual(night.nights[0]?.price, 120, 'гість платить 120 з матриці');
+    assert.strictEqual(night.nights[0]?.source, 'matrix');
+    assert.strictEqual(night.nights[0]?.column, 'base', 'матриця колонки вихідних не має');
+
+    // ── Вісь кадрування: сітка цін питає про ОДНУ ніч ──────────────────
+    //
+    // Спершу тут був один виклик `priceNights` на весь місяць
+    // (`nights: lastDay`), і знижка за довжину перебування мовчки лягала на
+    // кожну клітинку: тридцять ночей — це одна довга поїздка. Без тіра ця
+    // вісь вироджена — «одна ніч» і «дві ночі» дають те саме число, і мутація
+    // кадрування лишається зеленою (інваріант 26). Тому тір є, і його
+    // величина (−20) арифметично несумісна з правильною відповіддю.
+    const { createTier } = await import('./occupancy-price.repo.ts');
+    await createPrice(PROP(A), { unit_type_id: UT(A), persons: 2, price_gross: 120 });
+    const tierId = await createTier(PROP(A), { unit_type_id: UT(A), min_nights: 2, adjustment_gross: -20, persons: 2 });
+    const oneNight = await monthGuestPrices(UT(A), 11, 2026);
+    assert.strictEqual(oneNight[D1]?.price, 120,
+      `${D1}: клітинка питає про ОДНУ ніч — 120, а не 100 зі знижки за дві (${oneNight[D1]?.price})`);
+    const twoNights = await priceNights({ unitTypeId: UT(A), checkIn: D1, nights: 2, adults: 2 });
+    assert.strictEqual(twoNights.nights[0]?.price, 100,
+      'а поїздка на дві ночі справді дешевша — інакше твердження вище нічого не розрізняє');
+
+    if (tierId) await sql.run('DELETE FROM price_los_tiers WHERE id = ?', [tierId]);
+    await sql.run('DELETE FROM price_occupancy WHERE unit_type_id = ?', [UT(A)]);
+    console.log('  ok  число й підпис клітинки — з одного резолвера, і клітинка питає про одну ніч (120, не 100)');
+  });
+
+  // ── 17. Масовий редактор у простому режимі — як денний ────────────────
+  //
+  // Рецензія раунду 9, Р9.1 (блокер). Сцена 15 доводила це для ДЕННОЇ
+  // модалки, і саме тому дірка лишилась непоміченою: масовий редактор — це
+  // той шлях, яким ціну ставлять на місяць, і в ньому 115 переживало 333.
+  //
+  // Проміжок навмисно перетинає межу тижня: 25–26.11 — будні, 27.11 —
+  // пʼятниця, 28.11 — субота. З одного дня сцена була б зелена й на коді, де
+  // правило вихідних не зачеплене взагалі (інваріант 26).
+  await runWithOrganization(A, async () => {
+    const { buildBulkPayload } = await import('../ui/bulk-edit.ts');
+    const DAYS = [D1, D2, D3, D4];
+    for (const date of DAYS) await upsertPrices(UT(A), [{ date, base_price: 100, weekend_price: 115 }]);
+
+    const before = await priceNights({ unitTypeId: UT(A), checkIn: D3, nights: 1, adults: 2 });
+    assert.strictEqual(before.nights[0]?.price, 115, 'до правки пʼятниця коштує 115 — інакше сцена нічого не про вихідні');
+
+    // Те, що робить оператор у простому режимі: діапазон, 333, зберегти.
+    const body = buildBulkPayload(
+      {
+        dateFrom: D1, dateTo: D4, applyTo: 'all',
+        basePrice: 333, weekendPrice: '', clearWeekend: false, minStay: '', maxStay: '',
+      },
+      { ratePlanSelected: false, allPlans: false, advanced: false },
+    );
+    await bulkUpdatePrices({ unitTypeId: UT(A), ...body });
+
+    for (const date of DAYS) {
+      const q = await priceNights({ unitTypeId: UT(A), checkIn: date, nights: 1, adults: 2 });
+      assert.strictEqual(q.nights[0]?.price, 333,
+        `${date}: мусить коштувати 333, а не ${q.nights[0]?.price}`);
+    }
+
+    // І окремо — рядок, яким рецензія назвала дефект.
+    const friday = await priceNights({ unitTypeId: UT(A), checkIn: D3, nights: 1, adults: 2 });
+    assert.strictEqual(friday.nights[0]?.price, 333, '2026-11-27: мусить коштувати 333, а не 115');
+
+    // Друге значення осі «чи змінено ціну»: правка самого лише мінімуму ночей
+    // ціну вихідних НЕ витирає. Без цього «прибирати завжди» було б зеленим.
+    await upsertPrices(UT(A), [{ date: D3, base_price: 100, weekend_price: 115 }]);
+    const onlyMin = buildBulkPayload(
+      {
+        dateFrom: D3, dateTo: D3, applyTo: 'all',
+        basePrice: '', weekendPrice: '', clearWeekend: false, minStay: 3, maxStay: '',
+      },
+      { ratePlanSelected: false, allPlans: false, advanced: false },
+    );
+    await bulkUpdatePrices({ unitTypeId: UT(A), ...onlyMin });
+    const kept = await priceNights({ unitTypeId: UT(A), checkIn: D3, nights: 1, adults: 2 });
+    assert.strictEqual(kept.nights[0]?.price, 115,
+      'правка самого лише мінімуму ночей не чіпає ціни вихідних — інакше вона витирала б числа мовчки');
+
+    console.log('  ok  масовий редактор у простому режимі: 333 доходить до пʼятниці й суботи, правка мінімуму нічого не витирає');
+  });
+
+  // ── 18. Нуль у колонці вихідних не стає ціною НА ЖОДНОМУ шляху ────────
+  //
+  // Рецензія раунду 9, Р9.3. Варта на нуль і відʼємне жила в `nightly-price`
+  // з 0062, а `getBulkPrices` мала власну копію правила в SQL — без неї. Тобто
+  // шахматка показувала б суботу за нуль тим самим шляхом, який 0062 закрила
+  // для буднів. Статична половина гейта (`day-price.check` сцена 5) стереже,
+  // щоб копій не було; ця стереже наслідок.
+  //
+  // Осі (інваріант 26): три ШЛЯХИ, які віддають ціну дня, і два дні — субота
+  // (де колонка вихідних діє) і середа (де ні). З одного шляху або з одного
+  // дня твердження зелене й там, де правило не зачеплене.
+  await runWithOrganization(A, async () => {
+    const { getBulkPrices } = await import('./price-calendar.repo.ts');
+    // Нуль писачі не приймають (Ц24) — рядок міг лягти повз писача або до
+    // відмови, тому сюди він потрапляє сирим запитом, як у житті.
+    await upsertPrices(UT(A), [{ date: D4, base_price: 200 }]);   // 28.11 — субота
+    await upsertPrices(UT(A), [{ date: D2, base_price: 200 }]);   // 26.11 — середа
+    await sql.run('UPDATE price_calendar SET weekend_price = 0 WHERE unit_type_id = ? AND date IN (?, ?)',
+      [UT(A), D4, D2]);
+
+    const month = await getPriceMonth(UT(A), 11, 2026);
+    for (const date of [D4, D2]) {
+      const day = month.days.find((d) => d.date === date)!;
+      assert.strictEqual(day.effective_price, 200, `${date}: сітка місяця — 200, а не нуль з колонки вихідних`);
+      assert.strictEqual(day.price_column, 'base', `${date}: і колонка «базова» — нуля в колонці вихідних не існує`);
+    }
+
+    // Третя вісь, знайдена CI на Postgres (INC-027): на D4 лежить і базовий
+    // рядок типу (200), і власна ціна тарифу BB (155, сцена 13). Доти
+    // `getBulkPrices` віддавала ОБИДВА, а шахматка залишала той, що прийшов
+    // останнім — SQLite віддавав базовий, Postgres тарифний. Числа 200 і 155
+    // несумісні навмисно: «узяли не той рядок» не може дати ту саму
+    // відповідь.
+    const bulk = await getBulkPrices(A, D1, D4);
+    const forDay = (date: string) =>
+      bulk.filter((r: { date: string; unit_type_id: string }) => String(r.date).slice(0, 10) === date && r.unit_type_id === UT(A));
+    assert.strictEqual(forDay(D4).length, 1,
+      `${D4}: шахматка мусить дістати РІВНО ОДИН рядок на клітинку — базовий рядок типу; `
+      + `прийшло ${forDay(D4).length}, і який із них переможе, вирішував би рушій`);
+    for (const date of [D4, D2]) {
+      const row = forDay(date)[0];
+      assert.strictEqual(Number(row.effective_price), 200,
+        `${date}: шахматка — 200, а не ${row.effective_price}: нуль у колонці вихідних не продає ніч, `
+        + 'і ціна тарифу не видає себе за ціну номера');
+    }
+
+    for (const date of [D4, D2]) {
+      const q = await priceNights({ unitTypeId: UT(A), checkIn: date, nights: 1, adults: 2 });
+      assert.strictEqual(q.nights[0]?.price, 200, `${date}: і гість платить 200`);
+    }
+    console.log('  ok  нуль у колонці вихідних не стає ціною: ні в сітці, ні в шахматці, ні у гостя — і в суботу, і в середу');
+  });
+
+  // ── 19. «Стоїть на N днях» — це ДНІ, а не рядки ────────────────────────
+  //
+  // Той самий клас, що INC-027, лише слабший: там рядок ПІДМІНЯВСЯ, тут
+  // ПОДВОЮВАВСЯ. `weekendPriceDayCount` рахував `COUNT(*)`, а в
+  // `price_calendar` на одну дату лежать рядки двох родів — базовий рядок
+  // типу і власний рядок тарифу. День із ціною вихідних на обох рахувався
+  // двічі, і попередження при вимиканні розширеного режиму (Р9.5) називало
+  // число більше за кількість днів.
+  //
+  // Осі (інваріант 26): день, де ціна вихідних лише на базовому рядку, і
+  // день, де вона й на базовому, і на рядку тарифу. З одного роду рядків
+  // `COUNT(*)` і `COUNT(DISTINCT date)` дають однакову відповідь.
+  await runWithOrganization(A, async () => {
+    const { weekendPriceDayCount } = await import('./price-mode.repo.ts');
+    await sql.run('DELETE FROM price_calendar WHERE unit_type_id = ?', [UT(A)]);
+    // D1 — лише базовий рядок; D2 — базовий І рядок тарифу, обидва з ціною вихідних.
+    await upsertPrices(UT(A), [{ date: D1, base_price: 100, weekend_price: 115 }]);
+    await upsertPrices(UT(A), [{ date: D2, base_price: 100, weekend_price: 115 }]);
+    await upsertPrices(UT(A), [{ date: D2, base_price: 120, weekend_price: 130 }], { ratePlanId: BAR(A) });
+
+    const n = await weekendPriceDayCount(A, D1);
+    assert.strictEqual(n, 2,
+      `днів з окремою ціною вихідних — 2 (${D1} і ${D2}), а порахувалось ${n}: `
+      + 'рядок тарифу на ту саму дату — не другий день');
+    console.log('  ok  «окрема ціна вихідних стоїть на N днях» рахує ДНІ, а не рядки двох родів');
+  });
 
   console.log('price-calendar: ціна тарифу на дату — своя, успадкована названа, чуже — відмова; ціни немає — NULL, нуль — відмова');
 } finally {

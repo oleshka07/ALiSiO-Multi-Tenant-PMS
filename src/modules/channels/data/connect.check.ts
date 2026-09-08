@@ -36,20 +36,32 @@ const A = '__connect__a';
 const B = '__connect__b';
 const PROP = (org: string) => `${org}_prop`;
 
+/**
+ * Засів і прибирання — В КОНТЕКСТІ ОРЕНДАРЯ, як це робить застосунок.
+ *
+ * Під роллю застосунку (`alisio_app`, FORCE RLS) запис без орендаря на
+ * зʼєднанні політика відхиляє, а видалення мовчки чіпає нуль рядків. Під
+ * суперкористувачем проходить і те, і те — тому гейт був зелений і про
+ * політики не свідчив (INC-014). Рядок `organizations` — поза контекстом:
+ * ця таблиця орендаря НАЗИВАЄ, тож політики на ній немає за побудовою.
+ */
 async function cleanup() {
   for (const org of [A, B]) {
-    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM channel_credentials WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]);
+    await runWithOrganization(org, async () => {
+      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM channel_credentials WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]);
+    });
     await sql.run('DELETE FROM organizations WHERE id = ?', [org]);
   }
 }
 
 async function seed(org: string) {
   await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [org, org, org]);
-  await sql.run('INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)', [PROP(org), org, org, PROP(org)]);
+  await runWithOrganization(org, () =>
+    sql.run('INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)', [PROP(org), org, org, PROP(org)]));
 }
 
 await cleanup();
@@ -111,11 +123,42 @@ try {
   });
 
   // ── Другий орендар не бачить і не вмикає чужого ───────────────────────
+  //
+  // Ідентифікатор чужого зʼєднання береться в контексті А і ПЕРЕДАЄТЬСЯ сюди
+  // руками. Раніше він читався запитом уже в контексті B — і під роллю
+  // застосунку той запит чесно повертає порожньо, тобто перевірка падала на
+  // `undefined.id`, так і не спитавши головного. Тепер питань два, і друге
+  // сильніше: маючи ЧУЖИЙ ідентифікатор на руках, B все одно не вмикає.
+  const connAId = await runWithOrganization(A, async () =>
+    (await sql.rows('SELECT id FROM cm_connections WHERE organization_id = ?', [A]))[0] as { id: string });
+  // З гілки робіт: фікстура мусить МАТИ те зʼєднання — інакше наступне
+  // твердження порожнє (нема чого вмикати, і «не вмикається» істинне даремно).
+  assert.ok(connAId?.id, 'у A мусить бути зʼєднання — інакше наступне твердження порожнє');
+  // Чи є тут узагалі вісь ПОЛІТИК — питається, а не припускається.
+  //
+  // «Сусід не бачить рядка» доводить політику лише там, де політики діють:
+  // на SQLite їх немає за побудовою, а суперкористувач Postgres обходить їх
+  // (`rolbypassrls`) — і те саме твердження стало б хибним не тому, що щось
+  // зламано. Тому воно або перевіряється, або ЧЕСНО КАЖЕ, що не перевіряється
+  // (INC-014: мовчання гейта — не доведеність).
+  const policiesInForce = await (async () => {
+    try {
+      const forced = await sql.row<any>("SELECT relforcerowsecurity AS f FROM pg_class WHERE relname = 'cm_connections'");
+      const me = await sql.row<any>('SELECT rolbypassrls AS b FROM pg_roles WHERE rolname = current_user');
+      return !!forced?.f && !me?.b;
+    } catch { return false; }
+  })();
+
   await runWithOrganization(B, async () => {
-    const connA = (await sql.rows('SELECT id FROM cm_connections WHERE organization_id = ?', [A]))[0] as { id: string };
-    await assert.rejects(() => setConnectionEnabled(connA.id, true), /not found/i, 'чужий орендар увімкнув чуже зʼєднання');
+    if (policiesInForce) {
+      const seen = await sql.rows('SELECT id FROM cm_connections WHERE organization_id = ?', [A]);
+      assert.strictEqual(seen.length, 0, 'зʼєднання сусіда видно другому орендарю попри політику');
+    } else {
+      console.log('  ··  осі політик тут немає (SQLite або роль з обходом RLS) — рядок сусіда не питаємо');
+    }
+    await assert.rejects(() => setConnectionEnabled(connAId.id, true), /not found/i, 'чужий орендар увімкнув чуже зʼєднання');
     assert.strictEqual((await setupState(PROP(A))).property, null);
-    console.log('  ok  чужий орендар не вмикає чужого');
+    console.log('  ok  чужий орендар не бачить чужого зʼєднання і не вмикає його навіть за ідентифікатором');
   });
 } finally {
   await cleanup();

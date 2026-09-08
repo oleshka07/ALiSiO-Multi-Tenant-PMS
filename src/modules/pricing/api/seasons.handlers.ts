@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { withPermission, type Actor } from '@core/auth/session';
-import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
-import { serverError } from '@core/http/errors';
+import { requirePropertyId } from '@core/auth/tenant-context';
+import { serverError, handleError } from '@core/http/errors';
 import {
   listSeasons, createSeason, updateSeason, deleteSeason, splitSeason,
   seasonPrices, setSeasonPrice, deleteSeasonPrice, clearSeasonOverrides,
@@ -35,7 +35,7 @@ export const listSeasonSettings = withPermission('manage_pricing', async (reques
     try {
       propertyId = await requirePropertyId(url.searchParams.get('property_id'));
     } catch (e) {
-      return NextResponse.json({ error: e instanceof Error ? e.message : 'Property not found' }, { status: propertyErrorStatus(e) });
+      return handleError('pricing/seasons', e);
     }
     return NextResponse.json(await listSeasons(propertyId, { includePast: url.searchParams.get('include_past') === '1' }));
   } catch (error: unknown) {
@@ -51,7 +51,7 @@ export const createSeasonSetting = withPermission('manage_pricing', async (reque
     try {
       propertyId = await requirePropertyId(typeof body.property_id === 'string' ? body.property_id : null);
     } catch (e) {
-      return NextResponse.json({ error: e instanceof Error ? e.message : 'Property not found' }, { status: propertyErrorStatus(e) });
+      return handleError('pricing/seasons', e);
     }
     const season = await createSeason({ propertyId, name: String(body.name ?? ''), dateFrom: String(body.date_from ?? ''), dateTo: String(body.date_to ?? '') });
     return NextResponse.json(season, { status: 201 });

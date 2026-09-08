@@ -427,7 +427,26 @@ assert.strictEqual(ruled.rulesApplied?.find((r) => r.ruleId === '__np_rule_los')
 assert.strictEqual(ruled.totalBeforeRules, 825.32, 'сума до правил збережена: 312.66 + 312.66 + 200');
 assert.strictEqual(ruled.total, 742.78, 'сума після правил');
 await sql.run("DELETE FROM price_rules WHERE organization_id = ?", [ORG]);
-console.log('  ok  правила цін: після надбавок, за пріоритетом, промо лише з кодом, EB/LM не в канал');
+
+// Правило, ЗВУЖЕНЕ НА ТАРИФ, у котируванні без тарифу не діє (рецензія 07.09
+// раунд 2, правка 4.1). Це не помилка розрахунку — це названа межа: віджет
+// котирує без `ratePlanId` (тариф сайту `site_rate_plans` не звʼязаний із
+// `rate_plans`), тож «−10 % на BAR» на власному сайті готелю не спрацює. Поки
+// звʼязку немає, межа мусить бути ВИДИМОЮ: тут числом, на екрані — текстом.
+//
+// Осі (інваріант 26): те саме правило з тарифом і без нього (два котирування,
+// 200 проти 180 — «правило взагалі не діє» на такій фікстурі не пройде).
+await sql.run(
+  `INSERT INTO price_rules (id, organization_id, property_id, name, kind, action, value, value_kind, rate_plan_ids, priority)
+   VALUES ('__np_rule_rp', ?, ?, 'Лише BAR −10 %', 'rule', 'decrease', 10, 'percent', ?, 10)`,
+  [ORG, PROP, JSON.stringify([BAR])]);
+const onBar = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-12', nights: 1, adults: 2, ratePlanId: BAR, channel: 'direct' });
+const noPlan = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-12', nights: 1, adults: 2, channel: 'direct' });
+assert.strictEqual(onBar.nights[0]?.price, 180, `правило на BAR діє, коли тариф названо: −10 % від 200 = 180, а вийшло ${onBar.nights[0]?.price}`);
+assert.strictEqual(noPlan.nights[0]?.price, 200,
+  `а без тарифу — не діє: саме так котирує віджет, і готель бачить знижку в квоті оператора й у каналі, але не на своєму сайті (${noPlan.nights[0]?.price})`);
+await sql.run("DELETE FROM price_rules WHERE organization_id = ?", [ORG]);
+console.log('  ok  правила цін: після надбавок, за пріоритетом, промо лише з кодом, EB/LM не в канал; правило на тариф без тарифу не діє');
 
 // ── Викликач без `adults` — відмова з назвою, не «неоцінені ночі» ─────────
 //

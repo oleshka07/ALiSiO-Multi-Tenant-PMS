@@ -55,15 +55,39 @@ const BARE = `${ORG}_bare`;
 const TODAY = '2027-03-01';
 const HORIZON = addDays(TODAY, OUTBOX_HORIZON_DAYS - 1);
 
+/**
+ * Прибирання — В КОНТЕКСТІ КОЖНОГО орендаря окремо (Р8.15).
+ *
+ * Цей `cleanup` лишався необгорнутим, коли решту ланцюжка перевели на роль
+ * застосунку: під `alisio_app` тенантний `DELETE` без орендаря на зʼєднанні
+ * не падає — він мовчки чіпає НУЛЬ рядків. Прогін лишався зеленим тільки
+ * тому, що `DELETE FROM organizations` зносить усе каскадом; тобто зелене
+ * тримав каскад, а не прибирання, і сказати про це не було кому.
+ *
+ * Рядки СУСІДА (`OTHER`) видаляються в контексті сусіда: одним запитом
+ * `IN (ORG, OTHER)` з-під `ORG` політика чужих рядків не бачить, і половина
+ * прибирання знову була б тихим нулем.
+ */
 async function cleanup() {
-  await sql.run('DELETE FROM cm_outbox WHERE organization_id IN (?, ?)', [ORG, OTHER]);
-  await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [ORG]);
-  await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [ORG]);
-  await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [PROP]);
-  await sql.run('DELETE FROM units WHERE property_id = ?', [PROP]);
-  await sql.run('DELETE FROM unit_types WHERE property_id = ?', [PROP]);
-  await sql.run('DELETE FROM categories WHERE property_id = ?', [PROP]);
-  await sql.run('DELETE FROM properties WHERE organization_id = ?', [ORG]);
+  await runWithOrganization(OTHER, () => sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [OTHER]));
+  await runWithOrganization(ORG, async () => {
+    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+    await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [ORG]);
+    await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [ORG]);
+    // Тип ПЕРЕД тарифами — той самий порядок, що документує
+    // `verify-adapter.check` (Р10.15). Тут стояло навпаки: `rate_plans`
+    // першими. Поки жодна сцена цього гейта не сіє цін, різниці немає, бо
+    // рядків календаря немає; перша ж сцена з цінами поклала б прибирання на
+    // зовнішньому ключі — рядок календаря йде за типом каскадом і посилається
+    // на тариф, тож тариф, знятий раніше за тип, ще має посилання на себе.
+    await sql.run('DELETE FROM units WHERE property_id = ?', [PROP]);
+    await sql.run('DELETE FROM unit_types WHERE property_id = ?', [PROP]);
+    await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [PROP]);
+    await sql.run('DELETE FROM categories WHERE property_id = ?', [PROP]);
+    await sql.run('DELETE FROM properties WHERE organization_id = ?', [ORG]);
+  });
+  // `organizations` орендаря не має за означенням — політики на ній немає,
+  // тож її рядки йдуть поза контекстом і останніми.
   await sql.run('DELETE FROM organizations WHERE id IN (?, ?)', [ORG, OTHER]);
 }
 

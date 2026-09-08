@@ -31,7 +31,8 @@
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withPermission } from '@core/auth/session';
-import { requireOrganizationId, requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
+import { requireOrganizationId, requirePropertyId } from '@core/auth/tenant-context';
+import { handleError } from '@core/http/errors';
 import { postStayCharges, postServiceCharges } from '../data/stay-charges.repo';
 
 const CODES = ['standard', 'reduced', 'zero'];
@@ -51,7 +52,7 @@ export const listChannelRules = async (request: Request) => {
     );
     return NextResponse.json({ rules, property_id: propertyId });
   } catch (e) {
-    return NextResponse.json({ error: message(e) }, { status: propertyErrorStatus(e) });
+    return handleError('invoicing/channel-rules', e);
   }
 };
 
@@ -121,7 +122,7 @@ export const saveChannelRule = async (request: Request) => {
     );
     return NextResponse.json({ id }, { status: 201 });
   } catch (e) {
-    return NextResponse.json({ error: message(e) }, { status: propertyErrorStatus(e) });
+    return handleError('invoicing/channel-rules', e);
   }
 };
 

@@ -19,6 +19,7 @@
  * лягають зразками в docs/vendor/channex/live/.
  */
 import './lib/module-aliases.mjs';
+import { requireVendorKey } from './lib/vendor-key.mjs';
 import { sampleRecorder } from './lib/channex-samples.mjs';
 
 const argv = process.argv.slice(2);
@@ -34,8 +35,7 @@ if (!organizationId || !connectionId) {
   console.error('usage: node scripts/channex-full-sync-live.mjs --org <orgId> <connId> [--confirm]');
   process.exit(2);
 }
-const apiKey = process.env.CHANNEX_API_KEY;
-if (!apiKey) { console.error('немає CHANNEX_API_KEY в оточенні'); process.exit(2); }
+const apiKey = requireVendorKey('CHANNEX_API_KEY');
 const environment = process.env.CHANNEX_ENV === 'production' ? 'production' : 'staging';
 const BASE = environment === 'production' ? 'https://app.channex.io/api/v1' : 'https://staging.channex.io/api/v1';
 
@@ -49,7 +49,7 @@ const today = new Date().toISOString().slice(0, 10);
 const { runWithOrganization } = await import('@core/auth/tenant-context');
 const {
   channelConnection, pendingChannelChanges, fullSyncConnectionFor, verifyConnectionSendsFor, recordVendorResponses,
-} = await import('@channels');
+} = await import('@channels/live');
 recordVendorResponses(sampleRecorder());
 
 /** Сире читання повз наш клієнт: звірка мусить бачити відповідь, а не наше тлумачення. */

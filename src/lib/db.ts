@@ -126,6 +126,7 @@ function buildSchema(database: any) {
       slug TEXT UNIQUE NOT NULL,
       timezone TEXT NOT NULL DEFAULT 'Europe/Prague',
       default_currency TEXT NOT NULL DEFAULT 'CZK',
+      pricing_advanced INTEGER NOT NULL DEFAULT 0,
       -- The hotel's base language: what its staff see, and the language its
       -- people type content in — so also the source for translating that
       -- content to guests. See core/i18n/languages.ts.
@@ -5229,6 +5230,15 @@ function runMigrations(database: any) {
     const add = (col: string, decl: string) => {
       if (!orgCols.includes(col)) database.exec(`ALTER TABLE organizations ADD COLUMN ${col} ${decl}`);
     };
+    // Блок 6: «розширені ціни» — перемикач ГОТЕЛЮ, не браузера.
+    //
+    // Вимкнений за замовчуванням: екран цін показує «Ціну» і «Мін. ночей», а
+    // вихідні, матриця, CTA/CTD і максимум ховаються за перемикачем. Привід —
+    // 07.09.2026: власник, автор системи, не зміг поставити ціну 333, бо на
+    // дні лежала невидима йому ціна вихідних. Для готелю на 1–15 номерів
+    // повний екран непрохідний, а стан «я вже розібрався» належить готелю, а
+    // не конкретному браузеру: інакше другий адміністратор бачить інший екран.
+    add('pricing_advanced', 'INTEGER NOT NULL DEFAULT 0');
     add('legal_name', 'TEXT');
     add('registration_no', 'TEXT');   // IČO
     add('vat_no', 'TEXT');            // DIČ

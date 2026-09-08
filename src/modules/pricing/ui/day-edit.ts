@@ -90,10 +90,20 @@ export interface DayEditForm {
 export interface DayEditFlags {
   /** У «Чия ціна» обрано тариф. */
   ratePlanSelected: boolean;
-  /** «На всі тарифи типу» — увімкнено за замовчуванням. */
+  /** «На всі тарифи типу» — за замовчуванням ЗНЯТО (Блок 6, п.3). */
   allPlans: boolean;
   /** «Як у типу» — скинути власні обмеження пари. */
   inherit: boolean;
+  /**
+   * «Розширені ціни» — за замовчуванням вимкнено (Блок 6, п.5).
+   *
+   * У простому режимі оператор бачить лише «Ціну» і «Мін. ночей». Тому зміна
+   * ціни в ньому мусить ПРИБИРАТИ ціну вихідних: інакше повторюється рівно те,
+   * через що заведено весь блок — 07.09.2026 власник поставив на суботу 333,
+   * а гість платив 115, бо на дні лежала невидима йому ціна вихідних. Поле,
+   * якого на екрані немає, не має права перебивати поле, яке там є.
+   */
+  advanced: boolean;
 }
 
 /**
@@ -108,12 +118,28 @@ export interface DayEditFlags {
  * «модалка кличе `buildDayPayload`».
  */
 export function buildDayPayload(opened: DayEditFields, form: DayEditForm, flags: DayEditFlags): DayEditPayload & { restrictionsScope?: 'pair' | 'type' } {
-  const edited: DayEditFields = {
-    // Порожня ціна — «не чіпати», тому дорівнює тому, що лежало.
-    base_price: form.basePrice === '' ? opened.base_price : Number(form.basePrice),
-    weekend_price: form.weekendPrice === '' ? null : Number(form.weekendPrice),
-    min_stay: form.minStay, closed: form.closed, cta: form.cta, ctd: form.ctd,
-  };
+  const basePrice = form.basePrice === '' ? opened.base_price : Number(form.basePrice);
+  // У простому режимі полів вихідних, CTA/CTD і максимуму на екрані немає —
+  // отже, оператор їх не міняв, і надсилати їхні значення не можна. Виняток
+  // один і він же суть режиму: якщо ціну ЗМІНЕНО, ціна вихідних прибирається,
+  // бо інакше вона мовчки перебила б щойно введене число.
+  const priceChanged = basePrice !== opened.base_price;
+  const edited: DayEditFields = flags.advanced
+    ? {
+      // Порожня ціна — «не чіпати», тому дорівнює тому, що лежало.
+      base_price: basePrice,
+      weekend_price: form.weekendPrice === '' ? null : Number(form.weekendPrice),
+      min_stay: form.minStay, closed: form.closed, cta: form.cta, ctd: form.ctd,
+    }
+    : {
+      base_price: basePrice,
+      weekend_price: priceChanged ? null : opened.weekend_price,
+      // «Закрито» лишається і в простому режимі: для готелю на 1–15 номерів
+      // це головна щоденна дія, і в переліку «розширених» його немає. CTA,
+      // CTD і максимум ночей — за перемикачем, тож їхні значення беруться з
+      // того, що лежало: поле, якого на екрані немає, не може бути змінене.
+      min_stay: form.minStay, closed: form.closed, cta: opened.cta, ctd: opened.ctd,
+    };
   const changed = flags.inherit
     // Скидання обмежень пари: ціна — як звичайно, обмеження — всі в NULL.
     ? {

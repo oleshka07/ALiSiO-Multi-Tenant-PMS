@@ -38,9 +38,9 @@ if (!organizationId || !connectionId || !process.env.APP_URL) {
 
 const { runWithOrganization } = await import('@core/auth/tenant-context');
 const { integrationCredentials } = await import('@core/integration-credentials');
-const { channelConnection, ensureConnectionWebhookFor, testConnectionWebhookFor, removeConnectionWebhookFor } = await import('@channels');
+const { channelConnection, ensureConnectionWebhookFor, testConnectionWebhookFor, removeConnectionWebhookFor } = await import('@channels/live');
 // Інваріант 28: кожна жива відповідь лягає зразком у docs/vendor/channex/live/.
-const { recordVendorResponses } = await import('@channels');
+const { recordVendorResponses } = await import('@channels/live');
 recordVendorResponses(sampleRecorder());
 
 const BASE = { staging: 'https://staging.channex.io/api/v1', production: 'https://app.channex.io/api/v1' };

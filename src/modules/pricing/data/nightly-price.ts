@@ -36,6 +36,7 @@
  * answer that does not require reading this file.
  */
 import { getSql } from '@core/db/async';
+import { dayRowPrice, type PriceColumn } from '../domain/day-price';
 import { quoteStay, matrixPriceFor, type PriceRow, type LosTier } from '../domain/occupancy-price';
 import { OPEN_STAY, type StayRestrictions } from '../domain/restrictions';
 import { pickRule, surchargeOf, nightSurcharges, type OccupancyRule, type AgeBand, type SurchargeMissing } from '../domain/extra-occupancy';
@@ -52,6 +53,15 @@ export interface NightlyPrice {
    * card, or the day calendar's base row.
    */
   source: 'rate_plan' | 'matrix' | 'calendar';
+  /**
+   * Колонка рядка, з якої взяте число: `weekend` — ціна вихідних перебила
+   * базову. Матриця колонки не має, тож там завжди `base`.
+   *
+   * Існує заради екрана (Блок 6): «115 · ціна вихідних» замість голого 115.
+   * Виводити це на екрані з `isWeekend` означало б завести четверту копію
+   * правила вихідних — рівно те, що цей блок прибрав.
+   */
+  column: PriceColumn;
   /**
    * What was added to or taken off the base number: the LOS tier when the
    * matrix priced this night, the occupancy surcharge when a rate plan did.
@@ -146,6 +156,113 @@ export interface NightlyPrices {
 }
 
 /**
+ * Усе, що `priceNights` читає з бази, прочитане один раз на ДІАПАЗОН.
+ *
+ * ── Навіщо ──────────────────────────────────────────────────────────────
+ *
+ * Один виклик `priceNights` робить шість послідовних запитів, і пʼять із них
+ * — довідники рівня ОБʼЄКТА: матриця заселеності, LOS-тіри, правила надбавок,
+ * вікові вилки, правила цін. Для однієї поїздки це правильно. Для сітки цін,
+ * яка питає про кожну з тридцяти дат окремо, це тридцять разів те саме:
+ * рецензія раунду 10 (Р10.1) виміряла 181 запит на один `GET /api/pricing`
+ * замість 7, а на Postgres кожен позатранзакційний запит — ще й окремий
+ * чекаут пулу з двома `set_config`.
+ *
+ * ── Чому саме так, а не другим шляхом ───────────────────────────────────
+ *
+ * Спокуса була написати сітці власне швидке читання. Це завело б ДРУГЕ
+ * джерело правди про ціну — рівно те, що інваріант 16 забороняє, і рівно те,
+ * на чому цей проєкт уже горів чотири рази (чотири копії правила вихідних,
+ * Блок 6). Тому завантажувач ОДИН: `priceNights` без контексту будує його
+ * сам, цим самим кодом, на свій діапазон. Швидкий шлях і повільний шлях
+ * читають ті самі рядки тими самими запитами; різниця лише в тому, скільки
+ * разів.
+ *
+ * Взірець — `cheapestByDay` нижче: матриця вантажиться раз на місяць, а
+ * `quoteStay` крутиться в памʼяті.
+ */
+export interface PricingContext {
+  readonly unitTypeId: string;
+  /** Перша дата діапазону, включно. */
+  readonly from: string;
+  /** Остання дата діапазону, ВКЛЮЧНО — це дата виїзду останньої ночі (CTD). */
+  readonly to: string;
+  readonly ratePlanId: string | null;
+  /** Чи вантажились вікові вилки: без них котирування з дітьми неможливе. */
+  readonly withAgeBands: boolean;
+  readonly owner: any | undefined;
+  readonly matrix: PriceRow[];
+  readonly losTiers: LosTier[];
+  readonly rules: OccupancyRule[];
+  readonly bands: AgeBand[];
+  readonly priceRules: PriceRule[];
+  readonly plan: any | null;
+  readonly days: any[];
+}
+
+export async function loadPricingContext(input: {
+  unitTypeId: string;
+  /** Включно. */
+  from: string;
+  /** Включно — дата виїзду останньої ночі діапазону. */
+  to: string;
+  ratePlanId?: string | null;
+  /** Потрібні лише котируванню з дітьми; без них — на один запит менше. */
+  withAgeBands?: boolean;
+}): Promise<PricingContext> {
+  const sql = getSql();
+  const { unitTypeId, from, to } = input;
+  const ratePlanId = input.ratePlanId ?? null;
+  const withAgeBands = input.withAgeBands ?? false;
+
+  // The property comes from the unit type rather than from the session: this
+  // runs on the public widget path too, where there is no operator and the
+  // organization is established from the unit being booked.
+  //
+  // `base_occupancy` comes along because it is the occupancy a rate plan's
+  // price is quoted at — the same baseline `extra_person_charge` counts extra
+  // guests from, and the same one Channex calls the primary occupancy option.
+  const owner = await sql.row<any>(
+    `SELECT p.id AS property_id, p.organization_id, ut.base_occupancy,
+            ut.max_adults, ut.max_children, ut.max_occupancy
+       FROM unit_types ut JOIN properties p ON p.id = ut.property_id WHERE ut.id = ?`,
+    [unitTypeId],
+  );
+
+  // Both kinds of row in one query: the base rows (`rate_plan_id IS NULL`) and,
+  // when a rate plan was asked for, that plan's own. Two queries would be two
+  // round trips for one answer.
+  // Дата виїзду теж читається (`<=`): на ній живе заборона виїзду (CTD).
+  // Ціни вона не має — цикл по ночах до неї не доходить.
+  const days = await sql.rows<any>(
+    `SELECT date, rate_plan_id, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd FROM price_calendar
+      WHERE unit_type_id = ? AND date >= ? AND date <= ?
+        AND (rate_plan_id IS NULL${ratePlanId ? ' OR rate_plan_id = ?' : ''})
+      ORDER BY date`,
+    ratePlanId ? [unitTypeId, from, to, ratePlanId] : [unitTypeId, from, to],
+  );
+
+  return {
+    unitTypeId, from, to, ratePlanId, withAgeBands, owner, days,
+    matrix: owner ? await loadMatrixRows(owner.organization_id, owner.property_id) : [],
+    losTiers: owner ? await loadTierRows(owner.organization_id, owner.property_id) : [],
+    // Правила надбавок за заселеність обʼєкта (Ц30) і вікові вилки організації.
+    // Орендар — з обʼєкта, не з сесії: цей шлях ходить і віджет без оператора.
+    rules: owner ? await rulesForProperty(owner.property_id, owner.organization_id) : [],
+    bands: owner && withAgeBands ? await ageBandsOf(owner.organization_id) : [],
+    // Правила цін і промо (Ц31) — шар після надбавок і до зборів, накладається
+    // на готову ціну кожної ночі наприкінці.
+    priceRules: owner ? await priceRulesForProperty(owner.property_id, owner.organization_id) : [],
+    plan: ratePlanId
+      ? await sql.row<any>(
+          'SELECT is_active, sell_mode, pricing_type FROM rate_plans WHERE id = ? AND property_id = ?',
+          [ratePlanId, owner?.property_id ?? ''],
+        ) ?? null
+      : null,
+  };
+}
+
+/**
  * Price the nights of a stay.
  *
  * `adults` addresses the price matrix; children are priced separately by the
@@ -202,8 +319,16 @@ export async function priceNights(input: {
    * answer; it never takes one away.
    */
   ratePlanId?: string | null;
+  /**
+   * Готовий контекст на ширший діапазон — щоб тридцять запитань про сусідні
+   * дати не перечитували тих самих довідників тридцять разів (Р10.1).
+   *
+   * Без нього нічого не змінюється: `priceNights` будує контекст сам, тим
+   * самим `loadPricingContext`, на свій діапазон. Другого шляху читання
+   * немає — див. шапку `PricingContext`.
+   */
+  context?: PricingContext;
 }): Promise<NightlyPrices> {
-  const sql = getSql();
   const { unitTypeId, checkIn, nights, adults, children = 0, childrenAges = null, ratePlanId = null, channel = 'operator', promoCode = null } = input;
   const bookedAt = input.bookedAt === undefined ? new Date().toISOString().slice(0, 10) : input.bookedAt;
   // Без `adults` матрицю нема чим адресувати — і це відмова з назвою, не тихе
@@ -217,19 +342,25 @@ export async function priceNights(input: {
 
   const checkOut = addDays(checkIn, nights);
 
-  // The property comes from the unit type rather than from the session: this
-  // runs on the public widget path too, where there is no operator and the
-  // organization is established from the unit being booked.
-  //
-  // `base_occupancy` comes along because it is the occupancy a rate plan's
-  // price is quoted at — the same baseline `extra_person_charge` counts extra
-  // guests from, and the same one Channex calls the primary occupancy option.
-  const owner = await sql.row<any>(
-    `SELECT p.id AS property_id, p.organization_id, ut.base_occupancy,
-            ut.max_adults, ut.max_children, ut.max_occupancy
-       FROM unit_types ut JOIN properties p ON p.id = ut.property_id WHERE ut.id = ?`,
-    [unitTypeId],
-  );
+  // Контекст: або переданий (одне читання на місяць), або свій на цю поїздку.
+  // Переданий ПЕРЕВІРЯЄТЬСЯ, а не мовчки добудовується: контекст, що не
+  // накриває цю поїздку, дав би тихо неправильну ціну — а ціна, названа
+  // неправильно, це той самий рід шкоди, що ціна вигадана (інваріант 17).
+  const ctx = input.context ?? await loadPricingContext({
+    unitTypeId, from: checkIn, to: checkOut, ratePlanId, withAgeBands: children > 0,
+  });
+  if (input.context) {
+    const c = input.context;
+    if (c.unitTypeId !== unitTypeId || c.ratePlanId !== ratePlanId || checkIn < c.from || checkOut > c.to) {
+      throw new Error(
+        `priceNights: context does not cover this stay (${c.unitTypeId}/${c.ratePlanId} ${c.from}..${c.to} `
+        + `asked ${unitTypeId}/${ratePlanId} ${checkIn}..${checkOut})`);
+    }
+    if (children > 0 && !c.withAgeBands) {
+      throw new Error('priceNights: context has no age bands — children cannot be priced from it (Ц30)');
+    }
+  }
+  const owner = ctx.owner;
 
   // ── Місткість: три межі, і жодна з них не випадкова ────────────────────
   //
@@ -251,22 +382,11 @@ export async function priceNights(input: {
     }
   }
 
-  const matrix = owner ? await loadMatrixRows(owner.organization_id, owner.property_id) : [];
-
-  // Правила надбавок за заселеність обʼєкта (Ц30) і вікові вилки організації.
-  // Орендар — з обʼєкта, не з сесії: цей шлях ходить і віджет без оператора.
-  const rules: OccupancyRule[] = owner ? await rulesForProperty(owner.property_id, owner.organization_id) : [];
-  const bands: AgeBand[] = owner && children > 0 ? await ageBandsOf(owner.organization_id) : [];
-  // Правила цін і промо (Ц31) — шар після надбавок і до зборів, накладається
-  // на готову ціну кожної ночі наприкінці.
-  const priceRules: PriceRule[] = owner ? await priceRulesForProperty(owner.property_id, owner.organization_id) : [];
-
-  const plan = ratePlanId
-    ? await sql.row<any>(
-        'SELECT is_active, sell_mode, pricing_type FROM rate_plans WHERE id = ? AND property_id = ?',
-        [ratePlanId, owner?.property_id ?? ''],
-      )
-    : null;
+  const matrix = ctx.matrix;
+  const rules: OccupancyRule[] = ctx.rules;
+  const bands: AgeBand[] = ctx.bands;
+  const priceRules: PriceRule[] = ctx.priceRules;
+  const plan = ctx.plan;
   // Тариф «за номер» (Ц26): ціна однакова на будь-яку кількість гостей, тож
   // матриця й надбавка рахуються на БАЗОВУ заселеність, а не на партію.
   // Місткість при цьому перевіряється на справжню партію — вище.
@@ -293,7 +413,7 @@ export async function priceNights(input: {
     ? quoteStay({
       checkIn, nights, adults: quoteAdults, unitTypeId,
       matrix,
-      losTiers: await loadTierRows(owner.organization_id, owner.property_id),
+      losTiers: ctx.losTiers,
     })
     : { nights: [], total: 0, missing: [] as string[] };
 
@@ -304,13 +424,18 @@ export async function priceNights(input: {
   // round trips for one answer.
   // Дата виїзду теж читається (`<=`): на ній живе заборона виїзду (CTD).
   // Ціни вона не має — цикл по ночах до неї не доходить.
-  const days = await sql.rows<any>(
-    `SELECT date, rate_plan_id, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd FROM price_calendar
-      WHERE unit_type_id = ? AND date >= ? AND date <= ?
-        AND (rate_plan_id IS NULL${ratePlanId ? ' OR rate_plan_id = ?' : ''})
-      ORDER BY date`,
-    ratePlanId ? [unitTypeId, checkIn, checkOut, ratePlanId] : [unitTypeId, checkIn, checkOut],
-  );
+  // Рядки календаря — з контексту, звужені до ЦІЄЇ поїздки.
+  //
+  // Чесно про те, чого це звуження НЕ робить: усі пошуки нижче йдуть за
+  // ТОЧНОЮ датою (`baseRow`, `pairRow`, `fromCalendar.get`), тож ніч 5
+  // листопада не побачила б обмежень 20-го й без фільтра. Мутація «прибрати
+  // звуження» лишається зеленою, і твердження про неї тут немає — це
+  // гігієна діапазону, а не варта (AGENTS §3.2: гейт, який не вміє
+  // почервоніти, нічого не тримає).
+  const days = ctx.days.filter((d) => {
+    const at = day(d.date);
+    return at != null && at >= checkIn && at <= checkOut;
+  });
   const fromCalendar = new Map(days.filter((d) => d.rate_plan_id == null && String(day(d.date)) < checkOut).map((d) => [day(d.date), d]));
   const fromRatePlan = new Map(days.filter((d) => d.rate_plan_id != null && String(day(d.date)) < checkOut).map((d) => [day(d.date), d]));
   const baseRow = (date: string) => days.find((d) => d.rate_plan_id == null && day(d.date) === date);
@@ -425,7 +550,8 @@ export async function priceNights(input: {
     // whole point of putting it in the calendar: two rate plans of one room
     // type carry independent prices for the same date.
     const rp = fromRatePlan.get(date);
-    const rpPrice = rp ? dayPrice(rp, date) : null;
+    const rpCell = dayRowPrice(rp, date);
+    const rpPrice = rp ? rpCell.price : null;
     if (rp && rpPrice != null) {
       // Дорослі понад базу: правило (Ц30), а без правила — матриця.
       const extra = ruledAdults(ratePlanId, rpPrice) ?? surcharge(date);
@@ -449,7 +575,7 @@ export async function priceNights(input: {
       }
       const adjustment = money(extra + kids.amount);
       const price = money(Math.max(0, rpPrice + adjustment));
-      out.push({ date, price, source: 'rate_plan', adjustment });
+      out.push({ date, price, source: 'rate_plan', column: rpCell.column, adjustment });
       occupancyPriced = true;
       continue;
     }
@@ -473,13 +599,14 @@ export async function priceNights(input: {
         missing.push(date);
         continue;
       }
-      out.push({ date, price: money(m.price + kids.amount), source: 'matrix', adjustment: money((m.adjustment ?? 0) + kids.amount) });
+      out.push({ date, price: money(m.price + kids.amount), source: 'matrix', column: 'base', adjustment: money((m.adjustment ?? 0) + kids.amount) });
       occupancyPriced = true;
       continue;
     }
 
     const c = fromCalendar.get(date);
-    const cPrice = c ? dayPrice(c, date) : null;
+    const cCell = dayRowPrice(c, date);
+    const cPrice = c ? cCell.price : null;
     if (c && cPrice != null) {
       // Базовий рядок типу цінує будь-яку заселеність, як і досі; правило
       // дорослих понад базу (Ц30), коли воно є, додається зверху.
@@ -491,7 +618,7 @@ export async function priceNights(input: {
         continue;
       }
       const adjustment = money((extra ?? 0) + kids.amount);
-      out.push({ date, price: money(cPrice + adjustment), source: 'calendar', ...(adjustment ? { adjustment } : {}) });
+      out.push({ date, price: money(cPrice + adjustment), source: 'calendar', column: cCell.column, ...(adjustment ? { adjustment } : {}) });
       if (extra != null && quoteAdults > baseOccupancy) occupancyPriced = true;
       continue;
     }
@@ -584,29 +711,6 @@ export async function cheapestByDay(input: {
     }
   }
   return out;
-}
-
-/**
- * The day row's price for this date.
- *
- * Friday, Saturday and Sunday take `weekend_price` where one is set. That rule
- * was written three times, identically, in three files; it lives here now.
- */
-function dayPrice(row: any, date: string): number | null {
-  const dow = new Date(`${date}T00:00:00Z`).getUTCDay();
-  const isWeekend = dow === 0 || dow === 5 || dow === 6;
-  // Рядок без ціни (лише обмеження, 0062) — `null`: ніч у `missing`, не за 0.
-  // Нуль і відʼємне читаються так само (Ц24): писачі їх більше не приймають,
-  // але рядок міг лягти повз писача або до відмови — і `weekend_price = 0`
-  // продавав пʼятницю за нуль тим самим шляхом, який 0062 закрила для буднів.
-  const named = (v: unknown): number | null => {
-    if (v == null) return null;
-    const n = Number(v);
-    return Number.isFinite(n) && n > 0 ? n : null;
-  };
-  const base = named(row.base_price);
-  const weekend = named(row.weekend_price);
-  return isWeekend && weekend != null ? weekend : base;
 }
 
 async function loadMatrixRows(organizationId: string, propertyId: string): Promise<PriceRow[]> {

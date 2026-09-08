@@ -191,6 +191,15 @@ export {
 } from '../domain/invoice-numbering';
 
 /**
+ * Єдині двері видалення фактури.
+ *
+ * `fin_invoice_lines` і `fin_invoice_tax_totals` не мають зовнішнього ключа на
+ * `invoices`, тож голий `DELETE FROM invoices` лишає їхні рядки вказувати в
+ * нікуди. Два маршрути так і робили; третій зробив би так само (Р10.14, Ц49).
+ */
+export { deleteInvoicesWhere } from '../data/invoice-delete.repo';
+
+/**
  * Правила бланка — те, що готель налаштовує під себе.
  *
  * `showBuyerName` — чи друкувати покупця (фізична особа проти компанії),

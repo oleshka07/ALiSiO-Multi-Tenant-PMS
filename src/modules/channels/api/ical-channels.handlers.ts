@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
-import { requirePropertyId, propertyErrorStatus, requireOrganizationId } from '@core/auth/tenant-context';
+import { requirePropertyId, requireOrganizationId } from '@core/auth/tenant-context';
 import { getSql } from '@core/db/async';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
-import { serverError } from '@core/http/errors';
+import { serverError, handleError } from '@core/http/errors';
 
 /**
  * iCal channels reach their tenant through `property_id`, and neither this
@@ -80,7 +80,7 @@ export const createIcalChannel = withPermission('manage_properties', async (requ
     try {
       propertyId = await requirePropertyId(body.property_id);
     } catch (e: any) {
-      return NextResponse.json({ error: e.message }, { status: propertyErrorStatus(e) });
+      return handleError('ical-channels POST', e);
     }
 
     const id = `ich_${Date.now()}`;

@@ -31,6 +31,7 @@ const { getSql } = await import('@core/db/async');
 const { ensureWebhook, rotateWebhookSecret, removeWebhook, testWebhook, classifyEvent, WEBHOOK_EVENT_MASK } = await import('./webhook-adapter.ts');
 
 const sql = getSql();
+
 const mock = await startMockChannex();
 const A = '__whadapter__a';
 const B = '__whadapter__b';
@@ -40,30 +41,59 @@ const SECRET = 'sec_a_fedcba9876543210fedcba9876543210';
 const KEY = 'api-key-a';
 const client = { baseUrl: mock.url, maxAttempts: 1, sleep: async () => {} };
 
+/**
+ * Той самий `sql`, але завжди в контексті орендаря — як у застосунку.
+ *
+ * Прямий `sql.*` без орендаря під роллю застосунку (`alisio_app`, FORCE RLS)
+ * або відхиляється політикою (запис), або мовчки бачить порожньо (читання):
+ * твердження лишається зеленим, нічого не перевіривши (INC-014). Місця, де
+ * сцена свідомо стає ІНШИМ орендарем, лишаються явними
+ * `runWithOrganization(…)`.
+ */
+const asOrg = {
+  run: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.run(q, params as any)),
+  row: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.row<any>(q, params as any)),
+  rows: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.rows<any>(q, params as any)),
+};
+
+/**
+ * Засів і прибирання — В КОНТЕКСТІ ОРЕНДАРЯ, як це робить застосунок.
+ *
+ * Під роллю застосунку (`alisio_app`, FORCE RLS) запис без орендаря на
+ * зʼєднанні політика відхиляє, а видалення мовчки чіпає НУЛЬ рядків — і
+ * наступний `DELETE` падає вже на чужому ключі. Під суперкористувачем
+ * проходить і те, і те, тому гейт був зелений і про політики не свідчив
+ * (INC-014). Рядок `organizations` лишається поза контекстом: ця таблиця
+ * орендаря НАЗИВАЄ, політики на ній немає за побудовою.
+ */
 async function cleanup() {
   for (const org of [A, B]) {
-    await sql.run('DELETE FROM cm_events WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]);
+    await runWithOrganization(org, async () => {
+      await sql.run('DELETE FROM cm_events WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]);
+    });
     await sql.run('DELETE FROM organizations WHERE id = ?', [org]);
   }
 }
 async function seed(org: string) {
   await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [org, org, org]);
-  await sql.run('INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)', [`${org}_prop`, org, org, `${org}_prop`]);
+  await runWithOrganization(org, async () => {
+    await sql.run('INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)', [`${org}_prop`, org, org, `${org}_prop`]);
+  });
 }
 await cleanup();
 await seed(A);
 await seed(B);
-await sql.run(
+await asOrg.run(
   `INSERT INTO cm_connections (id, organization_id, property_id, provider, environment, remote_property_id, webhook_token, webhook_secret, is_enabled)
    VALUES (?, ?, ?, 'channex', 'staging', 'remote-a', ?, ?, FALSE)`,
   [CONN, A, `${A}_prop`, TOKEN, SECRET],
 );
 
 const reset = () => { mock.calls.length = 0; mock.queue.length = 0; };
-const remoteId = async () => (await sql.row<any>('SELECT remote_webhook_id AS id FROM cm_connections WHERE id = ?', [CONN]))?.id ?? null;
-const storedSecret = async () => String((await sql.row<any>('SELECT webhook_secret AS s FROM cm_connections WHERE id = ?', [CONN]))?.s);
+const remoteId = async () => (await asOrg.row('SELECT remote_webhook_id AS id FROM cm_connections WHERE id = ?', [CONN]))?.id ?? null;
+const storedSecret = async () => String((await asOrg.row('SELECT webhook_secret AS s FROM cm_connections WHERE id = ?', [CONN]))?.s);
 const record = (id: string, over: Record<string, unknown> = {}) => ({
   kind: 'record' as const,
   data: { id, type: 'webhook', attributes: {
@@ -230,7 +260,7 @@ try {
     assert.strictEqual(mock.calls.length, 0, 'без id прибирати нема чого — і виклику немає');
     assert.strictEqual(again.existed, false);
 
-    await sql.run('UPDATE cm_connections SET remote_webhook_id = ? WHERE id = ?', ['wh-gone', CONN]);
+    await asOrg.run('UPDATE cm_connections SET remote_webhook_id = ? WHERE id = ?', ['wh-gone', CONN]);
     reset();
     mock.queue.push({ kind: 'notFound' });
     const gone = await runWithOrganization(A, () => removeWebhook(CONN, KEY, { client }));

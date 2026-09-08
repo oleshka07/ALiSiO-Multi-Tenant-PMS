@@ -22,6 +22,7 @@
  * Інваріант 25: лише своє зʼєднання і свій обʼєкт.
  */
 import './lib/module-aliases.mjs';
+import { requireVendorKey } from './lib/vendor-key.mjs';
 
 const argv = process.argv.slice(2);
 const CONFIRM = argv.includes('--confirm');
@@ -36,8 +37,7 @@ if (!organizationId || !connectionId) {
   console.error('usage: node scripts/channex-stop-sell-live.mjs --org <orgId> <connId> --confirm');
   process.exit(2);
 }
-const apiKey = process.env.CHANNEX_API_KEY;
-if (!apiKey) { console.error('немає CHANNEX_API_KEY в оточенні'); process.exit(2); }
+const apiKey = requireVendorKey('CHANNEX_API_KEY');
 const BASE = process.env.CHANNEX_ENV === 'production' ? 'https://app.channex.io/api/v1' : 'https://staging.channex.io/api/v1';
 
 const addDays = (iso, n) => {
@@ -50,7 +50,7 @@ const D = addDays(today, 400);
 const D2 = addDays(today, 401);
 
 const { runWithOrganization } = await import('@core/auth/tenant-context');
-const { channelConnection, connectionMirror } = await import('@channels');
+const { channelConnection, connectionMirror } = await import('@channels/live');
 
 async function api(method, path, body) {
   const res = await fetch(`${BASE}${path}`, {

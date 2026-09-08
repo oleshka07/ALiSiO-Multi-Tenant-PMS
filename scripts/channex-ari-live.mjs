@@ -70,6 +70,7 @@
  * тим самим прапорцем з попереднім числом.
  */
 import './lib/module-aliases.mjs';
+import { requireVendorKey } from './lib/vendor-key.mjs';
 import { sampleRecorder } from './lib/channex-samples.mjs';
 
 const argv = process.argv.slice(2);
@@ -117,8 +118,7 @@ if (!organizationId || !connectionId) {
   process.exit(2);
 }
 
-const apiKey = process.env.CHANNEX_API_KEY;
-if (!apiKey) { console.error('немає CHANNEX_API_KEY в оточенні'); process.exit(2); }
+const apiKey = requireVendorKey('CHANNEX_API_KEY');
 const environment = process.env.CHANNEX_ENV === 'production' ? 'production' : 'staging';
 const BASE = environment === 'production'
   ? 'https://app.channex.io/api/v1' : 'https://staging.channex.io/api/v1';
@@ -140,12 +140,12 @@ const { percentOf } = await import('@core/money');
 const {
   channelConnection, connectionMirror, flushConnectionOutboxFor,
   enqueueChannelChange, pendingChannelChanges, queuedChannelChanges, stuckChannelChanges, recentChannelSends,
-  recentChannelSendLog, verifyConnectionSendsFor } = await import('@channels');
+  recentChannelSendLog, verifyConnectionSendsFor } = await import('@channels/live');
 // Інваріант 28: кожна жива відповідь лягає зразком у docs/vendor/channex/live/.
-const { recordVendorResponses } = await import('@channels');
+const { recordVendorResponses } = await import('@channels/live');
 recordVendorResponses(sampleRecorder());
-const { availabilityByDay, catalogUnitTypes } = await import('@properties');
-const { priceNights, updateRatePlan, listRatePlans, bulkUpdatePrices, upsertPrices } = await import('@pricing');
+const { availabilityByDay, catalogUnitTypes } = await import('@properties/live');
+const { priceNights, updateRatePlan, listRatePlans, bulkUpdatePrices, upsertPrices } = await import('@pricing/live');
 
 /** Сире читання повз наш клієнт: звірка мусить бачити відповідь, а не наше тлумачення. */
 async function get(path) {
@@ -245,10 +245,22 @@ await runWithOrganization(organizationId, async () => {
 
   // ── Очікування — тими самими дверима, що й адаптер, але окремо ────────
   const free = await availabilityByDay(connection.propertyId, FROM, addDays(TO, 1));
+  //
+  // Котирування — ТИМИ САМИМИ аргументами, що в адаптера (`ari-adapter.ts`,
+  // `pricesAt`): `channel: 'channel'` і `bookedAt: null`. Без них очікування
+  // рахувалося б за правилами прямого продажу, і будь-яке правило, яке в
+  // канал не їде (Ц39: max_los, вікна заїзду й виїзду; EB/LM; промо), давало
+  // б розбіжність, якої в каналі немає.
+  //
+  // `expected.rate === null` означає «цієї опції в тілі НЕ БУДЕ», а не
+  // «закрито»: закритість — властивість ПАРИ, і рахується нижче.
   const expected = new Map(); // optionRemoteId|date → { rate: major|null, closed, availability }
   for (const o of options) {
     for (const date of DATES) {
-      const q = await priceNights({ unitTypeId: o.unitTypeId, checkIn: date, nights: 1, adults: o.occupancy, ratePlanId: o.localId });
+      const q = await priceNights({
+        unitTypeId: o.unitTypeId, checkIn: date, nights: 1, adults: o.occupancy,
+        ratePlanId: o.localId, channel: 'channel', bookedAt: null,
+      });
       const night = q.nights[0];
       let rate = null;
       if (night && q.missing.length === 0) {
@@ -256,16 +268,24 @@ await runWithOrganization(organizationId, async () => {
         rate = minorToMajor(minor + percentOf(minor, modifier, 0));
       }
       expected.set(`${o.remoteId}|${date}`, {
-        rate, availability: free.get(o.unitTypeId)?.get(date) ?? 0, closed: rate == null,
+        rate, availability: free.get(o.unitTypeId)?.get(date) ?? 0, closed: false,
       });
     }
   }
-  // Ніч закривається цілком, якщо бракує ціни хоч на одну опцію пари (шапка адаптера).
+  // Пара закривається, лише коли ціни немає на ЖОДНУ її опцію.
+  //
+  // Доти тут стояло протилежне — «бракує хоч на одну, закриваємо всю ніч», —
+  // і це вже не так: після Блоку 0.6 B1 опція без джерела ціни просто випадає
+  // з тіла, а пара лишається відкритою (`ari-adapter.ts:249`, сцена 13
+  // `ari-adapter.check`). Скрипт відстав від коду, який перевіряє, і друкував
+  // хибний рядок «закрито де треба: 0 з 8» — тобто розбіжність, якої немає
+  // (знайдено живим проходом 07.09).
   for (const p of pairs) {
     const own = options.filter((o) => o.localId === p.localId && o.unitTypeId === p.unitTypeId);
     for (const date of DATES) {
-      if (own.some((o) => expected.get(`${o.remoteId}|${date}`)?.rate == null)) {
-        for (const o of own) { const e = expected.get(`${o.remoteId}|${date}`); e.rate = null; e.closed = true; }
+      const cells = own.map((o) => expected.get(`${o.remoteId}|${date}`));
+      if (cells.length && cells.every((e) => e.rate == null)) {
+        for (const e of cells) { e.rate = null; e.closed = true; }
       }
     }
   }
@@ -274,7 +294,10 @@ await runWithOrganization(organizationId, async () => {
   for (const p of pairs) {
     const own = options.filter((o) => o.localId === p.localId && o.unitTypeId === p.unitTypeId).sort((a, b) => a.occupancy - b.occupancy);
     for (const date of DATES) {
-      const cells = own.map((o) => { const e = expected.get(`${o.remoteId}|${date}`); return `occ${o.occupancy}=${e.rate ?? 'ЗАКРИТО'}`; });
+      const cells = own.map((o) => {
+        const e = expected.get(`${o.remoteId}|${date}`);
+        return `occ${o.occupancy}=${e.rate ?? (e.closed ? 'ЗАКРИТО' : 'немає в тілі')}`;
+      });
       console.log(`  ${date} ${p.localId}×${codeOf.get(p.unitTypeId)}: ${cells.join('  ')}  вільно ${expected.get(`${own[0].remoteId}|${date}`).availability}`);
     }
   }
@@ -452,6 +475,9 @@ await runWithOrganization(organizationId, async () => {
     console.log(`  1. ціна лягла:        ${verdict.rateOk} з ${verdict.rateAll}${verdict.rateMiss ? '   ← РОЗБІЖНІСТЬ' : ''}`);
     console.log(`  2. stop_sell знявся:  ${verdict.openOk} з ${verdict.openAll}${verdict.openMiss ? '   ← ЛИПКИЙ ПРАПОРЕЦЬ (И14)' : ''}`);
     console.log(`     закрито де треба:  ${verdict.closedOk} з ${verdict.closedAll}`);
+    // Опції без джерела ціни: у тілі їх немає за означенням (Блок 0.6 B1),
+    // тож у вердикті вони окремим рядком, а не «розбіжністю».
+    if (verdict.skipped) console.log(`     без джерела ціни:  ${verdict.skipped} (у тіло не входять)`);
     console.log(`  3. наявність лягла:   ${verdict.availOk} з ${verdict.availAll}${verdict.availMiss ? '   ← РОЗБІЖНІСТЬ' : ''}`);
     for (const d of verdict.details) console.log(`     ${d}`);
     const ok = !verdict.rateMiss && !verdict.openMiss && !verdict.availMiss && report.failed === 0;
@@ -471,9 +497,13 @@ await runWithOrganization(organizationId, async () => {
         v.rateAll++; v.openAll++;
         if (c && Number(c.rate) === e.rate) v.rateOk++; else { v.rateMiss++; v.details.push(`${who}: ціна ${c?.rate ?? '?'} ≠ ${e.rate}`); }
         if (c && c.stop_sell === false) v.openOk++; else { v.openMiss++; v.details.push(`${who}: stop_sell=${c?.stop_sell ?? '?'}, мало бути false`); }
-      } else {
+      } else if (e.closed) {
         v.closedAll++;
         if (c && c.stop_sell === true) v.closedOk++; else v.details.push(`${who}: мало бути закрито, stop_sell=${c?.stop_sell ?? '?'}`);
+      } else {
+        // Опція без джерела ціни в тілі не їде, тож у вендора для неї немає
+        // ані ціни, ані нового `stop_sell` — питати з неї нема чого.
+        v.skipped = (v.skipped ?? 0) + 1;
       }
       v.availAll++;
       if (c && Number(c.availability) === e.availability) v.availOk++;

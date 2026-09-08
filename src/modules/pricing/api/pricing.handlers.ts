@@ -1,7 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getPriceMonth, upsertPrices } from '../data/price-calendar.repo';
+import { monthGuestPrices, type GuestNightPrice } from '../data/month-origins';
+import { pricingAdvanced, setPricingAdvanced, weekendPriceDayCount } from '../data/price-mode.repo';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
+import { handleError } from '@core/http/errors';
 import { ownedUnitType } from '../data/owned.repo';
 
 export const getPricing = withActor(async (request: NextRequest, _ctx, actor: Actor): Promise<NextResponse> => {
@@ -21,7 +24,41 @@ export const getPricing = withActor(async (request: NextRequest, _ctx, actor: Ac
     }
 
     const ratePlanId = searchParams.get('ratePlanId') || undefined;
-    return NextResponse.json(await getPriceMonth(unitTypeId, month, year, ratePlanId));
+    const grid = await getPriceMonth(unitTypeId, month, year, ratePlanId);
+
+    // ── Скільки коштує ніч гостю, і звідки це число ──────────────────────
+    //
+    // Сітка знає лише рядки календаря, а гість платить за іншим правилом:
+    // МАТРИЦЯ заселеності перекриває календар (`nightly-price.ts`). Тому і
+    // число, і його підпис беруться з того самого резолвера, що цінує ніч
+    // гостю, — одним обʼєктом на дату. Розділити їх не можна: рівно так на
+    // живій базі зʼявилась клітинка «100 · матриця заселеності», поки матриця
+    // казала 120 (Р9.2).
+    //
+    // Помилка тут не має ламати екран цін — число рядка календаря
+    // лишається, — але й мовчати про неї не можна: без цих даних клітинки
+    // втрачають ПІДПИСИ на весь місяць, і оператор не має як зрозуміти, чому.
+    let guest: Record<string, GuestNightPrice> = {};
+    let guestError: string | null = null;
+    try {
+      guest = await monthGuestPrices(unitTypeId, month, year, ratePlanId);
+    } catch (e) {
+      console.error('[pricing] month guest prices:', e instanceof Error ? e.message : e);
+      // КОД, не текст: перекладає екран літералом, інакше це `t()` зі
+      // змінною, якого екстрактор не бачить (Р9.7, той самий клас).
+      guestError = 'guest_price_failed';
+    }
+
+    return NextResponse.json({
+      ...grid,
+      days: grid.days.map((d) => ({ ...d, guest: guest[d.date] ?? null })),
+      advancedPricing: await pricingAdvanced(actor.organizationId),
+      // Скільки днів мають окрему ціну вихідних — щоб вимкнення розширеного
+      // режиму могло назвати наслідок числом, а не мовчати (Р9.5).
+      weekendPriceDays: await weekendPriceDayCount(
+        actor.organizationId, new Date().toISOString().slice(0, 10)),
+      ...(guestError ? { guestPriceError: guestError } : {}),
+    });
   } catch (error: any) {
     console.error('GET /api/pricing error:', error?.message || error);
     return NextResponse.json({ error: 'Failed to fetch pricing' }, { status: 500 });
@@ -69,5 +106,24 @@ export const updatePricing = withPermission('manage_pricing', async (request: Ne
   } catch (error: any) {
     console.error('PUT /api/pricing error:', error?.message || error);
     return NextResponse.json({ error: 'Failed to update pricing' }, { status: 500 });
+  }
+});
+
+/**
+ * PUT /api/pricing/mode { advanced: boolean } — «розширені ціни» для готелю.
+ *
+ * Право те саме, що на самі ціни: перемикач вирішує, які поля оператор бачить
+ * і, отже, які числа може змінити.
+ */
+export const setPricingMode = withPermission('manage_pricing', async (request: NextRequest, _ctx, actor: Actor): Promise<NextResponse> => {
+  try {
+    const body = await request.json();
+    if (typeof body?.advanced !== 'boolean') {
+      return NextResponse.json({ error: 'advanced must be a boolean' }, { status: 400 });
+    }
+    await setPricingAdvanced(actor.organizationId, body.advanced);
+    return NextResponse.json({ advanced: body.advanced });
+  } catch (error: unknown) {
+    return handleError('modules/pricing/api/pricing setPricingMode', error);
   }
 });

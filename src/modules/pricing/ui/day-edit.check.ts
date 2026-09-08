@@ -73,7 +73,7 @@ const opened = { base_price: 100, weekend_price: null, min_stay: 10, closed: tru
   // День у сітці ТАРИФУ: власний мінімум пари 10, ціна 100.
   const day = { base_price: 100, weekend_price: null, min_stay: 10, closed: false, cta: false, ctd: false };
   const form = { basePrice: 100 as number | '', weekendPrice: '' as number | '', minStay: 10, closed: false, cta: false, ctd: false };
-  const flags = { ratePlanSelected: true, allPlans: true, inherit: false };
+  const flags = { ratePlanSelected: true, allPlans: true, inherit: false, advanced: true };
 
   // Оператор змінив ЛИШЕ ціну, прапорця не чіпав.
   assert.deepStrictEqual(
@@ -106,6 +106,100 @@ const opened = { base_price: 100, weekend_price: null, min_stay: 10, closed: tru
     buildDayPayload(day, { ...form, minStay: 3 }, { ...flags, ratePlanSelected: false }), { min_stay: 3 },
     'у базовій сітці області немає — писати нема куди, крім типу',
   );
+}
+
+// ── 5a. ПРОСТИЙ режим: ціна, яку ввели, і є ціна ───────────────────────
+//
+// Привід усього Блоку 6, дослівно: 07.09.2026 власник поставив на 22
+// листопада 333 і отримав 115, бо на дні лежала ціна вихідних, якої в
+// простому режимі на екрані НЕМА. Поле, якого оператор не бачить, не має
+// права перебивати поле, яке він щойно заповнив, — тому зміна ціни в
+// простому режимі прибирає ціну вихідних явним `null`.
+//
+// Осі (інваріант 26): день із ціною вихідних 115 проти дня без неї; ціна
+// змінена (333) проти незміненої; простий режим проти розширеного —
+// «завжди прибирати» і «ніколи не прибирати» на такій фікстурі не проходять.
+{
+  const withWeekend = { base_price: 100, weekend_price: 115, min_stay: 1, closed: false, cta: false, ctd: false };
+  const form = { basePrice: 100 as number | '', weekendPrice: 115 as number | '', minStay: 1, closed: false, cta: false, ctd: false };
+  const simple = { ratePlanSelected: false, allPlans: false, inherit: false, advanced: false };
+
+  assert.deepStrictEqual(
+    buildDayPayload(withWeekend, { ...form, basePrice: 333 }, simple),
+    { base_price: 333, weekend_price: null },
+    'простий режим: 333 стає ціною і в суботу — ціна вихідних прибирається явним null',
+  );
+
+  // Ціну не чіпали — ціна вихідних лишається: простий режим не витирає того,
+  // чого оператор не просив чіпати.
+  assert.deepStrictEqual(
+    buildDayPayload(withWeekend, { ...form, minStay: 4 }, simple), { min_stay: 4 },
+    'у простому режимі змінили лише мінімум — ціна вихідних недоторкана',
+  );
+
+  // Без ціни вихідних прибирати нема чого: зайвого поля в тілі бути не має.
+  const plain = { base_price: 100, weekend_price: null, min_stay: 1, closed: false, cta: false, ctd: false };
+  assert.deepStrictEqual(
+    buildDayPayload(plain, { ...form, basePrice: 333, weekendPrice: '' }, simple), { base_price: 333 },
+    'нема чого прибирати — у тілі лише ціна',
+  );
+
+  // РОЗШИРЕНИЙ режим тим самим натисканням ціни вихідних не чіпає: там поле
+  // на екрані є, і оператор ним розпоряджається сам.
+  assert.deepStrictEqual(
+    buildDayPayload(withWeekend, { ...form, basePrice: 333 }, { ...simple, advanced: true }),
+    { base_price: 333 },
+    'розширений режим: 115 лишається, бо поле видно і його не міняли',
+  );
+
+  // Простий режим не шле полів, яких у ньому НЕМАЄ, навіть коли в стані форми
+  // лежать їхні значення: інакше CTA знялося б само. «Закрито» — навпаки:
+  // воно в простому режимі показується (головна щоденна дія малого готелю),
+  // тож ним оператор розпоряджається.
+  const closedDay = { base_price: 100, weekend_price: null, min_stay: 1, closed: true, cta: true, ctd: false };
+  assert.deepStrictEqual(
+    buildDayPayload(closedDay, { ...form, basePrice: 333, closed: true, cta: false }, simple),
+    { base_price: 333 },
+    'простий режим не знімає CTA, якого в ньому не показують',
+  );
+  assert.deepStrictEqual(
+    buildDayPayload(closedDay, { ...form, closed: false, cta: false }, simple),
+    { closed: false },
+    'а «Закрито» в простому режимі знімається — воно там на екрані',
+  );
+}
+
+// ── 5b. Прапорець типу: знятий за замовчуванням і названий ДО збереження ─
+//
+// Блок 6, п.3. Дефолт був увімкнений, і через нього тест 7 сертифікації дав
+// 35 координат замість 4 і торішнє «unexpected rate plan»: оператор ставив
+// обмеження «на цей тариф», а воно лягало на ТИП і їхало на кожну його пару.
+// Дія, яка розширює наслідок за межі названого оператором, не може бути
+// замовчуванням — і не може бути мовчазною.
+{
+  const fs = await import('node:fs');
+  const page = fs.readFileSync(new URL('../../../app/app/(dashboard)/pricing/page.tsx', import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+  // Обидві модалки заводять прапорець ЗНЯТИМ.
+  assert.strictEqual((page.match(/useState\(true\);?\s*\n?\s*(?=const \[dateFrom|const \[basePrice)/g) || []).length, 0,
+    'прапорець «на тип» більше не вмикається за замовчуванням у жодній із модалок');
+  assert.strictEqual((page.match(/const \[allPlans, setAllPlans\] = useState\(false\)/g) || []).length, 2,
+    'обидві модалки (день і масова) заводять прапорець знятим');
+
+  // І він названий прямо — «записати на ТИП», а не «на всі тарифи».
+  assert.ok(/Записати на тип номера/.test(page),
+    'підпис прапорця мусить казати, КУДИ пишеться значення, а не перелічувати наслідок');
+
+  // Попередження про власне значення тарифу лишається — і воно ДО збереження,
+  // тобто в тілі модалки, а не в тості після відповіді сервера.
+  const modalStart = page.indexOf('function EditDayModal(');
+  const modalEnd = page.indexOf('function BulkEditModal(');
+  const modal = page.slice(modalStart, modalEnd);
+  assert.ok(/restrictionsOwn/.test(modal) && /власні цього тарифу/.test(modal),
+    'модалка мусить попередити про власне значення тарифу ДО збереження');
+  assert.ok(modal.indexOf('власні цього тарифу') < modal.indexOf('Зберегти'),
+    'попередження стоїть у тілі форми, вище кнопки — інакше його читають після дії');
 }
 
 // ── 6. Екран кличе саме цю функцію ─────────────────────────────────────

@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { withPermission, type Actor } from '@core/auth/session';
-import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
-import { serverError } from '@core/http/errors';
+import { requirePropertyId } from '@core/auth/tenant-context';
+import { serverError, handleError } from '@core/http/errors';
 import { listRules, createRule, updateRule, deleteRule, ageBandsOf, type RuleInput } from '../data/extra-occupancy.repo';
 import type { GuestKind, SurchargeMode } from '../domain/extra-occupancy';
 
@@ -45,7 +45,7 @@ export const listExtraOccupancyRules = withPermission('manage_pricing', async (r
     try {
       propertyId = await requirePropertyId(new URL(request.url).searchParams.get('property_id'));
     } catch (e) {
-      return NextResponse.json({ error: e instanceof Error ? e.message : 'Property not found' }, { status: propertyErrorStatus(e) });
+      return handleError('pricing/extra-occupancy', e);
     }
     try {
       const [rules, bands] = await Promise.all([listRules(propertyId), ageBandsOf(actor.organizationId)]);
@@ -66,7 +66,7 @@ export const createExtraOccupancyRule = withPermission('manage_pricing', async (
     try {
       propertyId = await requirePropertyId(typeof body.property_id === 'string' ? body.property_id : null);
     } catch (e) {
-      return NextResponse.json({ error: e instanceof Error ? e.message : 'Property not found' }, { status: propertyErrorStatus(e) });
+      return handleError('pricing/extra-occupancy', e);
     }
     try {
       return NextResponse.json(await createRule(propertyId, inputFrom(body)), { status: 201 });

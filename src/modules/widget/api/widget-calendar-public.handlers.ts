@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { dayRowPrice } from '@pricing/day-price';
 import { getSql } from '@core/db/async';
 import { cheapestByDay } from '@pricing';
 import { unassignedPressureByDay } from '@properties';
@@ -260,7 +261,6 @@ async function calendarFor(searchParams: URLSearchParams) {
 
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr   = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const isWeekend = [0, 5, 6].includes(new Date(year, month, d).getDay());
 
       const bookedUnitIds = new Set<string>();
       for (const r of reservations) {
@@ -289,11 +289,15 @@ async function calendarFor(searchParams: URLSearchParams) {
       // customer's number in one customer's currency, shown on every square of
       // every hotel's calendar whenever a day had no price. A day nobody has
       // priced now shows no price, which is true.
+      //
+      // Правило вихідних — `dayRowPrice` з `@pricing/domain/day-price`, те
+      // саме, яким рахує `priceNights` для броні й сітка місяця для
+      // оператора. Доти тут стояла третя копія правила, і вона вже
+      // розходилась із двома іншими: варти на нуль і відʼємне не було, тож
+      // `weekend_price = 0` показувався б у календарі гостя як ціна (Блок 6).
       const pe = priceMap.get(dateStr);
       let price: number | null = matrixByDay.get(dateStr)
-        ?? (pe
-          ? (isWeekend && pe.min_weekend_price != null ? pe.min_weekend_price : pe.min_price)
-          : null);
+        ?? dayRowPrice(pe ? { base_price: pe.min_price, weekend_price: pe.min_weekend_price } : null, dateStr).price;
 
       if (activeRatePlan) {
         if (status !== 'booked') {

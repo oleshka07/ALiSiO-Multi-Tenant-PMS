@@ -10,6 +10,10 @@ import { usePropertyScope } from '@/ui/PropertyScopeContext';
 // серверний шар у клієнтський бандл, і збірка падає на `node:module`.
 import { buildDayPayload } from '@/modules/pricing/ui/day-edit';
 import type { DayEditPayload } from '@/modules/pricing/ui/day-edit';
+import { buildBulkPayload } from '@/modules/pricing/ui/bulk-edit';
+// Через двері `modules/pricing/ui/` — не імпортом нутрощів: підписи джерел
+// належать модулю цін, а не екрану (той самий шлях, що `day-edit`).
+import { ORIGIN_LABELS, cellPrice, type PriceOrigin } from '@/modules/pricing/ui/price-origin';
 import {
   ChevronLeft,
   ChevronRight,
@@ -55,7 +59,21 @@ interface PriceDay {
   inherited?: boolean;
   /** Сітка тарифу: обмеження дня — власні цієї пари, не типу (Ц32 переглянуто 07.09). */
   restrictionsOwn?: boolean;
+  /**
+   * Скільки коштує ця ніч ГОСТЮ і звідки число — від сервера, одним обʼєктом
+   * (Блок 6 п.1, Р9.2).
+   *
+   * Рахує його `priceNights`, той самий резолвер, що цінує ніч гостю: у
+   * ньому МАТРИЦЯ заселеності перекриває календар. Тому ні число, ні підпис
+   * не виводяться з полів рядка, і розділити їх тут нема з чого — доти
+   * клітинка казала «100 · матриця заселеності», поки матриця казала 120.
+   *
+   * `null` — ніч закрита або жодне джерело її не цінує: показуємо число
+   * рядка календаря БЕЗ підпису (`cellPrice`).
+   */
+  guest?: { price: number; origin: PriceOrigin } | null;
 }
+
 
 interface QuoteResult {
   nights: number;
@@ -85,17 +103,25 @@ const CZK_TO_EUR = 23.5;
 /* ================================================================
    Edit Cell Modal
    ================================================================ */
-function EditDayModal({ day, ratePlanSelected, onSave, onClose }: {
+function EditDayModal({ day, ratePlanSelected, advanced, onSave, onClose }: {
   day: PriceDay;
   /** У «Чия ціна» обрано тариф — обмеження можуть лягти на його пару або на всі тарифи типу. */
   ratePlanSelected: boolean;
+  /** «Розширені ціни» (Блок 6, п.5): у вимкненому стані видно ціну, мінімум і «Закрито». */
+  advanced: boolean;
   onSave: (data: DayEditPayload & { restrictionsScope?: 'pair' | 'type' }) => void;
   onClose: () => void;
 }) {
   const t = useT();
-  // Обмеження з вибраним тарифом (Ц32 переглянуто 07.09): дефолт — на всі
-  // тарифи типу (базовий рядок), зняти прапорець — лише на цю пару.
-  const [allPlans, setAllPlans] = useState(true);
+  // Обмеження з вибраним тарифом (Ц32 переглянуто 07.09): за замовчуванням
+  // ЗНЯТО — записуємо на пару обраного тарифу (Блок 6, п.3).
+  //
+  // Дефолт був увімкнений, і саме через нього тест 7 сертифікації дав 35
+  // координат замість 4 і торішнє «unexpected rate plan»: оператор ставив
+  // обмеження «на цей тариф», а воно лягало на ТИП і їхало на кожну його
+  // пару. Дія, яка розширює наслідок за межі того, що оператор назвав, не
+  // може бути замовчуванням.
+  const [allPlans, setAllPlans] = useState(false);
   // Порожнє поле — «ціну не чіпати»: збереження обмеження на день без ціни
   // не пише нуль (2.0). Тут стояло `useState(day.base_price)`, і для дня без
   // рядка це був 0 — його й відправляли в канал як ціну.
@@ -121,7 +147,7 @@ function EditDayModal({ day, ratePlanSelected, onSave, onClose }: {
   // Тіло будує одна функція в `@/modules/pricing/ui/day-edit` — там її
   // стереже гейт ПОВЕДІНКОЮ (правка 5.2 рецензії раунду 5). Тут лишається
   // лише виклик: стан дня, стан форми, прапорці.
-  const body = () => buildDayPayload(opened, { basePrice, weekendPrice, minStay, closed, cta, ctd }, { ratePlanSelected, allPlans, inherit });
+  const body = () => buildDayPayload(opened, { basePrice, weekendPrice, minStay, closed, cta, ctd }, { ratePlanSelected, allPlans, inherit, advanced });
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -129,6 +155,17 @@ function EditDayModal({ day, ratePlanSelected, onSave, onClose }: {
         <div className="modal-header">
           <h3 className="modal-title">
             {day.day} {t(MONTH_NAMES[new Date(day.date).getMonth()])} ({t(DAY_NAMES[day.dayOfWeek])})
+            {/* Скільки платить гість і звідки це число — тим самим одним
+                рішенням, що й клітинка (`cellPrice`). Тут стояло число сітки
+                з підписом резолвера: два різні джерела в одному рядку. */}
+            {(() => {
+              const cell = cellPrice(day);
+              return cell.price != null && cell.origin ? (
+                <span style={{ display: 'block', fontSize: 11, fontWeight: 400, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                  {cell.price.toLocaleString()} · {t(ORIGIN_LABELS[cell.origin])}
+                </span>
+              ) : null;
+            })()}
           </h3>
           <button className="modal-close" onClick={onClose}><X size={18} /></button>
         </div>
@@ -136,12 +173,31 @@ function EditDayModal({ day, ratePlanSelected, onSave, onClose }: {
           <div className="form-group">
             <label className="form-label">{t('Базова ціна')}</label>
             <input className="form-input" type="number" value={basePrice} onChange={e => setBasePrice(e.target.value === '' ? '' : Number(e.target.value))} min={1} placeholder={t('немає — не продається')} />
+            {/* Р10.4: у заголовку стоїть ціна ГОСТЯ, а це поле редагує рядок
+                КАЛЕНДАРЯ. Коли ніч цінує матриця, це два різні числа, і
+                мовчання про це — той самий клас, що привід усього блоку. */}
+            {cellPrice(day).origin === 'matrix' && (
+              <span style={{ display: 'block', fontSize: 11, color: 'var(--accent-warning)', marginTop: 4 }}>
+                {t('Це поле — ціна рядка календаря. Гість платить за матрицею заселеності, і зміна цього числа ціни для гостя не змінить, поки на цю заселеність є рядок матриці')}
+              </span>
+            )}
           </div>
-          <div className="form-group">
-            <label className="form-label">{t('Ціна вихідних — Пт/Сб/Нд')}</label>
-            <input className="form-input" type="number" value={weekendPrice} onChange={e => setWeekendPrice(e.target.value === '' ? '' : Number(e.target.value))} min={0} placeholder={t('Як базова')} />
-            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{t('Залиште порожнім щоб = базовій')}</span>
-          </div>
+          {advanced ? (
+            <div className="form-group">
+              <label className="form-label">{t('Ціна вихідних — Пт/Сб/Нд')}</label>
+              <input className="form-input" type="number" value={weekendPrice} onChange={e => setWeekendPrice(e.target.value === '' ? '' : Number(e.target.value))} min={0} placeholder={t('Як базова')} />
+              <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{t('Порожнє — як базова')}</span>
+            </div>
+          ) : day.weekend_price != null && (
+            /* Поля на екрані немає, але число в базі є — і саме воно перебиває
+               базову ціну у Пт/Сб/Нд. Мовчати про це не можна: це і був привід
+               усього блоку. Тому в простому режимі сказано прямо, що станеться
+               при збереженні. */
+            <div style={{ marginTop: -4, marginBottom: 10, fontSize: 11, color: 'var(--accent-warning)' }}>
+              {t('На цьому дні стоїть окрема ціна вихідних')} {day.weekend_price.toLocaleString()}.{' '}
+              {t('Якщо змінити ціну — вона прибереться, і діятиме введене число')}
+            </div>
+          )}
           <div className="form-group">
             <label className="form-label">{t('Мін. ночей')}</label>
             {/* Очищене поле дає `Number('') === 0`, а `min={1}` стереже лише
@@ -152,15 +208,21 @@ function EditDayModal({ day, ratePlanSelected, onSave, onClose }: {
             <input className="form-input" type="number" value={minStay} onChange={e => setMinStay(Math.max(1, Number(e.target.value) || 1))} min={1} max={30} disabled={inherit} />
           </div>
           <div className="form-row" style={{ gap: 16 }}>
+            {/* «Закрито» — і в простому режимі: для готелю на 1–15 номерів це
+                головна щоденна дія, і в переліку розширених полів його немає. */}
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
               <input type="checkbox" checked={closed} onChange={e => setClosed(e.target.checked)} disabled={inherit} /> {t('Закрито')}
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-              <input type="checkbox" checked={cta} onChange={e => setCta(e.target.checked)} disabled={inherit} /> CTA
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-              <input type="checkbox" checked={ctd} onChange={e => setCtd(e.target.checked)} disabled={inherit} /> CTD
-            </label>
+            {advanced && (
+              <>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={cta} onChange={e => setCta(e.target.checked)} disabled={inherit} /> CTA
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={ctd} onChange={e => setCtd(e.target.checked)} disabled={inherit} /> CTD
+                </label>
+              </>
+            )}
           </div>
           {/* Обмеження (Ц32 переглянуто 07.09): належать ПАРІ тип × тариф.
               З вибраним тарифом — або на всі тарифи типу (базовий рядок,
@@ -170,9 +232,9 @@ function EditDayModal({ day, ratePlanSelected, onSave, onClose }: {
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 10, fontSize: 12, cursor: inherit ? 'default' : 'pointer', opacity: inherit ? 0.5 : 1 }}>
               <input type="checkbox" checked={allPlans && !inherit} disabled={inherit} onChange={e => setAllPlans(e.target.checked)} style={{ marginTop: 2 }} />
               <span>
-                {t('Мін. ночей, «Закрито», CTA і CTD — на всі тарифи типу')}
+                {t('Записати на тип номера — діє на всі тарифи, крім тих, що мають власне значення')}
                 <span style={{ display: 'block', color: 'var(--text-tertiary)', fontSize: 11 }}>
-                  {t('Зняти — і вони ляжуть лише на цей тариф; тарифи зі своїм значенням тип не перекриває')}
+                  {t('Знято — обмеження ляжуть лише на обраний тариф')}
                 </span>
               </span>
             </label>
@@ -210,13 +272,16 @@ function EditDayModal({ day, ratePlanSelected, onSave, onClose }: {
 /* ================================================================
    Bulk Edit Modal
    ================================================================ */
-function BulkEditModal({ ratePlanSelected, onSave, onClose }: {
+function BulkEditModal({ ratePlanSelected, advanced, onSave, onClose }: {
   ratePlanSelected: boolean;
+  /** «Розширені ціни» (Блок 6, п.5). */
+  advanced: boolean;
   onSave: (data: any) => void;
   onClose: () => void;
 }) {
   const t = useT();
-  const [allPlans, setAllPlans] = useState(true);
+  // Як і в редакторі дня: за замовчуванням ЗНЯТО (Блок 6, п.3).
+  const [allPlans, setAllPlans] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [basePrice, setBasePrice] = useState('');
@@ -226,24 +291,35 @@ function BulkEditModal({ ratePlanSelected, onSave, onClose }: {
   const [closed, setClosed] = useState<boolean | undefined>(undefined);
   const [cta, setCta] = useState<boolean | undefined>(undefined);
   const [ctd, setCtd] = useState<boolean | undefined>(undefined);
+  // «Застосувати до» — завжди «Всі дні» при відкритті (Блок 6, п.4). Форма
+  // монтується заново на кожне відкриття (`key` на місці виклику), тож цей
+  // початковий стан і є скиданням: вибір «Тільки вихідні», зроблений раз, не
+  // має мовчки застосуватись до наступної правки, яка стосується всіх днів.
   const [applyTo, setApplyTo] = useState<'all' | 'weekdays' | 'weekends'>('all');
+  // Явна дія замість тихої семантики порожнього поля (Блок 6, п.2): порожнє
+  // означає «як базова» на ОБОХ екранах, а прибрати наявну ціну вихідних —
+  // окрема команда, яку видно.
+  const [clearWeekend, setClearWeekend] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
     if (!dateFrom || !dateTo) { alert(t('Вкажіть діапазон дат')); return; }
     setSaving(true);
-    await onSave({
-      dateFrom, dateTo, applyTo,
-      base_price: basePrice !== '' ? Number(basePrice) : undefined,
-      weekend_price: weekendPrice !== '' ? Number(weekendPrice) : undefined,
-      min_stay: minStay !== '' ? Number(minStay) : undefined,
-      max_stay: maxStay !== '' ? Number(maxStay) : undefined,
-      closed: closed,
-      cta: cta,
-      ctd: ctd,
-      // Обмеження з вибраним тарифом — на всі тарифи типу або лише на пару (Ц32 переглянуто).
-      ...(ratePlanSelected ? { restrictionsScope: allPlans ? 'type' : 'pair' } : {}),
-    });
+    // Тіло збирає `buildBulkPayload` — див. `pricing/ui/bulk-edit.ts`. Тут
+    // навмисно нема жодного рішення: поки воно жило в цьому виразі, у простому
+    // режимі невидима ціна вихідних 115 переживала правку ціни на 333 (Р9.1).
+    await onSave(buildBulkPayload(
+      {
+        dateFrom, dateTo, applyTo,
+        basePrice: basePrice !== '' ? Number(basePrice) : '',
+        weekendPrice: weekendPrice !== '' ? Number(weekendPrice) : '',
+        clearWeekend,
+        minStay: minStay !== '' ? Number(minStay) : '',
+        maxStay: maxStay !== '' ? Number(maxStay) : '',
+        closed, cta, ctd,
+      },
+      { ratePlanSelected, allPlans, advanced },
+    ));
     setSaving(false);
   };
 
@@ -278,10 +354,33 @@ function BulkEditModal({ ratePlanSelected, onSave, onClose }: {
               <label className="form-label">{t('Базова ціна')}</label>
               <input className="form-input" type="number" placeholder={t('Не змінювати')} value={basePrice} onChange={e => setBasePrice(e.target.value)} min={0} />
             </div>
-            <div className="form-group">
-              <label className="form-label">{t('Ціна вихідних')}</label>
-              <input className="form-input" type="number" placeholder={t('Не змінювати')} value={weekendPrice} onChange={e => setWeekendPrice(e.target.value)} min={0} />
-            </div>
+            {!advanced && (
+              /* Р10.2: у простому режимі поведінка та сама, що в денній
+                 модалці — зміна ціни прибирає ціну вихідних, — а сказано про
+                 це доти було лише там. Правка тут накриває МІСЯЦЬ, тобто
+                 мовчання коштує більше, ніж на одному дні. */
+              <div className="form-group" style={{ alignSelf: 'center' }}>
+                <div style={{ fontSize: 11, color: 'var(--accent-warning)' }}>
+                  {t('Якщо ввести ціну — окрема ціна вихідних на цих днях прибереться, і діятиме введене число')}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
+                  {t('Порожнє поле ціни нічого не міняє')}
+                </div>
+              </div>
+            )}
+            {advanced && (
+              <div className="form-group">
+                <label className="form-label">{t('Ціна вихідних — Пт/Сб/Нд')}</label>
+                <input className="form-input" type="number" placeholder={t('Не змінювати')} value={weekendPrice} onChange={e => setWeekendPrice(e.target.value)} min={0} disabled={clearWeekend} />
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 12, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={clearWeekend} onChange={e => setClearWeekend(e.target.checked)} />
+                  {t('Прибрати ціну вихідних')}
+                </label>
+                <span style={{ display: 'block', fontSize: 11, color: 'var(--text-tertiary)' }}>
+                  {t('Порожнє поле нічого не міняє. Щоб вихідні коштували як базова — поставте цю позначку')}
+                </span>
+              </div>
+            )}
           </div>
           <div className="form-row">
             <div className="form-group">
@@ -305,13 +404,14 @@ function BulkEditModal({ ratePlanSelected, onSave, onClose }: {
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 10, fontSize: 12, cursor: 'pointer' }}>
               <input type="checkbox" checked={allPlans} onChange={e => setAllPlans(e.target.checked)} style={{ marginTop: 2 }} />
               <span>
-                {t('Обмеження — на всі тарифи типу')}
+                {t('Записати на тип номера — діє на всі тарифи, крім тих, що мають власне значення')}
                 <span style={{ display: 'block', color: 'var(--text-tertiary)', fontSize: 11 }}>
-                  {t('Зняти — лише на обраний тариф (як у тестах 5, 7, 8: різне на різних тарифах)')}
+                  {t('Знято — обмеження ляжуть лише на обраний тариф')}
                 </span>
               </span>
             </label>
           )}
+          {advanced && (
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">{t('Макс. ночей')}</label>
@@ -336,6 +436,7 @@ function BulkEditModal({ ratePlanSelected, onSave, onClose }: {
               </select>
             </div>
           </div>
+          )}
         </div>
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>{t('Скасувати')}</button>
@@ -498,6 +599,17 @@ export default function PricingPage() {
   const [loading, setLoading] = useState(true);
   const [editDay, setEditDay] = useState<PriceDay | null>(null);
   const [showBulkEdit, setShowBulkEdit] = useState(false);
+  // Мітка відкриття масової форми: змінюється на кожне відкриття і слугує
+  // `key`, тобто гарантує свіжий монтаж (Блок 6, п.4).
+  const [bulkOpenedAt, setBulkOpenedAt] = useState(0);
+  // «Розширені ціни» — стан ГОТЕЛЮ, приходить із тією ж відповіддю, що й
+  // сітка місяця (міграція 0112). Дефолт простий: показати менше безпечніше,
+  // ніж показати поле, яке мовчки перебиває ціну.
+  const [advancedPricing, setAdvancedPricing] = useState(false);
+  /** Скільки майбутніх днів мають окрему ціну вихідних — для попередження Р9.5. */
+  const [weekendPriceDays, setWeekendPriceDays] = useState(0);
+  /** Ціну гостя порахувати не вдалось — підписів джерел на екрані немає (Р9.8). */
+  const [guestPriceError, setGuestPriceError] = useState<string | null>(null);
   const [toast, setToast] = useState('');
   // Чи веде цей готель ціни матрицею заселеності. Порожній день-календар при
   // заповненій матриці — не «цін немає», а «вони в іншому місці», і без цього
@@ -548,9 +660,34 @@ export default function PricingPage() {
       const res = await fetch(`/api/pricing?unitTypeId=${selectedUnitType}&month=${month}&year=${year}${ratePlanId ? `&ratePlanId=${encodeURIComponent(ratePlanId)}` : ''}`);
       const data = await res.json();
       if (data.days) setPriceData(data.days);
+      if (typeof data.advancedPricing === 'boolean') setAdvancedPricing(data.advancedPricing);
+      if (typeof data.weekendPriceDays === 'number') setWeekendPriceDays(data.weekendPriceDays);
+      setGuestPriceError(typeof data.guestPriceError === 'string' ? data.guestPriceError : null);
     } catch (e) { console.error(e); }
     setLoading(false);
   }, [selectedUnitType, month, year, ratePlanId]);
+
+  /** Перемикач «розширені ціни» — записується ОРГАНІЗАЦІЇ, не браузеру (Р9.6). */
+  const toggleAdvanced = async (next: boolean) => {
+    // Вимкнення називає наслідок числом (Р9.5). Дані в мить перемикання не
+    // гинуть, але організація переходить у режим, де кожна правка ціни витирає
+    // невидиму ціну вихідних — а завести її можна й повз цей екран, у
+    // сезонах. Мовчазне перемикання тут і є той клас, який Блок 6 закриває.
+    if (!next && weekendPriceDays > 0) {
+      const ok = window.confirm(
+        `${t('Окрема ціна вихідних стоїть на днях:')} ${weekendPriceDays}. `
+        + t('У простому режимі це поле не показується, і кожна зміна ціни на такому дні прибиратиме його. Наявні числа зараз не зникнуть.'));
+      if (!ok) return;
+    }
+    setAdvancedPricing(next);
+    try {
+      const res = await fetch('/api/pricing/mode', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ advanced: next }),
+      });
+      if (!res.ok) { setAdvancedPricing(!next); showToast(t('Не вдалося змінити режим')); }
+    } catch (e) { console.error(e); setAdvancedPricing(!next); }
+  };
 
   useEffect(() => { fetchPrices(); }, [fetchPrices]);
 
@@ -643,9 +780,14 @@ export default function PricingPage() {
 
   // Stats
   const stats = useMemo(() => {
-    const withData = priceData.filter(d => d.effective_price != null);
-    const avgPrice = withData.length > 0
-      ? Math.round(withData.reduce((s, d) => s + (d.effective_price ?? 0), 0) / withData.length)
+    // Середня — з ТИХ САМИХ чисел, що стоять у клітинках (`cellPrice`), а не
+    // з `effective_price` рядка календаря. Доти вона усереднювала одне, а під
+    // нею лежали інші числа: на готелі з матрицею «серед. ціна» не збігалась
+    // із жодним видимим числом (Р10.4).
+    const shown = priceData.map(d => cellPrice(d).price).filter((v): v is number => v != null);
+    const withData = priceData.filter(d => cellPrice(d).price != null);
+    const avgPrice = shown.length > 0
+      ? Math.round(shown.reduce((s, v) => s + v, 0) / shown.length)
       : 0;
     const closedDays = priceData.filter(d => d.closed).length;
     return { total: priceData.length, withData: withData.length, avgPrice, closedDays };
@@ -695,8 +837,16 @@ export default function PricingPage() {
               {selectedUT ? `${selectedUT.name}` : t('Виберіть тип розміщення')} · {t(MONTH_NAMES[month - 1])} {year}
             </div>
           </div>
-          <div className="flex gap-2">
-            <button className="btn btn-secondary" onClick={() => setShowBulkEdit(true)}>
+          <div className="flex gap-2" style={{ alignItems: 'center' }}>
+            {/* Простий режим за замовчуванням (Блок 6, п.5). Стан належить
+                ГОТЕЛЮ, не браузеру: інакше другий адміністратор відкриває той
+                самий екран і бачить інший набір полів. */}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}
+              title={t('Ціна вихідних, CTA/CTD, максимум ночей і матриця заселеності')}>
+              <input type="checkbox" checked={advancedPricing} onChange={e => toggleAdvanced(e.target.checked)} />
+              {t('Розширені ціни')}
+            </label>
+            <button className="btn btn-secondary" onClick={() => { setBulkOpenedAt(Date.now()); setShowBulkEdit(true); }}>
               <Edit3 size={16} /> {t('Масове редагування')}
             </button>
           </div>
@@ -763,6 +913,16 @@ export default function PricingPage() {
           )}
         </div>
 
+        {/* Ціну гостя порахувати не вдалось: числа рядків лишаються, а підписи
+            джерел зникають з усього місяця. Мовчати про це не можна — оператор
+            бачив би екран без пояснень і не мав як зрозуміти чому (Р9.8). */}
+        {guestPriceError && (
+          <div className="card" style={{ marginBottom: 12, borderColor: 'var(--accent-warning)', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <AlertTriangle size={16} style={{ color: 'var(--accent-warning)', flexShrink: 0 }} />
+            <span style={{ fontSize: 13 }}>{t('Не вдалося порахувати ціну гостя — підписи джерел не показані. Числа з календаря на місці.')}</span>
+          </div>
+        )}
+
         {/* Month Navigation */}
         <div className="flex items-center justify-between mb-4">
           <button className="btn btn-ghost btn-icon" onClick={prevMonth}><ChevronLeft size={20} /></button>
@@ -798,17 +958,33 @@ export default function PricingPage() {
                         <div className="pricing-cell-date">
                           {day.day} {t(DAY_NAMES[day.dayOfWeek])}
                         </div>
-                        <div className="pricing-cell-price" style={{
-                          color: day.effective_price == null ? 'var(--text-tertiary)' : day.isWeekend ? '#f59e0b' : undefined,
-                          fontSize: day.effective_price != null ? 15 : 13,
-                        }}>
-                          {day.effective_price != null ? `${day.effective_price.toLocaleString()}` : '—'}{day.inherited ? <span style={{ fontSize: 10, color: 'var(--text-tertiary)', marginLeft: 3 }}>↑</span> : null}
-                        </div>
-                        {day.base_price != null && day.isWeekend && day.weekend_price != null && day.weekend_price !== day.base_price && (
-                          <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
-                            {t('буд.')} {day.base_price}
-                          </div>
-                        )}
+                        {/* Число І підпис — одним рішенням (`cellPrice`).
+                            Р9.2: доти число малювала сітка календаря, а підпис
+                            приходив із резолвера гостя, і на живій базі це дало
+                            «100 · матриця заселеності», поки матриця казала
+                            120. Немає ціни гостя — показуємо число рядка без
+                            підпису: скільки заплатить гість, ми не знаємо. */}
+                        {(() => {
+                          const cell = cellPrice(day);
+                          return (<>
+                            {/* Колір вихідних і стрілка «успадковано» — факти
+                                РЯДКА календаря. На числі з матриці вони
+                                стосувались би не того джерела, тож там їх
+                                немає (Р10.4). */}
+                            <div className="pricing-cell-price" style={{
+                              color: cell.price == null ? 'var(--text-tertiary)'
+                                : (day.isWeekend && cell.origin !== 'matrix') ? '#f59e0b' : undefined,
+                              fontSize: cell.price != null ? 15 : 13,
+                            }}>
+                              {cell.price != null ? `${cell.price.toLocaleString()}` : '—'}{day.inherited && cell.origin !== 'matrix' ? <span style={{ fontSize: 10, color: 'var(--text-tertiary)', marginLeft: 3 }}>↑</span> : null}
+                            </div>
+                            {cell.origin && (
+                              <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }} title={t('Звідки взялося це число')}>
+                                {t(ORIGIN_LABELS[cell.origin])}
+                              </div>
+                            )}
+                          </>);
+                        })()}
                         <div className="pricing-cell-badges">
                           {day.isWeekend && <span className="pricing-cell-badge">WE</span>}
                           {day.min_stay > 1 && <span className="pricing-cell-badge">min {day.min_stay}</span>}
@@ -877,10 +1053,13 @@ export default function PricingPage() {
         <WidgetPriceListSection />
 
         {/* Edit Day Modal */}
-        {editDay && <EditDayModal day={editDay} ratePlanSelected={Boolean(ratePlanId)} onSave={handleSaveDay} onClose={() => setEditDay(null)} />}
+        {editDay && <EditDayModal key={editDay.date} day={editDay} ratePlanSelected={Boolean(ratePlanId)} advanced={advancedPricing} onSave={handleSaveDay} onClose={() => setEditDay(null)} />}
 
         {/* Bulk Edit Modal */}
-        {showBulkEdit && <BulkEditModal ratePlanSelected={Boolean(ratePlanId)} onSave={handleBulkSave} onClose={() => setShowBulkEdit(false)} />}
+        {/* `key` — щоб форма монтувалась заново на кожне відкриття: «Застосувати
+             до» мусить стояти на «Всі дні», а не памʼятати минулий вибір
+             (Блок 6, п.4). */}
+        {showBulkEdit && <BulkEditModal key={bulkOpenedAt} ratePlanSelected={Boolean(ratePlanId)} advanced={advancedPricing} onSave={handleBulkSave} onClose={() => setShowBulkEdit(false)} />}
       </div>
     </>
   );

@@ -45,11 +45,19 @@ const addDays = (iso: string, n: number) => {
 
 async function cleanup() {
   for (const org of [A, B]) {
-    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [`${org}_prop`]);
-    await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]);
+    // Прибирання — В КОНТЕКСТІ орендаря (Р10.11). Під роллю застосунку
+    // тенантний `DELETE` без орендаря не падає: він чіпає НУЛЬ рядків, і
+    // зелене тримається на каскаді від `DELETE FROM organizations`, а не на
+    // самому прибиранні. Тобто перевірка прибирала не так, як застосунок.
+    await runWithOrganization(org, async () => {
+      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [`${org}_prop`]);
+      await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]);
+    });
+    // На `organizations` політики немає за побудовою — цей рядок знімається
+    // поза контекстом, і саме він тягне каскад.
     await sql.run('DELETE FROM organizations WHERE id = ?', [org]);
   }
 }

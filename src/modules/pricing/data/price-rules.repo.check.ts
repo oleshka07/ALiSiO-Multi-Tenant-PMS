@@ -23,6 +23,7 @@
  * Перевірка написана ДО коду і була червоною (інваріант 24).
  */
 import assert from 'node:assert';
+import { readFile } from 'node:fs/promises';
 import '../../../../scripts/lib/module-aliases.mjs';
 
 const { runWithOrganization } = await import('@core/auth/tenant-context');
@@ -42,14 +43,22 @@ const CONN = `${A}_conn`;
 
 async function cleanup() {
   for (const org of [A, B]) {
-    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM price_rules WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [`${org}_prop`]);
-    await sql.run('DELETE FROM unit_types WHERE property_id = ?', [`${org}_prop`]);
-    await sql.run('DELETE FROM categories WHERE property_id = ?', [`${org}_prop`]);
-    await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]);
+    // Прибирання — В КОНТЕКСТІ орендаря (Р10.11). Під роллю застосунку
+    // тенантний `DELETE` без орендаря не падає: він чіпає НУЛЬ рядків, і
+    // зелене тримається на каскаді від `DELETE FROM organizations`, а не на
+    // самому прибиранні. Тобто перевірка прибирала не так, як застосунок.
+    await runWithOrganization(org, async () => {
+      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM price_rules WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [`${org}_prop`]);
+      await sql.run('DELETE FROM unit_types WHERE property_id = ?', [`${org}_prop`]);
+      await sql.run('DELETE FROM categories WHERE property_id = ?', [`${org}_prop`]);
+      await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]);
+    });
+    // На `organizations` політики немає за побудовою — цей рядок знімається
+    // поза контекстом, і саме він тягне каскад.
     await sql.run('DELETE FROM organizations WHERE id = ?', [org]);
   }
 }
@@ -165,6 +174,47 @@ try {
     assert.strictEqual((await rulesForProperty(PROP, A)).find((r) => r.id === promo.id)?.currentUses, 2);
     assert.strictEqual(await redeemPromoCode(PROP, A, 'NOPE'), false, 'невідомий код — нічого');
     console.log('  ok  промокод лічиться до ліміту й не далі');
+
+    // ── 6a. Замовлення на кілька номерів — одне списання на все ───────────
+    //
+    // Рецензія 07.09 раунд 2, правка 4.3. Віджет крутив redeem усередині
+    // циклу по номерах і на невдачі повертав 409 ПОСЕРЕД циклу: із залишком
+    // 1 і замовленням на 2 перша бронь уже створена за акційною ціною, гість
+    // бачить помилку, повтор створює ще одну. Тому замовлення лічиться
+    // цілим: або вміщається в залишок повністю, або не списується нічого.
+    //
+    // Осі (інваріант 26): замовлення на ДВА номери при залишку ОДИН (число
+    // 1 ≠ 2 — «списали по одному, поки є» на такій фікстурі дало б true), і
+    // замовлення, яке в залишок вміщається, — щоб відмова не була тотальною.
+    const bulk = await createRule(PROP, {
+      name: 'Гуртом', kind: 'promo', code: 'BULK3', action: 'decrease', value: 10, valueKind: 'percent', maxUses: 3,
+    });
+    assert.strictEqual(await redeemPromoCode(PROP, A, 'BULK3', 2), true, 'замовлення на 2 номери при залишку 3 — вміщається');
+    assert.strictEqual((await rulesForProperty(PROP, A)).find((r) => r.id === bulk.id)?.currentUses, 2,
+      'і списано рівно два, а не одне й не три');
+    assert.strictEqual(await redeemPromoCode(PROP, A, 'BULK3', 2), false, 'замовлення на 2 при залишку 1 — відмова ДО першого запису');
+    assert.strictEqual((await rulesForProperty(PROP, A)).find((r) => r.id === bulk.id)?.currentUses, 2,
+      'і залишок не зачеплено: половини замовлення за акційною ціною не буває');
+    assert.strictEqual(await redeemPromoCode(PROP, A, 'BULK3', 1), true, 'один номер у той самий залишок ще влазить');
+    await assert.rejects(() => redeemPromoCode(PROP, A, 'BULK3', 0), /promo_times_invalid/, 'нуль номерів — не замовлення');
+    await deleteRule(bulk.id);
+    console.log('  ok  замовлення лічиться цілим: 2 з 1 — відмова, лічильник не зрушено');
+
+    // ── 6b. І віджет кличе це ДО циклу по номерах ─────────────────────────
+    //
+    // Сам по собі писач нічого не гарантує: та сама діра повертається, щойно
+    // виклик знову опиниться всередині циклу — з `times` за замовчуванням 1
+    // він там навіть виглядатиме правильним. Тому вісь тримається статично.
+    // Файл читається як ТЕКСТ, не імпортується: межа модуля ціла.
+    const handler = (await readFile(new URL('../../widget/api/widget-reserve.handlers.ts', import.meta.url), 'utf8'))
+      .replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    const atRedeem = handler.indexOf('redeemPromoCode(');
+    const atLoop = handler.indexOf('for (let slot = 1;');
+    assert.ok(atRedeem > 0 && atLoop > 0, 'у хендлері мусять бути і виклик, і цикл по номерах');
+    assert.ok(atRedeem < atLoop, 'списання промо стоїть ДО циклу: інакше половина замовлення вже в базі, коли гість бачить 409');
+    assert.ok(/redeemPromoCode\([\s\S]{0,200}?bookingQuantity\)/.test(handler),
+      'і несе кількість номерів: без неї замовлення на 3 з залишку 1 знову пройде першим номером');
+    console.log('  ok  віджет списує промо один раз на замовлення, до першої броні');
 
     // ── 7. Видалення ──────────────────────────────────────────────────────
     await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [A]);

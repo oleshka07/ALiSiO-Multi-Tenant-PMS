@@ -9,7 +9,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { withModule, type Actor } from '@core/auth/session';
-import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
+import { requirePropertyId } from '@core/auth/tenant-context';
+import { handleError } from '@core/http/errors';
 import { getGuestPageSections, saveGuestPageSection } from '../data/guest-portal.repo';
 import { getSql } from '@core/db/async';
 
@@ -32,9 +33,7 @@ export const listGuestPageSections = withModule('guest_page', 'manage_properties
       sections: await getGuestPageSections(property.id, property.country),
     });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : 'Failed' },
-      { status: propertyErrorStatus(e) });
+    return handleError('guests/page-sections', e);
   }
 });
 
@@ -57,9 +56,7 @@ export const getGuestPagePreview = withModule('guest_page', 'manage_properties',
       [property.id]);
     return NextResponse.json({ token: row?.guest_page_token ?? null });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : 'Failed' },
-      { status: propertyErrorStatus(e) });
+    return handleError('guests/page-sections', e);
   }
 });
 
@@ -92,8 +89,6 @@ export const updateGuestPageSections = withModule('guest_page', 'manage_properti
       sections: await getGuestPageSections(property.id, property.country),
     });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : 'Failed' },
-      { status: propertyErrorStatus(e) });
+    return handleError('guests/page-sections', e);
   }
 });

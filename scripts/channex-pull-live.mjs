@@ -29,9 +29,9 @@ if (!organizationId || !connectionId) {
 }
 
 const { runWithOrganization } = await import('@core/auth/tenant-context');
-const { channelConnection, pullConnectionNow } = await import('@channels');
+const { channelConnection, pullConnectionNow } = await import('@channels/live');
 // Інваріант 28: кожна жива відповідь лягає зразком у docs/vendor/channex/live/.
-const { recordVendorResponses } = await import('@channels');
+const { recordVendorResponses } = await import('@channels/live');
 recordVendorResponses(sampleRecorder());
 
 await runWithOrganization(organizationId, async () => {

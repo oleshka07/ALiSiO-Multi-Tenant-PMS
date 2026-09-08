@@ -19,6 +19,9 @@
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { getSql } from '../db/async.ts';
+// `refusal.ts` не імпортує нічого — саме тому його можна тягнути звідси, з
+// шару, який виконується і поза Next (скрипти прод-образу).
+import { Refusal, refuse } from '../http/refusal.ts';
 
 const store = new AsyncLocalStorage<string>();
 
@@ -95,30 +98,27 @@ export async function requireOrganizationId(): Promise<string> {
  * while "you have several properties, say which" is a 400. Handlers used to
  * tell them apart by comparing the text of the message, and every one of them
  * answered 400 to both.
+ *
+ * ── Чому тепер це `Refusal`, а не `Error` (рецензія 07.09 раунд 8, Р8.1) ──
+ *
+ * Тут раніше поруч жила `propertyErrorStatus(e)`, і вона брехала за
+ * означенням: «PropertyNotFound → 404, БУДЬ-ЩО ІНШЕ → 400». Будь-що інше —
+ * це й помилка драйвера, бо `requirePropertyId` двічі ходить у базу. П'ятнадцять
+ * обробників писали
+ *
+ *     catch (e) { return { error: e.message }, { status: propertyErrorStatus(e) } }
+ *
+ * і на впалому зʼєднанні клієнт діставав текст драйвера зі статусом 400 —
+ * тобто поломка не виглядала поломкою, а в лог не йшло нічого. Виправляти це
+ * в п'ятнадцяти місцях означало б лишити функцію, яка запрошує помилку
+ * знову; тому її немає, а рід називається на місці кидання: три відмови нижче
+ * — названі, решта — не наша, і `handleError` дає їй 500 із логом.
  */
-export class PropertyNotFound extends Error {
+export class PropertyNotFound extends Refusal {
   constructor() {
-    super('Property not found');
+    super('Property not found', 404);
     this.name = 'PropertyNotFound';
   }
-}
-
-/**
- * What to answer when requirePropertyId throws.
- *
- * 404 for a property that is not this tenant's — the same answer the
- * repositories already give for a row that is not theirs, so a caller cannot
- * tell "someone else's" from "no such thing". 400 for the rest, which are
- * statements about the REQUEST: this organization has no property yet, or has
- * several and did not say which.
- *
- * `instanceof` is not used: this module is loaded more than once in a Next
- * build (server bundle, route bundles), and two copies of a class are two
- * different classes — the check would silently fall through to 400 in exactly
- * the case that matters.
- */
-export function propertyErrorStatus(e: unknown): 400 | 404 {
-  return e instanceof Error && e.name === 'PropertyNotFound' ? 404 : 400;
 }
 
 /**
@@ -144,6 +144,9 @@ export async function requirePropertyId(explicitId?: string | null): Promise<str
 
   const rows = await sql.rows<any>('SELECT id FROM properties WHERE organization_id = ? LIMIT 2', [organizationId]) as { id: string }[];
   if (rows.length === 1) return rows[0].id;
-  if (rows.length === 0) throw new Error('This organization has no property yet');
-  throw new Error('This organization has more than one property — property_id is required');
+  // Обидві — твердження про ЗАПИТ, і обидві можна показати людині: 400 зі
+  // своїм текстом. Усе, чого тут немає (впале зʼєднання, політика, битий
+  // запит), названим не є і поїде 500 із логом.
+  if (rows.length === 0) refuse('This organization has no property yet', 400);
+  refuse('This organization has more than one property — property_id is required', 400);
 }

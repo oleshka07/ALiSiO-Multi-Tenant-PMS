@@ -36,3 +36,19 @@ export function serverError(scope: string, err: unknown, userMessage?: string): 
     { status: 500 },
   );
 }
+
+// Названа відмова живе в `refusal.ts` — без жодного імпорту, бо кидають її
+// шари даних, які виконуються і поза Next (див. шапку того файла).
+export { Refusal, refuse, isRefusal } from './refusal';
+import { isRefusal } from './refusal';
+
+/**
+ * Один `catch` на обидва роди: названа відмова — своїм статусом і текстом,
+ * решта — у лог і 500 загальним реченням.
+ */
+export function handleError(scope: string, err: unknown, userMessage?: string): NextResponse {
+  if (isRefusal(err)) {
+    return NextResponse.json({ error: err.message }, { status: err.status });
+  }
+  return serverError(scope, err, userMessage);
+}

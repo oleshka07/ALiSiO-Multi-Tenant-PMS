@@ -7,7 +7,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
-import { serverError } from '@core/http/errors';
+import { handleError } from '@core/http/errors';
 import { todayFor } from '@core/hotel-day';
 import {
   organizationCurrency, secondaryCurrencies, latestRate,
@@ -42,10 +42,15 @@ export const getCurrencies = withActor(async (_req: Request, _ctx: unknown, acto
       supported: SUPPORTED_CURRENCIES.filter((c) => c !== base),
       max: MAX_SECONDARY_CURRENCIES,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     // Немає основної валюти — це зламаний рядок організації, і саме так це і
-    // треба сказати, а не показати порожній екран.
-    return NextResponse.json({ error: e?.message ?? 'Не вдалося прочитати валюти' }, { status: 409 });
+    // треба сказати, а не показати порожній екран. Але сказати саме ЦЕ:
+    // доти той самий `catch` накривав два читання бази і віддавав клієнтові
+    // будь-який `e.message` зі статусом 409 — тобто текст драйвера з назвами
+    // колонок, і то так, наче це відповідь про стан організації (рецензія
+    // 07.09 раунд 7, П3). Тепер відмова названа на місці кидання
+    // (`organizationCurrency` → `refuse(…, 409)`), а решта йде в лог і 500.
+    return handleError('modules/properties/api/currency getCurrencies', e);
   }
 });
 
@@ -100,7 +105,7 @@ export const saveCurrencies = withPermission('manage_properties', async (request
     await setSecondaryCurrencies(actor.organizationId, clean);
     return NextResponse.json({ ok: true, secondary: await secondaryCurrencies(actor.organizationId) });
   } catch (e: any) {
-    return serverError('PUT /api/settings/currencies', e);
+    return handleError('PUT /api/settings/currencies', e);
   }
 });
 
@@ -149,6 +154,6 @@ export const saveManualRate = withPermission('manage_properties', async (request
 
     return NextResponse.json({ ok: true, rate: await latestRate(actor.organizationId, code, base) });
   } catch (e: any) {
-    return serverError('POST /api/settings/currencies/rate', e);
+    return handleError('POST /api/settings/currencies/rate', e);
   }
 });

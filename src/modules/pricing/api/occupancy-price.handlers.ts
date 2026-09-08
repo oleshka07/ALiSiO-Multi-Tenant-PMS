@@ -12,7 +12,7 @@
  */
 import { NextResponse } from 'next/server';
 import { withActor, withPermission } from '@core/auth/session';
-import { propertyErrorStatus } from '@core/auth/tenant-context';
+import { handleError } from '@core/http/errors';
 import {
   loadMatrix, createPrice, updatePrice, deletePrice,
   createTier, updateTier, deleteTier,
@@ -27,23 +27,29 @@ const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{
  * Everything requirePropertyId throws is one of those: not your property (404),
  * no property yet, or several and none named (400). Anything else is ours and
  * is logged, not explained.
+ *
+ * Тут стояло `/property/i.test(message)` — і це був той самий клас, що Р8.1,
+ * лише в найгіршому вигляді: слово «propert» трапляється в тексті помилки
+ * ДРАЙВЕРА («relation "properties" does not exist», «column
+ * properties.country»), і така помилка їхала клієнтові дослівно, зі статусом
+ * 400 і без жодного рядка в лозі. Тепер рід не вгадується за текстом: усе, що
+ * кидає `requirePropertyId`, — названа відмова (`Refusal`), і `handleError`
+ * розрізняє їх за родом, а не за словом.
  */
-function refuse(e: unknown): NextResponse {
-  const message = e instanceof Error ? e.message : String(e);
+function answer(e: unknown): NextResponse {
   // Нуль і відʼємне — названа відмова (розділ A п.2), екран її перекладає.
-  if (message === 'price_not_positive') return NextResponse.json({ error: 'price_not_positive' }, { status: 400 });
-  if (/property/i.test(message)) {
-    return NextResponse.json({ error: message }, { status: propertyErrorStatus(e) });
+  // Код лишається кодом, не текстом: цей рядок читає `pricing/page.tsx`.
+  if (e instanceof Error && e.message === 'price_not_positive') {
+    return NextResponse.json({ error: 'price_not_positive' }, { status: 400 });
   }
-  console.error('[pricing/occupancy]', message);
-  return NextResponse.json({ error: 'Failed' }, { status: 500 });
+  return handleError('pricing/occupancy', e);
 }
 
 export const getOccupancyMatrix = withActor(async (request: Request) => {
   try {
     const propertyId = new URL(request.url).searchParams.get('property_id');
     return NextResponse.json(await loadMatrix(propertyId));
-  } catch (e) { return refuse(e); }
+  } catch (e) { return answer(e); }
 });
 
 export const createOccupancyPrice = withPermission('manage_pricing', async (request: Request) => {
@@ -89,7 +95,7 @@ export const createOccupancyPrice = withPermission('manage_pricing', async (requ
       );
     }
     return NextResponse.json({ id }, { status: 201 });
-  } catch (e) { return refuse(e); }
+  } catch (e) { return answer(e); }
 });
 
 export const updateOccupancyPrice = withPermission('manage_pricing', async (
@@ -106,7 +112,7 @@ export const updateOccupancyPrice = withPermission('manage_pricing', async (
     const ok = await updatePrice(id, price, body.label ?? null);
     if (!ok) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return NextResponse.json({ ok: true });
-  } catch (e) { return refuse(e); }
+  } catch (e) { return answer(e); }
 });
 
 export const deleteOccupancyPrice = withPermission('manage_pricing', async (
@@ -118,7 +124,7 @@ export const deleteOccupancyPrice = withPermission('manage_pricing', async (
     const ok = await deletePrice(id);
     if (!ok) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return NextResponse.json({ ok: true });
-  } catch (e) { return refuse(e); }
+  } catch (e) { return answer(e); }
 });
 
 // ── Length-of-stay tiers ────────────────────────────────────────────────────
@@ -156,7 +162,7 @@ export const createLosTier = withPermission('manage_pricing', async (request: Re
       );
     }
     return NextResponse.json({ id }, { status: 201 });
-  } catch (e) { return refuse(e); }
+  } catch (e) { return answer(e); }
 });
 
 export const updateLosTier = withPermission('manage_pricing', async (
@@ -173,7 +179,7 @@ export const updateLosTier = withPermission('manage_pricing', async (
     const ok = await updateTier(id, adjustment, body.label ?? null);
     if (!ok) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return NextResponse.json({ ok: true });
-  } catch (e) { return refuse(e); }
+  } catch (e) { return answer(e); }
 });
 
 export const deleteLosTier = withPermission('manage_pricing', async (
@@ -185,7 +191,7 @@ export const deleteLosTier = withPermission('manage_pricing', async (
     const ok = await deleteTier(id);
     if (!ok) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return NextResponse.json({ ok: true });
-  } catch (e) { return refuse(e); }
+  } catch (e) { return answer(e); }
 });
 
 /**
@@ -219,5 +225,5 @@ export const quoteOccupancy = withActor(async (request: Request) => {
       matrix: matrix.prices,
       losTiers: matrix.tiers,
     }));
-  } catch (e) { return refuse(e); }
+  } catch (e) { return answer(e); }
 });

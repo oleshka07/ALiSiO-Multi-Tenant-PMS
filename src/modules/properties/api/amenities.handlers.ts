@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as amenities from '../data/amenities.repo';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
-import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
-import { serverError } from '@core/http/errors';
+import { requirePropertyId } from '@core/auth/tenant-context';
+import { serverError, handleError } from '@core/http/errors';
 
 /**
  * Зручності: каталог організації і матриця призначення.
@@ -132,10 +132,7 @@ export const amenityMatrix = withActor(async (request: NextRequest, _ctx, actor:
     try {
       propertyId = await requirePropertyId(new URL(request.url).searchParams.get('property_id'));
     } catch (e) {
-      return NextResponse.json(
-        { error: e instanceof Error ? e.message : 'Property not found' },
-        { status: propertyErrorStatus(e) },
-      );
+      return handleError('properties/amenities', e);
     }
 
     await amenities.ensureAmenityCatalog(actor.organizationId);

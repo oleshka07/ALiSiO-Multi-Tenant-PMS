@@ -228,9 +228,20 @@ jobs:
         # Two breaks were green on SQLite and red only here (INC-011): a text
         # mark written into a TIMESTAMPTZ, and a write that slipped past the
         # transaction's connection. SQLite has one connection and no types;
-        # the pool is the axis. Superuser, because the checks seed tenants.
+        # the pool is the axis.
+        #
+        # THE APPLICATION'S ROLE, not the superuser (INC-014 closed 07.09.2026).
+        # It used to seed as `alisio`, which bypasses row-level security — so
+        # every policy was invisible here: a check that was red on a stand with
+        # `alisio_app` stayed green in CI, always. Nine of the twenty checks
+        # seeded or cleaned outside any tenant context and only worked because
+        # of that bypass; they now do it the way the application does, and the
+        # chain runs as the role a customer is served by. Proof it now bites:
+        # disabling the policy on `cm_connections` turns `connect.check` red
+        # with «зʼєднання сусіда видно другому орендарю попри політику»;
+        # under the superuser the same break stays green.
         env:
-          DATABASE_URL: postgres://alisio:ci@127.0.0.1:5432/alisio
+          DATABASE_URL: postgres://alisio_app:ci@127.0.0.1:5432/alisio
         run: npm run check:pg
 
       - name: a customer can be created
@@ -285,6 +296,31 @@ jobs:
           # connections that must differ deserve saying out loud.
           DATABASE_URL: postgres://alisio:ci@127.0.0.1:5432/alisio
         run: node scripts/check-isolation.mjs
+
+      - name: the main routes answer
+        # Живі HTTP-твердження про ШІСТЬ родин маршрутів: обʼєкт і номер,
+        # ціни, броні, гостьовий портал, фактура, канал — 42 твердження на
+        # чотирьох динамічних маршрутах зі 130 (клас не закритий, закрито
+        # чотири маршрути з нього; Р8.14).
+        #
+        # Двічі поспіль вада вбивала цілий маршрут при зелених гейтах —
+        # `/api/guest/[token]` (кома в SELECT, 27.07→07.09) і
+        # `/api/bookings/[id]/invoice` (JS-коментар усередині SQL,
+        # 28.08→07.09), — бо всі перевірки ходять шаром репозиторію, а
+        # `smoke-routes` за побудовою пропускає динамічні маршрути, де обидві
+        # й жили. Твердження тут — про ФОРМУ відповіді: 200 з `null` і був
+        # тією вадою.
+        #
+        # Superuser: як і check-isolation, ця проба сіє орендаря напряму —
+        # і це БОРГ, записаний у docs/LATER.md (Р8.15), а не вибір. Виміряно:
+        # під `alisio_app` рядок `organizations` лягає й без контексту (на
+        # ній політики немає), а `app_users` і `organization_features` — лише
+        # всередині `runWithOrganization`. Тобто засів переводиться на чесну
+        # роль обгорткою, разом із `check-isolation`, окремим підходом.
+        env:
+          BASE_URL: http://127.0.0.1:3000
+          DATABASE_URL: postgres://alisio:ci@127.0.0.1:5432/alisio
+        run: node scripts/check-routes-live.mjs
 
       - name: public site
         env:

@@ -15,7 +15,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireFinanceAccess } from '@core/security/route-guard';
-import { allocateInvoiceNumber, seriesForChannel, isPeriodLocked } from '@invoicing';
+import { allocateInvoiceNumber, seriesForChannel, isPeriodLocked, deleteInvoicesWhere } from '@invoicing';
 import type { Actor } from '@core/auth/session';
 import { getSql } from '@core/db/async';
 import { serverError } from '@core/http/errors';
@@ -295,21 +295,24 @@ async function _DELETE(request: NextRequest, _ctx: unknown, actor: Actor): Promi
     }
 
     // Unscoped this wiped every hotel's imported invoices, not just this one's.
-    let query = `DELETE FROM invoices WHERE organization_id = ?`;
+    // Предикат, а не готовий `DELETE`: саме видалення робить `@invoicing`, бо
+    // рядки фактури й підсумки ПДВ не мають зовнішнього ключа на `invoices`
+    // і без дверей лишались вказувати в нікуди (Р10.14).
+    let where = `organization_id = ?`;
     const params: any[] = [actor.organizationId];
 
     if (channel !== 'all') {
-      query += ` AND (notes LIKE ? OR series = ?)`;
+      where += ` AND (notes LIKE ? OR series = ?)`;
       params.push(notesPattern, seriesVal);
     } else {
-      query += ` AND (notes LIKE 'airbnb:%' OR notes LIKE 'booking:%' OR notes LIKE 'teya:%' OR series IN ('AIR', 'BKG', 'TEYA'))`;
+      where += ` AND (notes LIKE 'airbnb:%' OR notes LIKE 'booking:%' OR notes LIKE 'teya:%' OR series IN ('AIR', 'BKG', 'TEYA'))`;
     }
 
     if (month) {
       if (!/^\d{4}-\d{2}$/.test(month)) {
         return NextResponse.json({ error: 'month must be in YYYY-MM format' }, { status: 400 });
       }
-      query += ` AND (period = ? OR ${sql.dialect.month('issued_at')} = ?)`;
+      where += ` AND (period = ? OR ${sql.dialect.month('issued_at')} = ?)`;
       params.push(month, month);
     }
 
@@ -340,10 +343,7 @@ async function _DELETE(request: NextRequest, _ctx: unknown, actor: Actor): Promi
     }
 
     // Run delete inside a transaction to keep it atomic
-    const deletedCount = await sql.tx(async (t) => {
-      const result = await t.run(query, params);
-      return result.changes;
-    });
+    const deletedCount = await sql.tx(async (t) => deleteInvoicesWhere(where, params, t));
 
     const channelLabelMap: Record<string, string> = {
       airbnb: 'Airbnb',

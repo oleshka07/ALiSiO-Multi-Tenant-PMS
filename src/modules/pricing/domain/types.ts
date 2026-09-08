@@ -1,3 +1,4 @@
+import type { PriceColumn } from './day-price';
 export type {
   PriceCalendar,
   OccupancyRule,
@@ -20,6 +21,13 @@ export interface DayPrice {
   base_price: number | null;
   weekend_price: number | null;
   effective_price: number | null;
+  /**
+   * Колонка, з якої взяте `effective_price`: `weekend` — ціна вихідних
+   * перебила базову. Екран показує це підписом і НЕ виводить заново з
+   * `isWeekend`: правило живе в `@pricing/domain/day-price`, і четверта його
+   * копія — на екрані — була б тим самим класом, що три попередні (Блок 6).
+   */
+  price_column: PriceColumn;
   min_stay: number;
   max_stay: number | null;
   closed: number;

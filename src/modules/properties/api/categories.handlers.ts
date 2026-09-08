@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as categoriesRepo from '../data/categories.repo';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
-import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
+import { requirePropertyId } from '@core/auth/tenant-context';
+import { handleError } from '@core/http/errors';
 
 /**
  * The organization comes from the session, never from the request. A null from
@@ -37,12 +38,9 @@ export const createCategory = withPermission('manage_properties', async (request
     try {
       property_id = await requirePropertyId(body.property_id);
     } catch (e) {
-      // 404 when the property is not this tenant's, 400 when the request
-      // itself cannot be answered — see propertyErrorStatus.
-      return NextResponse.json(
-        { error: e instanceof Error ? e.message : 'Property not found' },
-        { status: propertyErrorStatus(e) },
-      );
+      // Названа відмова їде своїм статусом (404 «не твій готель», 400 «скажи
+      // який»); помилка драйвера — 500 із логом. @core/http/errors.
+      return handleError('properties/categories', e);
     }
 
     // The hotel's own word, not a list of ours — see validateCategoryType.

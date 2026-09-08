@@ -107,6 +107,39 @@ try {
   });
   console.log('  ok  валюти й курси сусіда не існують для показу');
 
+  // ── Готель без основної валюти: НАЗВАНА відмова, не «щось зламалось» ──
+  //
+  // Це поведінкова половина твердження, яке в `currency.check.ts` лишилось
+  // статичним (рецензія 07.09 раунд 7, П3). Важливі обидві частини: виклик
+  // справді відхиляється — і відхилення розпізнається як НАША відмова, бо
+  // саме на цій різниці стоїть `handleError`: інакше текст пішов би клієнтові
+  // поряд із будь-якою помилкою драйвера, яка прийде тим самим шляхом.
+  //
+  // Через яку двері сюди можна зайти. `organizations.default_currency` має
+  // `NOT NULL DEFAULT 'CZK'`, тож «рядок є, валюти немає» звичайним `INSERT`
+  // не робиться — лишаються два справжні шляхи: організації немає взагалі
+  // (той, що нижче) і порожній рядок від невдалого `UPDATE`. Перевіряємо
+  // обидва: перший — реальний стан, другий — те, що `NOT NULL` не ловить.
+  const NOCUR = `${ORG}_nocur`;
+  await sql.run("INSERT INTO organizations (id, name, slug, default_currency) VALUES (?, ?, ?, '')", [NOCUR, 'No currency', NOCUR]);
+  try {
+    const { isRefusal } = await import('@core/http/refusal');
+    let caught: unknown;
+    await runWithOrganization(NOCUR, async () => {
+      try { await fx.organizationCurrency(NOCUR); } catch (e) { caught = e; }
+    });
+    let missing: unknown;
+    try { await fx.organizationCurrency(`${ORG}_absent`); } catch (e) { missing = e; }
+    assert.ok(isRefusal(missing), 'організації, якої немає, теж відмовляють названо');
+    assert.ok(caught, 'готель без основної валюти мусить дістати відмову, а не число');
+    assert.ok(isRefusal(caught), 'і відмова мусить бути НАЗВАНОЮ — інакше `handleError` не відрізнить її від помилки драйвера');
+    assert.strictEqual((caught as { status: number }).status, 409, 'статус 409: запит правильний, це стан організації не дозволяє відповісти');
+    assert.match(String((caught as Error).message), /основна валюта/i, 'і текст мусить казати оператору, куди йти');
+    console.log('  ok  готель без основної валюти: названа відмова 409, а не вгадане число');
+  } finally {
+    await sql.run('DELETE FROM organizations WHERE id = ?', [NOCUR]);
+  }
+
   console.log('currency-rates: курс для показу має одну відповідь, і нуля в ній немає');
 } finally {
   await cleanup();

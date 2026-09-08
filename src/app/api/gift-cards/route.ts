@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { getSql } from '@core/db/async';
 import { withPermission, type Actor } from '@core/auth/session';
-import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
+import { requirePropertyId } from '@core/auth/tenant-context';
+import { handleError } from '@core/http/errors';
 import { buildGiftCode, getGiftCardTemplate, calcExpiresAt, listGiftCardTemplates } from '@/modules/widget/domain/gift-card-builder';
 import { organizationCurrency } from '@core/currency';
 
@@ -121,10 +122,7 @@ export const POST = await withPermission('manage_bookings', async (req: Request,
     try {
       property_id = await requirePropertyId(property_id);
     } catch (e: unknown) {
-      return NextResponse.json(
-        { error: e instanceof Error ? e.message : 'property_id or valid site_id is required' },
-        { status: propertyErrorStatus(e) },
-      );
+      return handleError('gift-cards POST', e);
     }
 
     // Визначаємо параметри з шаблону або з тіла запиту

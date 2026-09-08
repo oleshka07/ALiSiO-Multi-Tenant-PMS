@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { noteRatesChanged, type RateField } from '@channels/outbox';
+import { dayRowPrice, type PriceColumn } from '../domain/day-price';
 import crypto from 'crypto';
 import { getSql, type Sql } from '@core/db/async';
 import { currentOrganizationId } from '@core/auth/tenant-context';
@@ -130,11 +131,19 @@ export async function getPriceMonth(unitTypeId: string, month: number, year: num
       const basePrice = priceRow?.base_price == null ? null : Number(priceRow.base_price);
       const weekendPrice = priceRow?.weekend_price == null ? null : Number(priceRow.weekend_price);
       const r = effectiveRestrictions(ratePlanId ? shapeOf(ownRow) : null, shapeOf(baseRow));
+      // Ціна дня — ОДНІЄЮ функцією з `@pricing/domain/day-price`, тією самою,
+      // якою її рахує `priceNights` для гостя. Доти тут стояла своя копія
+      // правила вихідних, і вона вже розходилась: варти на нуль і відʼємне не
+      // було, тож `weekend_price = 0` показувався б суботі як ціна (Блок 6).
+      const effective = dayRowPrice(priceRow, dateStr);
       days.push({
         date: dateStr, day: d, dayOfWeek, isWeekend,
         base_price: basePrice,
         weekend_price: weekendPrice,
-        effective_price: isWeekend && weekendPrice != null ? weekendPrice : basePrice,
+        effective_price: effective.price,
+        // Колонка, з якої взяте число: екран показує її підписом, а не
+        // виводить із `isWeekend` заново.
+        price_column: effective.column,
         min_stay: r.min_stay,
         max_stay: r.max_stay,
         closed: r.closed ? 1 : 0,
@@ -145,7 +154,7 @@ export async function getPriceMonth(unitTypeId: string, month: number, year: num
         ...(ratePlanId ? { inherited: !ownPriced, restrictionsOwn: hasOwnRestrictions(ownRow) } : {}),
       });
     } else {
-      days.push({ date: dateStr, day: d, dayOfWeek, isWeekend, base_price: null, weekend_price: null, effective_price: null, min_stay: 1, max_stay: null, closed: 0, cta: 0, ctd: 0, hasData: false });
+      days.push({ date: dateStr, day: d, dayOfWeek, isWeekend, base_price: null, weekend_price: null, effective_price: null, price_column: 'base', min_stay: 1, max_stay: null, closed: 0, cta: 0, ctd: 0, hasData: false });
     }
   }
 
@@ -517,21 +526,44 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
   return prices.length;
 }
 
+/**
+ * Ціни діапазону для шахматки. `effective_price` рахує КОД, не запит.
+ *
+ * Тут стояв власний `CASE WHEN dayOfWeek IN (0,5,6) AND weekend_price IS NOT
+ * NULL` — четверта копія правила вихідних, і в ній не було варти на нуль та
+ * відʼємне, яку `nightly-price` має з 0062. Тобто `weekend_price = 0`
+ * показувався б суботі як ціна саме тим шляхом, який 0062 закрила для
+ * буднів. Блок 6 оголосив копії прибраними і цю не побачив: гейт шукав
+ * ТЕРНАРНИК у JS, а SQL-гілка на цей візерунок не схожа (рецензія раунду 9,
+ * Р9.3).
+ *
+ * Правило одне — `dayRowPrice()` з `@pricing/domain/day-price`, — і воно не
+ * буває в SQL: запит віддає колонки, рішення ухвалює домен.
+ *
+ * ── І тільки БАЗОВИЙ рядок типу ─────────────────────────────────────────
+ *
+ * Тут не було `rate_plan_id IS NULL`, а з Блоку 2 в `price_calendar` лежать
+ * рядки двох родів: базовий рядок типу і власна ціна тарифу на ту саму дату.
+ * Тобто запит віддавав по ДВА рядки на одну клітинку, а споживач
+ * (`calendar/page.tsx`, шахматка) кладе їх у мапу за `unit_type_id + date` —
+ * тож перемагав той, що прийшов останнім. Який саме — вирішував рушій:
+ * SQLite віддавав базовий, Postgres — тарифний. Шахматка показувала ціну
+ * тарифу як ціну номера, мовчки і лише на проді (INC-027).
+ *
+ * Шахматка про тарифи не знає взагалі — вона показує, скільки коштує НОМЕР.
+ */
 export async function getBulkPrices(organizationId: string, startDate: string, endDate: string) {
   const sql = getSql();
-  return await sql.rows<any>(`
-    SELECT pc.unit_type_id, pc.date, pc.base_price, pc.weekend_price,
-      CASE
-        WHEN (${sql.dialect.dayOfWeek('pc.date')} IN (0, 5, 6)) AND pc.weekend_price IS NOT NULL
-        THEN pc.weekend_price
-        ELSE pc.base_price
-      END as effective_price
+  const rows = await sql.rows<any>(`
+    SELECT pc.unit_type_id, pc.date, pc.base_price, pc.weekend_price
     FROM price_calendar pc
     JOIN unit_types ut ON pc.unit_type_id = ut.id
     JOIN properties p ON ut.property_id = p.id
     WHERE p.organization_id = ? AND pc.date >= ? AND pc.date <= ?
+      AND pc.rate_plan_id IS NULL
     ORDER BY pc.unit_type_id, pc.date
   `, [organizationId, startDate, endDate]);
+  return rows.map((r) => ({ ...r, effective_price: dayRowPrice(r, r.date).price }));
 }
 
 export interface BulkUpdateInput {
