@@ -166,6 +166,33 @@ function statusKind(catchBody) {
   return computed ? 'computed' : null;
 }
 
+/**
+ * Розбір ОДНОГО файлу — те, що стереже гейт, окремо від того, як він обходить
+ * дерево.
+ *
+ * Винесено заради `check-error-leak.check.mjs` (рецензія раунду 8, Р8.4): у
+ * гейта не було свого гейта, тож регресію правила «`try` — це слово, а не
+ * підрядок» не тримало ніщо. Перевіряти поведінку на рядках чесніше, ніж на
+ * тимчасових файлах: фікстура видима в тексті твердження.
+ */
+export function analyse(text) {
+  const found = { offenders: [], blind: [] };
+  LEAK.lastIndex = 0;
+  let m;
+  while ((m = LEAK.exec(text))) {
+    found.offenders.push(text.slice(0, m.index).split('\n').length);
+  }
+  for (const pair of tryCatchPairs(text)) {
+    if (!/error:\s*(?:e|err|error)\??\.message/.test(pair.catchBody)) continue;
+    const kind = statusKind(pair.catchBody);
+    // 5xx уже названо першою віссю — тут решта: літеральна 4xx і обчислена.
+    if (kind !== '4xx' && kind !== 'computed') continue;
+    if (!DB_CALL.test(pair.tryBody)) continue;
+    found.blind.push({ line: text.slice(0, pair.catchIndex).split('\n').length, kind });
+  }
+  return found;
+}
+
 function walk(dir) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, e.name);
@@ -177,56 +204,48 @@ function walk(dir) {
     if (!/\.(ts|tsx|mts)$/.test(e.name)) continue;
 
     const rel = path.relative(ROOT, p).replaceAll(path.sep, '/');
-    const text = fs.readFileSync(p, 'utf8');
-    LEAK.lastIndex = 0;
-    let m;
-    while ((m = LEAK.exec(text))) {
-      const line = text.slice(0, m.index).split('\n').length;
-      offenders.push(`${rel}:${line}`);
-    }
-
-    for (const pair of tryCatchPairs(text)) {
-      if (!/error:\s*(?:e|err|error)\??\.message/.test(pair.catchBody)) continue;
-      const kind = statusKind(pair.catchBody);
-      // 5xx уже названо першою віссю — тут решта: літеральна 4xx і обчислена.
-      if (kind !== '4xx' && kind !== 'computed') continue;
-      if (!DB_CALL.test(pair.tryBody)) continue;
-      const line = text.slice(0, pair.catchIndex).split('\n').length;
-      blind.push(`${rel}:${line}${kind === 'computed' ? '  (статус обчислений)' : ''}`);
+    const found = analyse(fs.readFileSync(p, 'utf8'));
+    for (const line of found.offenders) offenders.push(`${rel}:${line}`);
+    for (const b of found.blind) {
+      blind.push(`${rel}:${b.line}${b.kind === 'computed' ? '  (статус обчислений)' : ''}`);
     }
   }
 }
 
-walk(path.join(ROOT, 'src'));
+// Імпорт із гейта-на-гейт не має обходити дерево й друкувати звіт.
+const RUN_AS_CLI = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (RUN_AS_CLI) walk(path.join(ROOT, 'src'));
 
-const BAR = '═'.repeat(78);
-console.log(`\n${BAR}`);
-console.log('ТЕКСТ ВИНЯТКУ В 500-ВІДПОВІДІ — має бути нуль');
-console.log(BAR);
+if (RUN_AS_CLI) {
+  const BAR = '═'.repeat(78);
+  console.log(`\n${BAR}`);
+  console.log('ТЕКСТ ВИНЯТКУ В 500-ВІДПОВІДІ — має бути нуль');
+  console.log(BAR);
 
-if (offenders.length) {
-  console.log('');
-  for (const o of offenders) console.log(`  ✗ ${o}`);
-  console.log(`\n  ${offenders.length} — замініть на serverError('<де>', err) з @core/http/errors:`);
-  console.log('  деталь піде в лог із міткою місця, клієнт дістане речення.');
-} else {
-  console.log('\n  чисто — жодна 500 не переказує клієнту текст помилки');
-  console.log('  правильно: return serverError(\'<де>\', err)  — @core/http/errors');
+  if (offenders.length) {
+    console.log('');
+    for (const o of offenders) console.log(`  ✗ ${o}`);
+    console.log(`\n  ${offenders.length} — замініть на serverError('<де>', err) з @core/http/errors:`);
+    console.log('  деталь піде в лог із міткою місця, клієнт дістане речення.');
+  } else {
+    console.log('\n  чисто — жодна 500 не переказує клієнту текст помилки');
+    console.log('  правильно: return serverError(\'<де>\', err)  — @core/http/errors');
+  }
+
+  console.log(`\n${BAR}`);
+  console.log('ГЛУХИЙ CATCH НАД ЗАПИСОМ У БАЗУ, ЩО ВІДДАЄ e.message З 4xx — теж нуль');
+  console.log(BAR);
+
+  if (blind.length) {
+    console.log('');
+    for (const b of blind) console.log(`  ✗ ${b}`);
+    console.log(`\n  ${blind.length} — цей catch ловить і нашу відмову, і помилку драйвера.`);
+    console.log('  Клієнт дістає текст CHECK зі списком значень і назвою колонки, і то зі');
+    console.log('  статусом 400 — тобто поломка навіть не виглядає поломкою.');
+    console.log("  правильно: refuse('…') для названої відмови, handleError('<де>', err) у catch.\n");
+  } else {
+    console.log('\n  чисто — жоден catch над записом у базу не переказує тексту винятку\n');
+  }
+
+  process.exit(strict && (offenders.length || blind.length) ? 1 : 0);
 }
-
-console.log(`\n${BAR}`);
-console.log('ГЛУХИЙ CATCH НАД ЗАПИСОМ У БАЗУ, ЩО ВІДДАЄ e.message З 4xx — теж нуль');
-console.log(BAR);
-
-if (blind.length) {
-  console.log('');
-  for (const b of blind) console.log(`  ✗ ${b}`);
-  console.log(`\n  ${blind.length} — цей catch ловить і нашу відмову, і помилку драйвера.`);
-  console.log('  Клієнт дістає текст CHECK зі списком значень і назвою колонки, і то зі');
-  console.log('  статусом 400 — тобто поломка навіть не виглядає поломкою.');
-  console.log("  правильно: refuse('…') для названої відмови, handleError('<де>', err) у catch.\n");
-} else {
-  console.log('\n  чисто — жоден catch над записом у базу не переказує тексту винятку\n');
-}
-
-process.exit(strict && (offenders.length || blind.length) ? 1 : 0);
