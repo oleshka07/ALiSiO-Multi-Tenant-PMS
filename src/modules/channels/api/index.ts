@@ -38,12 +38,12 @@ export {
 export { recordVendorResponses } from '../providers';
 export type { VendorResponseSample } from '../providers';
 
-/**
- * Типи житла, які приймає канал — перелік вендора одним списком.
+/*
+ * Рід житла фасадом НЕ віддається, і це навмисно.
  *
- * Живе в каналах, бо це їхнє знання, але потрібне ще й писачу обʼєкта і
- * екрану: тип впливає на рахунок вендора, тож його називає готель, а не
- * здогад коду (інваріант 20).
+ * Перелік родів житла живе в ядрі (`@core/lodging-kinds`) — його читають
+ * форма обʼєкта і писач, яким модуль каналів не потрібен (Р13.15). Мапа в
+ * `property_type` вендора — знання адаптера, і далі `channex/` не виходить:
+ * тримає `check-vendor-isolation --strict`, який на першій редакції цієї
+ * правки і почервонів, коли мапа була виставлена сюди.
  */
-export { CHANNEL_PROPERTY_TYPES, isChannelPropertyType } from '../ui/property-types';
-export type { ChannelPropertyType } from '../ui/property-types';

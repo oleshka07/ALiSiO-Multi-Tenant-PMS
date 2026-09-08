@@ -81,6 +81,67 @@ const BASELINE = {
   widget: 6,
 };
 
+/**
+ * ── Друга вісь: ЗВОРОТНИЙ напрямок ──────────────────────────────────────
+ *
+ * Перша вісь рахує глибину: наскільки далеко чужий код лізе всередину
+ * модуля. Вона мовчить про НАПРЯМОК, і саме тому пропустила Р13.15:
+ * `properties/data/properties.repo.ts` імпортував перелік типів житла з
+ * `modules/channels/ui/` — через парадну, тобто «нормально» за першою
+ * віссю. А наслідок був не нормальний: писач обʼєкта в базовому модулі
+ * відмовляв за списком ВЕНДОРА КАНАЛІВ навіть готелю, який модуль каналів
+ * не купував.
+ *
+ * Правило: модуль, за який беруть окремі гроші, вимикається без шкоди
+ * решті. Отже базова частина системи не має від нього залежати — ні через
+ * нутрощі, ні через парадну. Тут парадна не виправдання: рахується сама
+ * залежність.
+ *
+ * ПРОДАВАНІ — модулі, чий ключ у `FEATURE_SPEC` стоїть `OFF` і покриває
+ * директорію цілком (`src/core/features.ts`). `invoicing` і `dashboard`
+ * сюди не входять: вони `ON`, тобто є в кожного готелю.
+ */
+const SELLABLE = {
+  channels: 'channels',      // FEATURE_SPEC.channels — OFF, платно
+  finance: 'accounting',     // FEATURE_SPEC.accounting — OFF
+  events: 'events',          // FEATURE_SPEC.events — OFF
+  reports: 'reports',        // FEATURE_SPEC.reports — OFF
+  tasks: 'tasks',            // FEATURE_SPEC.tasks — OFF
+  'day-sheets': 'day_sheets', // FEATURE_SPEC.day_sheets — OFF
+};
+
+/**
+ * Скільки місць базової частини залежать від продаваного модуля — СТЕЛЯ.
+ *
+ * Той самий храповик, що й вище: більше — збірка падає, менше — вимагає
+ * опустити стелю. Пари, якої тут немає, стеля нуль: нова залежність
+ * базового модуля від продаваного не заводиться мовчки.
+ *
+ * Знято 2026-09-09, і числа тут — не мета, а те, що було в день, коли ця
+ * вісь почала блокувати. `properties→channels` було 4 і стало 3: четвертим
+ * був перелік типів житла, який поїхав у ядро (`@core/lodging-kinds`,
+ * Р13.15). Три, що лишились, — виклики черги (`@channels/outbox`,
+ * `@channels`): обʼєкт і фонд мусять сказати каналам, що наявність
+ * змінилась. Вони справжні, і прибирати їх треба інакше — подією ядра, а
+ * не переїздом файла. Це окрема робота.
+ *
+ * Два записи тут — не «дозволено», а «вже було, і не мною»:
+ *   core→finance      `core/security/route-guard.ts:66` тягне
+ *                     `@/modules/finance/api/_guard` лінивим `import()`.
+ *                     Ядро питає дозволу в продаваного модуля — найгірший
+ *                     напрямок із можливих, і найдорожчий у виправленні.
+ *   pricing→channels  девʼять місць: кожен писач цін штовхає `noteRatesChanged`.
+ */
+const REVERSE_BASELINE = {
+  'bookings→channels': 2,
+  'core→finance': 1,
+  'dashboard→channels': 1,
+  'invoicing→finance': 1,
+  'pricing→channels': 9,
+  'properties→channels': 3,
+  'widget→channels': 1,
+};
+
 const MODULES = fs.readdirSync('src/modules', { withFileTypes: true })
   .filter((e) => e.isDirectory()).map((e) => e.name);
 
@@ -211,6 +272,42 @@ for (const mod of MODULES) {
 
 report.sort((a, b) => (a.breaches.length - b.breaches.length) || (a.facade - b.facade));
 
+/**
+ * Зворотний напрямок: базова частина → продаваний модуль.
+ *
+ * Базова частина — це `src/core/**` і кожен модуль, якого немає в SELLABLE.
+ * Залежність продаваного від продаваного не рахується: обидва вимикаються
+ * разом, і канал, який читає облік, нікому не ламає готель без обох.
+ */
+const reverse = new Map(); // 'база→продаване' -> [файли]
+for (const [f, text] of FILES) {
+  const m = f.match(/^src\/(core|modules\/([^/]+))\//);
+  if (!m) continue;
+  const from = m[2] ?? 'core';
+  if (SELLABLE[from]) continue;
+  const body = stripComments(text);
+  for (const mod of Object.keys(SELLABLE)) {
+    if (from === mod) continue;
+    // І парадна, і нутрощі — тут це одна й та сама залежність.
+    const dep = new RegExp(`(?:from|import\\()\\s*['"](?:@${mod}(?:/[^'"]*)?|[^'"]*modules/${mod}/[^'"]*)['"]`);
+    if (!dep.test(body)) continue;
+    const key = `${from}→${mod}`;
+    if (!reverse.has(key)) reverse.set(key, []);
+    reverse.get(key).push(f);
+  }
+}
+
+console.log();
+console.log('ЗВОРОТНИЙ НАПРЯМОК — базова частина залежить від продаваного');
+if (reverse.size === 0) {
+  console.log('  (жодного місця)');
+} else {
+  for (const key of [...reverse.keys()].sort()) {
+    const ceiling = REVERSE_BASELINE[key] ?? 0;
+    console.log(`  ${key.padEnd(26)}${String(reverse.get(key).length).padStart(4)}   стеля ${ceiling}`);
+  }
+}
+
 console.log('═'.repeat(78));
 console.log('МЕЖІ МОДУЛІВ — скільки місць поза модулем зламається при видаленні');
 console.log('═'.repeat(78));
@@ -260,6 +357,25 @@ if (strict) {
   for (const mod of Object.keys(BASELINE)) {
     if (!MODULES.includes(mod)) {
       problems.push(`  ${mod}: є в BASELINE, але src/modules/${mod} не існує — приберіть застарілий запис.`);
+    }
+  }
+
+  // Друга вісь, тим самим храповиком.
+  for (const key of new Set([...reverse.keys(), ...Object.keys(REVERSE_BASELINE)])) {
+    const now = reverse.get(key)?.length ?? 0;
+    const ceiling = REVERSE_BASELINE[key] ?? 0;
+    if (now > ceiling) {
+      problems.push(
+        `  ${key}: залежностей ${now}, стеля ${ceiling} — БАЗОВА ЧАСТИНА ПОЛІЗЛА В ПРОДАВАНЕ.` +
+        ' Модуль, за який беруть гроші, вимикається без шкоди решті; те, що потрібне обом,' +
+        ' живе в ядрі (як `@core/lodging-kinds`). Місця:',
+      );
+      for (const f of reverse.get(key) ?? []) problems.push(`      ${f}`);
+    } else if (now < ceiling) {
+      problems.push(
+        `  ${key}: залежностей ${now}, стеля ${ceiling} — стало КРАЩЕ. Опустіть стелю: у` +
+        ` REVERSE_BASELINE (scripts/check-boundaries.mjs) поставте '${key}': ${now}.`,
+      );
     }
   }
 

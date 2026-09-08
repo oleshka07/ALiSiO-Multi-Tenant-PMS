@@ -1,4 +1,6 @@
 import { getSql } from '@core/db/async';
+import { refuse } from '@core/http/refusal';
+import { isKnownTimezone } from '@core/hotel-day';
 import { enqueueChange, OUTBOX_HORIZON_DAYS } from './outbox.repo';
 import { addDays } from './outbox-notes';
 import { catalogProperty, catalogUnitTypes } from '@properties/live';
@@ -91,8 +93,30 @@ export async function syncConnectionCatalog(
   // Названа відмова, а не тихий здогад. Тип житла впливає на рахунок, який
   // вендор виставить ГОТЕЛЮ; підставити тут 'hotel' означало б заплатити за
   // нього його ж грошима. Інваріант 13: не знайшли — відмовляємо.
+  //
+  // `refuse`, а не `new Error`: уся мотивація цієї варти — «готель мусить
+  // побачити причину», а голий Error затирався `serverError` до
+  // «Внутрішня помилка сервера» ще на маршруті (Р13.10). Тепер текст їде
+  // своїм 400.
   if (!property.propertyType) {
-    throw new Error('catalog: property_type is not set — the hotel must say what kind of lodging it is');
+    refuse('catalog: property_type is not set — the hotel must say what kind of lodging it is');
+  }
+  // Пояс — тією ж вартою і з тієї ж причини (Р13.12).
+  //
+  // Він і був «надісланим» лише на вигляд: `catalog-target` клав його
+  // умовним спредом, тож порожній рядок — а `NOT NULL` його дозволяє —
+  // мовчки випадав з тіла, і ми опинялись там, звідки почали, без жодної
+  // помилки. Вигадана ж зона поїхала б вендору і повернулась 422 посеред
+  // створення каталогу, коли обʼєкт уже заведено.
+  //
+  // Перевіряється НЕПОРОЖНІСТЬ і належність до бази IANA — тим самим
+  // `isKnownTimezone`, що й при заведенні готелю (`provisionOrganization`),
+  // щоб два шляхи не розійшлися в тому, який пояс вважають справжнім.
+  if (!property.timezone || !property.timezone.trim()) {
+    refuse('catalog: the property has no timezone — the hotel must say which one it is in');
+  }
+  if (!isKnownTimezone(property.timezone)) {
+    refuse(`catalog: timezone "${property.timezone}" is not a known IANA zone (Europe/Kyiv, Europe/Prague, …)`);
   }
 
   const unitTypes = await catalogUnitTypes(connection.propertyId);
@@ -148,7 +172,7 @@ export async function syncConnectionCatalog(
     // Обʼєкт без жодного тарифу не має чим назвати валюту, а менеджер
     // каналів вимагає її обовʼязково. Відмова тут дешевша за 422 посеред
     // створення, коли обʼєкт уже заведено, а тарифи — ще ні.
-    throw new Error('catalog: property has no rate plan to take the currency from');
+    refuse('catalog: property has no rate plan to take the currency from');
   }
 
   const report = await runSyncCatalog(args);

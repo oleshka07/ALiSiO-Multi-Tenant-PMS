@@ -45,6 +45,7 @@ try {
   mock.queue.push({ kind: 'created', id: 'prop-1' });
   const propertyId = await target.createProperty({
     id: 'p_local', title: 'Пансіон', currency: 'EUR', country: 'CZ', city: null,
+    timezone: 'Europe/Kyiv', propertyType: 'guest_house',
   });
   assert.strictEqual(propertyId, 'prop-1');
   const propCall = mock.calls.at(-1)!;
@@ -55,6 +56,109 @@ try {
   assert.ok(!('city' in propBody), 'порожнє місто поїхало полем — це 422 на валідному обʼєкті');
   assert.ok(!('id' in propBody), 'НАШ id поїхав у чужу базу');
   console.log('  ok  обʼєкт заводиться загорнутим, без порожніх полів і без наших id');
+
+  // ── Рід житла і пояс — у ТІЛІ, і не однакові на всіх (Р13.11) ─────────
+  //
+  // Твердження навмисно про ТІЛО запиту, а не про доменний обʼєкт: рівно на
+  // цій осі жив вихідний баг. `timezone` виглядав надісланим — поле в
+  // адаптері було, — але доменний обʼєкт його не ніс, і в тіло не потрапляло
+  // нічого. Перевірка, яка дивиться на наш обʼєкт, цього не бачить у
+  // принципі.
+  //
+  // Фікстура невироджена: ДВА обʼєкти, різні пояси і різні роди, і між ними
+  // `notEqual`. З одним обʼєктом у празькому поясі зашите `'Europe/Prague'`
+  // пройшло б як «правильно» (інваріант 26).
+  assert.strictEqual(propBody.timezone, 'Europe/Kyiv', 'пояс не доїхав у тілі створення');
+  assert.strictEqual(propBody.property_type, 'guest_house', 'рід житла не доїхав у тілі створення');
+
+  mock.queue.push({ kind: 'created', id: 'prop-2' });
+  await target.createProperty({
+    id: 'p_local_2', title: 'Kemp', currency: 'CZK', country: 'CZ', city: null,
+    timezone: 'Europe/Prague', propertyType: 'camping',
+  });
+  const secondBody = mock.calls.at(-1)!.body.property as Record<string, unknown>;
+  assert.strictEqual(secondBody.timezone, 'Europe/Prague');
+  assert.strictEqual(secondBody.property_type, 'camping');
+  assert.notStrictEqual(
+    propBody.timezone, secondBody.timezone,
+    'обидва обʼєкти поїхали з одним поясом — фікстура вироджена, зашите значення пройшло б',
+  );
+  assert.notStrictEqual(
+    propBody.property_type, secondBody.property_type,
+    'обидва обʼєкти поїхали з одним родом житла — фікстура вироджена',
+  );
+  console.log('  ok  рід житла і пояс — у ТІЛІ створення, і кожен обʼєкт їде своїм');
+
+  // ── Рід житла, якого вендор не знає, не пропускається мовчки ──────────
+  //
+  // Умовний спред тут повернув би вихідний баг: поле просто зникло б з тіла,
+  // вендор поставив би свій дефолт, а він «affects billing».
+  const callsBefore = mock.calls.length;
+  let refusedUnknownKind = '';
+  try {
+    await target.createProperty({
+      id: 'p_bad', title: 'X', currency: 'EUR', country: 'CZ', city: null,
+      timezone: 'Europe/Kyiv', propertyType: 'igloo',
+    });
+  } catch (e) {
+    refusedUnknownKind = e instanceof Error ? e.message : String(e);
+  }
+  assert.match(
+    refusedUnknownKind, /property_type/,
+    'невідомий рід житла мовчки випав із тіла замість відмови',
+  );
+  assert.strictEqual(
+    mock.calls.length, callsBefore,
+    'обʼєкт із невідомим родом житла все одно полетів вендору',
+  );
+  console.log('  ok  рід житла поза мапою вендора — відмова, не мовчазний пропуск');
+
+  // ── Оновлення: те саме тіло, той самий PUT (П1) ───────────────────────
+  //
+  // Без цього блоку `updateProperty` міг би зібрати ІНШЕ тіло — і рівно так
+  // `timezone` колись і загубився: два шляхи, одне з них ніхто не перевіряв.
+  mock.queue.push({ kind: 'record', data: { id: 'prop-1', attributes: {
+    title: 'Пансіон', currency: 'EUR', country: 'CZ',
+    timezone: 'Europe/Prague', property_type: 'hotel',
+  } } });
+  const drift = await target.propertyDrift('prop-1', {
+    id: 'p_local', title: 'Пансіон', currency: 'EUR', country: 'CZ', city: null,
+    timezone: 'Europe/Kyiv', propertyType: 'guest_house',
+  });
+  assert.deepStrictEqual(
+    [...(drift ?? [])].sort(), ['property_type', 'timezone'],
+    'розбіжність поясу й роду житла не помічена — оновлення не полетить',
+  );
+  const readCall = mock.calls.at(-1)!;
+  assert.strictEqual(readCall.method, 'GET', 'звірка мала читати обʼєкт');
+  assert.ok(readCall.path.includes('/properties/prop-1'), 'звірка прочитала не той обʼєкт');
+  console.log('  ok  розбіжність із вендором бачиться пополе, читанням його ж обʼєкта');
+
+  await target.updateProperty('prop-1', {
+    id: 'p_local', title: 'Пансіон', currency: 'EUR', country: 'CZ', city: null,
+    timezone: 'Europe/Kyiv', propertyType: 'guest_house',
+  });
+  const putCall = mock.calls.at(-1)!;
+  assert.strictEqual(putCall.method, 'PUT', 'оновлення пішло не PUT-ом');
+  assert.ok(putCall.path.includes('/properties/prop-1'), 'оновлення пішло не на той обʼєкт');
+  const putBody = putCall.body.property as Record<string, unknown>;
+  assert.ok(putBody, 'тіло оновлення не загорнуте ключем `property`');
+  assert.strictEqual(putBody.timezone, 'Europe/Kyiv', 'пояс не доїхав у тілі ОНОВЛЕННЯ');
+  assert.strictEqual(putBody.property_type, 'guest_house', 'рід житла не доїхав у тілі ОНОВЛЕННЯ');
+  assert.ok(!('id' in putBody), 'НАШ id поїхав у чужу базу');
+  console.log('  ok  рід житла і пояс — у ТІЛІ оновлення, тим самим будівником');
+
+  // Однакове з вендорським — не розбіжність, і PUT не летить.
+  mock.queue.push({ kind: 'record', data: { id: 'prop-1', attributes: {
+    title: 'Пансіон', currency: 'EUR', country: 'CZ',
+    timezone: 'Europe/Kyiv', property_type: 'guest_house',
+  } } });
+  const same = await target.propertyDrift('prop-1', {
+    id: 'p_local', title: 'Пансіон', currency: 'EUR', country: 'CZ', city: null,
+    timezone: 'Europe/Kyiv', propertyType: 'guest_house',
+  });
+  assert.deepStrictEqual(same, [], 'звірка знайшла розбіжність там, де все збігається');
+  console.log('  ok  збіг із вендором — порожня розбіжність, зайвий PUT не летить');
 
   // ── Тип номера: місткість не вигадується ──────────────────────────────
   mock.queue.push({ kind: 'created', id: 'rt-1' });

@@ -506,6 +506,49 @@ export class ChannexClient {
     return idOf(payload, 'property');
   }
 
+  /**
+   * Атрибути обʼєкта, як їх бачить вендор. `null` — обʼєкта в нього немає.
+   *
+   * Потрібне рівно для одного: порівняти НАШЕ з ЇХНІМ перед оновленням.
+   * Без цього читання «оновити, якщо розійшлося» перетворюється на «писати
+   * PUT на кожен синк», а це запит на порожньому місці і зайвий шанс
+   * перетерти те, чого ми не чіпали.
+   *
+   * 404 — не помилка: дзеркало могло пережити обʼєкт, якщо його видалили на
+   * тому боці. Кличучий бік вирішує, заводити наново чи відмовити.
+   */
+  async getProperty(key: string, propertyId: string): Promise<Record<string, unknown> | null> {
+    try {
+      const payload = await this.call(key, 'GET', `/properties/${encodeURIComponent(propertyId)}`);
+      const data = payload.data as { attributes?: Record<string, unknown> } | undefined;
+      return data?.attributes ?? null;
+    } catch (e) {
+      if (e instanceof ChannexError && e.status === 404) return null;
+      throw e;
+    }
+  }
+
+  /**
+   * Оновити обʼєкт: `PUT /properties/:id`.
+   *
+   * Був відсутній, і це коштувало окремої знахідки (Р13.9): `property_type`
+   * і `timezone` клалися в тіло лише на СТВОРЕННІ, а створення кличеться
+   * тільки коли дзеркало порожнє. Тобто готель міняв рід житла чи пояс,
+   * бачив нове значення в себе — і у вендора не мінялося нічого, без жодної
+   * помилки. Сертифікований обʼєкт так і лишався без пояса.
+   *
+   * Вендор приймає обидва поля в тілі `PUT` — звірено з
+   * `docs/vendor/channex/api-v.1-documentation/hotels-collection.md:668`
+   * («Update Property»), там і `timezone`, і `property_type`.
+   */
+  async updateProperty(
+    key: string,
+    propertyId: string,
+    attributes: Record<string, unknown>,
+  ): Promise<void> {
+    await this.call(key, 'PUT', `/properties/${encodeURIComponent(propertyId)}`, { property: attributes });
+  }
+
   async createRoomType(key: string, attributes: Record<string, unknown>): Promise<string> {
     const payload = await this.call(key, 'POST', '/room_types', { room_type: attributes });
     return idOf(payload, 'room_type');

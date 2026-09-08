@@ -1,9 +1,10 @@
 import { getSql } from '@core/db/async';
-// Не через фасад `@channels`: він тягне серверні хендлери, а з ними
-// `next/server`, якого немає в прод-образі — `scripts/apply-hotel.mjs`
-// імпортує цей файл голим node і падав би на заведенні готелю
-// (`check-entry-imports`). Парадна для React і для скриптів — `ui/`.
-import { CHANNEL_PROPERTY_TYPES, isChannelPropertyType } from '@/modules/channels/ui/property-types';
+// Рід житла — з ЯДРА, не з модуля каналів (Р13.15). Базовий писач обʼєкта
+// не має відмовляти за списком вендора каналів готелю, який каналів не
+// купував; вендорські значення мапить сам модуль каналів у себе
+// (`channels/channex/property-type.ts`).
+import { LODGING_KINDS, isLodgingKind } from '@core/lodging-kinds';
+import { refuse } from '@core/http/refusal';
 import { unitColumnsSql } from './units.repo';
 
 /**
@@ -132,14 +133,17 @@ export async function createProperty(organizationId: string, input: CreateProper
  * Тип житла з переліку вендора — або названа відмова.
  *
  * Звіряє писач, а не CHECK бази: перелік чужий і може зрости
- * (`@channels/ui/property-types`). Порожній рядок означає «ще не названо» і
+ * (`@core/lodging-kinds`). Порожній рядок означає «ще не названо» і
  * стає NULL — інакше в колонці лежало б `''`, і каталог вважав би рід
  * названим (`catalog-sync` перевіряє саме порожнечу).
  */
 function validPropertyType(value: unknown): string | null {
   if (value === undefined || value === null || value === '') return null;
-  if (!isChannelPropertyType(value)) {
-    throw new Error(`property_type must be one of: ${CHANNEL_PROPERTY_TYPES.join(', ')}`);
+  if (!isLodgingKind(value)) {
+    // `refuse` (400), не голий Error: рід житла поза переліком — помилка
+    // ВИКЛИКАЧА, і маршрут віддавав її 500 із текстом назовні (Р13.10,
+    // інваріант 6). Тепер 400 своїм текстом, а 500 не переказує нічого.
+    refuse(`property_type must be one of: ${LODGING_KINDS.join(', ')}`);
   }
   return value;
 }

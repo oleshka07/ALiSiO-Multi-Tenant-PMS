@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import PropertyRequired from '@/components/layout/PropertyRequired';
 import { EmptyState, LoadingState } from '@/components/ui/State';
-import { CHANNEL_PROPERTY_TYPES } from '@/modules/channels/ui/property-types';
+import { LODGING_KINDS } from '@core/lodging-kinds';
 import {
   Building2, Edit3, Trash2, Plus, Save, X, Check, Search,
   ChevronRight, ChevronDown, Tent, TreePine, BedDouble,
@@ -899,7 +899,7 @@ export default function SettingsPropertiesPage() {
               <select className="form-select" value={propForm.property_type}
                 onChange={e => setPropForm(p => ({ ...p, property_type: e.target.value }))}>
                 <option value="">{tUi('— не вказано —')}</option>
-                {CHANNEL_PROPERTY_TYPES.map(v => <option key={v} value={v}>{v}</option>)}
+                {LODGING_KINDS.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
               <div className="form-hint">{tUi('Вендор каналу рахує за цим тариф. Поки не вказано — каталог у канал не поїде.')}</div>
             </div>

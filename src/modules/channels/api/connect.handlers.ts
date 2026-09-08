@@ -3,7 +3,7 @@ import { withPermission, type Actor } from '@core/auth/session';
 import { hasFeature } from '@core/features';
 import { integrationCredentials, saveIntegrationCredentials } from '@core/integration-credentials';
 import { currentOrganizationId } from '@core/auth/tenant-context';
-import { serverError } from '@core/http/errors';
+import { serverError, handleError } from '@core/http/errors';
 import { catalogUnitTypes } from '@properties';
 import { propertyRatePlans } from '@pricing';
 import { adapterFor, knownProviders } from '../providers';
@@ -132,7 +132,11 @@ export const syncChannelCatalog = withPermission('manage_properties', async (_re
     if (!await apiKeyOf(actor.organizationId)) return NextResponse.json({ error: 'no_key' }, { status: 409 });
     return NextResponse.json(await syncConnectionCatalogFor(id));
   } catch (error: unknown) {
-    return serverError('modules/channels/api/connect syncChannelCatalog', error);
+    // `handleError`, не `serverError`: варти каталогу (рід житла, пояс,
+    // валюта) кидають НАЗВАНУ відмову, і саме її текст готель має побачити.
+    // `serverError` затирав його до «Внутрішня помилка сервера» — тобто вся
+    // мотивація тих варт помирала тут, на маршруті (Р13.10).
+    return handleError('modules/channels/api/connect syncChannelCatalog', error);
   }
 });
 

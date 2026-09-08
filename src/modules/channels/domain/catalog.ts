@@ -120,11 +120,21 @@ export interface RemoteOption {
 /**
  * Той бік — рівно те, що від нього треба, і нічого більше.
  *
- * Кожен метод СТВОРЮЄ і повертає чужий id. Нічого не оновлює: каталог, який
- * уже є, цей прохід не чіпає (див. `syncCatalog`).
+ * Типи номерів і тарифи цей інтерфейс тільки СТВОРЮЄ: оновлення там коштує
+ * дорожче, ніж здається (див. `syncCatalog`). Обʼєкт — виняток, і єдиний:
+ * його оновлення не має де перетерти календар, а без нього рід житла й
+ * часовий пояс, змінені готелем, не доходили до вендора взагалі (Р13.9).
  */
 export interface CatalogTarget {
   createProperty(property: CatalogProperty): Promise<string>;
+  /**
+   * Назви полів, у яких вендорський обʼєкт розійшовся з нашим.
+   *
+   * Порожній масив — однакове. `null` — обʼєкта у вендора немає, хоча
+   * дзеркало на нього посилається.
+   */
+  propertyDrift(remotePropertyId: string, property: CatalogProperty): Promise<string[] | null>;
+  updateProperty(remotePropertyId: string, property: CatalogProperty): Promise<void>;
   createUnitType(remotePropertyId: string, unitType: CatalogUnitType): Promise<string>;
   /**
    * Тариф на одному типі номера.
@@ -177,6 +187,12 @@ export interface CatalogSkip {
 export interface CatalogReport {
   /** Чужий id обʼєкта — той, яким далі адресується все інше. */
   remotePropertyId: string;
+  /**
+   * Поля обʼєкта, які цей прохід оновив у вендора. Порожньо/відсутнє —
+   * нічого не розійшлося. Оператор має бачити, що саме поїхало: мовчазне
+   * оновлення тут нічим не краще за мовчазний пропуск, який воно замінило.
+   */
+  propertyUpdated?: string[];
   /** Скільки СТВОРЕНО цього разу. Другий прохід дає нулі. */
   created: { unitTypes: number; ratePlans: number; options: number };
   /** Скільки вже було і не чіпалося. */
@@ -212,10 +228,30 @@ export async function syncCatalog(deps: CatalogDeps): Promise<CatalogReport> {
   };
 
   // ── Обʼєкт ───────────────────────────────────────────────────────────
+  //
+  // Дзеркало порожнє — створюємо. Не порожнє — звіряємо і оновлюємо те, що
+  // розійшлося. Друга гілка довго була відсутня, і це не дрібниця: готель
+  // міняв рід житла чи часовий пояс, у себе бачив нове значення, а до
+  // вендора не доїжджало нічого й ніколи (Р13.9). Пояс при цьому вирішує,
+  // де проходить межа доби, а канал торгує датами заїзду.
   let remotePropertyId = await mirror.remoteIdOf('property', property.id);
   if (!remotePropertyId) {
     remotePropertyId = await target.createProperty(property);
     await mirror.put({ entityType: 'property', localId: property.id, remoteId: remotePropertyId });
+  } else {
+    const drift = await target.propertyDrift(remotePropertyId, property);
+    if (drift === null) {
+      // Дзеркало посилається на обʼєкт, якого у вендора немає. Завести
+      // новий мовчки не можна: тарифи й типи номерів у дзеркалі лишились
+      // від старого, і каталог зібрався б наполовину з посиланнями в
+      // нікуди. Інваріант 13 — не знайшли, отже відмовляємо.
+      throw new Error(
+        `catalog: mirror points at property ${remotePropertyId}, which the vendor does not have`);
+    }
+    if (drift.length) {
+      await target.updateProperty(remotePropertyId, property);
+      report.propertyUpdated = drift;
+    }
   }
   report.remotePropertyId = remotePropertyId;
 

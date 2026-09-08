@@ -145,6 +145,10 @@ function fakeTarget(prefix: string) {
   let n = 0;
   return {
     createProperty: async (property: any) => { sentProperties[prefix] = property; return `${prefix}-property`; },
+    // Дзеркало в цих проходах порожнє, тож звірка не кличеться; порожня
+    // розбіжність тримає її безшумною, якщо колись покличеться.
+    propertyDrift: async () => [],
+    updateProperty: async (_id: string, property: any) => { sentProperties[prefix] = property; },
     createUnitType: async () => `${prefix}-ut-${++n}`,
     createRatePlan: async (
       _p: string, _ut: string, _plan: unknown, occupancies: number[],
