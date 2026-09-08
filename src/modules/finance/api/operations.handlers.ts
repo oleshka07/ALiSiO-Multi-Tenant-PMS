@@ -631,15 +631,22 @@ export async function updateOperation(
       const newAmount = body.amount ?? existing.amount;
       const newCurrency = body.currency ?? existing.currency;
       const newPaid = body.paid_at ?? existing.paid_at;
+      const companyCurrency = await organizationCurrency(orgId);
       const amountCompany = (body.fx_rate_override && body.fx_rate_override > 0)
         ? newAmount * body.fx_rate_override
-        : await computeAmountCompany(newAmount, newCurrency, newPaid, await organizationCurrency(orgId));
+        : await computeAmountCompany(newAmount, newCurrency, newPaid, companyCurrency);
       fields.push('amount_company = ?');
       params.push(amountCompany);
       if (body.fx_rate_override && body.fx_rate_override > 0) {
         fields.push('fx_rate = ?');
         params.push(body.fx_rate_override);
-      } else if (newCurrency !== 'CZK') {
+      } else if (newCurrency !== companyCurrency) {
+        // Порівняння з валютою ГОТЕЛЮ, не з кроною. Тут стояло
+        // `newCurrency !== 'CZK'` — і готель на євро, редагуючи свою ж
+        // операцію в євро, отримував `fx_rate = 1`. Тобто «курс один до
+        // одного» замість «конверсії не було» (Д27), і рівно та половина
+        // ланки 4, яку я минулого разу проґавив: створення виправив, а
+        // редагування — ні.
         fields.push('fx_rate = ?');
         params.push(amountCompany / newAmount);
       }

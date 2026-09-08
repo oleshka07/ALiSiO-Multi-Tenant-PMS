@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getSql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { refuse } from '@core/http/errors';
 import { categoryIdByCode } from '@core/chart-of-accounts';
 import {
   createOperationInTx,
@@ -96,6 +97,28 @@ export interface PaymentOperationResult {
   folioRefusal?: string;
 }
 
+/**
+ * Стаття довідника ЦЬОГО готелю за сталим кодом — або НАЗВАНА ВІДМОВА.
+ *
+ * `categoryIdByCode` віддає `null`, коли статті немає, і мовчазний `null`
+ * поїхав би далі в `fin_operations.category_id`: на Postgres це відмова
+ * зовнішнього ключа з текстом драйвера, на SQLite — рядок, що вказує в
+ * нікуди. Обидва варіанти кажуть оператору неправду про причину.
+ *
+ * Порожній довідник — стан, який справді буває: організація, заведена до
+ * того, як засів переїхав у `provisionOrganization` (INC-025/INC-028). Тому
+ * відмова називає не поле запиту, а дію: чим саме порожньо і хто це лагодить.
+ */
+async function requireCategory(code: string): Promise<string> {
+  const id = await categoryIdByCode(code);
+  if (!id) {
+    refuse(
+      `У готелю не заведено плану рахунків (немає статті «${code}»), тож операції нема на що віднести. `
+      + 'Це разова дія адміністратора: `node scripts/seed-chart-of-accounts.mjs --slug <готель>`.', 409);
+  }
+  return id;
+}
+
 export async function createPaymentOperation(input: CreatePaymentOperationInput): Promise<PaymentOperationResult> {
   const sql = getSql();
   const {
@@ -179,6 +202,22 @@ export async function createPaymentOperation(input: CreatePaymentOperationInput)
     }
   }
 
+  // Немає КУДИ покласти гроші — відмова, названа тут і словами оператора
+  // (INC-028, ланка 3). Доти цей випадок доходив до `createOperationInTx`, той
+  // кидав `income requires account_to_id` — англійський рядок про поле запиту,
+  // — а маршрут згортав його в 500 «Внутрішня помилка сервера». Портьє бачив
+  // «щось пішло не так» замість «у готелю немає рахунку в цій валюті».
+  //
+  // Відмова називає ВАЛЮТУ: рахунок може бути, але в іншій — саме так виглядає
+  // готель на євро, якому колись завели касу в кронах, і без цього слова
+  // причина не вгадується.
+  if (!resolvedAccountId) {
+    refuse(
+      `У готелю немає активного рахунку в ${currency}, тож готівку нема куди записати. `
+      + 'Додайте касу: Фінанси → Рахунки → Додати рахунок (тип «Каса», валюта '
+      + `${currency}).`, 409);
+  }
+
   const accruedAt = (!isRefund && row.check_in) ? row.check_in : undefined;
 
   // ONLY cash payments create an operation in fin_operations (the central ledger).
@@ -204,7 +243,7 @@ export async function createPaymentOperation(input: CreatePaymentOperationInput)
     // першим: на чистій інсталяції зовнішній ключ відмовляв готівковій оплаті
     // ПЕРШОГО ж готелю, а на базі з демо операції ДРУГОГО тихо чіплялись на
     // чужий рядок, який його ж політика при читанні ховає.
-    category_id: isRefund ? await categoryIdByCode('other_exp') : await categoryIdByCode('accommodation'),
+    category_id: isRefund ? await requireCategory('other_exp') : await requireCategory('accommodation'),
     reservation_id: reservationId,
     status,
     method,

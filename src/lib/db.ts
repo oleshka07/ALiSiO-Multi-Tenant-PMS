@@ -538,6 +538,21 @@ function runMigrations(database: any) {
   // in this database fails for the wrong reason and drops us into the rebuild
   // branch below — which recreates app_users WITHOUT password_hash (see the
   // re-insert further down) and drops audit_log outright.
+  //
+  // ЦЕЙ `LIMIT 1` ЗАКОННИЙ, і це сказано прямо, щоб наступний не взяв його за
+  // зразок (INC-028, п.4). Решта чотирьох копій того самого рядка сіяли ДАНІ
+  // конкретному орендареві — і саме тому були вадою: «перший, хто трапився»
+  // не є відповіддю на питання «чий це рядок» (інваріант 1).
+  //
+  // Тут питання інше й не про орендаря взагалі: чи приймає CHECK на
+  // `app_users.role` нинішній перелік ролей. Це властивість СХЕМИ, однакова
+  // для всієї бази; організація потрібна лише як будь-який дійсний
+  // зовнішній ключ, щоб пробний `INSERT` не впав з іншої причини. Рядок
+  // одразу видаляється, нічого нікому не належить.
+  //
+  // Ознака, за якою відрізняти: якщо від вибору організації залежить, ЧИЇ
+  // дані зʼявляться в базі, — `LIMIT 1` заборонений. Якщо результат той
+  // самий для будь-якої — це проба, і вона законна.
   const probeOrg = database.prepare('SELECT id FROM organizations LIMIT 1').get() as { id: string } | undefined;
   let roleCheckIsCurrent = true;
   if (probeOrg) {
@@ -7286,23 +7301,33 @@ function runMigrations(database: any) {
     console.error('[DB] 0096 folio_payment_id:', e.message);
   }
 
-  // --- 0097: план рахунків і бізнес-юніти належать ГОТЕЛЮ (INC-025) ---
+  // --- 0097: СХЕМА довідників. Даних міграція не сіє (INC-028) ---
   //
   // Довідник сіявся один раз на всю базу — `SELECT id FROM organizations
   // LIMIT 1`, проти інваріанта 1, — і з ЛІТЕРАЛЬНИМИ первинними ключами
   // (`ec_accommodation`, `bu_shared`, …), тож другий комплект неможливий за
-  // означенням PK. Справжній сівач (`provisionOrganization`) статей не сіяв
-  // узагалі, а місток платежів пришпилював `'ec_accommodation'` кожному.
+  // означенням PK. Гірше: міграції котяться, коли `organizations` ще порожня,
+  // тож `if (orgRow)` не спрацьовував ВЗАГАЛІ, і на чистій базі довідника не
+  // діставалось нікому.
   //
   // Тепер стала величина — `code`, унікальний У МЕЖАХ ОРГАНІЗАЦІЇ
-  // (інваріант 3); ідентифікатор випадковий і належить готелю. Міграція:
-  //   1. заводить колонку;
+  // (інваріант 3); ідентифікатор випадковий і належить готелю. Міграція
+  // робить рівно дві речі, обидві про СХЕМУ:
+  //   1. заводить колонку `code`;
   //   2. підписує кодами історичні літеральні рядки — вони лишаються на
-  //      місці разом з усіма посиланнями на них;
-  //   3. досіває повний довідник КОЖНІЙ організації, у якої його немає.
+  //      місці разом з усіма посиланнями на них.
   //
-  // Крок 3 і є лікуванням: на чинній беті готель №2 не має жодної статті, і
-  // його операції або відмовляються ключем, або чіпляються на чужий рядок.
+  // Чого вона НЕ робить і більше не робитиме: не сіє даних. Тут стояв ще й
+  // крок 3, який досівав довідник кожній організації, — і це було
+  // неправильно за родом: міграція виконується до того, як орендар існує, і
+  // «для кожної організації» в ній це вже не міграція, а сівач, що вдає
+  // міграцію. Рішення контролера 08.09: засів живе ТІЛЬКИ в
+  // `provisionOrganization`.
+  //
+  // Наслідок названо прямо: організація, заведена ДО переїзду засіву, лишиться
+  // без довідника, і перша ж готівкова оплата відмовить — НАЗВАНО, з дією
+  // (`payment-bridge.requireCategory`). Разова дія адміністратора —
+  // `scripts/seed-chart-of-accounts.mjs`; наявних баз міграція не чіпає.
   try {
     for (const [table, prefix, seed] of [
       ['expense_categories', 'ec_', CHART_OF_ACCOUNTS_SEED],
@@ -7312,53 +7337,13 @@ function runMigrations(database: any) {
       if (!cols.some((c) => c.name === 'code')) {
         database.exec(`ALTER TABLE ${table} ADD COLUMN code TEXT`);
       }
-      // Історичні літеральні ключі підписуються своїм кодом. Рядок лишається
-      // тим самим — усі `fin_operations`, що на нього посилаються, цілі.
       const setCode = database.prepare(`UPDATE ${table} SET code = ? WHERE id = ? AND code IS NULL`);
       for (const row of seed) setCode.run(row.code, `${prefix}${row.code}`);
-      // Унікальність — у межах організації, не бази.
       database.exec(
         `CREATE UNIQUE INDEX IF NOT EXISTS idx_${table}_org_code ON ${table}(organization_id, code) WHERE code IS NOT NULL`);
     }
-
-    // Досів для КОЖНОЇ організації, у якої довідника немає.
-    const orgs = database.prepare('SELECT id FROM organizations').all() as { id: string }[];
-    const insEC = database.prepare(
-      `INSERT INTO expense_categories (id, organization_id, code, name, std_group, pnl_line,
-         include_in_pnl, include_in_cash, alloc_method, is_capex, icon, color, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-    const insBU = database.prepare(
-      `INSERT INTO business_units (id, organization_id, code, name, unit_type, is_shared, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`);
-    const rnd = () => Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2, 10);
-    let seededOrgs = 0;
-    for (const org of orgs) {
-      const haveEC = new Set((database.prepare(
-        'SELECT code FROM expense_categories WHERE organization_id = ? AND code IS NOT NULL')
-        .all(org.id) as { code: string }[]).map((r) => r.code));
-      const haveBU = new Set((database.prepare(
-        'SELECT code FROM business_units WHERE organization_id = ? AND code IS NOT NULL')
-        .all(org.id) as { code: string }[]).map((r) => r.code));
-      let added = 0;
-      for (const a of CHART_OF_ACCOUNTS_SEED) {
-        if (haveEC.has(a.code)) continue;
-        insEC.run(`ec_${rnd()}`, org.id, a.code, a.name, a.stdGroup, a.pnlLine,
-          a.includeInPnl ? 1 : 0, a.includeInCash ? 1 : 0, a.allocMethod, a.isCapex ? 1 : 0,
-          a.icon, a.color, a.sortOrder);
-        added++;
-      }
-      for (const u of BUSINESS_UNITS_SEED) {
-        if (haveBU.has(u.code)) continue;
-        insBU.run(`bu_${rnd()}`, org.id, u.code, u.name, u.unitType, u.isShared ? 1 : 0, u.sortOrder);
-        added++;
-      }
-      if (added > 0) seededOrgs++;
-    }
-    if (seededOrgs > 0) {
-      console.log(`[DB] 0097: план рахунків і бізнес-юніти досіяно для ${seededOrgs} організац(ії/ій)`);
-    }
   } catch (e: any) {
-    console.error('[DB] 0097 chart of accounts per organization:', e.message);
+    console.error('[DB] 0097 catalogue code column:', e.message);
   }
 
   // --- 0098 (ключі довідників з орендарем) — НЕ ЗРОБЛЕНО, і ось чому ---

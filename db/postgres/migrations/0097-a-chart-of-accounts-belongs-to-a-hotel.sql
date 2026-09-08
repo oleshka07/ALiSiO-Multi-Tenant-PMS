@@ -43,43 +43,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_expense_categories_org_code
 CREATE UNIQUE INDEX IF NOT EXISTS idx_business_units_org_code
   ON business_units (organization_id, code) WHERE code IS NOT NULL;
 
--- 3. Досіяти повний довідник КОЖНІЙ організації, у якої його немає.
---    Це і є лікування: на чинній беті готель №2 не має жодної статті.
-INSERT INTO expense_categories
-  (id, organization_id, code, name, std_group, pnl_line,
-   include_in_pnl, include_in_cash, alloc_method, is_capex, icon, color, sort_order)
-SELECT encode(gen_random_bytes(16), 'hex'), o.id, s.code, s.name, s.std_group, s.pnl_line,
-       s.include_in_pnl, s.include_in_cash, s.alloc_method, s.is_capex, s.icon, s.color, s.sort_order
-  FROM organizations o
-  CROSS JOIN (VALUES
-    ('accommodation','Accommodation','Revenue','Accommodation',1,1,'DIRECT',false,'🏠','#22c55e',1),
-    ('services_rev','Services','Revenue','Services',1,1,'DIRECT',false,'🛎️','#f59e0b',2),
-    ('other_rev','Other income','Revenue','Other income',1,1,'DIRECT',false,'💰','#84cc16',3),
-    ('variable','Variable costs','COGS','Variable costs',1,1,'DIRECT',false,'📦','#991b1b',4),
-    ('rent','Rent','OPEX','Rent',1,1,'RENT',false,'🏢','#6366f1',5),
-    ('utilities','Utilities','OPEX','Utilities',1,1,'UTILITIES',false,'🔌','#8b5cf6',6),
-    ('payroll','Payroll','OPEX','Payroll',1,1,'SHARED_PAYROLL',false,'👥','#a855f7',7),
-    ('marketing','Marketing','OPEX','Marketing',1,1,'HQ',false,'📢','#ec4899',8),
-    ('professional','Professional services','OPEX','Professional services',1,1,'HQ',false,'💼','#14b8a6',9),
-    ('consumables','Consumables','OPEX','Consumables',1,1,'HQ',false,'🧹','#78716c',10),
-    ('other_exp','Other expenses','OPEX','Other expenses',1,1,'HQ',false,'📋','#6b7280',11),
-    ('taxes','Taxes','Taxes','Taxes',1,1,'HQ',false,'🏛️','#334155',12),
-    ('capex','Capital expenditure','CAPEX','CAPEX',0,1,'NONE',true,'🏗️','#0ea5e9',13),
-    ('investors','Financing','Financing','Financing',0,1,'NONE',false,'🏦','#059669',14),
-    ('transfer','Transfer','Transfer','Transfer',0,1,'NONE',false,'↔️','#94a3b8',15)
-  ) AS s(code, name, std_group, pnl_line, include_in_pnl, include_in_cash,
-         alloc_method, is_capex, icon, color, sort_order)
- WHERE NOT EXISTS (
-   SELECT 1 FROM expense_categories c
-    WHERE c.organization_id = o.id AND c.code = s.code);
-
-INSERT INTO business_units (id, organization_id, code, name, unit_type, is_shared, sort_order)
-SELECT encode(gen_random_bytes(16), 'hex'), o.id, s.code, s.name, s.unit_type, s.is_shared, s.sort_order
-  FROM organizations o
-  CROSS JOIN (VALUES
-    ('shared','Shared / HQ','Shared / HQ',true,1),
-    ('review','To review','Unassigned / review',false,2)
-  ) AS s(code, name, unit_type, is_shared, sort_order)
- WHERE NOT EXISTS (
-   SELECT 1 FROM business_units b
-    WHERE b.organization_id = o.id AND b.code = s.code);
+-- Кроку «досіяти довідник кожній організації» тут БІЛЬШЕ НЕМАЄ (INC-028).
+--
+-- Він був, і це було неправильно за родом: міграція котиться до того, як
+-- орендар існує, тож «для кожної організації» в ній — це вже не міграція, а
+-- сівач, що вдає міграцію. Рішення контролера 08.09: засів довідників живе
+-- ТІЛЬКИ в provisionOrganization, де орендар відомий і створюється тут-таки.
+--
+-- Наслідок названо прямо, а не залишено на здогад: організація, заведена ДО
+-- переїзду засіву, лишається без довідника, і перша ж готівкова оплата
+-- ВІДМОВЛЯЄ названо — payment-bridge.requireCategory каже, чого бракує і що
+-- зробити. Разова дія адміністратора: scripts/seed-chart-of-accounts.mjs.
+-- Наявних баз ця міграція не чіпає (той самий принцип, що з мертвими
+-- таблицями 07.09: additive-схема так, дані — ні).

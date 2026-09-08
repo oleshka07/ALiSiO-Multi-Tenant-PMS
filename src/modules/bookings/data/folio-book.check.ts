@@ -137,15 +137,15 @@ try {
     // ЗОВНІШНІЙ КЛЮЧ, і сцена падала цілком. На SQLite ключі не перевіряються,
     // тож гейт був зелений і на базі, де рядок висів у порожнечі.
     //
-    // `ON CONFLICT DO NOTHING`, бо `ec_accommodation` — ЛІТЕРАЛЬНИЙ
-    // ідентифікатор: план рахунків сіється один раз, для організації, яку
-    // `db.ts` знайшов `SELECT id FROM organizations LIMIT 1`. Тобто на базі,
-    // де вже є готель, ця стаття належить ЙОМУ, а другий готель її не має —
-    // передано у звіті окремою знахідкою, тут лише не заважаємо сцені.
+    // Ідентифікатор ВЛАСНИЙ, а стала величина — `code` (INC-025/INC-028). Тут
+    // стояв літеральний `'ec_accommodation'` із `ON CONFLICT DO NOTHING`, тобто
+    // фікстура сама відтворювала ваду, від якої лікувались: на базі з іншим
+    // готелем стаття належала ЙОМУ, а сцена тихо працювала на чужому рядку.
+    // Після переходу на резолвер за кодом вона ще й перестала знаходитись —
+    // `requireCategory` відмовив названо, і саме так ця стара фікстура впала.
     await sql.run(
-      `INSERT INTO expense_categories (id, organization_id, name, std_group, pnl_line)
-       VALUES ('ec_accommodation', ?, 'Accommodation', 'Revenue', 'Accommodation')
-       ON CONFLICT DO NOTHING`,
+      `INSERT INTO expense_categories (id, organization_id, code, name, std_group, pnl_line)
+       VALUES ('__folbook__ec', ?, 'accommodation', 'Accommodation', 'Revenue', 'Accommodation')`,
       [ORG]);
 
     // ── СЦЕНА А: 3000 наперед ЧЕРЕЗ ФОЛІО ────────────────────────────────
@@ -317,7 +317,7 @@ try {
       amount: WRONG_ENTRY,
       currency: 'CZK',
       paid_at: '2026-11-03',
-      category_id: 'ec_accommodation',
+      category_id: '__folbook__ec',
       reservation_id: g,
       status: 'completed',
       comment: 'помилкова ручна проводка',
