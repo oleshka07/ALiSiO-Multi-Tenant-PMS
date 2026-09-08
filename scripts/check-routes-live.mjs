@@ -29,7 +29,7 @@
  *
  * ── Скільки це покриває насправді (Р8.14) ────────────────────────────────
  *
- * ДЕСЯТЬ родин, **70 тверджень** (66 місць виклику `claim(`; різниця — два
+ * ДЕСЯТЬ родин, **71 твердження** (67 місць виклику `claim(`; різниця — два
  * цикли: пʼять полів відповіді каналу і чотири види аркуша дня), і **ПʼЯТЬ
  * динамічних маршрутів зі 130**: `/api/bookings/[id]`,
  * `/api/bookings/[id]/invoice`, `/api/guest/[token]`,
@@ -68,6 +68,7 @@
  * останнім.
  */
 import assert from 'node:assert';
+import { readFile } from 'node:fs/promises';
 import { getSql } from '../src/core/db/async.ts';
 import { nameResolver, missingFrom, isUnresolvedObject } from './lib/db-names.mjs';
 
@@ -229,10 +230,44 @@ async function body(res) {
   try { return JSON.parse(text); } catch { return { __notJson: text.slice(0, 120) }; }
 }
 
+/**
+ * На порту — ТВОЯ збірка, а не попередня.
+ *
+ * Це не гігієна, а захист від хибно-зеленого доказу, і він уже спрацював би
+ * раз: 08.09.2026 «червоний» прогін для валюти віджета вийшов ЗЕЛЕНИМ, бо
+ * старий сервер тримав порт і віддавав збірку ДО злому (старт 10:35:54,
+ * збірка 10:39:00). Гейт міряв не ту збірку — і зелене легко зарахувати за
+ * доказ. Клас той самий, що інваріант 21: виміряно точно, але не те.
+ *
+ * Перевірка дешева: Next кладе кожну збірку під власним `BUILD_ID`, тож
+ * сервер, який віддає `/_next/static/<той самий id>/…`, — це саме той білд,
+ * що лежить на диску. Чужий id дає 404.
+ *
+ * Проти віддаленого сервера (без локального `.next`) перевірка пропускається,
+ * і про це СКАЗАНО рядком — мовчазний пропуск був би тим самим, від чого
+ * страхує Ц49.
+ */
+async function assertServerRunsThisBuild() {
+  let buildId;
+  try { buildId = (await readFile(new URL('../.next/BUILD_ID', import.meta.url), 'utf8')).trim(); }
+  catch { console.log('  ··  збірки на диску немає — перевірку «та сама збірка» пропущено'); return; }
+  let status = 0;
+  try {
+    const res = await fetch(`${BASE}/_next/static/${buildId}/_ssgManifest.js`);
+    status = res.status;
+  } catch { status = 0; }
+  claim('збірка', status === 200,
+    `сервер на ${BASE} віддає ТУ САМУ збірку, що на диску (${buildId}, ${status})`);
+  if (status !== 200) {
+    throw new Error(`на порту не ця збірка — прогін нічого не доводить (${buildId} → ${status})`);
+  }
+}
+
 const iso = (d) => d.toISOString().slice(0, 10);
 const day = (n) => { const d = new Date(); d.setUTCDate(d.getUTCDate() + n); return iso(d); };
 
 async function main() {
+  await assertServerRunsThisBuild();
   await checkCleanupNames();
   await cleanup();
   await sql.run('INSERT INTO organizations (id, name, slug, default_currency, language) VALUES (?, ?, ?, ?, ?)',
