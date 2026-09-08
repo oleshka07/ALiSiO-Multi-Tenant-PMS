@@ -65,16 +65,36 @@ export async function writeOperationAudit(
   }
 }
 
-async function computeAmountCompany(amount: number, currency: string, paidAt: string): Promise<number> {
+/**
+ * Сума операції у ВАЛЮТІ ГОТЕЛЮ — не в кронах.
+ *
+ * Тут стояло `to_currency = 'CZK'` літералом, і це був блокер для всієї
+ * Європи й України (INC-028, ланка 4; інваріанти 20 і 22): готель, чия базова
+ * валюта не крона, узагалі не міг провести готівкову оплату — відмова
+ * `No EUR→CZK exchange rate configured` приходила на кожну, доки хтось руками
+ * не заводив курс ДО КРОНИ. Крона при цьому не має до такого готелю жодного
+ * стосунку: вона була валютою першого клієнта, а не валютою світу.
+ *
+ * `check-currency-literals` це пропускав за побудовою — він шукає запасні
+ * `|| 'CZK'`, а тут крона стояла ЦІЛЬОВОЮ валютою конверсії.
+ *
+ * Операція у валюті готелю не конвертується взагалі: курс сам до себе — це
+ * одиниця, і питати про нього таблицю означало б вимагати налаштування там,
+ * де нічого не відбувається. Саме цим шляхом іде типовий готель, який працює
+ * в одній валюті (`secondaryCurrencies` порожній — нормальний стан).
+ */
+async function computeAmountCompany(
+  amount: number, currency: string, paidAt: string, companyCurrency: string,
+): Promise<number> {
   const sql = getSql();
-  if (currency === 'CZK') return amount;
+  if (currency === companyCurrency) return amount;
 
   // Prefer the latest rate effective ON or BEFORE the operation date.
   let rate = await sql.row<any>(`
     SELECT rate FROM finance_exchange_rates
-    WHERE from_currency = ? AND to_currency = 'CZK' AND effective_from <= ?
+    WHERE from_currency = ? AND to_currency = ? AND effective_from <= ?
     ORDER BY effective_from DESC LIMIT 1
-  `, [currency, paidAt]) as { rate: number } | undefined;
+  `, [currency, companyCurrency, paidAt]) as { rate: number } | undefined;
 
   // No historical rate yet — fall back to the latest known rate of any
   // date so we never silently treat a foreign-currency op as 1:1 (EUR
@@ -82,11 +102,11 @@ async function computeAmountCompany(amount: number, currency: string, paidAt: st
   if (!rate) {
     rate = await sql.row<any>(`
       SELECT rate FROM finance_exchange_rates
-      WHERE from_currency = ? AND to_currency = 'CZK'
+      WHERE from_currency = ? AND to_currency = ?
       ORDER BY effective_from DESC LIMIT 1
-    `, [currency]) as { rate: number } | undefined;
+    `, [currency, companyCurrency]) as { rate: number } | undefined;
     if (rate) {
-      console.warn(`[finance] computeAmountCompany: no rate for ${currency}→CZK on ${paidAt}, using latest available rate ${rate.rate}`);
+      console.warn(`[finance] computeAmountCompany: no rate for ${currency}→${companyCurrency} on ${paidAt}, using latest available rate ${rate.rate}`);
     }
   }
 
@@ -95,7 +115,7 @@ async function computeAmountCompany(amount: number, currency: string, paidAt: st
     // `refuse`, а не голий `Error`: у `catch` рід помилки має бути видимий,
     // інакше вона поїде клієнтові поряд із текстом драйвера (див.
     // @core/http/errors, друга вісь check-error-leak).
-    refuse(`No ${currency}→CZK exchange rate configured. Add one at /finance/settings → Курси валют before saving this operation.`);
+    refuse(`Немає курсу ${currency}→${companyCurrency}. Додайте його в Фінанси → Налаштування → Курси валют, перш ніж зберігати операцію.`);
   }
 
   return amount * rate.rate;
@@ -485,14 +505,19 @@ export async function createOperationInTx(
   }
 
   // Валюта готелю, а не крони. `orgId` тут уже є — питати нема кого іншого.
-  const currency = input.currency || await organizationCurrency(orgId);
+  const companyCurrency = await organizationCurrency(orgId);
+  const currency = input.currency || companyCurrency;
   const accruedAt = input.accrued_at || paid_at;
   const amountCompany = (input.fx_rate_override && input.fx_rate_override > 0)
     ? amount * input.fx_rate_override
-    : await computeAmountCompany(amount, currency, paid_at);
+    : await computeAmountCompany(amount, currency, paid_at, companyCurrency);
+  // Курс СВОЄЇ валюти до себе не записується: `null` тут означає «конверсії не
+  // було», а `1` виглядав би як заведений курс. Порівняння теж із валютою
+  // готелю, не з кроною — інакше готель на євро мав би `fx_rate` на кожній
+  // власній операції.
   const fxRate = (input.fx_rate_override && input.fx_rate_override > 0)
     ? input.fx_rate_override
-    : (currency === 'CZK' ? null : (amountCompany / amount) || null);
+    : (currency === companyCurrency ? null : (amountCompany / amount) || null);
 
   const status: Status = input.status && (STATUSES as readonly string[]).includes(input.status) ? input.status : 'completed';
   const source = input.source || 'manual';
@@ -608,7 +633,7 @@ export async function updateOperation(
       const newPaid = body.paid_at ?? existing.paid_at;
       const amountCompany = (body.fx_rate_override && body.fx_rate_override > 0)
         ? newAmount * body.fx_rate_override
-        : await computeAmountCompany(newAmount, newCurrency, newPaid);
+        : await computeAmountCompany(newAmount, newCurrency, newPaid, await organizationCurrency(orgId));
       fields.push('amount_company = ?');
       params.push(amountCompany);
       if (body.fx_rate_override && body.fx_rate_override > 0) {

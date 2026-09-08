@@ -4,6 +4,8 @@
     "src/app/app/(dashboard)/documents/page.tsx": 2,
     "src/app/app/(dashboard)/events/page.tsx": 3,
     "src/app/app/(dashboard)/pricing/page.tsx": 3,
-    "src/app/app/(dashboard)/sites/[siteId]/_components/AnalyticsTab.tsx": 1
-  }
+    "src/app/app/(dashboard)/sites/[siteId]/_components/AnalyticsTab.tsx": 1,
+    "src/modules/invoicing/domain/invoice-pdf.ts": 1
+  },
+  "note_second_axis": "Друга вісь (код валюти як ціль/міра в логіці) увімкнена 08.09.2026 після INC-028 ланка 4. Єдине знайдене місце — invoice-pdf.ts:144: `currency === CZK ? число : число + код`, тобто чеський документ не дублює код валюти після суми. Це домовленість ПОКАЗУ конкретної юрисдикції, і живе вона в модулі документів; узагальнюється разом із рештою правил бланка (інваріант 22, «юрисдикція — модуль»). Стеля 1, опустити при переїзді."
 }

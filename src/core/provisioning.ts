@@ -82,6 +82,28 @@ const DEFAULT_CATEGORY_NAME: Record<string, string> = {
   fr: 'Chambres',
 };
 
+/**
+ * Каса готелю — теж своєю мовою, і теж рівно одна.
+ *
+ * Без жодного рядка `finance_accounts` місток платежів шукає запасний рахунок
+ * (`payment-bridge`), не знаходить нічого, і `createOperationInTx` відмовляє:
+ * `income requires account_to_id`. Тобто СВІЖОЗАВЕДЕНИЙ готель не може
+ * провести готівку взагалі — друга ланка INC-028.
+ *
+ * Одна каса, не набір: банк, термінал і клірингові рахунки заводить сам
+ * готель під свої реквізити. Ця існує, щоб перша готівка на рецепції мала
+ * куди лягти в перший же день.
+ */
+const DEFAULT_CASH_ACCOUNT_NAME: Record<string, string> = {
+  uk: 'Каса',
+  en: 'Cash',
+  de: 'Kasse',
+  cs: 'Pokladna',
+  pl: 'Kasa',
+  nl: 'Kas',
+  fr: 'Caisse',
+};
+
 const SLUG_RE = /^[a-z0-9]([a-z0-9-]{1,38}[a-z0-9])?$/;
 
 export async function provisionOrganization(input: NewOrganization): Promise<ProvisionedOrganization> {
@@ -140,6 +162,7 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
   const propertyId = `prop_${crypto.randomBytes(8).toString('hex')}`;
   const ownerId = `user_${crypto.randomBytes(8).toString('hex')}`;
   const categoryId = `cat_${crypto.randomBytes(8).toString('hex')}`;
+  const cashAccountId = `acc_${crypto.randomBytes(8).toString('hex')}`;
 
   // As the organization being created. Postgres applies WITH CHECK to every
   // insert — a row whose organization_id does not match the connection's tenant
@@ -198,12 +221,34 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
         s.name, s.code, s.iconLetter, s.color, s.sortOrder]);
     }
 
+    // Каса готелю — У ЙОГО ВАЛЮТІ, і до створення власника: той одразу
+    // отримує її як свій рахунок за замовчуванням (INC-028, ланка 2).
+    //
+    // Без цього рядка місток платежів шукає запасний рахунок і не знаходить
+    // жодного, а `createOperationInTx` відмовляє `income requires
+    // account_to_id`. Свіжозаведений готель не міг провести готівку взагалі —
+    // тобто перша ж дія портьє на рецепції впиралась у порожній довідник.
+    //
+    // Валюта — організації, не літерал: рахунок у кронах для німецького
+    // готелю місток просто не побачив би (він шукає за валютою операції), і
+    // відмова повернулась би там, де її найважче звʼязати з причиною.
+    await t.run(`
+      INSERT INTO finance_accounts (id, organization_id, name, type, currency, sort_order)
+      VALUES (?, ?, ?, 'cash', ?, 1)
+    `, [cashAccountId, organizationId,
+      DEFAULT_CASH_ACCOUNT_NAME[language] ?? DEFAULT_CASH_ACCOUNT_NAME.en, currency]);
+
     // The owner's language stays NULL: they follow the hotel, so changing the
     // hotel's base language later moves them with it.
+    //
+    // `default_cash_account_id` — щоб готівка, прийнята власником, лягала в
+    // касу готелю, а не в «перший рахунок за sort_order»: у готелю з кількома
+    // касами це різні гроші (`app/api/payments` читає саме цю колонку).
     await t.run(`
-      INSERT INTO app_users (id, organization_id, email, full_name, role, password_hash)
-      VALUES (?, ?, ?, ?, 'owner', ?)
-    `, [ownerId, organizationId, email, input.ownerName || name, bcrypt.hashSync(input.ownerPassword, 10)]);
+      INSERT INTO app_users (id, organization_id, email, full_name, role, password_hash, default_cash_account_id)
+      VALUES (?, ?, ?, ?, 'owner', ?, ?)
+    `, [ownerId, organizationId, email, input.ownerName || name,
+      bcrypt.hashSync(input.ownerPassword, 10), cashAccountId]);
 
     // Every feature gets a row, so the state is explicit rather than absent.
     // Through `t`, not the pool: these rows reference an organization this

@@ -88,6 +88,17 @@ export async function getFinanceLog(request: NextRequest): Promise<NextResponse>
         END AS category,
         bu.name AS bu_name,
         o.comment AS notes,
+        -- Ідентифікатори, а не лише назви для показу (INC-028).
+        --
+        -- Рядок журналу не міг назвати ні бронь, за яку прийшли гроші, ні
+        -- статтю плану рахунків: category для оплати підміняється на
+        -- payment_subtype, тобто стаття не видима взагалі. Бухгалтер бачив
+        -- «payment» і не мав чим звʼязати рядок ні з проживанням, ні з
+        -- рядком P&L — а саме ця пара і є тим, що ловить чужу статтю
+        -- (INC-025/INC-026). Показ від цього не змінюється: два поля
+        -- додаються, жодне не прибирається.
+        o.reservation_id,
+        o.category_id,
         r.hostex_reservation_code AS reservation_code
       FROM fin_operations o
       LEFT JOIN expense_categories    ec  ON ec.id  = o.category_id

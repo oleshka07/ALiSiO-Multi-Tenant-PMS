@@ -5,7 +5,13 @@ import { requireOrganizationId } from '@core/auth/tenant-context';
 import { createPaymentOperation } from '@/modules/finance/api/payment-bridge';
 import { getOptionalActor } from '@/modules/finance/api/operations.handlers';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
-import { serverError } from '@core/http/errors';
+// `handleError`, не `serverError`: відмова, названа на місці кидання
+// (`refuse`, примітив Ц43), мусить дійти до портьє СВОЇМ текстом і своїм
+// статусом. Доти цей `catch` згортав її в 500 «Внутрішня помилка сервера»,
+// а причина — «income requires account_to_id» — лишалась у лозі контейнера
+// (INC-028, ланка 3; клас Р8.3). `handleError` віддає 500 усьому, що не є
+// відмовою, тож деталі драйвера клієнтові й далі не їдуть (інваріант 6).
+import { handleError } from '@core/http/errors';
 
 // Legacy /api/payments endpoint — reads/writes via fin_operations.
 //
@@ -56,7 +62,7 @@ export const GET = withActor(async (request: NextRequest, _ctx, actor: Actor) =>
     `, params);
     return NextResponse.json(rows);
   } catch (e: any) {
-    return serverError('app/api/payments GET', e);
+    return handleError('app/api/payments GET', e);
   }
 });
 
@@ -180,6 +186,6 @@ export const POST = withPermission('manage_payments', async (
         'Позначка збережена. Реальна транзакція з\'явиться в Операціях, коли надійдуть гроші (банк / платформа).',
     }, { status: 201 });
   } catch (e: any) {
-    return serverError('app/api/payments POST', e);
+    return handleError('app/api/payments POST', e);
   }
 });

@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withPermission } from '@core/auth/session';
 import { deletePaymentOperation } from '@/modules/finance/api/payment-bridge';
-import { serverError } from '@core/http/errors';
+// `handleError`, не `serverError`: відмова, названа на місці кидання
+// (`refuse`, примітив Ц43), мусить дійти до портьє СВОЇМ текстом і своїм
+// статусом. Доти цей `catch` згортав її в 500 «Внутрішня помилка сервера»,
+// а причина — «income requires account_to_id» — лишалась у лозі контейнера
+// (INC-028, ланка 3; клас Р8.3). `handleError` віддає 500 усьому, що не є
+// відмовою, тож деталі драйвера клієнтові й далі не їдуть (інваріант 6).
+import { handleError } from '@core/http/errors';
 
 // Legacy DELETE /api/payments/:id — deletes the fin_operations row.
 // Deleting a payment is money leaving the books, so it needs the permission
@@ -23,6 +29,6 @@ export const DELETE = withPermission('manage_payments', async (
     if (!deleted) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (e: unknown) {
-    return serverError('app/api/payments/[id] DELETE', e);
+    return handleError('app/api/payments/[id] DELETE', e);
   }
 });

@@ -81,6 +81,53 @@ for (const root of ROOTS) {
   }
 }
 
+// ── Друга вісь: код валюти як ЦІЛЬ або МІРА в логіці, не на екрані ─────────
+//
+// Перша вісь дивиться на ЗНАК валюти в екранах — `Kč` поруч із числом. Її
+// сліпе місце назвав живий прохід (INC-028, ланка 4): у ядрі обліку стояло
+// `WHERE from_currency = ? AND to_currency = 'CZK'`, тобто крона була ЦІЛЬОВОЮ
+// валютою конверсії, і готель на євро не міг провести готівкову оплату
+// взагалі — відмова «Немає курсу EUR→CZK» приходила на кожну. Знака на екрані
+// при цьому не було ніде, тож перша вісь мовчала за побудовою.
+//
+// Тому друга вісь шукає КОД валюти (три великі літери зі списку) там, де він
+// вирішує, а не показує: праворуч від `to_currency`/`from_currency`, у
+// порівнянні `currency === '…'`, у запасному `?? '…'`. І дивиться вона в
+// ЯДРО й МОДУЛІ, а не в екрани — саме там крона колись стала валютою світу.
+//
+// Чого тут НЕМАЄ навмисно: рядки самого списку валют (`core/currency.ts` веде
+// довідник — там коди й мусять бути) і тести з фікстурами. Стеля кожного
+// файла зафіксована так само, як у першій осі.
+const CODE_ROOTS = ['src/core', 'src/modules', 'src/app/api'];
+const CODE_AXIS = [
+  ['ціль конверсії', /to_currency\s*=\s*'[A-Z]{3}'/g],
+  ['джерело конверсії', /from_currency\s*=\s*'[A-Z]{3}'/g],
+  ['порівняння валюти', /\bcurrency\s*===?\s*'[A-Z]{3}'/g],
+  ['запасна валюта', /\bcurrency[^\n]{0,40}(\?\?|\|\|)\s*'[A-Z]{3}'/g],
+];
+const CODE_SKIP = ['src/core/currency.ts', 'src/core/currency.check.ts'];
+
+const codeFound = new Map();
+for (const root of CODE_ROOTS) {
+  for (const file of walk(root)) {
+    const rel = file.split(path.sep).join('/');
+    if (CODE_SKIP.includes(rel) || /\.check\.ts$/.test(rel)) continue;
+    const lines = withoutComments(fs.readFileSync(file, 'utf8')).split('\n');
+    const hits = [];
+    lines.forEach((line, i) => {
+      for (const [name, re] of CODE_AXIS) {
+        re.lastIndex = 0;
+        const n = (line.match(re) || []).length;
+        for (let k = 0; k < n; k += 1) hits.push({ line: i + 1, sign: name, text: line.trim().slice(0, 100) });
+      }
+    });
+    if (hits.length) codeFound.set(rel, hits);
+  }
+}
+for (const [file, hits] of codeFound) {
+  found.set(file, [...(found.get(file) || []), ...hits]);
+}
+
 const counts = Object.fromEntries([...found].map(([f, h]) => [f, h.length]).sort());
 const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
@@ -109,10 +156,11 @@ for (const [file, max] of Object.entries(ceiling)) {
   if (!(file in counts) && max > 0) shrank.push(`${file}: 0 (стеля ${max})`);
 }
 
-console.log(`currency-literals: ${total} знаків валюти у ${found.size} файлах екранів (стеля: ${Object.values(ceiling).reduce((a, b) => a + b, 0)} у ${Object.keys(ceiling).length})`);
+console.log(`currency-literals: ${total} місць у ${found.size} файлах — знак на екрані і код у логіці (стеля: ${Object.values(ceiling).reduce((a, b) => a + b, 0)} у ${Object.keys(ceiling).length})`);
 
 if (grew.length) {
-  console.error('\n  ✗ знак валюти зашито в екран — візьміть валюту готелю (useHotelCurrency), не клавіатуру:');
+  console.error('\n  ✗ валюта зашита в код. На екрані — беріть `useHotelCurrency()`;'
+    + ' у логіці — валюту організації (`organizationCurrency`), не літерал:');
   for (const l of grew) console.error(`      ${l}`);
   for (const l of grew) {
     const file = l.split(':')[0];
@@ -125,4 +173,4 @@ if (shrank.length) {
   for (const l of shrank) console.error(`      ${l}`);
   process.exit(1);
 }
-console.log('  чисто — жоден екран не вигадав валюти понад стелю');
+console.log('  чисто — ні екран, ні логіка не вигадали валюти понад стелю');

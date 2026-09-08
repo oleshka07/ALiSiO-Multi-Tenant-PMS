@@ -404,7 +404,14 @@ async function main() {
         // операцію на чужу статтю, і побачити це можна лише маючи два плани.
         const logRes = await call(r.cookie, '/api/finance/log?limit=50');
         const log = await body(logRes);
-        const rows = Array.isArray(log) ? log : (log?.items ?? log?.operations ?? []);
+        // Ключ `transactions` — той, який маршрут ВІДДАЄ (`log.handlers.ts`).
+        // Тут стояло `items ?? operations`, тобто імена, яких він не повертав
+        // ніколи; помітити це було неможливо, доки оплата падала 500-м раніше
+        // (INC-028, ланка 3). `items`/`operations` лишені для сумісності, якщо
+        // форма колись зміниться, але перший — реальний.
+        const rows = Array.isArray(log)
+          ? log
+          : (log?.transactions ?? log?.items ?? log?.operations ?? []);
         const op = rows.find((x) => x.reservation_id === r.booking.id);
         claim('план рахунків', !!op,
           `оплата готелю ${r.h.key} лишила рядок у журналі фінансів (${op ? 'є' : 'НЕМАЄ'})`);
