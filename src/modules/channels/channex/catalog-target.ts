@@ -151,6 +151,8 @@ export function channexCatalogTarget(client: ChannexClient, key: string): Catalo
         ...(property.email ? { email: property.email } : {}),
         ...(property.phone ? { phone: property.phone } : {}),
         ...(property.timezone ? { timezone: property.timezone } : {}),
+        // Вендор: «affects billing», і просив виставити перед продакшном.
+        ...(property.propertyType ? { property_type: property.propertyType } : {}),
       });
     },
 

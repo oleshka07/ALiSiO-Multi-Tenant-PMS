@@ -90,8 +90,13 @@ const onlyIn = (a, b) => a.filter((line) => !b.includes(line));
 const missingFromSchema = onlyIn(migrated, fresh);   // міграція дала, schema.sql — ні
 const missingFromMigrations = onlyIn(fresh, migrated); // schema.sql має, міграція не принесе
 
+// Заголовок називає ПИТАННЯ, а не відповідь. Тут стояло «SCHEMA.SQL І
+// МІГРАЦІЇ РОЗІЙШЛИСЯ» — і друкувалось до порівняння, тобто на зеленому
+// прогоні гейт повідомляв про розбіжність, якої не було, а через рядок сам
+// себе спростовував. Той самий клас, що Р11.1: текст стверджує не те, що
+// сталося, і читач вірить тексту.
 console.log('═'.repeat(78));
-console.log('SCHEMA.SQL І МІГРАЦІЇ РОЗІЙШЛИСЯ — має бути нуль');
+console.log('SCHEMA.SQL ПРОТИ МІГРАЦІЙ — розбіжностей має бути нуль');
 console.log('═'.repeat(78));
 console.log();
 
@@ -102,6 +107,9 @@ if (!missingFromSchema.length && !missingFromMigrations.length) {
     `${fresh.filter((l) => l.startsWith('constraint|')).length} обмежень`);
   process.exit(0);
 }
+
+console.log('  РОЗІЙШЛИСЯ.');
+console.log();
 
 if (missingFromSchema.length) {
   console.log('  Міграція це створює, а schema.sql — ні.');

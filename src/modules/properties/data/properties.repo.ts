@@ -1,4 +1,9 @@
 import { getSql } from '@core/db/async';
+// Не через фасад `@channels`: він тягне серверні хендлери, а з ними
+// `next/server`, якого немає в прод-образі — `scripts/apply-hotel.mjs`
+// імпортує цей файл голим node і падав би на заведенні готелю
+// (`check-entry-imports`). Парадна для React і для скриптів — `ui/`.
+import { CHANNEL_PROPERTY_TYPES, isChannelPropertyType } from '@/modules/channels/ui/property-types';
 import { unitColumnsSql } from './units.repo';
 
 /**
@@ -99,28 +104,54 @@ export interface CreatePropertyInput {
   email?: string;
   check_in_time?: string;
   check_out_time?: string;
+  /** Рід житла для каналу; порожнє значення означає «готель ще не назвався». */
+  property_type?: string | null;
 }
 
 export async function createProperty(organizationId: string, input: CreatePropertyInput) {
   const sql = getSql();
+  // Той самий перелік, що й у `updateProperty`, і з тієї ж причини: форма
+  // обʼєкта одна на створення й на правку, тож тип, набраний при створенні,
+  // мовчки губився б, якби писач його не приймав.
+  const propertyType = validPropertyType(input.property_type);
   const result = await sql.row<any>(
     `
-    INSERT INTO properties (organization_id, name, slug, address, city, country, phone, email, check_in_time, check_out_time)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO properties (organization_id, name, slug, address, city, country, phone, email, check_in_time, check_out_time, property_type)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     RETURNING *`,
     [organizationId, input.name, input.slug,
     input.address ?? null, input.city ?? null, input.country ?? 'CZ',
     input.phone ?? null, input.email ?? null,
-    input.check_in_time ?? '15:00', input.check_out_time ?? '11:00'],
+    input.check_in_time ?? '15:00', input.check_out_time ?? '11:00',
+    propertyType],
   );
   return result;
+}
+
+/**
+ * Тип житла з переліку вендора — або названа відмова.
+ *
+ * Звіряє писач, а не CHECK бази: перелік чужий і може зрости
+ * (`@channels/ui/property-types`). Порожній рядок означає «ще не названо» і
+ * стає NULL — інакше в колонці лежало б `''`, і каталог вважав би рід
+ * названим (`catalog-sync` перевіряє саме порожнечу).
+ */
+function validPropertyType(value: unknown): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  if (!isChannelPropertyType(value)) {
+    throw new Error(`property_type must be one of: ${CHANNEL_PROPERTY_TYPES.join(', ')}`);
+  }
+  return value;
 }
 
 export async function updateProperty(organizationId: string, id: string, fields: Record<string, unknown>) {
   const sql = getSql();
   if (!await owns(organizationId, id)) return null;
 
-  const allowed = ['name', 'slug', 'address', 'city', 'country', 'phone', 'email', 'check_in_time', 'check_out_time', 'city_tax_per_night', 'is_active', 'checkout_balance_policy'];
+  const allowed = ['name', 'slug', 'address', 'city', 'country', 'phone', 'email', 'check_in_time', 'check_out_time', 'city_tax_per_night', 'is_active', 'checkout_balance_policy', 'property_type'];
+  if (fields.property_type !== undefined) {
+    fields = { ...fields, property_type: validPropertyType(fields.property_type) };
+  }
   // Політика виселення з боргом (0091) — одне з трьох слів. Звіряє писач, а
   // не лише CHECK бази: на SQLite обмеження до наявної таблиці не додати.
   if (fields.checkout_balance_policy !== undefined

@@ -164,6 +164,15 @@ function buildSchema(database: any) {
       -- додає обмеження через ALTER; писач звіряє значення сам.
       checkout_balance_policy TEXT NOT NULL DEFAULT 'warning'
         CHECK (checkout_balance_policy IN ('none', 'warning', 'blocking')),
+      -- Що це за житло: готель, апартаменти, гостьовий дім, хостел…
+      -- БЕЗ DEFAULT навмисно, і це не забудькуватість. Вендор каналу пише
+      -- прямо: property_type «affects billing», а для готелю на 1-15 номерів
+      -- «hotel» неправдиве частіше, ніж правдиве. Мовчазний дефолт тут — це
+      -- чужий рахунок, виставлений за нашим припущенням; тому колонка
+      -- порожня, поки готель не назве себе сам, а каталог без неї відмовляє
+      -- (інваріант 20: значення належить готелю, не константі в коді).
+      -- І тут, і в ALTER нижче (AGENTS §4).
+      property_type TEXT,
       UNIQUE(organization_id, slug)
     );
 
@@ -6968,6 +6977,12 @@ function runMigrations(database: any) {
     if (!propCols.includes('checkout_balance_policy')) {
       database.exec("ALTER TABLE properties ADD COLUMN checkout_balance_policy TEXT NOT NULL DEFAULT 'warning'");
       console.log('[DB] Added checkout_balance_policy to properties');
+    }
+    if (!propCols.includes('property_type')) {
+      // Без DEFAULT: див. коментар у CREATE. Наявні обʼєкти лишаються
+      // порожніми і мусять назватись — це видно на екрані, а не вгадується.
+      database.exec('ALTER TABLE properties ADD COLUMN property_type TEXT');
+      console.log('[DB] Added property_type to properties');
     }
   } catch (e: any) {
     console.error('[DB] properties checkout_balance_policy:', e.message);

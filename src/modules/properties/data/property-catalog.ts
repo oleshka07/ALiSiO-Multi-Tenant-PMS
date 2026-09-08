@@ -46,6 +46,23 @@ export interface CatalogPropertyRow {
   address: string | null;
   email: string | null;
   phone: string | null;
+  /**
+   * Тип житла словами вендора каналу (`hotel`, `apartment`, `guest_house`…).
+   *
+   * `null`, поки готель не назвався. Не підставляється дефолтом: вендор каже,
+   * що це поле «affects billing», а для готелю на 1-15 номерів «hotel»
+   * неправдиве частіше, ніж правдиве.
+   */
+  propertyType: string | null;
+  /**
+   * Часовий пояс ГОТЕЛЮ — з `organizations`, бо там він і живе (колонки на
+   * `properties` немає, і це свідомо: для готелю на 1-15 номерів організація
+   * і є готель, як у `pricing_advanced`).
+   *
+   * Каналу він потрібен не для краси: канал торгує ДАТАМИ заїзду, і зсунута
+   * межа доби це зсунуті броні.
+   */
+  timezone: string;
 }
 
 /** Обʼєкт орендаря. `null`, якщо це чужий обʼєкт або його немає. */
@@ -54,10 +71,14 @@ export async function catalogProperty(propertyId: string): Promise<CatalogProper
   if (!organizationId) throw new Error('property catalog: read without a tenant');
 
   const sql = getSql();
+  // Пояс приєднується з організації тим самим читанням: окремий запит тут
+  // означав би, що обʼєкт і його пояс можуть розійтися між рядками.
   const row = await sql.row<any>(
-    `SELECT id, name, city, country, address, email, phone
-       FROM properties
-      WHERE id = ? AND organization_id = ?`,
+    `SELECT p.id, p.name, p.city, p.country, p.address, p.email, p.phone, p.property_type,
+            o.timezone
+       FROM properties p
+       JOIN organizations o ON o.id = p.organization_id
+      WHERE p.id = ? AND p.organization_id = ?`,
     [propertyId, organizationId],
   ) as Record<string, unknown> | undefined;
 
@@ -70,6 +91,8 @@ export async function catalogProperty(propertyId: string): Promise<CatalogProper
     address: row.address == null ? null : String(row.address),
     email: row.email == null ? null : String(row.email),
     phone: row.phone == null ? null : String(row.phone),
+    propertyType: row.property_type == null ? null : String(row.property_type),
+    timezone: String(row.timezone),
   };
 }
 

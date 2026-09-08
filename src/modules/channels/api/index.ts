@@ -37,3 +37,13 @@ export {
 } from './webhook-admin.handlers';
 export { recordVendorResponses } from '../providers';
 export type { VendorResponseSample } from '../providers';
+
+/**
+ * Типи житла, які приймає канал — перелік вендора одним списком.
+ *
+ * Живе в каналах, бо це їхнє знання, але потрібне ще й писачу обʼєкта і
+ * екрану: тип впливає на рахунок вендора, тож його називає готель, а не
+ * здогад коду (інваріант 20).
+ */
+export { CHANNEL_PROPERTY_TYPES, isChannelPropertyType } from '../ui/property-types';
+export type { ChannelPropertyType } from '../ui/property-types';

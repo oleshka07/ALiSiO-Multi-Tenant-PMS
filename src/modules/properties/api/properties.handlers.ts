@@ -28,14 +28,14 @@ export const listProperties = withActor(async (_req, _ctx, actor: Actor) => {
 export const createProperty = withPermission('manage_properties', async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const body = await request.json();
-    const { name, slug, address, city, country, phone, email, check_in_time, check_out_time } = body;
+    const { name, slug, address, city, country, phone, email, check_in_time, check_out_time, property_type } = body;
 
     if (!name || !slug) {
       return NextResponse.json({ error: 'Name and slug are required' }, { status: 400 });
     }
 
     const created = await propertiesRepo.createProperty(actor.organizationId, {
-      name, slug, address, city, country, phone, email, check_in_time, check_out_time,
+      name, slug, address, city, country, phone, email, check_in_time, check_out_time, property_type,
     });
     return NextResponse.json(created, { status: 201 });
   } catch (error: unknown) {

@@ -11,6 +11,13 @@
  * Czech — prices, invoices, the widget and guest emails all in koruna, with no
  * error anywhere.
  *
+ * --timezone or --country: одне з двох обовʼязкове, і мовчазного дефолту
+ * більше немає. Пояс вирішує, де проходить межа доби — приїзди, виїзди,
+ * нічний архів неявок і дати, якими торгує канал; `'Europe/Prague'` за
+ * замовчуванням помилявся на годину для кожного українського готелю. Країна з
+ * ОДНИМ поясом (UA, CZ, PL, DE, …) дає його сама, і скрипт друкує висновок на
+ * підтвердження; країна з кількома (US, ES, PT, FR, RU) вимагає --timezone.
+ *
  * --language is the hotel's base language: uk en de cs pl nl fr. It sets the
  * interface for its staff and the source language of its content, so a German
  * customer is created with --language de, not corrected afterwards.
@@ -39,7 +46,8 @@ const currency = arg('currency');
 
 if (!name || !slug || !email || !currency) {
   console.error('Потрібно: --name "Назва" --slug slug --email owner@example.com --currency CZK');
-  console.error('Необовʼязково: --password --city --country --timezone --language --property --enable');
+  console.error('І одне з двох: --timezone Europe/Kyiv  або  --country UA (пояс виведеться з країни)');
+  console.error('Необовʼязково: --password --city --language --property --enable');
   process.exit(2);
 }
 
@@ -79,12 +87,19 @@ console.log(`  organization_id  ${result.organizationId}`);
 console.log(`  property_id      ${result.propertyId}`);
 console.log(`  owner            ${email}`);
 console.log(`  базова мова      ${result.language}`);
+console.log(`  часовий пояс     ${result.timezone}${result.timezoneFrom === 'country' ? '  ← виведено з країни' : ''}`);
 if (generated) {
   console.log(`  пароль           ${password}`);
   console.log();
   console.log('  Пароль показано ОДИН раз — збережіть його зараз.');
 }
 console.log();
+if (result.timezoneFrom === 'country') {
+  console.log('  Часовий пояс НЕ називали — його виведено з країни. Він вирішує, де');
+  console.log('  проходить межа доби: приїзди, виїзди і дати, якими торгує канал.');
+  console.log('  Перевірте його з готелем — Налаштування → Загальні.');
+  console.log();
+}
 console.log('  Базова мова діє на весь готель: інтерфейс персоналу, мова, якою');
 console.log('  вводиться контент, і джерело перекладів для гостей. Окрема людина');
 console.log('  може обрати свою — Налаштування → Користувачі та ролі.');

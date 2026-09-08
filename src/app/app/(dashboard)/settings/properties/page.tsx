@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import PropertyRequired from '@/components/layout/PropertyRequired';
 import { EmptyState, LoadingState } from '@/components/ui/State';
+import { CHANNEL_PROPERTY_TYPES } from '@/modules/channels/ui/property-types';
 import {
   Building2, Edit3, Trash2, Plus, Save, X, Check, Search,
   ChevronRight, ChevronDown, Tent, TreePine, BedDouble,
@@ -22,6 +23,8 @@ interface PropertyRow extends AnyRow {
   country?: string; phone?: string; email?: string;
   check_in_time: string; check_out_time: string; city_tax_per_night?: number; is_active: number;
   checkout_balance_policy?: 'none' | 'warning' | 'blocking';
+  /** Рід житла для каналу; поки готель не назвався — NULL. Див. поле нижче. */
+  property_type?: string | null;
   category_count: number; unit_count: number; unit_type_count: number;
 }
 
@@ -166,7 +169,9 @@ export default function SettingsPropertiesPage() {
   // country deliberately empty: jurisdiction (Meldeschein, invoice language,
   // the fiscal till) hangs off it, so it must be chosen, not inherited from
   // the first customer's default.
-  const [propForm, setPropForm] = useState({ name: '', slug: '', address: '', city: '', country: '', phone: '', email: '', check_in_time: '15:00', check_out_time: '10:00', city_tax_per_night: 0, checkout_balance_policy: 'warning' as 'none' | 'warning' | 'blocking' });
+  // property_type deliberately empty: see the field in the property modal —
+  // the vendor bills by it, so guessing "hotel" for a campsite is not ours to do.
+  const [propForm, setPropForm] = useState({ name: '', slug: '', address: '', city: '', country: '', phone: '', email: '', check_in_time: '15:00', check_out_time: '10:00', city_tax_per_night: 0, checkout_balance_policy: 'warning' as 'none' | 'warning' | 'blocking', property_type: '' });
   const [catForm, setCatForm] = useState({ name: '', type: 'hotel', description: '', icon: '🏨', color: '#60a5fa', sort_order: 0, show_in_tasks: 1, show_in_finance: 0, show_in_booking: 1 });
   const [utForm, setUtForm] = useState({ category_id: '', name: '', code: '', max_adults: 2, max_children: 2, max_occupancy: 4, base_occupancy: 2, beds_single: 0, beds_double: 1, beds_sofa: 0, extra_bed_available: 0, sort_order: 0 });
   const [unitForm, setUnitForm] = useState({ unit_type_id: '', category_id: '', name: '', code: '', beds: 2, floor: '', zone: '', notes: '', sort_order: 0 });
@@ -251,10 +256,11 @@ export default function SettingsPropertiesPage() {
         check_in_time: p.check_in_time, check_out_time: p.check_out_time,
         city_tax_per_night: p.city_tax_per_night ?? 0,
         checkout_balance_policy: p.checkout_balance_policy ?? 'warning',
+        property_type: p.property_type ?? '',
       });
     } else {
       setEditId(null);
-      setPropForm({ name: '', slug: '', address: '', city: '', country: 'CZ', phone: '', email: '', check_in_time: '15:00', check_out_time: '10:00', city_tax_per_night: 0, checkout_balance_policy: 'warning' });
+      setPropForm({ name: '', slug: '', address: '', city: '', country: 'CZ', phone: '', email: '', check_in_time: '15:00', check_out_time: '10:00', city_tax_per_night: 0, checkout_balance_policy: 'warning', property_type: '' });
     }
     setModal('property');
   };
@@ -876,6 +882,26 @@ export default function SettingsPropertiesPage() {
                 <option value="blocking">{tUi('Заборонити виселення з боргом')}</option>
               </select>
               <div className="form-hint">{tUi('Борг рахується з рахунку броні; без рахунку — зі статусу оплати.')}</div>
+            </div>
+          </div>
+          {/* Рід житла для каналу продажів (0113).
+              Значення НАЛЕЖИТЬ готелю, а не коду: кемпінг, апартаменти й
+              готель — це різні рядки в рахунку вендора («affects billing»),
+              тож «hotel» за замовчуванням поставило б кемпінгу чужий тариф.
+              Порожній пункт названий словами: поки готель не назвався,
+              каталог відмовляє з поясненням, а не вигадує рід.
+              Значення — вендорські коди, і вони НЕ перекладаються, як не
+              перекладається ISO-код валюти: перелік чужий і може зрости
+              (той самий підхід, що в підказках типу категорії вище). */}
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">{tUi('Рід житла (для каналів)')}</label>
+              <select className="form-select" value={propForm.property_type}
+                onChange={e => setPropForm(p => ({ ...p, property_type: e.target.value }))}>
+                <option value="">{tUi('— не вказано —')}</option>
+                {CHANNEL_PROPERTY_TYPES.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+              <div className="form-hint">{tUi('Вендор каналу рахує за цим тариф. Поки не вказано — каталог у канал не поїде.')}</div>
             </div>
           </div>
         </Modal>

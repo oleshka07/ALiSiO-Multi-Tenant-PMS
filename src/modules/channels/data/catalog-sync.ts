@@ -88,6 +88,12 @@ export async function syncConnectionCatalog(
 
   const property = await catalogProperty(connection.propertyId);
   if (!property) throw new Error('catalog: property not found');
+  // Названа відмова, а не тихий здогад. Тип житла впливає на рахунок, який
+  // вендор виставить ГОТЕЛЮ; підставити тут 'hotel' означало б заплатити за
+  // нього його ж грошима. Інваріант 13: не знайшли — відмовляємо.
+  if (!property.propertyType) {
+    throw new Error('catalog: property_type is not set — the hotel must say what kind of lodging it is');
+  }
 
   const unitTypes = await catalogUnitTypes(connection.propertyId);
   const ratePlans = await propertyRatePlans(connection.propertyId);
@@ -126,6 +132,11 @@ export async function syncConnectionCatalog(
       address: property.address,
       email: property.email,
       phone: property.phone,
+      // Обидва — вимога вендора перед продакшном, і обидва мовчали: типу не
+      // існувало ніде, а пояс ВИГЛЯДАВ відправленим (умовний спред у
+      // `catalog-target`), бо сюди його ніхто не клав.
+      timezone: property.timezone,
+      propertyType: property.propertyType,
     },
     unitTypes: catalogUnits,
     ratePlans: catalogPlans,

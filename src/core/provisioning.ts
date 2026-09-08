@@ -7,6 +7,7 @@ import { runWithOrganization } from './auth/tenant-context.ts';
 import { DEFAULT_LANGUAGE, LANGUAGE_CODES, isLanguage } from './i18n/languages.ts';
 import { defaultBookingSources } from './booking-sources.ts';
 import { CHART_OF_ACCOUNTS, BUSINESS_UNITS } from './chart-of-accounts.ts';
+import { timezoneForCountry, isKnownTimezone } from './hotel-day.ts';
 
 /**
  * Creating a customer.
@@ -65,6 +66,14 @@ export interface ProvisionedOrganization {
   propertyId: string;
   ownerId: string;
   language: string;
+  /** Пояс, який реально ліг у базу. */
+  timezone: string;
+  /**
+   * Звідки він узявся: `input` — назвав оператор, `country` — виведено з
+   * країни. Повертається, щоб той, хто заводить готель, МІГ ПОКАЗАТИ висновок
+   * на підтвердження, а не видати його за введене.
+   */
+  timezoneFrom: 'input' | 'country';
 }
 
 /**
@@ -145,6 +154,36 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
     throw new Error('currency is required: three letters, ISO 4217 (CZK, EUR, UAH, …)');
   }
 
+  // Часовий пояс — за тим самим правилом, і ціна помилки тут вища за валюту.
+  //
+  // Тут стояло `input.timezone || 'Europe/Prague'`. Пояс вирішує, де
+  // проходить МЕЖА ДОБИ: списки приїздів і виїздів, нічний архів неявок,
+  // «сьогодні» на кожному екрані — і, головне, дати, якими торгує канал.
+  // Український готель із празьким поясом продає не ті дні, і жодної помилки
+  // при цьому не видно: колонка заповнена, значення схоже на правду. Вендор
+  // каналу тому й пише «Make sure you set … timezone when you create a
+  // property».
+  //
+  // Два шляхи, і обидва явні: пояс називають, або його ВИВОДЯТЬ із країни —
+  // і тоді той, хто заводить готель, показує висновок на підтвердження
+  // (`timezoneFrom`). Третього — мовчазного — немає.
+  let timezone = input.timezone?.trim();
+  let timezoneFrom: 'input' | 'country' = 'input';
+  if (!timezone) {
+    timezone = timezoneForCountry(input.country) ?? undefined;
+    timezoneFrom = 'country';
+  }
+  if (!timezone) {
+    throw new Error(
+      'timezone is required: pass it explicitly, or a country whose timezone is unambiguous '
+      + '(UA, CZ, PL, DE, … — countries with several zones, like US or ES, must name the zone)');
+  }
+  // Вигаданий пояс не записується: `todayIn` з нього мовчки падає на UTC, і
+  // готель отримує «сьогодні» за Гринвічем, не помітивши цього.
+  if (!isKnownTimezone(timezone)) {
+    throw new Error(`timezone "${timezone}" is not a known IANA zone (Europe/Kyiv, Europe/Prague, …)`);
+  }
+
   // Checked before the transaction so the caller gets the real reason rather
   // than a UNIQUE constraint message.
   if (await sql.row<any>('SELECT 1 FROM organizations WHERE slug = ?', [slug])) {
@@ -173,7 +212,7 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
     await t.run(`
       INSERT INTO organizations (id, name, slug, timezone, default_currency, language)
       VALUES (?, ?, ?, ?, ?, ?)
-    `, [organizationId, name, slug, input.timezone || 'Europe/Prague', currency, language]);
+    `, [organizationId, name, slug, timezone, currency, language]);
 
     // Currency lives on the organization; a property carries location and
     // times. (getOrgIdentity and the ARI push both read it from there.)
@@ -315,5 +354,5 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
     // шлях, яким його отримують готелі, заведені до 0111.
   }));
 
-  return { organizationId, propertyId, ownerId, language };
+  return { organizationId, propertyId, ownerId, language, timezone, timezoneFrom };
 }

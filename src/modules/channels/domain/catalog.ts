@@ -56,6 +56,13 @@ export interface CatalogProperty {
   email?: string | null;
   phone?: string | null;
   timezone?: string | null;
+  /**
+   * Тип житла словами вендора: `hotel`, `apartment`, `guest_house`, `hostel`…
+   *
+   * Обовʼязкове для нас, хоч у вендора «optional»: воно впливає на його
+   * рахунок готелю. Порожнє — каталог відмовляє, а не їде з нашим здогадом.
+   */
+  propertyType?: string | null;
 }
 
 /** Тип номера, як його треба завести на тому боці. */

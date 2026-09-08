@@ -83,6 +83,63 @@ export function shiftMonths(day: string, months: number): string {
 }
 
 /**
+ * Часовий пояс країни — там, де він у країни ОДИН.
+ *
+ * Навіщо: `organizations.timezone` вирішує, де проходить межа доби, а канал
+ * торгує саме датами заїзду. Готель, заведений без пояса, отримував
+ * `'Europe/Prague'` — і для українського готелю це не косметика: доба
+ * закінчується на годину раніше, тобто «сьогодні» в списках приїздів і
+ * виїздів, у нічному архіві неявок і в каталозі, який їде вендору, — чуже.
+ *
+ * Чому мапа, а не бібліотека: потрібен один факт про країну, і він рідко
+ * змінюється. Повний реєстр IANA важить мегабайти і тягне своє оновлення.
+ *
+ * Чому не всі країни: у переліку лише ті, де пояс ОДИН. Іспанія (материк і
+ * Канари), Португалія (Азори), Франція, США, Росія, Казахстан, Бразилія,
+ * Австралія, Канада мають по кілька — здогад для них був би тим самим
+ * мовчазним дефолтом, лише з іншим числом. Для них пояс називають явно, і
+ * заведення відмовляє, поки його не назвали.
+ *
+ * Це НЕ порушення інваріанта 22 («юрисдикція — модуль, ядро нейтральне»):
+ * тут немає правил країни — ні податку, ні документа, ні чека. Тут факт
+ * календаря, того самого роду, що код валюти ISO 4217. Правила лишаються в
+ * модулях юрисдикції.
+ */
+const COUNTRY_TIMEZONE: Record<string, string> = {
+  UA: 'Europe/Kyiv', CZ: 'Europe/Prague', SK: 'Europe/Bratislava',
+  PL: 'Europe/Warsaw', DE: 'Europe/Berlin', AT: 'Europe/Vienna',
+  HU: 'Europe/Budapest', SI: 'Europe/Ljubljana', HR: 'Europe/Zagreb',
+  RS: 'Europe/Belgrade', BA: 'Europe/Sarajevo', ME: 'Europe/Podgorica',
+  MK: 'Europe/Skopje', AL: 'Europe/Tirane', RO: 'Europe/Bucharest',
+  BG: 'Europe/Sofia', GR: 'Europe/Athens', IT: 'Europe/Rome',
+  NL: 'Europe/Amsterdam', BE: 'Europe/Brussels', LU: 'Europe/Luxembourg',
+  DK: 'Europe/Copenhagen', SE: 'Europe/Stockholm', NO: 'Europe/Oslo',
+  FI: 'Europe/Helsinki', EE: 'Europe/Tallinn', LV: 'Europe/Riga',
+  LT: 'Europe/Vilnius', IE: 'Europe/Dublin', GB: 'Europe/London',
+  CH: 'Europe/Zurich', TR: 'Europe/Istanbul', CY: 'Asia/Nicosia',
+  MT: 'Europe/Malta', MD: 'Europe/Chisinau', IS: 'Atlantic/Reykjavik',
+  GE: 'Asia/Tbilisi', AM: 'Asia/Yerevan', AZ: 'Asia/Baku',
+};
+
+/** Пояс країни, або `null` — країна невідома чи має кілька поясів. */
+export function timezoneForCountry(country: string | null | undefined): string | null {
+  const code = country?.trim().toUpperCase();
+  if (!code) return null;
+  return COUNTRY_TIMEZONE[code] ?? null;
+}
+
+/** Чи знає система такий пояс. Порожнє й вигадане — ні. */
+export function isKnownTimezone(timezone: string | null | undefined): boolean {
+  if (!timezone) return false;
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: timezone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * The organization's timezone, or the schema default.
  *
  * Cached per call site rather than globally: this is one indexed read by

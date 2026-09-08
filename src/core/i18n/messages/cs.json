@@ -1,4 +1,5 @@
 {
+  "— не вказано —": "— neuvedeno —",
   "% в минулому": "% v minulosti",
   "% від ціни ночі": "% z ceny noci",
   "% оплачено": "% zaplaceno",
@@ -59,6 +60,8 @@
   "50 записів": "50 záznamů",
   "6 місяців": "6 měsíců",
   "= Чистий потік": "= Čistý tok",
+  "Вендор каналу рахує за цим тариф. Поки не вказано — каталог у канал не поїде.": "Poskytovatel kanálu podle toho účtuje. Dokud není uvedeno, katalog do kanálu nepůjde.",
+  "Рід житла (для каналів)": "Druh ubytování (pro kanály)",
   "AI Асистент (Ctrl+K)": "AI asistent (Ctrl+K)",
   "AI База знань": "AI znalostní báze",
   "API Інтеграції": "API integrace",

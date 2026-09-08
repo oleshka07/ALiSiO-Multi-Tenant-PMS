@@ -129,10 +129,16 @@ const day = (n) => { const d = new Date(); d.setUTCDate(d.getUTCDate() + n); ret
  * числом, а й валютою. Ціни теж різні й несумісні: 120 × 2 = 240 проти
  * 200 × 2 = 400 — «узяли ціну сусіда» не може дати ту саму відповідь
  * (інваріант 26).
+ *
+ * Часові пояси теж різні, і теж не для симетрії: заведення більше не має
+ * мовчазного `'Europe/Prague'` — пояс або називають, або виводять із країни,
+ * інакше названа відмова (`provisioning-timezone.check`). Тут він названий
+ * явно: країна обʼєкта вирішує ще й ЮРИСДИКЦІЮ документа, і міняти її заради
+ * пояса означало б міняти те, про що прохід не збирався стверджувати.
  */
 const HOTELS = [
-  { key: 'A', slug: `${SLUG_TAG}-alpha`, name: 'Onboarding Alpha', currency: 'EUR', price: 120, total: 240, room: '101' },
-  { key: 'B', slug: `${SLUG_TAG}-beta`, name: 'Onboarding Beta', currency: 'CZK', price: 200, total: 400, room: '201' },
+  { key: 'A', slug: `${SLUG_TAG}-alpha`, name: 'Onboarding Alpha', currency: 'EUR', timezone: 'Europe/Kyiv', price: 120, total: 240, room: '101' },
+  { key: 'B', slug: `${SLUG_TAG}-beta`, name: 'Onboarding Beta', currency: 'CZK', timezone: 'Europe/Prague', price: 200, total: 400, room: '201' },
 ];
 
 async function login(email) {
@@ -196,7 +202,7 @@ async function runHotel(h) {
   const org = await provisionOrganization({
     name: h.name, slug: h.slug,
     ownerEmail: `${h.slug}@probe.test`, ownerPassword: PROBE_PASSWORD,
-    currency: h.currency, language: 'uk',
+    currency: h.currency, language: 'uk', timezone: h.timezone,
   });
   claim(fam, !!org.organizationId && !!org.propertyId,
     `заведено організацію й обʼєкт (${org.organizationId ? 'є' : 'НЕМАЄ'} / ${org.propertyId ? 'є' : 'НЕМАЄ'})`);

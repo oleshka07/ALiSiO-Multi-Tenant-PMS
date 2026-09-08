@@ -1568,6 +1568,7 @@ CREATE TABLE "properties" (
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "checkout_balance_policy" TEXT DEFAULT 'warning' NOT NULL,
+  "property_type" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("organization_id", "slug"),
   CHECK (checkout_balance_policy IN ('none', 'warning', 'blocking'))

@@ -251,11 +251,17 @@ jobs:
         run: |
           node scripts/provision-org.mjs \
             --name "CI Hotel" --slug ci-hotel --email owner@ci.test \
-            --password 'ci-password-1234' --language de --currency EUR | tee /tmp/provision.txt
+            --password 'ci-password-1234' --language de --currency EUR \
+            --country DE | tee /tmp/provision.txt
           grep -qE 'organization_id +org_' /tmp/provision.txt \
             || { echo '::error::provisioning printed no organization id'; exit 1; }
           grep -qE 'базова мова +de' /tmp/provision.txt \
             || { echo '::error::the base language did not reach the organization'; exit 1; }
+          # Пояс не називали — його виводить країна, і скрипт МУСИТЬ показати
+          # висновок оператору. Мовчазна Прага для німецького готелю була б
+          # правильною випадково, тому перевіряється саме Berlin.
+          grep -qE 'часовий пояс +Europe/Berlin' /tmp/provision.txt \
+            || { echo '::error::the timezone was not derived from the country'; exit 1; }
 
       - name: start
         env:
