@@ -13,6 +13,7 @@
  */
 import assert from 'node:assert';
 import { getSql } from '../src/core/db/async.ts';
+import { nameResolver, missingFrom } from './lib/db-names.mjs';
 
 const BASE = process.env.BASE_URL || 'http://localhost:3000';
 const TAG = '__isolation_check__';
@@ -48,7 +49,53 @@ async function makeTenant(suffix) {
   return { orgId, userId, email, password: PROBE_PASSWORD };
 }
 
+/**
+ * Імена, які прибирання називало під мовчазним `catch` — тепер списком, щоб
+ * звірити їх з базою НАПЕРЕД (Р10.13).
+ *
+ * Вісім `try { … } catch { /* table may not exist *\/ }` пояснювались тим, що
+ * база може бути старшою за міграцію. Виміряно на обох двигунах: усі дев'ять
+ * імен є і на свіжому Postgres (schema.sql + усі міграції), і в SQLite. Тобто
+ * виправдання не покривало жодного з них — рівно як два мертвих імені в
+ * `check-routes-live`, які той самий шаблон ховав від першого коміту.
+ *
+ * Тому мовчання прибрано: ім'я, якого база не знає, називається до першого
+ * `DELETE`, а не ковтається на кожному прогоні.
+ */
+const CLEANUP_NAMES = [
+  { table: 'fees_taxes', column: 'property_id' },
+  { table: 'waitlist', column: 'site_id' },
+  { table: 'site_incoming_leads', column: 'site_id' },
+  { table: 'booking_sites', column: 'slug' },
+  { table: 'organization_features', column: 'organization_id' },
+  { table: 'unit_type_amenities', column: 'organization_id' },
+  { table: 'property_amenities', column: 'organization_id' },
+  { table: 'amenities', column: 'organization_id' },
+  { table: 'amenity_categories', column: 'organization_id' },
+];
+
+/** До першого резолву прибирання нічого не фільтрує. */
+let resolves = () => true;
+
+/**
+ * Прибрати лише те, чиї імена база знає; про решту СКАЗАТИ, а не змовчати.
+ *
+ * `needs` — імена, від яких залежить цей запит (у підзапитах їх два).
+ */
+const sweep = async (needs, what, run) => {
+  const absent = needs.filter(({ table, column }) => !resolves(table, column));
+  if (absent.length) {
+    console.log(`  ··  прибирання ${what}: пропущено — ${absent.map((n) => `${n.table}.${n.column}`).join(', ')}`);
+    return;
+  }
+  await run();
+};
+
 async function cleanup() {
+  resolves = await nameResolver(sql);
+  const missing = missingFrom(resolves, CLEANUP_NAMES);
+  assert.ok(missing.length === 0, `прибирання називає те, чого немає в цій базі: ${missing.join('; ')}`);
+
   // Children first: foreign keys are ON.
   await sql.run('DELETE FROM channel_credentials WHERE organization_id LIKE ?', [`${TAG}%`]);
   await sql.run('DELETE FROM fin_operation_audit WHERE organization_id LIKE ?', [`${TAG}%`]);
@@ -76,27 +123,32 @@ async function cleanup() {
     // Збори тримає FK на обʼєкт, тож вони мусять піти першими — інакше
     // прибирання падає на DELETE properties, і наступний прогін проби
     // стартує в базі, засміченій попереднім.
-    try { await sql.run('DELETE FROM fees_taxes WHERE property_id = ?', [pid]); } catch { /* table may not exist */ }
+    await sweep([{ table: 'fees_taxes', column: 'property_id' }], 'fees_taxes',
+      () => sql.run('DELETE FROM fees_taxes WHERE property_id = ?', [pid]));
     await sql.run('DELETE FROM unit_types WHERE property_id = ?', [pid]);
     await sql.run('DELETE FROM categories WHERE property_id = ?', [pid]);
   }
   await sql.run('DELETE FROM properties WHERE organization_id LIKE ?', [`${TAG}%`]);
-  try { await sql.run('DELETE FROM waitlist WHERE site_id IN (SELECT id FROM booking_sites WHERE slug LIKE ?)', [`${TAG}%`]); } catch { /* table may not exist */ }
+  await sweep([{ table: 'waitlist', column: 'site_id' }, { table: 'booking_sites', column: 'slug' }], 'waitlist',
+    () => sql.run('DELETE FROM waitlist WHERE site_id IN (SELECT id FROM booking_sites WHERE slug LIKE ?)', [`${TAG}%`]));
   // Two clauses: the row this file inserts carries a TAG id, but the rows the
   // capture route creates get a server-side id, so they are only reachable
   // through the site. Deleting by id alone left them behind, and a probe that
   // leaves rows in a customer's table is a probe nobody will run twice.
-  try { await sql.run('DELETE FROM site_incoming_leads WHERE id LIKE ?', [`${TAG}%`]); } catch { /* table may not exist */ }
-  try { await sql.run('DELETE FROM site_incoming_leads WHERE site_id IN (SELECT id FROM booking_sites WHERE slug LIKE ?)', [`${TAG}%`]); } catch { /* table may not exist */ }
-  try { await sql.run('DELETE FROM booking_sites WHERE slug LIKE ?', [`${TAG}%`]); } catch { /* table may not exist */ }
+  await sweep([{ table: 'site_incoming_leads', column: 'id' }], 'site_incoming_leads за id',
+    () => sql.run('DELETE FROM site_incoming_leads WHERE id LIKE ?', [`${TAG}%`]));
+  await sweep([{ table: 'site_incoming_leads', column: 'site_id' }, { table: 'booking_sites', column: 'slug' }], 'site_incoming_leads за сайтом',
+    () => sql.run('DELETE FROM site_incoming_leads WHERE site_id IN (SELECT id FROM booking_sites WHERE slug LIKE ?)', [`${TAG}%`]));
+  await sweep([{ table: 'booking_sites', column: 'slug' }], 'booking_sites',
+    () => sql.run('DELETE FROM booking_sites WHERE slug LIKE ?', [`${TAG}%`]));
   await sql.run('DELETE FROM finance_tags WHERE organization_id LIKE ?', [`${TAG}%`]);
-  // The app creates this table on first boot; cleanup may run against a
-  // database the new code has not touched yet.
-  try { await sql.run('DELETE FROM organization_features WHERE organization_id LIKE ?', [`${TAG}%`]); } catch { /* not yet migrated */ }
+  await sweep([{ table: 'organization_features', column: 'organization_id' }], 'organization_features',
+    () => sql.run('DELETE FROM organization_features WHERE organization_id LIKE ?', [`${TAG}%`]));
   // Зручності: призначення перед каталогом, каталог перед організацією —
   // зовнішні ключі ON.
   for (const table of ['unit_type_amenities', 'property_amenities', 'amenities', 'amenity_categories']) {
-    try { await sql.run(`DELETE FROM ${table} WHERE organization_id LIKE ?`, [`${TAG}%`]); } catch { /* not yet migrated */ }
+    await sweep([{ table, column: 'organization_id' }], table,
+      () => sql.run(`DELETE FROM ${table} WHERE organization_id LIKE ?`, [`${TAG}%`]));
   }
   await sql.run('DELETE FROM guests WHERE organization_id LIKE ?', [`${TAG}%`]);
   await sql.run('DELETE FROM app_users WHERE organization_id LIKE ?', [`${TAG}%`]);

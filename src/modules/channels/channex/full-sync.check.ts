@@ -74,9 +74,15 @@ async function cleanup() {
     await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
     await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [ORG]);
     await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [ORG]);
-    await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [PROP]);
+    // Тип ПЕРЕД тарифами — той самий порядок, що документує
+    // `verify-adapter.check` (Р10.15). Тут стояло навпаки: `rate_plans`
+    // першими. Поки жодна сцена цього гейта не сіє цін, різниці немає, бо
+    // рядків календаря немає; перша ж сцена з цінами поклала б прибирання на
+    // зовнішньому ключі — рядок календаря йде за типом каскадом і посилається
+    // на тариф, тож тариф, знятий раніше за тип, ще має посилання на себе.
     await sql.run('DELETE FROM units WHERE property_id = ?', [PROP]);
     await sql.run('DELETE FROM unit_types WHERE property_id = ?', [PROP]);
+    await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [PROP]);
     await sql.run('DELETE FROM categories WHERE property_id = ?', [PROP]);
     await sql.run('DELETE FROM properties WHERE organization_id = ?', [ORG]);
   });

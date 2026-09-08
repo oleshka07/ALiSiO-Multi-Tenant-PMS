@@ -29,7 +29,8 @@
  *
  * ── Скільки це покриває насправді (Р8.14) ────────────────────────────────
  *
- * ШІСТЬ родин, 40 тверджень, і рівно **ЧОТИРИ динамічні маршрути зі 130**:
+ * ШІСТЬ родин, **42 твердження** (39 місць виклику `claim(`, з них одне в
+ * циклі по п'ятьох полях відповіді), і рівно **ЧОТИРИ динамічні маршрути зі 130**:
  * `/api/bookings/[id]`, `/api/bookings/[id]/invoice`, `/api/guest/[token]`,
  * `/api/channels/connections/[id]/frame`. Обидві історичні вади в цьому
  * наборі є — ціль узято правильно, — але поруч із «130 динамічних» це легко
@@ -58,6 +59,7 @@
  */
 import assert from 'node:assert';
 import { getSql } from '../src/core/db/async.ts';
+import { nameResolver, missingFrom, isUnresolvedObject } from './lib/db-names.mjs';
 
 const BASE = process.env.BASE_URL || 'http://localhost:3000';
 const TAG = '__routes_live__';
@@ -84,36 +86,82 @@ const ORG = `${TAG}org`;
 const USER = `${TAG}user`;
 
 /**
- * Прибирання, яке НЕ мовчить про власний провал (Р8.16) і не пробачає
- * неіснуючого імені.
+ * Кожне ім'я, яке прибирання називає — СПИСКОМ, а не тільки всередині запиту.
  *
- * Порожній `catch` тут ховав ДВА мертвих запити, і знайшлися вони не гейтом, а
- * читанням лога postgres-контейнера в CI: `DELETE FROM invoice_items` (такої
- * таблиці немає ніде — рядки фактури лежать у `fin_invoice_lines` і ключем на
- * `invoice_id`) і `DELETE FROM accruals WHERE reservation_id` (у `accruals`
- * такої колонки немає: це нарахування витрат, не броні). Виправдання, яким
- * обгортка була пояснена — «таблиця може ще не існувати на старшій базі», —
- * не справдилось для жодного з двадцяти одного імені: на свіжій схемі всі
- * дев'ятнадцять решти резолвляться.
+ * Так його можна звірити з базою наперед, до першого `DELETE`. Ловити виняток
+ * із живого запиту недостатньо, і це ВИМІРЯНО (Р10.13): прибирання по броні
+ * виконується всередині циклу по бронях, тож на чистій базі перший `cleanup()`
+ * не виконує його ВЗАГАЛІ. Контрольний прогін: стара обгортка з мертвим іменем
+ * `invoice_items` на чистій базі виходить з НУЛЕМ — тобто ім'я, яке гейт
+ * називає, але жодного разу не виконує, лишалось неперевіреним.
  *
- * Тому імена розділені на два роди відмов:
- *
- * - **не існує** (`does not exist`, `no such table/column`) — це друкарська
- *   помилка в самому гейті, і вона ЧЕРВОНА. Живий гейт бігає проти щойно
- *   змігрованої бази (CI) або поточної бази розробника; ім'я, яке там не
- *   резолвиться, не буває «старою базою».
- * - будь-яка інша відмова — рядок у лозі, прогін іде далі: прибирання не має
- *   валити гейт, але й ховатись не має.
+ * Два мертвих імені саме такі: `invoice_items` (такої таблиці немає ніде;
+ * рядки фактури лежать у `fin_invoice_lines` і ключем на `invoice_id`) і
+ * `accruals.reservation_id` (це нарахування витрат, не броні).
  */
-const MISSING_OBJECT = /does not exist|no such table|no such column|no column named/i;
+const SWEPT_BY_RESERVATION = ['invoices', 'booking_activity_log', 'guest_registrations'];
+const SWEPT_BY_PROPERTY = ['cm_connections', 'fees_taxes'];
+const SWEPT_BY_ORG_IN_PROPERTY = ['cm_outbox', 'cm_mappings', 'cm_events', 'cm_inbound_bookings'];
+const SWEPT_BY_ORG = ['invoices', 'invoice_counters', 'invoice_series', 'guests', 'organization_features',
+  'unit_type_amenities', 'property_amenities', 'amenities', 'amenity_categories',
+  'organization_currencies', 'finance_exchange_rates'];
 
+const CLEANUP_NAMES = [
+  ...SWEPT_BY_RESERVATION.map((table) => ({ table, column: 'reservation_id' })),
+  ...SWEPT_BY_PROPERTY.map((table) => ({ table, column: 'property_id' })),
+  ...SWEPT_BY_ORG_IN_PROPERTY.map((table) => ({ table, column: 'organization_id' })),
+  ...SWEPT_BY_ORG.map((table) => ({ table, column: 'organization_id' })),
+  { table: 'reservations', column: 'property_id' },
+  { table: 'units', column: 'property_id' },
+  { table: 'unit_types', column: 'property_id' },
+  { table: 'categories', column: 'property_id' },
+  { table: 'properties', column: 'organization_id' },
+  { table: 'sessions', column: 'user_id' },
+  { table: 'app_users', column: 'organization_id' },
+  { table: 'organizations', column: 'id' },
+];
+
+/** До першого резолву прибирання нічого не фільтрує. */
+let resolves = () => true;
+
+/**
+ * Звірити імена прибирання з каталогом бази — ЧЕРВОНЕ на кожне, якого немає.
+ *
+ * Після цього `cleanup()` пропускає нерезолвлені імена: про них уже сказано.
+ */
+async function checkCleanupNames() {
+  resolves = await nameResolver(sql);
+  for (const m of missingFrom(resolves, CLEANUP_NAMES)) {
+    fail('прибирання', `гейт прибирає те, чого немає — ${m}`);
+  }
+}
+
+/**
+ * Прибирання, яке НЕ мовчить про власний провал (Р8.16).
+ *
+ * Ім'я, якого база не знає, сюди вже не доходить — його відсіяв
+ * `checkCleanupNames()`. Тому `catch` лишається для відмов ВИКОНАННЯ і
+ * розрізняє їх за КОДОМ, а не за текстом (Р10.12): `does not exist` буває не
+ * лише про relation і column — «role … does not exist», «database … does not
+ * exist», «prepared statement … does not exist» під пулером дали б тверде
+ * червоне з неправдивою причиною. Саме так упав би прогін на застарілій
+ * локальній базі, і причина була б вигадана.
+ */
 const swept = async (what, fn) => {
   try {
     await fn();
   } catch (e) {
     const msg = e?.message || String(e);
-    if (MISSING_OBJECT.test(msg)) fail('прибирання', `гейт прибирає те, чого немає — ${what}: ${msg}`);
+    if (isUnresolvedObject(e)) fail('прибирання', `об'єкт не резолвиться в цій базі — ${what}: ${msg}`);
     else console.log(`  ··  прибирання ${what}: ${msg}`);
+  }
+};
+
+/** `DELETE` лише по імені, яке база знає; решту пропускаємо НАЗВАВШИ. */
+const sweepEach = async (tables, column, value) => {
+  for (const t of tables) {
+    if (!resolves(t, column)) { console.log(`  ··  прибирання ${t}: пропущено, ім'я не резолвиться`); continue; }
+    await swept(t, () => sql.run(`DELETE FROM ${t} WHERE ${column} = ?`, [value]));
   }
 };
 
@@ -121,33 +169,19 @@ async function cleanup() {
   const props = (await sql.rows('SELECT id FROM properties WHERE organization_id = ?', [ORG])).map((r) => r.id);
   for (const pid of props) {
     const resIds = (await sql.rows('SELECT id FROM reservations WHERE property_id = ?', [pid])).map((r) => r.id);
-    for (const rid of resIds) {
-      // Без `invoice_items` і `accruals`: перше не існує ніде, у другого немає
-      // `reservation_id`. Рядки фактури прибирає каскад — `fin_invoice_lines`
-      // висить на організації через `ON DELETE CASCADE`.
-      for (const t of ['invoices', 'booking_activity_log', 'guest_registrations']) {
-        await swept(t, () => sql.run(`DELETE FROM ${t} WHERE reservation_id = ?`, [rid]));
-      }
-    }
+    for (const rid of resIds) await sweepEach(SWEPT_BY_RESERVATION, 'reservation_id', rid);
     await sql.run('DELETE FROM reservations WHERE property_id = ?', [pid]);
-    for (const t of ['cm_outbox', 'cm_mappings', 'cm_events', 'cm_inbound_bookings']) {
-      await swept(t, () => sql.run(`DELETE FROM ${t} WHERE organization_id = ?`, [ORG]));
-    }
-    await swept('cm_connections', () => sql.run('DELETE FROM cm_connections WHERE property_id = ?', [pid]));
+    await sweepEach(SWEPT_BY_ORG_IN_PROPERTY, 'organization_id', ORG);
     // Ціни НЕ прибираються тут окремим запитом: `price_occupancy` належить
     // модулю `pricing`, і прямий SQL звідси — пробій межі (`check-boundaries`
     // це й сказав). Рядки йдуть каскадом за обʼєктом і типом номера
     // (`ON DELETE CASCADE`), тобто прибирання не втрачає нічого.
-    await swept('fees_taxes', () => sql.run('DELETE FROM fees_taxes WHERE property_id = ?', [pid]));
+    await sweepEach(SWEPT_BY_PROPERTY, 'property_id', pid);
     await sql.run('DELETE FROM units WHERE property_id = ?', [pid]);
     await sql.run('DELETE FROM unit_types WHERE property_id = ?', [pid]);
     await sql.run('DELETE FROM categories WHERE property_id = ?', [pid]);
   }
-  for (const t of ['invoices', 'invoice_counters', 'invoice_series', 'guests', 'organization_features',
-    'unit_type_amenities', 'property_amenities', 'amenities', 'amenity_categories',
-    'organization_currencies', 'finance_exchange_rates']) {
-    await swept(t, () => sql.run(`DELETE FROM ${t} WHERE organization_id = ?`, [ORG]));
-  }
+  await sweepEach(SWEPT_BY_ORG, 'organization_id', ORG);
   await sql.run('DELETE FROM properties WHERE organization_id = ?', [ORG]);
   await sql.run('DELETE FROM sessions WHERE user_id = ?', [USER]);
   await sql.run('DELETE FROM app_users WHERE organization_id = ?', [ORG]);
@@ -189,6 +223,7 @@ const iso = (d) => d.toISOString().slice(0, 10);
 const day = (n) => { const d = new Date(); d.setUTCDate(d.getUTCDate() + n); return iso(d); };
 
 async function main() {
+  await checkCleanupNames();
   await cleanup();
   await sql.run('INSERT INTO organizations (id, name, slug, default_currency, language) VALUES (?, ?, ?, ?, ?)',
     [ORG, 'Routes probe', `${TAG}org`, 'EUR', 'uk']);

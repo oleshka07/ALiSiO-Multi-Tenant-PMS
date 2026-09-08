@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { requireFinanceAccess } from '@core/security/route-guard';
 import type { Actor } from '@core/auth/session';
-import { isPeriodLocked } from '@invoicing';
+import { isPeriodLocked, deleteInvoicesWhere } from '@invoicing';
 import { serverError } from '@core/http/errors';
 
 export const GET = getInvoiceHtml;
@@ -68,7 +68,9 @@ async function _DELETE(
       );
     }
 
-    await sql.run('DELETE FROM invoices WHERE id = ? AND organization_id = ?', [id, actor.organizationId]);
+    // Через двері `@invoicing`, а не голим `DELETE`: рядки фактури й підсумки
+    // ПДВ не мають зовнішнього ключа на `invoices` і самі не зникають (Р10.14).
+    await deleteInvoicesWhere('id = ? AND organization_id = ?', [id, actor.organizationId]);
 
     console.log(`[InvoiceDelete] Deleted ${inv.invoice_number} (${id}) amount=${inv.amount} ${inv.currency}`);
 
