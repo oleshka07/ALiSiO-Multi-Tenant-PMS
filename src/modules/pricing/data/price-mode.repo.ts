@@ -44,8 +44,15 @@ export async function setPricingAdvanced(organizationId: string, advanced: boole
  * яке включає торішні дні, лякає без причини.
  */
 export async function weekendPriceDayCount(organizationId: string, from: string): Promise<number> {
+  // COUNT(DISTINCT date), не COUNT(*): у `price_calendar` рядки ДВОХ родів —
+  // базовий рядок типу і власний рядок тарифу на ту саму дату, — тож `*`
+  // рахував би один день стільки разів, скільки тарифів на ньому має ціну
+  // вихідних, і повідомлення «стоїть на N днях» називало б чуже число.
+  // Той самий клас, що INC-027, лише слабший: там рядок підмінявся, тут
+  // подвоювався. Знайдено обходом усіх читачів `price_calendar` після
+  // INC-027 (доручення контролера, раунд 10).
   const row = await getSql().row<{ n?: unknown }>(`
-    SELECT COUNT(*) AS n
+    SELECT COUNT(DISTINCT pc.date) AS n
     FROM price_calendar pc
     JOIN unit_types ut ON pc.unit_type_id = ut.id
     JOIN properties p ON ut.property_id = p.id
