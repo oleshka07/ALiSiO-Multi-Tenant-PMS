@@ -1,0 +1,214 @@
+/**
+ * Операція одного готелю не посилається на довідник другого — НА ЗАПИСІ.
+ *
+ *   node src/modules/finance/api/operation-scope.check.ts
+ *
+ * `chart-of-accounts.check.ts` стереже сусідню половину: другий готель не
+ * ДІСТАЄ статтю першого читанням. Це інша вісь, і на ній вада жила окремо
+ * (Р12.3): `createOperationInTx` брав `category_id` просто з тіла запиту й
+ * писав його в рядок. Так само `account_from_id`, `account_to_id`,
+ * `project_id`, `counterparty_id` — пʼять полів, кожне вказує в довідник, і
+ * жодне не перевірялось на належність.
+ *
+ * Чому цього не спиняє база. Зовнішній ключ тут ОДНОКОЛОНКОВИЙ
+ * (`category_id → expense_categories(id)`), тобто він доводить, що рядок
+ * існує, і мовчить про те, чий він. А RI-тригери Postgres виконуються з
+ * вимкненою row security — політика, яка ховає чужий рядок від читання, при
+ * перевірці ключа не працює. Тож `INSERT` із чужим ідентифікатором проходить,
+ * і виходить операція, чия стаття для її ж готелю невидима: у списку —
+ * порожня назва, у P&L — `COALESCE(classifier,'other')`, тобто гроші лягають
+ * не в той рядок звіту. Тихо.
+ *
+ * Осі (інваріант 26): готелів два, і кожне твердження ставиться з ОБОХ боків
+ * — своє приймається, чуже відмовляється. Одного боку мало: «відмовляє
+ * завжди» виглядало б так само зелено, як «відмовляє правильно», а це вже
+ * зламаний модуль фінансів.
+ */
+import assert from 'node:assert';
+import '../../../../scripts/lib/module-aliases.mjs';
+
+const { getSql } = await import('@core/db/async');
+const { runWithOrganization } = await import('@core/auth/tenant-context');
+const { provisionOrganization } = await import('@core/provisioning');
+const { isRefusal } = await import('@core/http/refusal');
+const { createOperationInTx } = await import('./operations.handlers');
+
+const sql = getSql();
+const SLUGS = ['opscope-check-one', 'opscope-check-two'];
+const fails: string[] = [];
+const say = (cond: boolean, what: string) => {
+  if (cond) console.log(`  ok  ${what}`);
+  else { fails.push(what); console.log(`  ЧЕРВОНЕ  ${what}`); }
+};
+
+async function cleanup() {
+  // Операції ОБОХ готелів знімаються ПЕРШИМИ, до будь-яких довідників.
+  // Причина — та сама вада, яку стереже цей гейт: доки вона в силі, операція
+  // першого готелю посилається на статтю другого, і прибирання другого падає
+  // на зовнішньому ключі. Тобто червоний гейт мусить лишати за собою чисто —
+  // інакше наступний прогін почався б із чужого сміття.
+  for (const slug of SLUGS) {
+    const org = await sql.row<{ id: string }>('SELECT id FROM organizations WHERE slug = ?', [slug]);
+    if (!org) continue;
+    await runWithOrganization(org.id, () =>
+      sql.run('DELETE FROM fin_operations WHERE organization_id = ?', [org.id]));
+  }
+  for (const slug of SLUGS) {
+    const org = await sql.row<{ id: string }>('SELECT id FROM organizations WHERE slug = ?', [slug]);
+    if (!org) continue;
+    // У КОНТЕКСТІ ОРЕНДАРЯ: під роллю застосунку `DELETE` без контексту
+    // прибирає НУЛЬ рядків і не каже про це нічого (INC-014).
+    await runWithOrganization(org.id, async () => {
+      await sql.run('DELETE FROM fin_operations WHERE organization_id = ?', [org.id]);
+      await sql.run('DELETE FROM finance_counterparties WHERE organization_id = ?', [org.id]);
+      await sql.run('DELETE FROM expense_categories WHERE organization_id = ?', [org.id]);
+      await sql.run('DELETE FROM business_units WHERE organization_id = ?', [org.id]);
+      // `app_users` перед `finance_accounts`: власник тримає касу через
+      // `default_cash_account_id`, і цей ключ не каскадний (Д26).
+      await sql.run('DELETE FROM app_users WHERE organization_id = ?', [org.id]);
+      await sql.run('DELETE FROM finance_accounts WHERE organization_id = ?', [org.id]);
+      await sql.run('DELETE FROM properties WHERE organization_id = ?', [org.id]);
+    });
+    await sql.run('DELETE FROM organizations WHERE id = ?', [org.id]);
+  }
+}
+
+/** Довідник одного готелю: стаття, каса, юніт, контрагент. */
+async function catalogue(organizationId: string, tag: string) {
+  return runWithOrganization(organizationId, async () => {
+    const cat = await sql.row<{ id: string }>(
+      "SELECT id FROM expense_categories WHERE organization_id = ? AND code = 'other_exp'", [organizationId]);
+    const acc = await sql.row<{ id: string }>(
+      "SELECT id FROM finance_accounts WHERE organization_id = ? AND type = 'cash'", [organizationId]);
+    const unit = await sql.row<{ id: string }>(
+      "SELECT id FROM business_units WHERE organization_id = ? AND code = 'shared'", [organizationId]);
+    const cpId = `cp_${tag}`;
+    await sql.run(
+      'INSERT INTO finance_counterparties (id, organization_id, name) VALUES (?, ?, ?)',
+      [cpId, organizationId, `Counterparty ${tag}`]);
+    return {
+      category: String(cat?.id), account: String(acc?.id), unit: String(unit?.id), counterparty: cpId,
+    };
+  });
+}
+
+await cleanup();
+try {
+  // По черзі, не `Promise.all`: заведення йде в транзакції, а на SQLite
+  // транзакція одна на процес — паралельний запуск падає «cannot start a
+  // transaction within a transaction».
+  const provisioned = [];
+  for (const [i, slug] of SLUGS.entries()) {
+    provisioned.push(await provisionOrganization({
+      name: `Op scope ${slug}`, slug,
+      ownerEmail: `${slug}@example.test`, ownerPassword: 'check-password-1234',
+      currency: i === 0 ? 'EUR' : 'CZK', language: 'uk',
+    }));
+  }
+  const [one, two] = provisioned;
+  const mine = await catalogue(one.organizationId, 'one');
+  const alien = await catalogue(two.organizationId, 'two');
+
+  say(Boolean(mine.category && mine.account && mine.unit),
+    'у першого готелю є стаття, каса і юніт — без них решта тверджень беззмістовна');
+  say(mine.category !== alien.category && mine.account !== alien.account,
+    'довідники двох готелів — різні рядки (інакше «чужий» нічим не чужий)');
+
+  const base = {
+    op_type: 'expense' as const,
+    amount: 100,
+    currency: 'EUR',
+    paid_at: '2026-09-08',
+    account_from_id: mine.account,
+    category_id: mine.category,
+  };
+
+  const write = async (input: Record<string, unknown>) => runWithOrganization(one.organizationId,
+    () => createOperationInTx(one.organizationId, input as never, null));
+
+  // ── 1. Свій довідник приймається ────────────────────────────────────────
+  let ownId: string | null = null;
+  try {
+    ownId = await write({ ...base, project_id: mine.unit, counterparty_id: mine.counterparty });
+  } catch (e) {
+    say(false, `власна операція відмовлена (${(e as Error).message}) — далі «чуже відмовлено» нічого не значить`);
+  }
+  say(Boolean(ownId), 'операція з ВЛАСНИМИ статтею, касою, юнітом і контрагентом проходить');
+
+  // ── 2. Чужий довідник — відмова, і рядка не зʼявляється ─────────────────
+  const before = await runWithOrganization(one.organizationId, () => sql.row<{ n: number }>(
+    'SELECT COUNT(*) AS n FROM fin_operations WHERE organization_id = ?', [one.organizationId]));
+
+  for (const [field, value] of [
+    ['category_id', alien.category],
+    ['account_from_id', alien.account],
+    ['project_id', alien.unit],
+    ['counterparty_id', alien.counterparty],
+  ] as const) {
+    let refused = false;
+    let how = 'ПРОЙШЛО';
+    try {
+      await write({ ...base, [field]: value });
+    } catch (e) {
+      refused = true;
+      how = isRefusal(e) ? 'названа відмова' : `виняток не наш: ${(e as Error).message.slice(0, 60)}`;
+      // Рід відмови важливий: помилка драйвера дала б 500 і текст бази
+      // клієнтові (інваріант 6), а не речення, яке ми написали самі.
+      if (!isRefusal(e)) refused = false;
+    }
+    say(refused, `${field} чужого готелю відхилено названою відмовою (${how})`);
+  }
+
+  const after = await runWithOrganization(one.organizationId, () => sql.row<{ n: number }>(
+    'SELECT COUNT(*) AS n FROM fin_operations WHERE organization_id = ?', [one.organizationId]));
+  say(Number(after?.n) === Number(before?.n),
+    `жодна з чотирьох відмов не лишила рядка (було ${before?.n}, стало ${after?.n})`);
+
+  // ── 2b. Те саме на РЕДАГУВАННІ ──────────────────────────────────────────
+  //
+  // Білий список полів у `updateOperation` бере ті самі пʼять імен із тіла
+  // запиту. Закрити лише створення означало б лишити двері поруч.
+  if (ownId) {
+    // Статус названо ТОЧНО, не «щось ≥400» (інваріант 5). Виміряно зі знятою
+    // перевіркою: редагування віддає **200** і рядок справді переписується на
+    // статтю сусіда (`still.category_id` стає чужим). Тобто на редагуванні це
+    // не «спроба», а завершений запис у чужий довідник — і саме тому нижче
+    // стоять два твердження: статус і сам рядок.
+    let editStatus = 0;
+    try {
+      await runWithOrganization(one.organizationId, async () => {
+        const { updateOperation } = await import('./operations.handlers');
+        const res = await updateOperation({
+          json: async () => ({ category_id: alien.category }),
+          nextUrl: new URL('http://local/api/finance/operations'),
+        } as never, { params: Promise.resolve({ id: String(ownId) }) });
+        editStatus = res.status;
+      });
+    } catch (e) { editStatus = isRefusal(e) ? 404 : -1; }
+    say(editStatus === 404, `редагування на чужу статтю теж відхилено, і саме 404 (${editStatus})`);
+
+    const still = await runWithOrganization(one.organizationId, () => sql.row<{ category_id: string }>(
+      'SELECT category_id FROM fin_operations WHERE id = ?', [String(ownId)]));
+    say(still?.category_id === mine.category,
+      `стаття операції лишилась своєю (${still?.category_id})`);
+  }
+
+  // ── 3. І з другого боку: другий готель не пише в довідник першого ───────
+  let secondRefused = false;
+  try {
+    await runWithOrganization(two.organizationId, () => createOperationInTx(two.organizationId, {
+      op_type: 'expense', amount: 100, currency: 'CZK', paid_at: '2026-09-08',
+      account_from_id: alien.account, category_id: mine.category,
+    } as never, null));
+  } catch (e) { secondRefused = isRefusal(e); }
+  say(secondRefused, 'другий готель так само не проводить витрату на статтю першого');
+} finally {
+  await cleanup();
+}
+
+if (fails.length) {
+  console.log(`\noperation-scope: ${fails.length} червоних`);
+  process.exit(1);
+}
+console.log('operation-scope: операція посилається лише на довідник СВОГО готелю — перевірено на записі, з обох боків');
+assert.ok(true);

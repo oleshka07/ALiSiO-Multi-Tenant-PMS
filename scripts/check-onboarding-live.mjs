@@ -131,8 +131,8 @@ const day = (n) => { const d = new Date(); d.setUTCDate(d.getUTCDate() + n); ret
  * (інваріант 26).
  */
 const HOTELS = [
-  { key: 'A', slug: `${SLUG_TAG}-alpha`, name: 'Onboarding Alpha', currency: 'EUR', price: 120, total: 240, room: '101' },
-  { key: 'B', slug: `${SLUG_TAG}-beta`, name: 'Onboarding Beta', currency: 'CZK', price: 200, total: 400, room: '201' },
+  { key: 'A', slug: `${SLUG_TAG}-alpha`, name: 'Onboarding Alpha', currency: 'EUR', price: 120, total: 240, room: '101', rent: 300, tax: 50 },
+  { key: 'B', slug: `${SLUG_TAG}-beta`, name: 'Onboarding Beta', currency: 'CZK', price: 200, total: 400, room: '201', rent: 700, tax: 90 },
 ];
 
 async function login(email) {
@@ -203,12 +203,25 @@ async function runHotel(h) {
 
   // Модулі, вимкнені за замовчуванням (П15): прохід перевіряє ШЛЯХ, а не
   // право на модуль — 403 «не куплено» тут означав би, що ми не спитали.
-  for (const feature of ['channels', 'invoicing', 'accounting', 'guest_page']) {
-    await sql.run(
-      `INSERT INTO organization_features (organization_id, feature, enabled) VALUES (?, ?, TRUE)
-       ON CONFLICT(organization_id, feature) DO UPDATE SET enabled = TRUE`,
-      [org.organizationId, feature]).catch(() => {});
-  }
+  //
+  // У КОНТЕКСТІ ОРЕНДАРЯ і БЕЗ ковтання помилки (INC-014). Тут стояло
+  // `sql.run(...).catch(() => {})` поза контекстом — і на Postgres під роллю
+  // застосунку політика відхиляла вставку, а `catch` це з'їдав. Наслідок
+  // виглядав як вада продукту: свіжий готель отримував 403 «Модуль обліку
+  // вимкнено» на кожному фінансовому маршруті, і прохід доповідав про це як
+  // про поломку плану рахунків. На SQLite політик немає, тому там усе
+  // проходило — той самий клас, що INC-014: зелене саме там, де осі немає.
+  const enabled = await runWithOrganization(org.organizationId, async () => {
+    const { setFeature } = await import('../src/core/features.ts');
+    for (const feature of ['channels', 'invoicing', 'accounting', 'guest_page']) {
+      await setFeature(org.organizationId, feature, true);
+    }
+    return sql.rows(
+      'SELECT feature FROM organization_features WHERE organization_id = ? AND enabled = TRUE',
+      [org.organizationId]);
+  });
+  claim(fam, enabled.length >= 4,
+    `модулі готелю увімкнено (${enabled.length}) — інакше далі буде 403 «не куплено», а не вада`);
 
   // Вхід — це ще й перевірка, що прохід і застосунок дивляться в ОДНУ базу:
   // готель щойно заведено цим процесом, і якщо сервер про нього не знає, річ
@@ -349,6 +362,83 @@ async function runHotel(h) {
   const pay = await body(payRes);
   claim(fam, payRes.status === 201 && pay?.id,
     `оплату готівкою прийнято (${payRes.status}${pay?.error ? ` — ${pay.error}` : ''})`);
+
+  // ── 8b. Дві витрати і P&L: оренда стоїть в ОПЕРАЦІЙНИХ, податок у ПОДАТКАХ ──
+  //
+  // Р12.1. Засів плану рахунків ставив назву, групу і ознаки — і НЕ ставив
+  // двох колонок, за якими цей план читається: `op_type` і `classifier`.
+  // Стаття без них існує, показується в списку і приймає операції; невидима
+  // вона рівно там, де по ній рахують гроші:
+  //
+  //   - P&L (`reports.handlers.ts`) розкладає рядки за `classifier`, а
+  //     порожнє поле бере `COALESCE(ec.classifier,'other')` — оренда,
+  //     зарплата й податки лягають в «Інше», тобто нижче EBITDA. Для готелю
+  //     це не косметика: EBITDA свіжого готелю дорівнює виручці;
+  //   - `/api/finance/categories?op_type=expense` — той самий список, який
+  //     відкриває форма витрати, — віддає ПОРОЖНЬО;
+  //   - `autoResolveCategory` шукає `op_type='income'|'expense'` і не
+  //     знаходить нічого.
+  //
+  // Твердження тут — про ЧИСЛО В РЯДКУ звіту, не про колонку в базі: колонка
+  // може називатись інакше, а «оренда в операційних» — це те, за чим готель
+  // ухвалює рішення. Дві різні статті навмисно (інваріант 26): один
+  // classifier не розрізнив би «розклало правильно» і «склало все в одну
+  // купу», а суми різні й несумісні — 300 і 50 не дають 350 в жодному
+  // правильному прочитанні.
+  const accRes = await call(cookie, '/api/finance/accounts');
+  const accounts = await body(accRes);
+  const cash = (Array.isArray(accounts) ? accounts : (accounts?.accounts ?? []))
+    .find((a) => a.type === 'cash');
+  claim(fam, !!cash, `у готелю є каса (${cash ? cash.currency : 'НЕМАЄ'})`);
+
+  const chartRes = await call(cookie, '/api/finance/categories');
+  const cats = await body(chartRes);
+  const catList = Array.isArray(cats) ? cats : (cats?.categories ?? []);
+  const byCode = (code) => catList.find((c) => c.code === code);
+
+  const expenseRes = await call(cookie, '/api/finance/categories?op_type=expense');
+  const expenseCats = await body(expenseRes);
+  claim(fam, Array.isArray(expenseCats) && expenseCats.length > 0,
+    `форма витрати має з чого обрати статтю (op_type=expense → ${
+      Array.isArray(expenseCats) ? expenseCats.length : '?'} статей)`);
+
+  const spend = async (code, amount) => {
+    const cat = byCode(code);
+    if (!cat || !cash) return null;
+    const res = await call(cookie, '/api/finance/operations', {
+      method: 'POST',
+      body: JSON.stringify({
+        op_type: 'expense', amount, currency: h.currency, paid_at: iso(new Date()),
+        account_from_id: cash.id, category_id: cat.id, comment: `${TAG} ${code}`,
+      }),
+    });
+    const op = await body(res);
+    claim(fam, res.status === 201 && op?.id,
+      `витрату «${code}» ${amount} ${h.currency} проведено (${res.status}${op?.error ? ` — ${op.error}` : ''})`);
+    return cat.id;
+  };
+  const rentCat = await spend('rent', h.rent);
+  const taxCat = await spend('taxes', h.tax);
+
+  // Вікно назване явно, і це не косметика: звіт за замовчуванням бере ПІВРОКУ
+  // НАЗАД, а рахує за `accrued_at` — оплата броні нарахована на дату
+  // заїзду, тобто в майбутньому. З дефолтним вікном виручка дорівнює нулю не
+  // тому, що щось зламано, а тому, що ми спитали про інші місяці.
+  const pnlRes = await call(cookie, `/api/finance/pnl-matrix?from=${iso(new Date()).slice(0, 7)}&to=${day(120).slice(0, 7)}`);
+  const pnl = await body(pnlRes);
+  const section = (key) => (pnl?.sections ?? []).find((s) => s.key === key);
+  const inSection = (key, catId) => (section(key)?.rows ?? []).find((r) => r.category_id === catId);
+
+  claim(fam, Number(section('revenue')?.total) === h.total,
+    `у P&L виручка ${h.total} (${section('revenue')?.total ?? '—'})`);
+  claim(fam, Number(inSection('operational', rentCat)?.total) === h.rent,
+    `оренда ${h.rent} стоїть в ОПЕРАЦІЙНИХ (${inSection('operational', rentCat)?.total ?? 'її там немає'})`);
+  claim(fam, Number(inSection('tax', taxCat)?.total) === h.tax,
+    `податок ${h.tax} стоїть у ПОДАТКАХ (${inSection('tax', taxCat)?.total ?? 'його там немає'})`);
+  claim(fam, Number(section('other')?.total ?? 0) === 0,
+    `а в «Іншому» — нуль (${section('other')?.total ?? '—'})`);
+  claim(fam, Number(section('ebitda')?.total) === h.total - h.rent,
+    `EBITDA = виручка мінус операційні = ${h.total - h.rent} (${section('ebitda')?.total ?? '—'})`);
 
   return { h, fam, org, cookie, unitType, unit, booking, ical, category };
 }

@@ -39,7 +39,10 @@ export const createAdditionalService = withPermission('manage_properties', async
     const propertyId = await requirePropertyId(body.property_id);
     await sql.run(`
       INSERT INTO additional_services (id, property_id, name, name_en, description, price, currency, unit_label, icon, category, available_for, is_active, sort_order, service_type, duration_minutes, name_cs, name_de, vat_code)
-      -- Валюта послуги, коли її не назвали, — валюта готелю, а не 'CZK'.
+      -- Валюта послуги, коли її не назвали, — валюта готелю, а не крона.
+      -- (Код валюти тут без лапок навмисно: гейт check-currency-literals
+      -- вирізає коментарі JS і не знає коментаря SQL усередині шаблонного
+      -- рядка, тож лапки зробили б із пояснення знахідку.)
       --
       -- Тут стояв літерал, і ціна сніданку німецького готелю ставала «12 CZK»
       -- на гостьовій сторінці: саме це поле показує гість у списку послуг,

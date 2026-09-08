@@ -477,6 +477,51 @@ export async function autoResolveCategory(
   return null;
 }
 
+/**
+ * Кожне поле операції, яке вказує в довідник, — рядок ЦЬОГО готелю (Р12.3).
+ *
+ * Тут стояло нічого: `category_id`, `account_from_id`, `account_to_id`,
+ * `project_id` і `counterparty_id` їхали з тіла запиту прямо в `INSERT`.
+ *
+ * Чому база цього не спиняє. Зовнішній ключ ОДНОКОЛОНКОВИЙ
+ * (`category_id → expense_categories(id)`): він доводить, що рядок існує, і
+ * мовчить про те, чий він. А RI-тригери Postgres виконуються з ВИМКНЕНОЮ row
+ * security — політика, яка ховає чужий рядок від читання, при перевірці ключа
+ * не діє. Тож чужий ідентифікатор проходить, і виходить операція, чия стаття
+ * для її ж готелю невидима: у списку порожня назва, у P&L
+ * `COALESCE(classifier,'other')` — гроші лягають не в той рядок звіту, мовчки.
+ *
+ * `chart-of-accounts.check.ts` стереже сусідню половину — ЧИТАННЯ, — і на
+ * записі вада жила окремо: твердження і вада стояли на різних осях.
+ *
+ * Чужий id → 404, не 403 (інваріант 5): для цього готелю такого рядка не
+ * існує, і відповідь не має підказувати, що він існує в когось іншого.
+ *
+ * Чого тут НЕ перевіряється: `reservation_id`. Він указує в `reservations`,
+ * тобто в чужий модуль, і питати про нього звідси означало б пробити межу
+ * (`check-boundaries`). Названо в docs/LATER.md — двері мають зʼявитись у
+ * `@bookings/kernel`.
+ */
+async function requireOwnedReferences(
+  orgId: string,
+  input: Partial<CreateOperationInput>,
+): Promise<void> {
+  const REFERENCES = [
+    ['category_id', 'expense_categories', 'Статті обліку'],
+    ['account_from_id', 'finance_accounts', 'Рахунку'],
+    ['account_to_id', 'finance_accounts', 'Рахунку'],
+    ['project_id', 'business_units', 'Бізнес-юніту'],
+    ['counterparty_id', 'finance_counterparties', 'Контрагента'],
+  ] as const;
+  for (const [field, table, what] of REFERENCES) {
+    const value = (input as Record<string, unknown>)[field];
+    if (value === undefined || value === null || value === '') continue;
+    if (!await ownedFinanceRow(table, String(value), orgId)) {
+      refuse(`${what} з таким ідентифікатором у цього готелю немає.`, 404);
+    }
+  }
+}
+
 export async function createOperationInTx(
   orgId: string,
   input: CreateOperationInput,
@@ -503,6 +548,8 @@ export async function createOperationInTx(
   if (op_type === 'transfer' && input.account_from_id === input.account_to_id) {
     refuse('account_from_id and account_to_id must differ');
   }
+
+  await requireOwnedReferences(orgId, input);
 
   // Валюта готелю, а не крони. `orgId` тут уже є — питати нема кого іншого.
   const companyCurrency = await organizationCurrency(orgId);
@@ -617,6 +664,11 @@ export async function updateOperation(
     if (body.op_type !== undefined && !(OP_TYPES as readonly string[]).includes(body.op_type)) {
       return NextResponse.json({ error: `op_type must be one of ${OP_TYPES.join(', ')}` }, { status: 400 });
     }
+
+    // Та сама перевірка, що на створенні (Р12.3): редагування бере ті самі
+    // пʼять полів із тіла запиту й кладе їх у `UPDATE` через білий список
+    // імен — тобто закрити лише створення означало б лишити двері поруч.
+    await requireOwnedReferences(orgId, body);
 
     const fields: string[] = [];
     const params: any[] = [];

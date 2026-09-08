@@ -28,12 +28,37 @@
  * і другий готель отримав би довідник, якого немає в першого.
  */
 
-/** Рядок плану рахунків. `code` — стала величина, `id` належить готелю. */
+/**
+ * Рядок плану рахунків. `code` — стала величина, `id` належить готелю.
+ *
+ * `opType` і `classifier` — не прикраса і не дубль `stdGroup` (Р12.1). Це дві
+ * колонки, за якими план рахунків ЧИТАЮТЬ, і без них стаття існує, показується
+ * і приймає операції, а грошей по ній не видно:
+ *
+ *   - P&L розкладає рядки за `classifier`, а порожній бере
+ *     `COALESCE(ec.classifier,'other')` — оренда, зарплата й податки лягають в
+ *     «Інше», тобто НИЖЧЕ EBITDA. Виміряно на свіжому готелі: EBITDA
+ *     дорівнювала виручці, 240 замість −60;
+ *   - `/api/finance/categories?op_type=expense` — список, який відкриває форма
+ *     витрати, — віддавав ПОРОЖНЬО;
+ *   - `autoResolveCategory` шукає перший рядок з `op_type='income'|'expense'`
+ *     і не знаходив нічого.
+ *
+ * Значення тут явні, а не виведені з `stdGroup`: два рядки навмисно
+ * відхиляються від свого гурту — `variable` (COGS, але власний рядок P&L
+ * «Змінні») і `investors` (Financing, але НАДХОДЖЕННЯ, тобто `income`).
+ * Правило «вивести з групи» живе в `expense-categories.handlers.ts` і
+ * стосується статей, які заводить сам готель.
+ */
 export interface ChartAccount {
   code: string;
   name: string;
   stdGroup: string;
   pnlLine: string;
+  /** Куди стаття потрапляє у формі операції: income | expense | transfer. */
+  opType: string;
+  /** Рядок P&L: revenue | cogs | variable | operational | tax | capex | financing | other. */
+  classifier: string;
   includeInPnl: boolean;
   includeInCash: boolean;
   allocMethod: string;
@@ -52,21 +77,21 @@ export interface ChartAccount {
  * облік конкретного клієнта (інваріант 20).
  */
 export const CHART_OF_ACCOUNTS: ChartAccount[] = [
-  { code: 'accommodation', name: 'Accommodation', stdGroup: 'Revenue', pnlLine: 'Accommodation', includeInPnl: true, includeInCash: true, allocMethod: 'DIRECT', isCapex: false, icon: '🏠', color: '#22c55e', sortOrder: 1 },
-  { code: 'services_rev', name: 'Services', stdGroup: 'Revenue', pnlLine: 'Services', includeInPnl: true, includeInCash: true, allocMethod: 'DIRECT', isCapex: false, icon: '🛎️', color: '#f59e0b', sortOrder: 2 },
-  { code: 'other_rev', name: 'Other income', stdGroup: 'Revenue', pnlLine: 'Other income', includeInPnl: true, includeInCash: true, allocMethod: 'DIRECT', isCapex: false, icon: '💰', color: '#84cc16', sortOrder: 3 },
-  { code: 'variable', name: 'Variable costs', stdGroup: 'COGS', pnlLine: 'Variable costs', includeInPnl: true, includeInCash: true, allocMethod: 'DIRECT', isCapex: false, icon: '📦', color: '#991b1b', sortOrder: 4 },
-  { code: 'rent', name: 'Rent', stdGroup: 'OPEX', pnlLine: 'Rent', includeInPnl: true, includeInCash: true, allocMethod: 'RENT', isCapex: false, icon: '🏢', color: '#6366f1', sortOrder: 5 },
-  { code: 'utilities', name: 'Utilities', stdGroup: 'OPEX', pnlLine: 'Utilities', includeInPnl: true, includeInCash: true, allocMethod: 'UTILITIES', isCapex: false, icon: '🔌', color: '#8b5cf6', sortOrder: 6 },
-  { code: 'payroll', name: 'Payroll', stdGroup: 'OPEX', pnlLine: 'Payroll', includeInPnl: true, includeInCash: true, allocMethod: 'SHARED_PAYROLL', isCapex: false, icon: '👥', color: '#a855f7', sortOrder: 7 },
-  { code: 'marketing', name: 'Marketing', stdGroup: 'OPEX', pnlLine: 'Marketing', includeInPnl: true, includeInCash: true, allocMethod: 'HQ', isCapex: false, icon: '📢', color: '#ec4899', sortOrder: 8 },
-  { code: 'professional', name: 'Professional services', stdGroup: 'OPEX', pnlLine: 'Professional services', includeInPnl: true, includeInCash: true, allocMethod: 'HQ', isCapex: false, icon: '💼', color: '#14b8a6', sortOrder: 9 },
-  { code: 'consumables', name: 'Consumables', stdGroup: 'OPEX', pnlLine: 'Consumables', includeInPnl: true, includeInCash: true, allocMethod: 'HQ', isCapex: false, icon: '🧹', color: '#78716c', sortOrder: 10 },
-  { code: 'other_exp', name: 'Other expenses', stdGroup: 'OPEX', pnlLine: 'Other expenses', includeInPnl: true, includeInCash: true, allocMethod: 'HQ', isCapex: false, icon: '📋', color: '#6b7280', sortOrder: 11 },
-  { code: 'taxes', name: 'Taxes', stdGroup: 'Taxes', pnlLine: 'Taxes', includeInPnl: true, includeInCash: true, allocMethod: 'HQ', isCapex: false, icon: '🏛️', color: '#334155', sortOrder: 12 },
-  { code: 'capex', name: 'Capital expenditure', stdGroup: 'CAPEX', pnlLine: 'CAPEX', includeInPnl: false, includeInCash: true, allocMethod: 'NONE', isCapex: true, icon: '🏗️', color: '#0ea5e9', sortOrder: 13 },
-  { code: 'investors', name: 'Financing', stdGroup: 'Financing', pnlLine: 'Financing', includeInPnl: false, includeInCash: true, allocMethod: 'NONE', isCapex: false, icon: '🏦', color: '#059669', sortOrder: 14 },
-  { code: 'transfer', name: 'Transfer', stdGroup: 'Transfer', pnlLine: 'Transfer', includeInPnl: false, includeInCash: true, allocMethod: 'NONE', isCapex: false, icon: '↔️', color: '#94a3b8', sortOrder: 15 },
+  { code: 'accommodation', name: 'Accommodation', stdGroup: 'Revenue', opType: 'income', classifier: 'revenue', pnlLine: 'Accommodation', includeInPnl: true, includeInCash: true, allocMethod: 'DIRECT', isCapex: false, icon: '🏠', color: '#22c55e', sortOrder: 1 },
+  { code: 'services_rev', name: 'Services', stdGroup: 'Revenue', opType: 'income', classifier: 'revenue', pnlLine: 'Services', includeInPnl: true, includeInCash: true, allocMethod: 'DIRECT', isCapex: false, icon: '🛎️', color: '#f59e0b', sortOrder: 2 },
+  { code: 'other_rev', name: 'Other income', stdGroup: 'Revenue', opType: 'income', classifier: 'revenue', pnlLine: 'Other income', includeInPnl: true, includeInCash: true, allocMethod: 'DIRECT', isCapex: false, icon: '💰', color: '#84cc16', sortOrder: 3 },
+  { code: 'variable', name: 'Variable costs', stdGroup: 'COGS', opType: 'expense', classifier: 'variable', pnlLine: 'Variable costs', includeInPnl: true, includeInCash: true, allocMethod: 'DIRECT', isCapex: false, icon: '📦', color: '#991b1b', sortOrder: 4 },
+  { code: 'rent', name: 'Rent', stdGroup: 'OPEX', opType: 'expense', classifier: 'operational', pnlLine: 'Rent', includeInPnl: true, includeInCash: true, allocMethod: 'RENT', isCapex: false, icon: '🏢', color: '#6366f1', sortOrder: 5 },
+  { code: 'utilities', name: 'Utilities', stdGroup: 'OPEX', opType: 'expense', classifier: 'operational', pnlLine: 'Utilities', includeInPnl: true, includeInCash: true, allocMethod: 'UTILITIES', isCapex: false, icon: '🔌', color: '#8b5cf6', sortOrder: 6 },
+  { code: 'payroll', name: 'Payroll', stdGroup: 'OPEX', opType: 'expense', classifier: 'operational', pnlLine: 'Payroll', includeInPnl: true, includeInCash: true, allocMethod: 'SHARED_PAYROLL', isCapex: false, icon: '👥', color: '#a855f7', sortOrder: 7 },
+  { code: 'marketing', name: 'Marketing', stdGroup: 'OPEX', opType: 'expense', classifier: 'operational', pnlLine: 'Marketing', includeInPnl: true, includeInCash: true, allocMethod: 'HQ', isCapex: false, icon: '📢', color: '#ec4899', sortOrder: 8 },
+  { code: 'professional', name: 'Professional services', stdGroup: 'OPEX', opType: 'expense', classifier: 'operational', pnlLine: 'Professional services', includeInPnl: true, includeInCash: true, allocMethod: 'HQ', isCapex: false, icon: '💼', color: '#14b8a6', sortOrder: 9 },
+  { code: 'consumables', name: 'Consumables', stdGroup: 'OPEX', opType: 'expense', classifier: 'operational', pnlLine: 'Consumables', includeInPnl: true, includeInCash: true, allocMethod: 'HQ', isCapex: false, icon: '🧹', color: '#78716c', sortOrder: 10 },
+  { code: 'other_exp', name: 'Other expenses', stdGroup: 'OPEX', opType: 'expense', classifier: 'operational', pnlLine: 'Other expenses', includeInPnl: true, includeInCash: true, allocMethod: 'HQ', isCapex: false, icon: '📋', color: '#6b7280', sortOrder: 11 },
+  { code: 'taxes', name: 'Taxes', stdGroup: 'Taxes', opType: 'expense', classifier: 'tax', pnlLine: 'Taxes', includeInPnl: true, includeInCash: true, allocMethod: 'HQ', isCapex: false, icon: '🏛️', color: '#334155', sortOrder: 12 },
+  { code: 'capex', name: 'Capital expenditure', stdGroup: 'CAPEX', opType: 'expense', classifier: 'capex', pnlLine: 'CAPEX', includeInPnl: false, includeInCash: true, allocMethod: 'NONE', isCapex: true, icon: '🏗️', color: '#0ea5e9', sortOrder: 13 },
+  { code: 'investors', name: 'Financing', stdGroup: 'Financing', opType: 'income', classifier: 'financing', pnlLine: 'Financing', includeInPnl: false, includeInCash: true, allocMethod: 'NONE', isCapex: false, icon: '🏦', color: '#059669', sortOrder: 14 },
+  { code: 'transfer', name: 'Transfer', stdGroup: 'Transfer', opType: 'transfer', classifier: 'other', pnlLine: 'Transfer', includeInPnl: false, includeInCash: true, allocMethod: 'NONE', isCapex: false, icon: '↔️', color: '#94a3b8', sortOrder: 15 },
 ];
 
 /** Бізнес-юніт. Той самий клас проблеми, той самий вигляд рішення. */

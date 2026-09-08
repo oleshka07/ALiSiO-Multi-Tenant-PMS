@@ -1883,14 +1883,18 @@ function runMigrations(database: any) {
       database.exec("CREATE INDEX IF NOT EXISTS idx_ec_parent ON expense_categories(parent_id)");
 
       // Backfill: map existing std_group → op_type + classifier
+      //
+      // Три рядки цього списку стояли ЗА ЛІТЕРАЛЬНИМ КЛЮЧЕМ — `WHERE id =
+      // 'ec_variable'`, `'ec_investors'`, `'ec_transfer'`. Відколи ключ
+      // випадковий і належить готелю (INC-025), така умова не виконується в
+      // жодного готелю й мовчить про це (Р12.4, `check-catalogue-ids`). Їх
+      // забрано звідси: те саме робиться нижче, у блоці 0097, за `code` —
+      // тобто вже після того, як колонка кодів зʼявилась.
       database.exec("UPDATE expense_categories SET op_type = 'income',    classifier = 'other'       WHERE std_group = 'Revenue'");
       database.exec("UPDATE expense_categories SET op_type = 'expense',   classifier = 'cogs'        WHERE std_group = 'COGS'");
       database.exec("UPDATE expense_categories SET op_type = 'expense',   classifier = 'operational' WHERE std_group = 'OPEX'");
-      database.exec("UPDATE expense_categories SET classifier = 'variable' WHERE id = 'ec_variable'");
       database.exec("UPDATE expense_categories SET op_type = 'expense',   classifier = 'tax'         WHERE std_group = 'Taxes'");
       database.exec("UPDATE expense_categories SET op_type = 'expense',   classifier = 'capex'       WHERE std_group = 'CAPEX'");
-      database.exec("UPDATE expense_categories SET op_type = 'income',    classifier = 'financing'   WHERE id = 'ec_investors'");
-      database.exec("UPDATE expense_categories SET op_type = 'transfer',  classifier = 'other'       WHERE id = 'ec_transfer'");
       database.exec("UPDATE expense_categories SET op_type = 'other',     classifier = 'other'       WHERE op_type IS NULL");
 
       console.log('[DB] Extended expense_categories with parent_id/op_type/classifier + backfilled seed rows');
@@ -7342,6 +7346,32 @@ function runMigrations(database: any) {
       database.exec(
         `CREATE UNIQUE INDEX IF NOT EXISTS idx_${table}_org_code ON ${table}(organization_id, code) WHERE code IS NOT NULL`);
     }
+
+    // Осі довідника — ЗА КОДОМ, і саме тут, після того як коди проставлено
+    // (Р12.4). Це те, що раніше робили три рядки з літеральними ключами
+    // `ec_variable` / `ec_investors` / `ec_transfer` вище: відколи ключ
+    // випадковий, вони не влучали ні в що.
+    //
+    // Стаття без `op_type` і `classifier` не падає й не помиляється видимо:
+    // P&L бере `COALESCE(classifier,'other')` і кладе оренду з зарплатою в
+    // «Інше», нижче EBITDA, а форма витрати питає `?op_type=expense` і
+    // отримує порожній список. Тому підписуємо ЛИШЕ порожнє — вісь, яку
+    // готель змінив під себе, лишається його.
+    //
+    // Це SQLite, тобто девелоперські бази. Готель на Postgres отримує осі
+    // при заведенні (`provisionOrganization`), а вже заведеному їх ставить
+    // `scripts/seed-chart-of-accounts.mjs` — разовою дією адміністратора.
+    const setAxes = database.prepare(`
+      UPDATE expense_categories
+         SET op_type    = COALESCE(NULLIF(op_type, ''), ?),
+             classifier = COALESCE(NULLIF(classifier, ''), ?)
+       WHERE code = ?
+         AND (op_type IS NULL OR op_type = '' OR classifier IS NULL OR classifier = '')`);
+    let axed = 0;
+    for (const a of CHART_OF_ACCOUNTS_SEED) {
+      axed += setAxes.run(a.opType, a.classifier, a.code).changes;
+    }
+    if (axed > 0) console.log(`[DB] 0097: axes (op_type/classifier) written by code for ${axed} catalogue rows`);
   } catch (e: any) {
     console.error('[DB] 0097 catalogue code column:', e.message);
   }
