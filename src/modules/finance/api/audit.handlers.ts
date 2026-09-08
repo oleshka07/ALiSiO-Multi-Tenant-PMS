@@ -116,7 +116,18 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
         JOIN fin_operations fo
           ON fo.organization_id = ci.organization_id
           AND fo.op_type = 'expense'
-          AND fo.category_id = 'ec_capex'
+          -- Стаття капітальних витрат — рядок ЦЬОГО готелю, знайдений за
+          -- сталим кодом (Р12.4). Тут стояло порівняння з написаним ключем
+          -- ec_capex — ідентифікатором готелю, що завівся першим. Відколи він
+          -- випадковий, умова не виконується в жодного готелю: розділ «CapEx
+          -- дублікати» доповідав «немає підозрілих дублів» не тому, що їх
+          -- немає, а тому, що питав про ключ, якого ні в кого немає.
+          -- Орендар у підзапиті береться від рядка, на якому він висить
+          -- (ci.organization_id), а не з сесії: так підзапит не може
+          -- розійтися з обʼєктом, від якого походить (інваріант 12).
+          AND fo.category_id = (SELECT ec.id FROM expense_categories ec
+                                 WHERE ec.organization_id = ci.organization_id
+                                   AND ec.code = 'capex')
           AND substr(fo.paid_at, 1, 7) = ci.month
           AND ABS(fo.amount - ci.amount) < 1
         WHERE ci.fin_operation_id IS NULL OR ci.fin_operation_id != fo.id
