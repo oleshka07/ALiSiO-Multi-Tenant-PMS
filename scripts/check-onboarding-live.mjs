@@ -163,7 +163,7 @@ async function login(email) {
 const cleanupProblems = [];
 async function drop(sqlText, params, what) {
   try {
-    await drop(sqlText, params);
+    await sql.run(sqlText, params);
   } catch (e) {
     cleanupProblems.push(`${what}: ${e.message}`);
   }
@@ -183,7 +183,16 @@ async function cleanup() {
           }
         }
         await drop('DELETE FROM reservations WHERE property_id = ?', [pid], 'reservations');
-        for (const t of ['ical_channels', 'cm_inbound_bookings', 'cm_outbox', 'cm_mappings', 'cm_events', 'cm_connections', 'fees_taxes']) {
+        // Тільки ті, у кого `property_id` СПРАВДІ є.
+        //
+        // Тут стояли ще `cm_inbound_bookings`, `cm_outbox`, `cm_mappings`,
+        // `cm_events` — усі чотири скоупляться `organization_id`, а не
+        // обʼєктом, тож `DELETE … WHERE property_id = ?` падав з «no such
+        // column» на кожному прогоні. Під `.catch(() => {})` цього не було
+        // видно, і чотири таблиці не прибирались НІКОЛИ. Вони каскадують від
+        // `organizations` — тобто прибирались наприкінці й без цих рядків;
+        // єдине, що ці рядки робили, — ховали помилку (Р13.8).
+        for (const t of ['ical_channels', 'cm_connections', 'fees_taxes']) {
           await drop(`DELETE FROM ${t} WHERE property_id = ?`, [pid], `${t}`);
         }
         // Ціни й статті обліку НЕ прибираються тут окремим запитом: вони
@@ -201,8 +210,14 @@ async function cleanup() {
       }
       await drop('DELETE FROM properties WHERE organization_id = ?', [org], 'properties');
     });
-    await drop('DELETE FROM sessions WHERE user_id IN (SELECT id FROM app_users WHERE organization_id = ?)', [org], 'sessions');
-    await drop('DELETE FROM app_users WHERE organization_id = ?', [org], 'app_users');
+    // `app_users` НЕ знімається окремо, і `sessions` теж.
+    //
+    // `fin_operations.created_by → app_users(id)` має `ON DELETE NO ACTION`, а
+    // прохід заводить оплату — тобто явний `DELETE FROM app_users` падав на
+    // зовнішньому ключі щоразу, і `.catch(() => {})` це ховав: користувачі й
+    // сесії лишались, поки їх не знімав каскад від `organizations` рядком
+    // нижче. Каскад робить це правильно й у правильному порядку, тож обидва
+    // рядки були зайві — вони лише приховували відмову (Р13.8).
     await drop('DELETE FROM organizations WHERE id = ?', [org], 'organizations');
   }
   if (cleanupProblems.length > 0) {
