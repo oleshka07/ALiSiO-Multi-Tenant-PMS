@@ -29,13 +29,23 @@
  *
  * ── Скільки це покриває насправді (Р8.14) ────────────────────────────────
  *
- * ШІСТЬ родин, **42 твердження** (39 місць виклику `claim(`, з них одне в
- * циклі по п'ятьох полях відповіді), і рівно **ЧОТИРИ динамічні маршрути зі 130**:
- * `/api/bookings/[id]`, `/api/bookings/[id]/invoice`, `/api/guest/[token]`,
- * `/api/channels/connections/[id]/frame`. Обидві історичні вади в цьому
- * наборі є — ціль узято правильно, — але поруч із «130 динамічних» це легко
- * прочитати як закритий клас. Клас не закритий: закрито чотири маршрути з
- * нього. Наступна родина додається дешево, бо фікстура вже стоїть.
+ * ДЕСЯТЬ родин, **70 тверджень** (66 місць виклику `claim(`; різниця — два
+ * цикли: пʼять полів відповіді каналу і чотири види аркуша дня), і **ПʼЯТЬ
+ * динамічних маршрутів зі 130**: `/api/bookings/[id]`,
+ * `/api/bookings/[id]/invoice`, `/api/guest/[token]`,
+ * `/api/channels/connections/[id]/frame`, `/api/day-sheets/[kind]`.
+ *
+ * Обидві історичні вади в цьому наборі є — ціль узято правильно, — але поруч
+ * із «130 динамічних» це легко прочитати як закритий клас. Клас НЕ закритий:
+ * закрито пʼять маршрутів із нього. Статичних маршрутів гейт торкається ще
+ * десяти (обʼєкт, тип, номер, ціни, броні, віджет, публічна наявність, два
+ * звіти) — але саме динамічні були тим, чого не бачив `smoke-routes`.
+ *
+ * Друга родина (08.09.2026) додалась дешево, як і обіцяла фікстура: віджет,
+ * публічна вітрина, звіти, день готелю. Дорогою вона виправила ДВА МОЇ
+ * припущення про форму відповіді — `displayRates` виявився обʼєктом, а не
+ * масивом, і аркуш дня без дати бере день ГОТЕЛЮ, а не відмовляє 400. Обидва
+ * знайшов живий прогін; читанням коду я їх не побачила.
  *
  * ── Що тут стверджується ─────────────────────────────────────────────────
  *
@@ -100,7 +110,7 @@ const USER = `${TAG}user`;
  * `accruals.reservation_id` (це нарахування витрат, не броні).
  */
 const SWEPT_BY_RESERVATION = ['invoices', 'booking_activity_log', 'guest_registrations'];
-const SWEPT_BY_PROPERTY = ['cm_connections', 'fees_taxes'];
+const SWEPT_BY_PROPERTY = ['cm_connections', 'fees_taxes', 'booking_sites'];
 const SWEPT_BY_ORG_IN_PROPERTY = ['cm_outbox', 'cm_mappings', 'cm_events', 'cm_inbound_bookings'];
 const SWEPT_BY_ORG = ['invoices', 'invoice_counters', 'invoice_series', 'guests', 'organization_features',
   'unit_type_amenities', 'property_amenities', 'amenities', 'amenity_categories',
@@ -233,7 +243,7 @@ async function main() {
   // Модулі, вимкнені за замовчуванням (П15): гейт перевіряє МАРШРУТИ, а не
   // право на модуль — 403 «не куплено» тут означав би, що ми нічого не
   // спитали.
-  for (const feature of ['guest_page', 'channels', 'invoicing', 'accounting']) {
+  for (const feature of ['guest_page', 'channels', 'invoicing', 'accounting', 'booking_engine', 'reports', 'day_sheets']) {
     await sql.run(
       `INSERT INTO organization_features (organization_id, feature, enabled) VALUES (?, ?, TRUE)
        ON CONFLICT(organization_id, feature) DO UPDATE SET enabled = TRUE`,
@@ -481,6 +491,130 @@ async function main() {
     const frame = await body(frameRes);
     claim('канал', frameRes.status === 409 && frame?.error === 'catalog_not_synced',
       `каталог не заведено — маршрут каже саме це (${frameRes.status} ${JSON.stringify(frame).slice(0, 40)})`);
+
+    // ── Віджет ───────────────────────────────────────────────────────────
+    //
+    // Публічна вітрина: сюди дивиться ГІСТЬ, і тут уже була вада рівно того
+    // роду, який ловить лише живий запит. У `widget/config` стояло
+    // `property.default_currency || 'CZK'`, а колонки `default_currency` в
+    // `properties` немає — запит іде через `SELECT *`, тож поле приходило
+    // `undefined` і запасне значення спрацьовувало ЗАВЖДИ. Кожен готель,
+    // німецький чи український, підписував ціни кронами. Статус при цьому
+    // був 200, форма — правильна; неправильним було саме ЧИСЛО і його валюта.
+    //
+    // Тому тут стверджується не «маршрут відповів», а «відповів валютою
+    // ЦЬОГО готелю»: EUR, як його заведено, і жодного запасного значення.
+    const siteId = `${TAG}site`;
+    await sql.run(
+      `INSERT INTO booking_sites (id, organization_id, property_id, name, slug, type, currency, status)
+       VALUES (?, ?, ?, ?, ?, 'widget', 'EUR', 'active')`,
+      [siteId, ORG, property.id, 'Routes probe site', `${TAG}site`]);
+
+    const wcRes = await fetch(`${BASE}/api/widget/config?propertyId=${property.id}`);
+    const wc = await body(wcRes);
+    claim('віджет', wcRes.status === 200, `конфіг віджета відповідає 200 (${wcRes.status})`);
+    claim('віджет', wc?.property?.id === property.id, `віджет називає свій обʼєкт (${wc?.property?.id})`);
+    claim('віджет', wc?.property?.currency === 'EUR',
+      `валюта віджета — валюта готелю, не запасна (${wc?.property?.currency})`);
+    // Курси показу — обʼєкт «валюта → курс», і це виміряно живою відповіддю,
+    // а не взято з голови: перше твердження тут казало «масив» і впало на
+    // `{"EUR":1}`. Питається сильніше за форму: валюта готелю мусить мати
+    // ЧИСЛОВИЙ курс, бо «≈ 0 EUR» гість читає як факт (інваріант 17).
+    const rates = wc?.property?.displayRates;
+    claim('віджет', rates && typeof rates === 'object' && !Array.isArray(rates),
+      `курси показу прийшли обʼєктом (${JSON.stringify(rates)?.slice(0, 30)})`);
+    claim('віджет', typeof rates?.EUR === 'number' && rates.EUR > 0,
+      `валюта готелю має числовий курс (EUR=${rates?.EUR})`);
+    const wcType = (wc?.unitTypes || []).find((u) => u.id === unitType.id);
+    claim('віджет', !!wcType, 'тип номера видно у вітрині');
+    claim('віджет', wcType?.name === 'Double', `тип названо своїм імʼям (${wcType?.name})`);
+    // Місткість — число, а не `undefined`: віджет рахує по ньому, кого пускати
+    // в номер, і `undefined` тут це «пускати будь-кого».
+    claim('віджет', typeof wcType?.maxOccupancy === 'number' && wcType.maxOccupancy > 0,
+      `місткість типу — число (${wcType?.maxOccupancy})`);
+
+    // Інваріант 8: публічний endpoint не має мовчазного дефолту.
+    const wcNoneRes = await fetch(`${BASE}/api/widget/config`);
+    claim('віджет', wcNoneRes.status === 400,
+      `без ідентифікатора обʼєкта віджет відмовляє 400, а не вгадує (${wcNoneRes.status})`);
+    const wcAlienRes = await fetch(`${BASE}/api/widget/config?propertyId=${TAG}nosuch`);
+    claim('віджет', wcAlienRes.status === 404,
+      `неіснуючий обʼєкт — 404, не порожня вітрина (${wcAlienRes.status})`);
+    const wpRes = await fetch(`${BASE}/api/widget/prices`);
+    claim('віджет', wpRes.status === 400,
+      `ціни віджета без сайту й обʼєкта — 400 (${wpRes.status})`);
+
+    // ── Публічна вітрина ─────────────────────────────────────────────────
+    //
+    // `public/availability` малює календар зайнятих дат. Порожній масив і
+    // ВІДСУТНЄ поле виглядають на екрані однаково — вільним місяцем, — тож
+    // тут стверджується саме наявність обох половин відповіді.
+    const paRes = await fetch(`${BASE}/api/public/availability?site_id=${siteId}&unit_type_id=${unitType.id}`);
+    const pa = await body(paRes);
+    claim('публічна вітрина', paRes.status === 200, `наявність для сайту відповідає 200 (${paRes.status})`);
+    claim('публічна вітрина', Array.isArray(pa?.bookedRanges),
+      `діапазони зайнятого — масив (${JSON.stringify(pa?.bookedRanges)?.slice(0, 40)})`);
+    claim('публічна вітрина', Array.isArray(pa?.bookedDates),
+      `зайняті дати — масив (${JSON.stringify(pa?.bookedDates)?.slice(0, 40)})`);
+    const paNoUnitRes = await fetch(`${BASE}/api/public/availability?site_id=${siteId}`);
+    claim('публічна вітрина', paNoUnitRes.status === 400,
+      `без номера чи типу — 400, а не «все вільно» (${paNoUnitRes.status})`);
+    const paAlienRes = await fetch(`${BASE}/api/public/availability?site_id=${TAG}nosite&unit_type_id=${unitType.id}`);
+    claim('публічна вітрина', paAlienRes.status === 404,
+      `невідомий сайт — 404 (${paAlienRes.status})`);
+
+    // ── День готелю ──────────────────────────────────────────────────────
+    //
+    // `day-sheets/[kind]` — ЧОТИРИ різні запити за одним динамічним сегментом.
+    // Зламаний SQL в одному вигляді не видно з інших: аркуш ключів може
+    // віддавати 500 роками, поки хтось не відкриє саме його. Тому кожен вид
+    // питається окремо, і кожен мусить дати `{date, rows}` — не «не 5xx».
+    const today = day(0);
+    for (const kind of ['house', 'breakfast', 'keys', 'day-close']) {
+      const dsRes = await call(cookie, `/api/day-sheets/${kind}?date=${today}`);
+      const ds = await body(dsRes);
+      claim('день готелю',
+        dsRes.status === 200 && ds?.date === today && Array.isArray(ds?.rows),
+        `аркуш «${kind}» віддає свою дату і рядки (${dsRes.status}, date=${ds?.date}, rows=${Array.isArray(ds?.rows) ? ds.rows.length : ds?.rows})`);
+    }
+    const dsBadRes = await call(cookie, `/api/day-sheets/${TAG}nosuch?date=${today}`);
+    const dsBad = await body(dsBadRes);
+    claim('день готелю', dsBadRes.status === 404 && dsBad?.error === 'Unknown sheet',
+      `невідомий аркуш — названа відмова 404 (${dsBadRes.status} ${JSON.stringify(dsBad).slice(0, 30)})`);
+    // Без дати аркуш бере ДЕНЬ ГОТЕЛЮ, а не дату сервера, і це навмисно:
+    // `dateFrom` падає на `todayFor(organizationId)`. Перше твердження тут
+    // казало «має бути 400» і впало на 200 — помилка була в твердженні, не в
+    // маршруті. Живий прогін і виправив: питається те, що маршрут обіцяє.
+    const dsNoDateRes = await call(cookie, '/api/day-sheets/house');
+    const dsNoDate = await body(dsNoDateRes);
+    claim('день готелю',
+      dsNoDateRes.status === 200 && /^\d{4}-\d{2}-\d{2}$/.test(dsNoDate?.date || ''),
+      `без дати аркуш бере день готелю, а не порожнечу (${dsNoDateRes.status}, date=${dsNoDate?.date})`);
+    // А ось СПОТВОРЕНА дата — саме та, на яку маршрут відмовляє: мовчазно
+    // підставити «сьогодні» замість «13-го місяця» означало б віддати аркуш
+    // не того дня, і оператор би цього не побачив.
+    const dsBadDateRes = await call(cookie, '/api/day-sheets/house?date=31-12-2026');
+    claim('день готелю', dsBadDateRes.status === 400,
+      `спотворена дата — 400, а не тихо «сьогодні» (${dsBadDateRes.status})`);
+
+    // ── Звіти ────────────────────────────────────────────────────────────
+    //
+    // Звіт — це числа, за якими готель ухвалює рішення, і порожній звіт від
+    // зламаного звіту не відрізниш за статусом. Тут стверджується форма:
+    // період повернувся ТИМ, який попросили, і зведення прийшло обʼєктом.
+    const from = day(-7), to = day(0);
+    const repRes = await call(cookie, `/api/reports?from=${from}&to=${to}`);
+    const rep = await body(repRes);
+    claim('звіти', repRes.status === 200, `звіт відповідає 200 (${repRes.status})`);
+    claim('звіти', rep?.period?.from === from && rep?.period?.to === to,
+      `звіт повернув ТОЙ період, який попросили (${rep?.period?.from} — ${rep?.period?.to})`);
+    claim('звіти', rep && typeof rep.summary === 'object' && rep.summary !== null,
+      `зведення прийшло обʼєктом (${JSON.stringify(rep?.summary)?.slice(0, 40)})`);
+    const ctRes = await call(cookie, `/api/reports/city-tax?from=${from}&to=${to}`);
+    const ct = await body(ctRes);
+    claim('звіти', ctRes.status === 200, `турзбір відповідає 200 (${ctRes.status})`);
+    claim('звіти', Array.isArray(ct?.rows) || Array.isArray(ct?.nights) || typeof ct === 'object',
+      `турзбір віддав структуру, а не порожнечу (${JSON.stringify(ct)?.slice(0, 40)})`);
   } finally {
     await cleanup();
   }
