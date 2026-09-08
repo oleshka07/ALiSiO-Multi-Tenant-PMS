@@ -51,6 +51,7 @@ const NOT_MONEY = new Set([
   'src/modules/finance/data/operation-tags.check.ts',
   'src/modules/finance/api/pnl-classifier.check.ts',
   'src/modules/finance/data/axis-repair.check.ts',
+  'src/modules/finance/api/recurring-scope.check.ts',
 ]);
 
 const DELETES = /DELETE\s+FROM\s+fin_operations\b/i;

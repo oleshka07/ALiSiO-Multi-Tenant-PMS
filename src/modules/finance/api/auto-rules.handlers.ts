@@ -19,7 +19,15 @@ async function enrichRule(row: AutoRuleRow) {
   const sql = getSql();
   const parsed = parseRule(row);
   const matchCount = await sql.row<any>("SELECT COUNT(*) AS n FROM fin_auto_rule_matches WHERE rule_id = ?", [row.id]) as { n: number };
-  return { ...parsed, match_count: matchCount.n };
+  // Ознака зламаності їде В СПИСОК — саме тут її побачить оператор. Без цього
+  // рядка правило, яке рушій пропускає, виглядало б у списку робочим, а
+  // причина лишалась би в базі, куди він не дивиться (Р13.1).
+  let brokenFields: string[] = [];
+  try {
+    const raw = (row as unknown as { broken_fields?: string | null }).broken_fields;
+    if (raw) brokenFields = JSON.parse(raw) as string[];
+  } catch { /* зіпсований JSON — не привід ховати саме правило */ }
+  return { ...parsed, match_count: matchCount.n, broken_fields: brokenFields };
 }
 
 function validateConditions(conditions: unknown): Condition[] {
@@ -159,6 +167,10 @@ export async function updateAutoRule(
     if (body.actions !== undefined) {
       fields.push('actions_json = ?');
       params.push(JSON.stringify(await validateActions(orgId, body.actions)));
+      // Варта щойно довела належність кожного посилання — стара ознака
+      // зламаності більше не істинна, і лишати її означало б показувати
+      // готелю попередження про те, що він уже полагодив.
+      fields.push('broken_fields = NULL');
     }
     if (body.is_active !== undefined) { fields.push('is_active = ?'); params.push(body.is_active ? 1 : 0); }
     if (body.stop_on_match !== undefined) { fields.push('stop_on_match = ?'); params.push(body.stop_on_match ? 1 : 0); }

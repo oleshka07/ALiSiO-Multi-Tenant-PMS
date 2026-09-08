@@ -887,14 +887,19 @@ export async function applyRecurringSuggestion(
 
     if (!confirm) {
       // Just dismiss
-      await sql.run("UPDATE fin_operations SET suggested_recurring_id = NULL WHERE id = ?", [id]);
+      await sql.run("UPDATE fin_operations SET suggested_recurring_id = NULL WHERE id = ? AND organization_id = ?", [id, orgId]);
       return NextResponse.json({ ok: true, action: 'dismissed' });
     }
 
-    const tpl = await sql.row<any>("SELECT category_id, project_id, counterparty_id, comment FROM fin_recurring_templates WHERE id = ?", [op.suggested_recurring_id]) as any;
+    // Орендар названий (Р13.8). Без нього шаблон читався по самому лише id, а
+    // нижче його `category_id`/`project_id`/`counterparty_id` лягали в
+    // `UPDATE fin_operations` — тобто чужий довідник заїжджав у власну книгу
+    // тими самими дверима, які закрив Р12.3, тільки збоку. `ownedFinanceRow`,
+    // а не свій `WHERE`: варта одна на всіх (Д34).
+    const tpl = await ownedFinanceRow('fin_recurring_templates', op.suggested_recurring_id, orgId) as any;
     if (!tpl) {
       // Template was deleted — just dismiss
-      await sql.run("UPDATE fin_operations SET suggested_recurring_id = NULL WHERE id = ?", [id]);
+      await sql.run("UPDATE fin_operations SET suggested_recurring_id = NULL WHERE id = ? AND organization_id = ?", [id, orgId]);
       return NextResponse.json({ ok: true, action: 'dismissed_orphan' });
     }
 
@@ -906,11 +911,11 @@ export async function applyRecurringSuggestion(
           comment = CASE WHEN comment IS NULL OR comment = '' THEN ? ELSE comment END,
           suggested_recurring_id = NULL,
           updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `, [tpl.category_id, tpl.project_id, tpl.counterparty_id, tpl.comment, id]);
+      WHERE id = ? AND organization_id = ?
+    `, [tpl.category_id, tpl.project_id, tpl.counterparty_id, tpl.comment, id, orgId]);
 
     const updated = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [id]);
-    return NextResponse.json({ ok: true, action: 'applied', operation: enrichOperation(updated) });
+    return NextResponse.json({ ok: true, action: 'applied', operation: await enrichOperation(updated, orgId) });
   } catch (error: any) {
     return handleError('modules/finance/api/operations applyRecurringSuggestion', error);
   }

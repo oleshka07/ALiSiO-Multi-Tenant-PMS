@@ -480,6 +480,18 @@ const AXES = [
     axis: 'імена міток: спільне «spa» ≠ власне «тільки-…» (витік читача видно лише за назвою)',
     distinct: /INSERT INTO finance_tags[\s\S]*?\[\w+, organizationId, ([^\]]+)\]/g, min: 2,
   },
+  // Шаблони: з однією відмовою «не гасне з першої» і «не гасне ніколи»
+  // невідрізненні; з одним готелем «чужа стаття» ні від чого не відрізняється.
+  {
+    file: 'src/modules/finance/api/recurring-scope.check.ts',
+    axis: 'станів шаблону після відмов (перша ≠ друга ≠ третя)',
+    distinct: /const after(\d) = await state\(\)/g, min: 3,
+  },
+  {
+    file: 'src/modules/finance/api/recurring-scope.check.ts',
+    axis: 'два готелі з різними довідниками (mine ≠ alien)',
+    distinct: /category_id: (mine|alien)\.category/g, min: 2,
+  },
   // П&L: з однією сумою «потрапило в свою секцію» і «потрапило в сусідню»
   // дають однакове число; з рівними сумами не видно, котра з них де.
   {

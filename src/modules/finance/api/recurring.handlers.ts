@@ -5,8 +5,8 @@ import { todayFor } from '@core/hotel-day';
 import { getDb } from '@core/db';
 import { materializeTemplate, runRecurringTick, type Template } from '../data/recurring-engine';
 import { requireOrganizationId } from '@core/auth/tenant-context';
-import { ownedFinanceRow } from '../data/owned.repo';
-import { serverError } from '@core/http/errors';
+import { ownedFinanceRow, requireOwnedReferences } from '../data/owned.repo';
+import { serverError, handleError } from '@core/http/errors';
 
 const SCHEDULES = ['daily', 'weekly', 'monthly', 'yearly'] as const;
 const OP_TYPES = ['income', 'expense', 'transfer'] as const;
@@ -70,6 +70,11 @@ export async function createRecurringTemplate(request: NextRequest): Promise<Nex
     }
 
     const orgId = await requireOrganizationId();
+    // Та сама варта, що на операції (Д34). Тут вона важить БІЛЬШЕ, ніж там:
+    // шаблон із чужою статтею лягав у базу тихо, а відмовляв аж уночі, коли
+    // рушій до нього дійде, — і оператора, який міг би це пояснити, поруч уже
+    // не було. Помилка конфігурації мусить називатись у момент конфігурації.
+    await requireOwnedReferences(orgId, body);
     const id = `rt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     await sql.run(`
       INSERT INTO fin_recurring_templates
@@ -85,7 +90,7 @@ export async function createRecurringTemplate(request: NextRequest): Promise<Nex
     const row = await sql.row<any>("SELECT * FROM fin_recurring_templates WHERE id = ?", [id]);
     return NextResponse.json(row, { status: 201 });
   } catch (error: any) {
-    return serverError('modules/finance/api/recurring createRecurringTemplate', error);
+    return handleError('modules/finance/api/recurring createRecurringTemplate', error);
   }
 }
 
@@ -100,6 +105,9 @@ export async function updateRecurringTemplate(
     const orgId = await requireOrganizationId();
     const existing = await ownedFinanceRow('fin_recurring_templates', id, orgId);
     if (!existing) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
+    // Білий список `allowed` нижче бере ті самі імена з тіла запиту — закрити
+    // лише створення означало б лишити двері поруч.
+    await requireOwnedReferences(orgId, body);
 
     const fields: string[] = [];
     const params: any[] = [];
@@ -119,7 +127,7 @@ export async function updateRecurringTemplate(
     await sql.run(`UPDATE fin_recurring_templates SET ${fields.join(', ')} WHERE id = ? AND organization_id = ?`, [...params]);
     return NextResponse.json(await ownedFinanceRow('fin_recurring_templates', id, orgId));
   } catch (error: any) {
-    return serverError('modules/finance/api/recurring updateRecurringTemplate', error);
+    return handleError('modules/finance/api/recurring updateRecurringTemplate', error);
   }
 }
 

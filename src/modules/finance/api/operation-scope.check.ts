@@ -244,6 +244,56 @@ try {
   try { ownRuleStatus = await saveRule({ set_category_id: mine.category }); } catch { ownRuleStatus = -1; }
   say(ownRuleStatus === 201, `правило з ВЛАСНОЮ статтею зберігається (${ownRuleStatus})`);
 
+  // ── 2d. Правило, яке ВЖЕ лежить у базі з чужим посиланням ───────────────
+  //
+  // Варта на збереженні його не прибирає за побудовою: воно лягло раніше за
+  // неї. Питання лише в тому, що робить СПРАЦЮВАННЯ. Мовчазного пропуску тут
+  // не буває в жодному разі: або правило змінює операцію, або воно позначене
+  // зламаним і готель бачить, ЯКЕ поле — не рядок у логу контейнера, який
+  // ніхто не читає.
+  //
+  // Засівається повз API, бо саме так воно й потрапило б у базу.
+  if (ownId) {
+    const brokenRuleId = 'ar_broken_check';
+    await runWithOrganization(one.organizationId, () => sql.run(
+      `INSERT INTO fin_auto_rules
+         (id, organization_id, name, op_type, conditions_json, actions_json, is_active, sort_order)
+       VALUES (?, ?, ?, 'expense', ?, ?, TRUE, 100)`,
+      [brokenRuleId, one.organizationId, 'Старе правило з чужою статтею',
+        JSON.stringify([{ field: 'comment', op: 'contains', value: '' }]),
+        JSON.stringify({ set_category_id: alien.category })]));
+
+    const { loadActiveRules, applyRulesToOperation } = await import('../data/auto-rules-engine');
+    const before = await runWithOrganization(one.organizationId, () => sql.row<{ category_id: string }>(
+      'SELECT category_id FROM fin_operations WHERE id = ?', [String(ownId)]));
+
+    await runWithOrganization(one.organizationId, async () => {
+      const op = await sql.row<any>('SELECT * FROM fin_operations WHERE id = ?', [String(ownId)]);
+      const rules = await loadActiveRules(one.organizationId);
+      await applyRulesToOperation(op, rules, one.organizationId);
+    });
+
+    const after = await runWithOrganization(one.organizationId, () => sql.row<{ category_id: string }>(
+      'SELECT category_id FROM fin_operations WHERE id = ?', [String(ownId)]));
+    say(after?.category_id === before?.category_id && after?.category_id === mine.category,
+      `спрацювання зламаного правила операцію НЕ змінило (${after?.category_id})`);
+
+    const marked = await runWithOrganization(one.organizationId, () => sql.row<{ broken_fields: string }>(
+      'SELECT broken_fields FROM fin_auto_rules WHERE id = ?', [brokenRuleId]));
+    say(Boolean(marked?.broken_fields && marked.broken_fields.includes('set_category_id')),
+      `правило позначене зламаним, із назвою поля (${marked?.broken_fields ?? 'нічого'})`);
+
+    // І оператор бачить це в списку правил, а не тільки в базі.
+    const { listAutoRules } = await import('./auto-rules.handlers');
+    const listed = await runWithOrganization(one.organizationId, async () => {
+      const res = await listAutoRules({ nextUrl: new URL('http://local/api/finance/auto-rules') } as never);
+      return await res.json() as { id: string; broken_fields?: string[] }[];
+    });
+    const shown = listed.find((r) => r.id === brokenRuleId);
+    say(Array.isArray(shown?.broken_fields) && shown.broken_fields.includes('set_category_id'),
+      `список правил віддає ознаку зламаності оператору (${JSON.stringify(shown?.broken_fields)})`);
+  }
+
   // ── 3. І з другого боку: другий готель не пише в довідник першого ───────
   let secondRefused = false;
   try {

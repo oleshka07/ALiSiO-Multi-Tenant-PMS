@@ -2235,6 +2235,13 @@ function runMigrations(database: any) {
       end_at TEXT,
       last_run_at TEXT,
       runs_created INTEGER NOT NULL DEFAULT 0,
+      -- Чому шаблон не спрацював і скільки разів поспіль (Р13.7). Доти
+      -- рушій ловив виняток і мовчки ставив is_active = FALSE: помилка
+      -- конфігурації вимикала готелю регулярний платіж, і жодного слова про
+      -- це не лишалось ніде, крім логу контейнера, який ніхто не читає.
+      failed_runs INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      last_error_at TEXT,
       is_active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -2263,6 +2270,10 @@ function runMigrations(database: any) {
       is_active INTEGER NOT NULL DEFAULT 1,
       stop_on_match INTEGER NOT NULL DEFAULT 0,
       sort_order INTEGER NOT NULL DEFAULT 0,
+      -- Поля правила, чиє посилання веде в чужий довідник (Р13.1). Варта
+      -- стоїть на збереженні, але правило могло лягти в базу ДО неї; тоді
+      -- спрацювання його пропускає, а готель бачить чому — тут, а не в логу.
+      broken_fields TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
@@ -7429,6 +7440,29 @@ function runMigrations(database: any) {
     if (fixed > 0) console.log(`[DB] 0120: axes corrected on ${fixed} catalogue rows (wrong, not just empty)`);
   } catch (e: any) {
     console.error('[DB] 0120 axis repair:', e.message);
+  }
+
+  // --- 0121: відмова, яку видно готелю, а не лише логу контейнера ---
+  //
+  // Обидві колонки додаються І в CREATE вище, І тут (AGENTS §4): міграції
+  // написані як «оновити з попереднього стану», тож ALTER легко опиняється
+  // вище за CREATE тієї самої таблиці — на порожній базі це тихо падає, і
+  // новий клієнт лишається без колонки, яку код читає.
+  for (const [table, column, ddl] of [
+    ['fin_recurring_templates', 'failed_runs', 'INTEGER NOT NULL DEFAULT 0'],
+    ['fin_recurring_templates', 'last_error', 'TEXT'],
+    ['fin_recurring_templates', 'last_error_at', 'TEXT'],
+    ['fin_auto_rules', 'broken_fields', 'TEXT'],
+  ] as const) {
+    try {
+      const cols = database.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+      if (!cols.some((c) => c.name === column)) {
+        database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+        console.log(`[DB] 0121: ${table}.${column} added`);
+      }
+    } catch (e: any) {
+      console.error(`[DB] 0121 ${table}.${column}:`, e.message);
+    }
   }
 
   // --- 0098 (ключі довідників з орендарем) — НЕ ЗРОБЛЕНО, і ось чому ---

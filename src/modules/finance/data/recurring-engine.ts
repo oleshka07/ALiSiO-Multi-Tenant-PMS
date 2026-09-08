@@ -25,6 +25,10 @@ export interface Template {
   last_run_at: string | null;
   runs_created: number;
   is_active: number;
+  /** Скільки прогонів поспіль відмовили і чим — видно в списку шаблонів (Р13.7). */
+  failed_runs?: number;
+  last_error?: string | null;
+  last_error_at?: string | null;
 }
 
 function pad2(n: number): string { return n < 10 ? `0${n}` : String(n); }
@@ -106,11 +110,53 @@ export async function materializeTemplate(template: Template, asOfDate: string):
     UPDATE fin_recurring_templates
     SET last_run_at = ?, next_run_at = ?, runs_created = runs_created + 1,
         is_active = CASE WHEN ? THEN 0 ELSE is_active END,
+        -- Успішний прогін скидає лічильник: рахуються відмови ПОСПІЛЬ, а не
+        -- за все життя шаблону. Інакше три збої за півроку погасили б шаблон,
+        -- який щомісяця працює.
+        failed_runs = 0, last_error = NULL, last_error_at = NULL,
         updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `, [runDate, nextDate, stopRun ? 1 : 0, template.id]);
 
   return operationId;
+}
+
+/**
+ * Скільки відмов поспіль шаблон переживає, перш ніж його вимкнути.
+ *
+ * Не одна (Р13.7). Доти рушій гасив шаблон із ПЕРШОГО винятку, і це було
+ * подвійно погано: помилка конфігурації тихо вимикала готелю регулярний
+ * платіж, а сама відмова лишалась у логу контейнера, який не читає ніхто.
+ * Оренда просто переставала нараховуватись.
+ *
+ * Три, бо найчастіша відмова тут ТИМЧАСОВА: курс валюти на сьогодні ще не
+ * заведено (`computeAmountCompany` відмовляє названо), і завтра той самий
+ * шаблон пройде. Погашений шаблон сам не вмикається — його вмикають руками,
+ * а щоб увімкнути, треба спершу помітити.
+ */
+const FAILURES_BEFORE_PAUSE = 3;
+
+/**
+ * Записати відмову так, щоб її побачив ГОТЕЛЬ, а не лог.
+ *
+ * `next_run_at` зсувається на наступний строк у будь-якому разі: без цього
+ * шаблон лишається «до виконання», і цикл нижче вибирає його знову й знову до
+ * стелі в 1000 обертів. Тобто пропущене нарахування — свідома ціна за те, щоб
+ * рушій не зупинився на одному зламаному шаблоні; видно її в `failed_runs`.
+ */
+async function recordTemplateFailure(template: Template, error: any): Promise<void> {
+  const sql = getSql();
+  const failed = Number(template.failed_runs || 0) + 1;
+  const nextDate = advanceSchedule(template.next_run_at, template.schedule, template.schedule_day);
+  await sql.run(`
+    UPDATE fin_recurring_templates
+       SET failed_runs = ?, last_error = ?, last_error_at = CURRENT_TIMESTAMP,
+           next_run_at = ?,
+           is_active = CASE WHEN ? THEN FALSE ELSE is_active END,
+           updated_at = CURRENT_TIMESTAMP
+     WHERE id = ? AND organization_id = ?
+  `, [failed, String(error?.message || error).slice(0, 500), nextDate,
+    failed >= FAILURES_BEFORE_PAUSE, template.id, template.organization_id]);
 }
 
 /**
@@ -151,8 +197,7 @@ export async function runRecurringTick(lookaheadDays = 30): Promise<{ created: n
         created++;
       } catch (e: any) {
         errors.push(`${t.id} (${t.name}): ${e.message}`);
-        // Deactivate failing template to avoid infinite loop
-        await sql.run("UPDATE fin_recurring_templates SET is_active = FALSE WHERE id = ?", [t.id]);
+        await recordTemplateFailure(t, e);
       }
     }
     templatesTouched += due.length;

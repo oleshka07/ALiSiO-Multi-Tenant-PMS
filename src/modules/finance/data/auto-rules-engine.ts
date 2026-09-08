@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getSql } from '@core/db/async';
+import { ownedFinanceRow, RULE_ACTION_REFERENCES } from './owned.repo';
 
 export type ConditionField =
   | 'comment' | 'amount' | 'amount_company'
@@ -117,6 +118,8 @@ export interface ApplyResult {
   changes: Record<string, any>;
   rulesFired: string[];
   tagsAdded: string[];
+  /** Правила, які не спрацювали, бо посилаються в чужий довідник (Р13.1). */
+  skipped?: { ruleId: string; fields: string[] }[];
 }
 
 function parseAliases(json: string | null): string[] {
@@ -154,14 +157,68 @@ async function findCounterpartyByText(orgId: string, text: string): Promise<stri
  * Writes changes to fin_operations and logs matches.
  * Returns the delta (what changed).
  */
+/**
+ * Поля правила, чиє посилання веде в довідник ЧУЖОГО готелю.
+ *
+ * Варта стоїть на збереженні (`validateActions`, Д35), і для всього, що
+ * зберігається після неї, цей список завжди порожній. Він потрібен для
+ * правил, які лягли в базу РАНІШЕ за варту — і для них питання не «як
+ * заборонити», а «що робить спрацювання». Відповідь: нічого не змінює і
+ * каже про це видимо.
+ *
+ * `add_tag_ids` тут же: мітка — те саме поле, просто в іншому тілі (Д36).
+ */
+async function brokenRuleFields(rule: ParsedRule, orgId: string): Promise<string[]> {
+  const broken: string[] = [];
+  for (const [field, table] of RULE_ACTION_REFERENCES) {
+    const value = (rule.actions as Record<string, unknown>)[field];
+    if (value === undefined || value === null || value === '') continue;
+    if (!await ownedFinanceRow(table, String(value), orgId)) broken.push(field);
+  }
+  for (const tagId of rule.actions.add_tag_ids || []) {
+    if (!await ownedFinanceRow('finance_tags', String(tagId), orgId)) {
+      if (!broken.includes('add_tag_ids')) broken.push('add_tag_ids');
+    }
+  }
+  return broken;
+}
+
+/**
+ * Позначити правило зламаним — У САМІЙ ТАБЛИЦІ, щоб побачив готель.
+ *
+ * Не `console.error`: лог контейнера не читає ніхто, і саме цей клас тиші
+ * коштував проєкту найдорожче. Ознака їде в список правил
+ * (`listAutoRules` → `enrichRule`), де оператор її і побачить поруч із
+ * назвою правила.
+ */
+async function markRuleBroken(rule: ParsedRule, fields: string[], orgId: string): Promise<void> {
+  const sql = getSql();
+  if (rule.id.startsWith('synthetic_')) return;
+  await sql.run(
+    'UPDATE fin_auto_rules SET broken_fields = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND organization_id = ?',
+    [JSON.stringify(fields), rule.id, orgId]);
+}
+
 export async function applyRulesToOperation(op: Operation, rules: ParsedRule[], orgId: string): Promise<ApplyResult> {
   const sql = getSql();
   const changes: Record<string, any> = {};
   const rulesFired: string[] = [];
   const tagsAdded = new Set<string>();
+  const skipped: { ruleId: string; fields: string[] }[] = [];
 
   for (const rule of rules) {
     if (!isRuleApplicable(rule, op)) continue;
+
+    // Правило, чиє посилання веде в чужий довідник, не застосовується
+    // ЦІЛКОМ — не «крім поганого поля». Половина правила це не правило:
+    // операція дістала б комбінацію, якої готель ніколи не описував.
+    const broken = await brokenRuleFields(rule, orgId);
+    if (broken.length > 0) {
+      await markRuleBroken(rule, broken, orgId);
+      skipped.push({ ruleId: rule.id, fields: broken });
+      continue;
+    }
+
     rulesFired.push(rule.id);
     const a = rule.actions;
 
@@ -213,7 +270,7 @@ export async function applyRulesToOperation(op: Operation, rules: ParsedRule[], 
     }
   }
 
-  return { operationId: op.id, changes, rulesFired, tagsAdded: [...tagsAdded] };
+  return { operationId: op.id, changes, rulesFired, tagsAdded: [...tagsAdded], skipped };
 }
 
 export async function loadActiveRules(orgId: string): Promise<ParsedRule[]> {

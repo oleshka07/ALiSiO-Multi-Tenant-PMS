@@ -147,7 +147,30 @@ async function login(email) {
   return `session_id=${m[1]}`;
 }
 
+/**
+ * Прибрати рядок і СКАЗАТИ, якщо не вийшло.
+ *
+ * Тут стояло тринадцять `.catch(() => {})` — у файлі, чия ж власна правка цей
+ * рід і викриває (Р13.8). Глухий рукав у прибиранні шкодить двічі: наступний
+ * прогін стартує з чужого сміття й падає в місці, яке до причини стосунку не
+ * має; а якщо `DELETE` перестав прибирати через ПОЛІТИКУ (під роллю
+ * застосунку без контексту орендаря він знімає нуль рядків і мовчить —
+ * INC-014), то мовчання приховує саме те, заради чого цей гейт існує.
+ *
+ * Відмова прибирання не валить прогін: гейт про заведення, а не про
+ * прибирання. Але вона ВИДИМА, і рядок називає таблицю.
+ */
+const cleanupProblems = [];
+async function drop(sqlText, params, what) {
+  try {
+    await drop(sqlText, params);
+  } catch (e) {
+    cleanupProblems.push(`${what}: ${e.message}`);
+  }
+}
+
 async function cleanup() {
+  cleanupProblems.length = 0;
   const orgs = (await sql.rows("SELECT id FROM organizations WHERE slug LIKE ?", [`${SLUG_TAG}%`])).map((r) => r.id);
   for (const org of orgs) {
     const props = (await sql.rows('SELECT id FROM properties WHERE organization_id = ?', [org])).map((r) => r.id);
@@ -156,31 +179,35 @@ async function cleanup() {
         const resIds = (await sql.rows('SELECT id FROM reservations WHERE property_id = ?', [pid])).map((r) => r.id);
         for (const rid of resIds) {
           for (const t of ['invoices', 'booking_activity_log', 'guest_registrations']) {
-            await sql.run(`DELETE FROM ${t} WHERE reservation_id = ?`, [rid]).catch(() => {});
+            await drop(`DELETE FROM ${t} WHERE reservation_id = ?`, [rid], `${t}`);
           }
         }
-        await sql.run('DELETE FROM reservations WHERE property_id = ?', [pid]).catch(() => {});
+        await drop('DELETE FROM reservations WHERE property_id = ?', [pid], 'reservations');
         for (const t of ['ical_channels', 'cm_inbound_bookings', 'cm_outbox', 'cm_mappings', 'cm_events', 'cm_connections', 'fees_taxes']) {
-          await sql.run(`DELETE FROM ${t} WHERE property_id = ?`, [pid]).catch(() => {});
+          await drop(`DELETE FROM ${t} WHERE property_id = ?`, [pid], `${t}`);
         }
         // Ціни й статті обліку НЕ прибираються тут окремим запитом: вони
         // належать чужим модулям, і назвати їх у SQL означало б пробити межу
         // (`check-boundaries`). Каскад від `organizations` зносить їх сам —
         // так само робить `check-routes-live`.
-        await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [pid]).catch(() => {});
-        await sql.run('DELETE FROM units WHERE property_id = ?', [pid]).catch(() => {});
-        await sql.run('DELETE FROM unit_types WHERE property_id = ?', [pid]).catch(() => {});
-        await sql.run('DELETE FROM categories WHERE property_id = ?', [pid]).catch(() => {});
+        await drop('DELETE FROM rate_plans WHERE property_id = ?', [pid], 'rate_plans');
+        await drop('DELETE FROM units WHERE property_id = ?', [pid], 'units');
+        await drop('DELETE FROM unit_types WHERE property_id = ?', [pid], 'unit_types');
+        await drop('DELETE FROM categories WHERE property_id = ?', [pid], 'categories');
       }
       for (const t of ['guests', 'invoices', 'invoice_counters',
         'invoice_series', 'organization_features', 'organization_currencies']) {
-        await sql.run(`DELETE FROM ${t} WHERE organization_id = ?`, [org]).catch(() => {});
+        await drop(`DELETE FROM ${t} WHERE organization_id = ?`, [org], `${t}`);
       }
-      await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]).catch(() => {});
+      await drop('DELETE FROM properties WHERE organization_id = ?', [org], 'properties');
     });
-    await sql.run('DELETE FROM sessions WHERE user_id IN (SELECT id FROM app_users WHERE organization_id = ?)', [org]).catch(() => {});
-    await sql.run('DELETE FROM app_users WHERE organization_id = ?', [org]).catch(() => {});
-    await sql.run('DELETE FROM organizations WHERE id = ?', [org]).catch(() => {});
+    await drop('DELETE FROM sessions WHERE user_id IN (SELECT id FROM app_users WHERE organization_id = ?)', [org], 'sessions');
+    await drop('DELETE FROM app_users WHERE organization_id = ?', [org], 'app_users');
+    await drop('DELETE FROM organizations WHERE id = ?', [org], 'organizations');
+  }
+  if (cleanupProblems.length > 0) {
+    console.log(`  !  прибирання лишило ${cleanupProblems.length} проблем(и) — наступний прогін почнеться з чужого сміття:`);
+    for (const p of cleanupProblems) console.log(`       ${p}`);
   }
 }
 
