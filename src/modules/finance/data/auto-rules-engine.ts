@@ -42,6 +42,8 @@ export interface AutoRuleRow {
 export interface ParsedRule extends Omit<AutoRuleRow, 'conditions_json' | 'actions_json'> {
   conditions: Condition[];
   actions: Actions;
+  /** JSON правила не розбирається — правило зламане, а не порожнє. */
+  unreadable?: boolean;
 }
 
 export interface Operation {
@@ -58,13 +60,45 @@ export interface Operation {
   project_id: string | null;
 }
 
+/**
+ * Колонка з JSON — і на SQLite, і на Postgres.
+ *
+ * Тут стояло `JSON.parse(actions_json)` під глухим `catch`, який мовчки
+ * ковтав виняток, і
+ * це вбивало ВСІ авто-правила на Postgres мовчки. `conditions_json` і
+ * `actions_json` — `JSONB` (`schema.sql`), а драйвер віддає JSONB уже
+ * РОЗІБРАНИМ обʼєктом. `JSON.parse(обʼєкт)` розбирає рядок `[object Object]`,
+ * кидає — і глухий рукав повертав `{}` та `[]`. Далі `matchesAllConditions`
+ * на порожньому списку умов повертає `false`, тобто жодне правило не
+ * застосовувалось НІКОЛИ: ані категоризація, ані автопідбір контрагента.
+ * Помилки не було ніде — була тиша.
+ *
+ * На SQLite та сама колонка це TEXT, і там усе працювало. Класичний
+ * INC-014-подібний розрив: зелено там, де розробка, мертво там, де клієнт.
+ *
+ * Знайдено 09.09.2026 прогоном `check:pg` роллю `alisio_app` — саме тим, що
+ * AGENTS §7 і вимагає: «SQL — це рядок, політика — це поведінка бази; обидва
+ * мовчать».
+ *
+ * `null` у розборі означає «зіпсовано»: рядок не вгадується мовчки, а
+ * позначається зламаним нарівні з чужим посиланням (Д40).
+ */
+function parseJsonColumn<T>(value: unknown, empty: T): T | null {
+  if (value === null || value === undefined || value === '') return empty;
+  if (typeof value === 'object') return value as T;          // Postgres JSONB
+  try { return JSON.parse(String(value)) as T; } catch { return null; }  // SQLite TEXT
+}
+
 export function parseRule(row: AutoRuleRow): ParsedRule {
   const { conditions_json, actions_json, ...rest } = row;
-  let conditions: Condition[] = [];
-  let actions: Actions = {};
-  try { conditions = JSON.parse(conditions_json || '[]'); } catch { /* ignore */ }
-  try { actions = JSON.parse(actions_json || '{}'); } catch { /* ignore */ }
-  return { ...rest, conditions, actions };
+  const conditions = parseJsonColumn<Condition[]>(conditions_json, []);
+  const actions = parseJsonColumn<Actions>(actions_json, {});
+  return {
+    ...rest,
+    conditions: conditions ?? [],
+    actions: actions ?? {},
+    unreadable: conditions === null || actions === null,
+  };
 }
 
 export function evaluateCondition(op: Operation, cond: Condition): boolean {
@@ -212,7 +246,9 @@ export async function applyRulesToOperation(op: Operation, rules: ParsedRule[], 
     // Правило, чиє посилання веде в чужий довідник, не застосовується
     // ЦІЛКОМ — не «крім поганого поля». Половина правила це не правило:
     // операція дістала б комбінацію, якої готель ніколи не описував.
-    const broken = await brokenRuleFields(rule, orgId);
+    const broken = rule.unreadable
+      ? ['conditions_json/actions_json']
+      : await brokenRuleFields(rule, orgId);
     if (broken.length > 0) {
       await markRuleBroken(rule, broken, orgId);
       skipped.push({ ruleId: rule.id, fields: broken });

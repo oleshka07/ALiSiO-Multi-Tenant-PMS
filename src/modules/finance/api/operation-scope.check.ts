@@ -264,6 +264,34 @@ try {
         JSON.stringify({ set_category_id: alien.category })]));
 
     const { loadActiveRules, applyRulesToOperation } = await import('../data/auto-rules-engine');
+
+    // ПЕРШЕ твердження — що правила взагалі СПРАЦЬОВУЮТЬ.
+    //
+    // Без нього вся сцена нижче зелена і на системі, де авто-правил немає як
+    // явища: «зламане правило операцію не змінило» істинне й тоді, коли ЖОДНЕ
+    // правило нічого не змінює. Саме так воно й було на Postgres — розбір
+    // JSONB кидав у глухий `catch`, умови ставали порожні, і `isRuleApplicable`
+    // повертав `false` завжди. Одна вісь замість двох (інваріант 26).
+    const goodRuleId = 'ar_good_check';
+    await runWithOrganization(one.organizationId, () => sql.run(
+      `INSERT INTO fin_auto_rules
+         (id, organization_id, name, op_type, conditions_json, actions_json, is_active, sort_order)
+       VALUES (?, ?, ?, 'expense', ?, ?, TRUE, 1)`,
+      [goodRuleId, one.organizationId, 'Правило, що працює',
+        JSON.stringify([{ field: 'comment', op: 'contains', value: 'мітка-для-правила' }]),
+        JSON.stringify({ set_project_id: mine.unit })]));
+
+    const targetId = await write({ ...base, comment: 'мітка-для-правила' });
+    await runWithOrganization(one.organizationId, async () => {
+      const op = await sql.row<any>('SELECT * FROM fin_operations WHERE id = ?', [String(targetId)]);
+      const rules = await loadActiveRules(one.organizationId);
+      await applyRulesToOperation(op, rules, one.organizationId);
+    });
+    const fired = await runWithOrganization(one.organizationId, () => sql.row<{ project_id: string }>(
+      'SELECT project_id FROM fin_operations WHERE id = ?', [String(targetId)]));
+    say(fired?.project_id === mine.unit,
+      `справне правило СПРАЦЮВАЛО і поставило бізнес-юніт (${fired?.project_id ?? 'нічого'})`);
+
     const before = await runWithOrganization(one.organizationId, () => sql.row<{ category_id: string }>(
       'SELECT category_id FROM fin_operations WHERE id = ?', [String(ownId)]));
 
