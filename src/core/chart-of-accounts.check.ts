@@ -66,13 +66,16 @@ const fails: string[] = [];
 const say = (ok: boolean, msg: string) => { if (!ok) fails.push(msg); };
 
 try {
+  // `country` тут не косметика: з 0113 пояс обовʼязковий, і мовчазної Праги
+  // більше немає. Довідник рахунків від поясу не залежить — країна названа
+  // рівно щоб `provisionOrganization` мав звідки вивести пояс.
   const one = await provisionOrganization({
     name: 'Hotel One', slug: SLUGS[0], ownerEmail: 'one@coa.check',
-    ownerPassword: 'coa-check-password-1', currency: 'CZK', language: 'uk',
+    ownerPassword: 'coa-check-password-1', currency: 'CZK', language: 'uk', country: 'CZ',
   });
   const two = await provisionOrganization({
     name: 'Hotel Two', slug: SLUGS[1], ownerEmail: 'two@coa.check',
-    ownerPassword: 'coa-check-password-2', currency: 'EUR', language: 'de',
+    ownerPassword: 'coa-check-password-2', currency: 'EUR', language: 'de', country: 'DE',
   });
 
   // ── 1. У КОЖНОГО свій повний довідник ────────────────────────────────────
