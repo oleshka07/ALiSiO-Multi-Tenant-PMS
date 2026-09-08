@@ -1,5 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getSql } from './db/async.ts';
+// З розширенням `.ts`: цей файл виконує ще й голий node у гейтах, а він без
+// нього модуля не знаходить (той самий розклад, що в `db/async.ts` вище).
+import { refuse } from './http/refusal.ts';
 
 /**
  * What day it is at the hotel.
@@ -140,17 +143,36 @@ export function isKnownTimezone(timezone: string | null | undefined): boolean {
 }
 
 /**
- * The organization's timezone, or the schema default.
+ * Пояс організації. Немає — названа відмова, не Прага.
  *
- * Cached per call site rather than globally: this is one indexed read by
- * primary key, and a stale timezone after an operator changes it would be a
- * worse bug than the read.
+ * Читається щоразу, не кешується глобально: це одне читання за первинним
+ * ключем, а застарілий пояс після того, як оператор його змінив, коштував
+ * би дорожче за цей запит.
+ *
+ * ── Чому тут більше немає `|| 'Europe/Prague'` ──────────────────────────
+ *
+ * Бо для готелю, заведеного до 0113, «Прага» і «пояс, який назвали»
+ * невідрізненні — а пояс вирішує, де проходить МЕЖА ДОБИ: списки приїздів і
+ * виїздів, нічний архів неявок, «сьогодні» на кожному екрані і, головне,
+ * дати, якими торгує канал. Український готель із празьким поясом продає не
+ * ті дні, і жодної помилки при цьому не видно: значення схоже на правду.
+ *
+ * `provisionOrganization` пояс уже вимагає (або виводить із країни й
+ * показує висновок), а колонка `NOT NULL`. Тобто відмова тут спрацьовує
+ * рівно у двох випадках, і обидва — справжня поломка, яку краще побачити:
+ * організації немає, або в поясі порожній рядок.
+ *
+ * Інваріант 13: перевірка, яка не знайшла рядка, відмовляє, а не дозволяє.
  */
 export async function organizationTimezone(organizationId: string): Promise<string> {
   const sql = getSql();
   const row = await sql.row<any>(
     'SELECT timezone FROM organizations WHERE id = ?', [organizationId]);
-  return row?.timezone || 'Europe/Prague';
+  const timezone = typeof row?.timezone === 'string' ? row.timezone.trim() : '';
+  if (!timezone) {
+    refuse(`organization ${organizationId} has no timezone — the hotel must say which one it is in`, 500);
+  }
+  return timezone;
 }
 
 /** Today at this organization's hotel, in one call. */
