@@ -35,6 +35,17 @@ jobs:
           cache: npm
       - run: npm ci
 
+      - name: no two paths differing only in case
+        # Runs FIRST and on its own step on purpose. This is the one class CI
+        # structurally cannot see in passing: on Linux `README.md` and
+        # `readme.md` are two files and everything is green, while on the
+        # owner's NTFS or APFS working copy they are ONE — git lays the second
+        # over the first, the folder is never clean, and the file that loses
+        # disappears at every checkout. The gate reads `git ls-files`, which
+        # knows both names, rather than the disk, which on those systems does
+        # not. Its own step so the reason is readable from the job list.
+        run: node scripts/check-case-collisions.mjs --strict
+
       - name: types
         run: npx tsc --noEmit
 
