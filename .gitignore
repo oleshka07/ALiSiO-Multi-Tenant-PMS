@@ -62,3 +62,7 @@ audit-ui-report.json
 /deploy/backups/
 # object-store credentials for off-site backups
 /deploy/rclone.conf
+
+# сирі матеріали досліджень і вивантаження — не в репозиторій
+/research/
+/harvest/
