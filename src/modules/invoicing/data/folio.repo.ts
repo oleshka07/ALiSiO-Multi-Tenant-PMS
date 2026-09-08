@@ -11,6 +11,7 @@
 import { getSql } from '@core/db/async';
 import type { Sql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { recordPayment } from './folio-payments.repo';
 import { allocateInvoiceNumber, isPeriodLocked, seriesForChannel } from '../domain/invoice-numbering';
 import { buildSnapshot, buildStorno, type FolioItem } from '../domain/invoice-snapshot';
 
@@ -62,6 +63,126 @@ export async function createFolio(input: {
      input.payerDebtorNo ?? null, input.label ?? null, currency],
   );
   return id;
+}
+
+/**
+ * Фоліо цієї броні — наявне або щойно створене (В3).
+ *
+ * Фоліо — єдина книга проживання, тож гроші, що прийшли за бронь, мають куди
+ * лягти НАВІТЬ тоді, коли рецепція ще не відкривала вкладку «Фінанси». Доти
+ * готівковий внесок жив у `fin_operations` поруч із книгою, і виселення
+ * показувало повний борг при сплачених трьох тисячах.
+ *
+ * Перше за створенням, а не «якесь»: бронь із поділом рахунку між платниками
+ * має кілька фоліо, і платіж без явного вибору належить тому, що відкрили
+ * першим — інакше він щоразу потрапляв би в різні.
+ */
+export async function ensureReservationFolio(reservationId: string, t?: Sql): Promise<string> {
+  const organizationId = await requireOrganizationId();
+  const sql = t ?? getSql();
+  const existing = await sql.row<{ id: string }>(
+    'SELECT id FROM fin_folios WHERE organization_id = ? AND reservation_id = ? ORDER BY created_at ASC, id ASC LIMIT 1',
+    [organizationId, reservationId]);
+  if (existing) return String(existing.id);
+  return createFolio({ reservationId });
+}
+
+/**
+ * Записати платіж за бронь у фоліо — і НЕ лишити порожньої книги, якщо він
+ * не записався.
+ *
+ * `ensureReservationFolio` + `recordPayment` двома кроками дали найгірше з
+ * можливого на німецькому обʼєкті без TSE: фіскальна варта відмовляє готівці
+ * навмисно (гроші там досі в старій касі), місток відмову ковтав — і по собі
+ * лишалась ПОРОЖНЯ книга. А порожня книга відчиняла виселення боржникові, бо
+ * борг із неї виходив нуль.
+ *
+ * Тому створення й запис — одні двері: не записалось, і книгу завели ми в
+ * цьому ж виклику, і вона досі порожня — книгу прибрано, помилка піднята
+ * вище. Наявне фоліо не чіпається ніколи: воно старше за цей виклик.
+ */
+export async function recordReservationPayment(input: {
+  reservationId: string;
+  amount: number;
+  method: string;
+  paidAt?: string | null;
+}): Promise<{ paymentId: string; folioId: string }> {
+  const organizationId = await requireOrganizationId();
+  const sql = getSql();
+  const before = await sql.row<{ id: string }>(
+    'SELECT id FROM fin_folios WHERE organization_id = ? AND reservation_id = ? ORDER BY created_at ASC, id ASC LIMIT 1',
+    [organizationId, input.reservationId]);
+  const folioId = before ? String(before.id) : await createFolio({ reservationId: input.reservationId });
+  try {
+    const paymentId = await recordPayment({
+      folioId, amount: input.amount, method: input.method, paidAt: input.paidAt ?? null,
+    });
+    return { paymentId, folioId };
+  } catch (e) {
+    if (!before) {
+      const empty = await sql.row<{ n: number }>(
+        `SELECT (SELECT COUNT(*) FROM fin_folio_items WHERE folio_id = ?)
+              + (SELECT COUNT(*) FROM fin_folio_payments WHERE folio_id = ?) AS n`,
+        [folioId, folioId]);
+      if (Number(empty?.n) === 0) {
+        await sql.run('DELETE FROM fin_folios WHERE id = ? AND organization_id = ?', [folioId, organizationId]);
+      }
+    }
+    throw e;
+  }
+}
+
+/**
+ * Зняти з книги гостя ОДИН названий платіж — ЗУСТРІЧНИМ рядком.
+ *
+ * `fin_folio_payments` не має видалення за задумом: рахунок гостя не
+ * переписується заднім числом, помилковий клік виправляється зустрічним
+ * рядком. Але видалення фінансової операції чистило лише `fin_operations`, і
+ * перерахунок далі бачив у фоліо гроші, яких уже ніде немає, — бронь
+ * лишалась `paid`. Стан «гроші є в одній книзі й немає в іншій» виникав із
+ * НОРМАЛЬНОЇ дії оператора, а не з падіння.
+ *
+ * Приймається ІДЕНТИФІКАТОР ПЛАТЕЖУ, не бронь із сумою (Р10.6). Стара форма
+ * знімала «стільки-то з першого фоліо броні», і це було неправильно двічі:
+ *   - викликач не мав чим довести, що ці гроші клав саме він, тож видалення
+ *     ручної проводки бухгалтера забирало з рахунку гостя ЧУЖІ гроші;
+ *   - `LIMIT 1` по фоліо знімав із першої книги, тоді як на роздільному
+ *     рахунку платіж міг лежати в другій.
+ * Названий рядок відповідає на обидва: знімається саме те, що клали, і саме
+ * там, де воно лежить.
+ *
+ * Спосіб і документ зустрічного рядка беруться З ТОГО САМОГО платежу, а не
+ * підставляються (`'cash'` тут стояло літералом). Це не косметика: німецький
+ * обʼєкт з увімкненим `fiscal_de` вимагає для готівки назвати фактуру, тож
+ * зустрічний рядок без неї не проходив НІКОЛИ — саме для сегмента, заради
+ * якого фіскальний модуль і будується (Р10.8).
+ *
+ * Сума обмежена тим, що фоліо справді тримає: знімати більше, ніж там є,
+ * означало б завести борг із повітря. Повторний виклик не знімає вдруге —
+ * зустрічний рядок уже зменшив залишок.
+ */
+export async function reverseFolioPayment(folioPaymentId: string): Promise<number> {
+  const organizationId = await requireOrganizationId();
+  const sql = getSql();
+  const row = await sql.row<{
+    folio_id: string; amount: number; method: string; invoice_id: string | null; paid: number;
+  }>(
+    `SELECT p.folio_id AS folio_id, p.amount AS amount, p.method AS method, p.invoice_id AS invoice_id,
+            COALESCE((SELECT SUM(q.amount) FROM fin_folio_payments q WHERE q.folio_id = p.folio_id), 0) AS paid
+       FROM fin_folio_payments p
+      WHERE p.id = ? AND p.organization_id = ?`,
+    [folioPaymentId, organizationId]);
+  if (!row) return 0;
+  const held = Number(row.paid) || 0;
+  const take = Math.min(Math.abs(Number(row.amount) || 0), held);
+  if (!(take > 0)) return 0;
+  await recordPayment({
+    folioId: String(row.folio_id),
+    amount: -take,
+    method: String(row.method),
+    invoiceId: row.invoice_id ?? undefined,
+  });
+  return take;
 }
 
 /**

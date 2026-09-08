@@ -40,9 +40,17 @@ const PROP = '__paystat__prop';
 const ids = { cat: '__paystat__cat', ut: '__paystat__ut', unit: '__paystat__unit', guest: '__paystat__guest' };
 
 async function cleanup() {
-  await sql.run("DELETE FROM reservations WHERE id LIKE '__paystat__%'", []);
-  await sql.run('DELETE FROM guests WHERE organization_id = ?', [ORG]);
-  await sql.run('DELETE FROM properties WHERE organization_id = ?', [ORG]);
+  // У КОНТЕКСТІ ОРЕНДАРЯ — на SQLite це нічого не змінює (політик там немає),
+  // але прибирання, яке працює лише поза орендарем, ламається тієї миті, коли
+  // перевірку додають у `check:pg`: під роллю застосунку `DELETE` без
+  // контексту не бачить жодного рядка й прибирає нуль, мовчки. Саме так упав
+  // сусідній `folio-book.check` (INC-014). Ця перевірка живе на SQLite
+  // (читає `sqlite_master`), тож тут це запобіжник, а не виправлення.
+  await runWithOrganization(ORG, async () => {
+    await sql.run("DELETE FROM reservations WHERE id LIKE '__paystat__%'", []);
+    await sql.run('DELETE FROM guests WHERE organization_id = ?', [ORG]);
+    await sql.run('DELETE FROM properties WHERE organization_id = ?', [ORG]);
+  });
   await sql.run('DELETE FROM organizations WHERE id = ?', [ORG]);
 }
 

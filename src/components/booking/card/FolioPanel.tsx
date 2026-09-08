@@ -17,7 +17,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useT } from '@core/i18n/client';
 import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import { EmptyState, LoadingState, ErrorState } from '@/components/ui/State';
-import { folioSettlesStay } from '@/modules/bookings/ui/folio-payment';
+import { statusFromFolio } from '@/modules/bookings/ui/folio-payment';
 import { Receipt, Plus, CreditCard, FileText, Loader2, ArrowRight } from 'lucide-react';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -178,12 +178,22 @@ export default function FolioPanel({ booking: b, compact, showToast, onBookingCh
     // legacy-документ — документ виставляє фоліо (рецензія 07.09 п.1).
     try {
       const fresh = await fetch(`/api/finance/folios?reservation_id=${b.id}&summary=1`).then((x) => x.json());
-      if (folioSettlesStay(fresh) && !['paid', 'prepaid'].includes(b.payment_status)) {
+      // Слово рахує фоліо, і воно каже не лише «оплачено»: внесок із залишком
+      // робить бронь `partial` (В3). Доти частина не ставила НІЧОГО — бронь,
+      // оплачена половиною, у фільтр «частково» не потрапляла взагалі.
+      const word = statusFromFolio(fresh);
+      if (word && word !== b.payment_status && b.payment_status !== 'prepaid') {
         const res = await fetch(`/api/bookings/${b.id}`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ payment_status: 'paid', payment_method: payForm.method === 'cash' ? 'folio_cash' : 'folio' }),
+          body: JSON.stringify({ payment_status: word, payment_method: payForm.method === 'cash' ? 'folio_cash' : 'folio' }),
         });
-        if (res.ok) { setBooking?.({ ...b, payment_status: 'paid' }); onBookingChanged?.(); showToast(tUi('✅ Рахунок закрито — бронь оплачена')); }
+        if (res.ok) {
+          setBooking?.({ ...b, payment_status: word });
+          onBookingChanged?.();
+          showToast(word === 'paid'
+            ? tUi('✅ Рахунок закрито — бронь оплачена')
+            : tUi('Оплату записано — бронь частково оплачена'));
+        }
       }
     } catch { /* статус оплати оновиться наступним читанням */ }
   };

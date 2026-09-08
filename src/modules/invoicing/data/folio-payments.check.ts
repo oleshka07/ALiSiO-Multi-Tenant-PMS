@@ -22,7 +22,7 @@ import '../../../../scripts/lib/module-aliases.mjs';
 const { runWithOrganization } = await import('@core/auth/tenant-context');
 const { getSql } = await import('@core/db/async');
 const { setFeature } = await import('@core/features');
-const { createFolio } = await import('./folio.repo.ts');
+const { createFolio, reverseFolioPayment } = await import('./folio.repo.ts');
 const { recordPayment, listPayments, unsignedPayments } = await import('./folio-payments.repo.ts');
 
 const sql = getSql();
@@ -151,6 +151,32 @@ try {
     const uRow = (await listPayments(deFolio)).find((p) => p.id === unconfigured) as any;
     assert.strictEqual(uRow.tse_status, 'tse_failed', 'несконфігурований fiskaly — теж tse_failed, не тиша');
     console.log('  ok  без конфігурації fiskaly — tse_failed і запис у журналі, виїзд не стоїть');
+
+    // ── зустрічний рядок НІМЕЦЬКОЇ каси проходить (Р10.8) ─────────────────
+    //
+    // `reverseFolioPayment` знімає гроші з книги гостя, коли зникла операція в
+    // фінансовій книзі. Доти він писав `method: 'cash'` літералом і БЕЗ
+    // рахунку — а німецька каса з увімкненим TSE саме цього й не приймає
+    // (`must name its invoice`). Тобто для сегмента, заради якого фіскальний
+    // модуль і будується, зняття не проходило НІКОЛИ, і гроші лишались у
+    // рахунку гостя після видалення операції — Р8.7 у повному обсязі.
+    //
+    // Спосіб і документ беруться з ТОГО САМОГО платежу, який знімаємо.
+    const toReverse = await recordPayment(
+      { folioId: deFolio, amount: 25, method: 'cash', invoiceId: 'paych_inv' },
+      { device: stub });
+    const takenBack = await reverseFolioPayment(toReverse);
+    assert.strictEqual(takenBack, 25, 'зустрічний рядок мав зняти рівно суму платежу');
+    const counter = (await listPayments(deFolio)).at(-1) as any;
+    assert.strictEqual(Number(counter.amount), -25, 'зустрічний рядок мусить бути відʼємним');
+    assert.strictEqual(counter.method, 'cash', 'спосіб береться з платежу, а не підставляється');
+    assert.strictEqual(counter.invoice_id, 'paych_inv', 'документ береться з платежу — інакше каса відмовить');
+    console.log('  ok  зустрічний рядок німецької каси носить спосіб і документ початкового платежу');
+
+    // Чужий платіж не знімається: ідентифікатор із іншої організації —
+    // «нічого не знайдено», а не «знімемо з першого фоліо, яке трапилось».
+    assert.strictEqual(await reverseFolioPayment('paych_nope'), 0,
+      'неіснуючий платіж не сміє нічого знімати');
 
     // ── the honest refusals ────────────────────────────────────────────────
     // A folio with no property cannot prove its till is not German — the

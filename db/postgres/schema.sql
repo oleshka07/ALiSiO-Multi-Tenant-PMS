@@ -271,6 +271,7 @@ CREATE TABLE "business_units" (
   "sort_order" BIGINT DEFAULT 0 NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "parent_id" TEXT,
+  "code" TEXT,
   PRIMARY KEY ("id")
 );
 
@@ -606,6 +607,7 @@ CREATE TABLE "expense_categories" (
   "parent_id" TEXT,
   "op_type" TEXT,
   "classifier" TEXT,
+  "code" TEXT,
   PRIMARY KEY ("id")
 );
 
@@ -909,6 +911,7 @@ CREATE TABLE "fin_operations" (
   "status" TEXT DEFAULT 'completed' NOT NULL,
   "method" TEXT,
   "payment_subtype" TEXT,
+  "folio_payment_id" TEXT,
   "comment" TEXT,
   "is_planned" BOOLEAN DEFAULT false NOT NULL,
   "source" TEXT DEFAULT 'manual' NOT NULL,
@@ -2674,6 +2677,7 @@ CREATE INDEX "idx_booking_sites_property" ON "booking_sites" ("property_id");
 CREATE UNIQUE INDEX "idx_booking_sites_slug" ON "booking_sites" ("slug");
 CREATE INDEX "idx_booking_sites_status" ON "booking_sites" ("status");
 CREATE INDEX "idx_bu_parent" ON "business_units" ("parent_id");
+CREATE UNIQUE INDEX "idx_business_units_org_code" ON "business_units" ("organization_id", "code") WHERE code IS NOT NULL;
 CREATE INDEX "idx_capex_bu" ON "capex_items" ("business_unit_id");
 CREATE INDEX "idx_capex_month" ON "capex_items" ("month");
 CREATE INDEX "idx_capex_org" ON "capex_items" ("organization_id");
@@ -2704,6 +2708,7 @@ CREATE UNIQUE INDEX "idx_event_addons_row" ON "event_addons" ("property_id", "na
 CREATE INDEX "idx_event_bookings_day" ON "event_bookings" ("property_id", "space_id", "event_date");
 CREATE UNIQUE INDEX "idx_event_spaces_row" ON "event_spaces" ("property_id", "code");
 CREATE INDEX "idx_ec_parent" ON "expense_categories" ("parent_id");
+CREATE UNIQUE INDEX "idx_expense_categories_org_code" ON "expense_categories" ("organization_id", "code") WHERE code IS NOT NULL;
 CREATE INDEX "idx_extra_occupancy_rules_org" ON "extra_occupancy_rules" ("organization_id");
 CREATE INDEX "idx_extra_occupancy_rules_property" ON "extra_occupancy_rules" ("property_id");
 CREATE INDEX "idx_arm_op" ON "fin_auto_rule_matches" ("operation_id");

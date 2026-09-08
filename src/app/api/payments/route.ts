@@ -1,10 +1,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 import { createPaymentOperation } from '@/modules/finance/api/payment-bridge';
 import { getOptionalActor } from '@/modules/finance/api/operations.handlers';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
-import { serverError } from '@core/http/errors';
+// `handleError`, не `serverError`: відмова, названа на місці кидання
+// (`refuse`, примітив Ц43), мусить дійти до портьє СВОЇМ текстом і своїм
+// статусом. Доти цей `catch` згортав її в 500 «Внутрішня помилка сервера»,
+// а причина — «income requires account_to_id» — лишалась у лозі контейнера
+// (INC-028, ланка 3; клас Р8.3). `handleError` віддає 500 усьому, що не є
+// відмовою, тож деталі драйвера клієнтові й далі не їдуть (інваріант 6).
+import { handleError } from '@core/http/errors';
 
 // Legacy /api/payments endpoint — reads/writes via fin_operations.
 //
@@ -55,7 +62,7 @@ export const GET = withActor(async (request: NextRequest, _ctx, actor: Actor) =>
     `, params);
     return NextResponse.json(rows);
   } catch (e: any) {
-    return serverError('app/api/payments GET', e);
+    return handleError('app/api/payments GET', e);
   }
 });
 
@@ -105,7 +112,7 @@ export const POST = withPermission('manage_payments', async (
         ? `Внесено: ${actor.name}${notes ? ' · ' + notes : ''}`
         : (notes || null);
 
-      const { operationId } = await createPaymentOperation({
+      const { operationId, folioRecorded, folioRefusal } = await createPaymentOperation({
         reservationId: reservation_id,
         amount: Math.abs(Number(amount)),
         method,
@@ -117,35 +124,46 @@ export const POST = withPermission('manage_payments', async (
         actor,
         accountId,
       });
-      return NextResponse.json({ id: operationId, ok: true, kind: 'fin_operation' }, { status: 201 });
+      // Відмова книги гостя ДОХОДИТЬ до оператора, а не лягає в лог (Р10.10).
+      // Для німецького обʼєкта без `fiscal_de` це постійний стан цілого
+      // сегмента: гроші в касі, у рахунку гостя їх немає. 201 без жодного
+      // слова означав, що розходження книг бачить лише той, хто читає логи.
+      return NextResponse.json({
+        id: operationId, ok: true, kind: 'fin_operation',
+        folioRecorded,
+        ...(folioRecorded ? {} : {
+          folioRefusal,
+          message: 'Гроші записано в касу, але не в рахунок гостя — рахунок їх не покаже.',
+        }),
+      }, { status: 201 });
     }
 
-    // Marker path — no fin_operation. Only update reservation.payment_status
-    // and write an audit row to booking_activity_log so the operator has a
-    // trail of who marked what.
-    const res = await sql.row<{ id: string; total_price: number; payment_status: string; is_prepaid: number }>(
-      'SELECT id, total_price, payment_status, is_prepaid FROM reservations WHERE id = ?',
-      [reservation_id],
+    // ── Маркерний шлях: НІ операції, НІ рядка в книзі гостя (Ч8) ────────
+    //
+    // Рішення 07.09: маркер очікуваної оплати у фоліо не пише. «Очікується
+    // переказ» лишається очікуванням на броні, видимим рецепції в журналі; ні
+    // борг, ні слово оплати воно не рухає.
+    //
+    // Причини, у порядку ваги:
+    //   - книга гостя містить ФАКТИ, не наміри (Д20/Ч7): гроші ще в дорозі, і
+    //     цей маршрут існує саме тому (див. CASH_METHODS вище);
+    //   - `fin_folio_payments` не має видалення за задумом — помилковий клік
+    //     виправлявся б лише зустрічним рядком у рахунку живого гостя;
+    //   - борг на виселенні рахується з фоліо, тож маркер відчинив би двері
+    //     боржникові — той самий клас, що Р8.5.
+    //
+    // Доти тут стояла табличка «deposit → partial, full → paid», яка писала
+    // слово, не знаючи СУМИ; потім (В3) — платіж у фоліо методом `transfer`
+    // за гроші, яких ще немає. Тепер — жодного з двох.
+    //
+    // Третій стан платежу («заявлений/підтверджений») заводиться тоді, коли
+    // його попросить готель, а не як побічний ефект маркера.
+    const orgId = await requireOrganizationId();
+    const res = await sql.row<{ id: string }>(
+      'SELECT id FROM reservations WHERE id = ? AND organization_id = ?',
+      [reservation_id, orgId],
     );
     if (!res) return NextResponse.json({ error: 'reservation not found' }, { status: 404 });
-
-    // Channel-prepaid reservations (Hostex Booking/Airbnb/VRBO with is_prepaid=1)
-    // are paid by the platform — never downgrade their status from a marker.
-    let statusChanged = false;
-    if (res.is_prepaid !== 1) {
-      let nextStatus = res.payment_status;
-      if (type === 'full')              nextStatus = 'paid';
-      else if (type === 'refund')       nextStatus = 'unpaid';
-      else if (type === 'deposit')      nextStatus = 'partial';
-      else if (type === 'partial')      nextStatus = 'partial';
-      if (nextStatus !== res.payment_status) {
-        await sql.run(
-          'UPDATE reservations SET payment_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-          [nextStatus, reservation_id],
-        );
-        statusChanged = true;
-      }
-    }
 
     try {
       const detailsLine = `${method} ${type} ${Math.abs(Number(amount))}${notes ? ' — ' + notes : ''}`;
@@ -161,11 +179,13 @@ export const POST = withPermission('manage_payments', async (
       ok: true,
       kind: 'marker',
       method,
-      statusChanged,
+      // Слово оплати маркер не рухає за рішенням Ч8 — поле лишається, щоб
+      // старий клієнт не читав `undefined`, і завжди `false`.
+      statusChanged: false,
       message:
         'Позначка збережена. Реальна транзакція з\'явиться в Операціях, коли надійдуть гроші (банк / платформа).',
     }, { status: 201 });
   } catch (e: any) {
-    return serverError('app/api/payments POST', e);
+    return handleError('app/api/payments POST', e);
   }
 });

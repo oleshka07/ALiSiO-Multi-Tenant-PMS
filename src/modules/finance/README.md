@@ -318,7 +318,7 @@ API згруповано за бізнес-доменами. Мутації за
 |---|---|---|
 | `createPaymentOperation(...)` | Створити операцію з платежу | internal |
 | `hasPaymentOperation(...)` | Перевірити існування | internal |
-| `deletePaymentOperationsForReservation(...)` | Видалити операції резервації | internal |
+| `deletePaymentOperation(operationId)` | Видалити одну операцію по броні і зняти той самий рядок із книги гостя (Р8.7/Р10.6) | internal |
 
 ### Payment recovery + Paid services
 

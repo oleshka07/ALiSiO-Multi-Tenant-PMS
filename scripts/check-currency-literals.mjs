@@ -81,6 +81,54 @@ for (const root of ROOTS) {
   }
 }
 
+// ── Друга вісь: НАЗВА ВАЛЮТИ в модулі фінансів. Властивість, не візерунок ──
+//
+// Перша вісь дивиться на ЗНАК валюти в екранах — `Kč` поруч із числом.
+//
+// Перша редакція другої осі була ВІЗЕРУНКОВА: список форм, у яких крона
+// зустрічалась (`to_currency = '…'`, `currency === '…'`, запасне `?? '…'`). І
+// вона мала діру рівно того класу, який стереже: у тому самому файлі, який
+// вона нібито почистила, лишилось `newCurrency !== 'CZK'` — інше імʼя змінної
+// (`\bcurrency` не збігається всередині `newCurrency`) і інший оператор
+// (`===?` не збігається з `!==`). Гейт доповідав «чисто» на дванадцяти живих
+// літералах у модулі фінансів, серед них тому, що писав `fx_rate = 1` готелю
+// на євро при кожному редагуванні його ж операції.
+//
+// Тому вісь тепер про ВЛАСТИВІСТЬ: у `src/modules/finance` НЕ БУВАЄ назви
+// валюти літералом. Не «не буває в таких-то формах» — не буває взагалі.
+// Валюта приходить із організації (`organizationCurrency`) або з рядка даних.
+// Візерунок треба вгадати; властивість — ні, і саме тому вона не має дірок.
+//
+// Виключено, і кожне з причиною:
+//   - `.check.ts` — фікстура зобовʼязана називати валюту, інакше вона нічого
+//     не розрізняє (інваріант 26);
+//   - `core/currency.ts` — це САМ довідник валют, там коди й мусять бути.
+//     Він поза `modules/finance`, тож під вісь не потрапляє й так.
+const CODE_ROOTS = ['src/modules/finance'];
+// Коди — ISO 4217 тих валют, які продукт бачить сьогодні або побачить у
+// Європі й Україні. Список не повний і не мусить бути: гейт ловить НАЗВУ
+// валюти як явище, а не всі 180 можливих.
+const CURRENCY_CODE = /'(?:CZK|EUR|UAH|USD|PLN|GBP|CHF|HUF|RON|SEK|NOK|DKK|BGN|RSD|TRY|JPY|CAD|AUD)'/g;
+
+const codeFound = new Map();
+for (const root of CODE_ROOTS) {
+  for (const file of walk(root)) {
+    const rel = file.split(path.sep).join('/');
+    if (/\.check\.ts$/.test(rel)) continue;
+    const lines = withoutComments(fs.readFileSync(file, 'utf8')).split('\n');
+    const hits = [];
+    lines.forEach((line, i) => {
+      CURRENCY_CODE.lastIndex = 0;
+      const n = (line.match(CURRENCY_CODE) || []).length;
+      for (let k = 0; k < n; k += 1) hits.push({ line: i + 1, sign: 'назва валюти', text: line.trim().slice(0, 100) });
+    });
+    if (hits.length) codeFound.set(rel, hits);
+  }
+}
+for (const [file, hits] of codeFound) {
+  found.set(file, [...(found.get(file) || []), ...hits]);
+}
+
 const counts = Object.fromEntries([...found].map(([f, h]) => [f, h.length]).sort());
 const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
@@ -109,10 +157,11 @@ for (const [file, max] of Object.entries(ceiling)) {
   if (!(file in counts) && max > 0) shrank.push(`${file}: 0 (стеля ${max})`);
 }
 
-console.log(`currency-literals: ${total} знаків валюти у ${found.size} файлах екранів (стеля: ${Object.values(ceiling).reduce((a, b) => a + b, 0)} у ${Object.keys(ceiling).length})`);
+console.log(`currency-literals: ${total} місць у ${found.size} файлах — знак на екрані і код у логіці (стеля: ${Object.values(ceiling).reduce((a, b) => a + b, 0)} у ${Object.keys(ceiling).length})`);
 
 if (grew.length) {
-  console.error('\n  ✗ знак валюти зашито в екран — візьміть валюту готелю (useHotelCurrency), не клавіатуру:');
+  console.error('\n  ✗ валюта зашита в код. На екрані — беріть `useHotelCurrency()`;'
+    + ' у логіці — валюту організації (`organizationCurrency`), не літерал:');
   for (const l of grew) console.error(`      ${l}`);
   for (const l of grew) {
     const file = l.split(':')[0];
@@ -125,4 +174,4 @@ if (shrank.length) {
   for (const l of shrank) console.error(`      ${l}`);
   process.exit(1);
 }
-console.log('  чисто — жоден екран не вигадав валюти понад стелю');
+console.log('  чисто — ні екран, ні логіка не вигадали валюти понад стелю');

@@ -4,6 +4,14 @@ import fs from 'fs';
 import { createRequire } from 'node:module';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+// Один список на всіх: план рахунків і бізнес-юніти. Імпорт відносний і з
+// розширенням — цей файл вантажать і збірка, і голий node (`check-bare-node`).
+// Два списки (тут і в сівачі) розійшлися б, і другий готель отримав би
+// довідник, якого немає в першого — саме той клас, що INC-025.
+import {
+  CHART_OF_ACCOUNTS as CHART_OF_ACCOUNTS_SEED,
+  BUSINESS_UNITS as BUSINESS_UNITS_SEED,
+} from '../core/chart-of-accounts.ts';
 
 // Database file path — the project's /data directory, unless told otherwise.
 // The override exists so scripts/check-fresh-schema.mjs can boot the app
@@ -530,6 +538,21 @@ function runMigrations(database: any) {
   // in this database fails for the wrong reason and drops us into the rebuild
   // branch below — which recreates app_users WITHOUT password_hash (see the
   // re-insert further down) and drops audit_log outright.
+  //
+  // ЦЕЙ `LIMIT 1` ЗАКОННИЙ, і це сказано прямо, щоб наступний не взяв його за
+  // зразок (INC-028, п.4). Решта чотирьох копій того самого рядка сіяли ДАНІ
+  // конкретному орендареві — і саме тому були вадою: «перший, хто трапився»
+  // не є відповіддю на питання «чий це рядок» (інваріант 1).
+  //
+  // Тут питання інше й не про орендаря взагалі: чи приймає CHECK на
+  // `app_users.role` нинішній перелік ролей. Це властивість СХЕМИ, однакова
+  // для всієї бази; організація потрібна лише як будь-який дійсний
+  // зовнішній ключ, щоб пробний `INSERT` не впав з іншої причини. Рядок
+  // одразу видаляється, нічого нікому не належить.
+  //
+  // Ознака, за якою відрізняти: якщо від вибору організації залежить, ЧИЇ
+  // дані зʼявляться в базі, — `LIMIT 1` заборонений. Якщо результат той
+  // самий для будь-якої — це проба, і вона законна.
   const probeOrg = database.prepare('SELECT id FROM organizations LIMIT 1').get() as { id: string } | undefined;
   let roleCheckIsCurrent = true;
   if (probeOrg) {
@@ -1795,17 +1818,12 @@ function runMigrations(database: any) {
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
-    // Only the two structural units every P&L needs. A tenant's real business
-    // units (their restaurant, their wellness area, their buildings) are theirs
-    // to define — seeding one property's breakdown into every database put
-    // another company's org chart in front of the customer.
-    const orgRow = database.prepare("SELECT id FROM organizations LIMIT 1").get() as any;
-    if (orgRow) {
-      const insBU = database.prepare('INSERT INTO business_units (id, organization_id, name, unit_type, is_shared, sort_order) VALUES (?, ?, ?, ?, ?, ?)');
-      insBU.run('bu_shared', orgRow.id, 'Shared / HQ', 'Shared / HQ', 1, 1);
-      insBU.run('bu_review', orgRow.id, 'To review', 'Unassigned / review', 0, 2);
-      console.log('[DB] Created business_units table');
-    }
+    // Рядків тут БІЛЬШЕ НЕ СІЄМО (INC-025). Тут стояло
+    // `SELECT id FROM organizations LIMIT 1` і два літеральні ключі
+    // (`bu_shared`, `bu_review`) — тобто структурні юніти діставались готелю,
+    // який завівся першим, а другий не мав жодного. Засів переїхав у 0097
+    // (для кожної організації) і в `provisionOrganization` (для нової).
+    console.log('[DB] Created business_units table');
   }
 
   // --- Migration: add parent_id to business_units for hierarchy (Finmap PR #3) ---
@@ -1844,36 +1862,14 @@ function runMigrations(database: any) {
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
-    // A generic hotel chart of accounts. Revenue lines that belong to one
-    // property's offering (its sauna, its restaurant) are not seeded — the
-    // tenant adds those itself.
-    const orgRow = database.prepare("SELECT id FROM organizations LIMIT 1").get() as any;
-    if (orgRow) {
-      const insEC = database.prepare('INSERT INTO expense_categories (id, organization_id, name, std_group, pnl_line, include_in_pnl, include_in_cash, alloc_method, is_capex, icon, color, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-      // Revenue
-      insEC.run('ec_accommodation', orgRow.id, 'Accommodation', 'Revenue', 'Accommodation', 1, 1, 'DIRECT', 0, '🏠', '#22c55e', 1);
-      insEC.run('ec_services_rev', orgRow.id, 'Services', 'Revenue', 'Services', 1, 1, 'DIRECT', 0, '🛎️', '#f59e0b', 2);
-      insEC.run('ec_other_rev', orgRow.id, 'Other income', 'Revenue', 'Other income', 1, 1, 'DIRECT', 0, '💰', '#84cc16', 3);
-      // COGS
-      insEC.run('ec_variable', orgRow.id, 'Variable costs', 'COGS', 'Variable costs', 1, 1, 'DIRECT', 0, '📦', '#991b1b', 4);
-      // OPEX
-      insEC.run('ec_rent', orgRow.id, 'Rent', 'OPEX', 'Rent', 1, 1, 'RENT', 0, '🏢', '#6366f1', 5);
-      insEC.run('ec_utilities', orgRow.id, 'Utilities', 'OPEX', 'Utilities', 1, 1, 'UTILITIES', 0, '🔌', '#8b5cf6', 6);
-      insEC.run('ec_payroll', orgRow.id, 'Payroll', 'OPEX', 'Payroll', 1, 1, 'SHARED_PAYROLL', 0, '👥', '#a855f7', 7);
-      insEC.run('ec_marketing', orgRow.id, 'Marketing', 'OPEX', 'Marketing', 1, 1, 'HQ', 0, '📢', '#ec4899', 8);
-      insEC.run('ec_professional', orgRow.id, 'Professional services', 'OPEX', 'Professional services', 1, 1, 'HQ', 0, '💼', '#14b8a6', 9);
-      insEC.run('ec_consumables', orgRow.id, 'Consumables', 'OPEX', 'Consumables', 1, 1, 'HQ', 0, '🧹', '#78716c', 10);
-      insEC.run('ec_other_exp', orgRow.id, 'Other expenses', 'OPEX', 'Other expenses', 1, 1, 'HQ', 0, '📋', '#6b7280', 11);
-      // Taxes
-      insEC.run('ec_taxes', orgRow.id, 'Taxes', 'Taxes', 'Taxes', 1, 1, 'HQ', 0, '🏛️', '#334155', 12);
-      // CAPEX
-      insEC.run('ec_capex', orgRow.id, 'Capital expenditure', 'CAPEX', 'CAPEX', 0, 1, 'NONE', 1, '🏗️', '#0ea5e9', 13);
-      // Financing
-      insEC.run('ec_investors', orgRow.id, 'Financing', 'Financing', 'Financing', 0, 1, 'NONE', 0, '🏦', '#059669', 14);
-      // Transfer
-      insEC.run('ec_transfer', orgRow.id, 'Transfer', 'Transfer', 'Transfer', 0, 1, 'NONE', 0, '↔️', '#94a3b8', 15);
-      console.log('[DB] Created expense_categories table with default chart of accounts');
-    }
+    // План рахунків тут БІЛЬШЕ НЕ СІЄМО (INC-025). Тут стояло
+    // `SELECT id FROM organizations LIMIT 1` і пʼятнадцять ЛІТЕРАЛЬНИХ
+    // первинних ключів (`ec_accommodation`, …), тож другий комплект був
+    // неможливий за означенням PK: статті діставались готелю, який завівся
+    // першим, а місток платежів пришпилював `'ec_accommodation'` кожному.
+    // Засів переїхав у 0097 (для кожної організації) і в
+    // `provisionOrganization` (для нової), а сталою величиною став `code`.
+    console.log('[DB] Created expense_categories table');
   }
 
   // --- Migration: add hierarchy + op_type + classifier to expense_categories (Finmap PR #2) ---
@@ -2370,6 +2366,12 @@ function runMigrations(database: any) {
         status          TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('completed','pending','failed','refunded')),
         method          TEXT,
         payment_subtype TEXT,
+        -- 0096: рядок у книзі гостя, який СТВОРИЛА ця операція (В3, Р10.6).
+        -- Порожньо — операція у фоліо нічого не клала, і видалення її звідти
+        -- нічого не знімає. Без цього посилання видалення ручної проводки
+        -- бухгалтера забирало з рахунку гостя чужі гроші: реверс не мав чим
+        -- відрізнити свій платіж від будь-якого доходу по броні.
+        folio_payment_id TEXT,
 
         comment     TEXT,
         is_planned  INTEGER NOT NULL DEFAULT 0,
@@ -7277,6 +7279,179 @@ function runMigrations(database: any) {
     console.log('[DB] amenities catalogue and assignments ready');
   } catch (e) {
     console.error('[DB] amenities migration:', (e as Error).message);
+  }
+
+  // --- 0096: операція знає рядок, який вона поклала в книгу гостя (Р10.6) ---
+  //
+  // Реверс мусив знати, ЩО саме він знімає. Доти він знімав із фоліо будь-який
+  // дохід із `reservation_id` — а `source` не розрізняє: місток теж передає
+  // `'manual'`. Бухгалтер заводив у Фінансах помилкові 1200 по броні (у фоліо
+  // вони, за Д21, не лягали), видаляв їх — і реверс забирав 1200 з ГРОШЕЙ
+  // ГОСТЯ. Пара була асиметрична: створення у фоліо не додає, видалення знімає.
+  //
+  // Порожня колонка означає «ця операція у книзі гостя нічого не клала», і це
+  // стан переважної більшості рядків — усі ручні проводки обліку.
+  try {
+    const cols = database.prepare("PRAGMA table_info(fin_operations)").all() as { name: string }[];
+    if (!cols.some((c) => c.name === 'folio_payment_id')) {
+      database.exec('ALTER TABLE fin_operations ADD COLUMN folio_payment_id TEXT');
+      console.log('[DB] 0096: fin_operations.folio_payment_id ready');
+    }
+  } catch (e: any) {
+    console.error('[DB] 0096 folio_payment_id:', e.message);
+  }
+
+  // --- 0097: СХЕМА довідників. Даних міграція не сіє (INC-028) ---
+  //
+  // Довідник сіявся один раз на всю базу — `SELECT id FROM organizations
+  // LIMIT 1`, проти інваріанта 1, — і з ЛІТЕРАЛЬНИМИ первинними ключами
+  // (`ec_accommodation`, `bu_shared`, …), тож другий комплект неможливий за
+  // означенням PK. Гірше: міграції котяться, коли `organizations` ще порожня,
+  // тож `if (orgRow)` не спрацьовував ВЗАГАЛІ, і на чистій базі довідника не
+  // діставалось нікому.
+  //
+  // Тепер стала величина — `code`, унікальний У МЕЖАХ ОРГАНІЗАЦІЇ
+  // (інваріант 3); ідентифікатор випадковий і належить готелю. Міграція
+  // робить рівно дві речі, обидві про СХЕМУ:
+  //   1. заводить колонку `code`;
+  //   2. підписує кодами історичні літеральні рядки — вони лишаються на
+  //      місці разом з усіма посиланнями на них.
+  //
+  // Чого вона НЕ робить і більше не робитиме: не сіє даних. Тут стояв ще й
+  // крок 3, який досівав довідник кожній організації, — і це було
+  // неправильно за родом: міграція виконується до того, як орендар існує, і
+  // «для кожної організації» в ній це вже не міграція, а сівач, що вдає
+  // міграцію. Рішення контролера 08.09: засів живе ТІЛЬКИ в
+  // `provisionOrganization`.
+  //
+  // Наслідок названо прямо: організація, заведена ДО переїзду засіву, лишиться
+  // без довідника, і перша ж готівкова оплата відмовить — НАЗВАНО, з дією
+  // (`payment-bridge.requireCategory`). Разова дія адміністратора —
+  // `scripts/seed-chart-of-accounts.mjs`; наявних баз міграція не чіпає.
+  try {
+    for (const [table, prefix, seed] of [
+      ['expense_categories', 'ec_', CHART_OF_ACCOUNTS_SEED],
+      ['business_units', 'bu_', BUSINESS_UNITS_SEED],
+    ] as const) {
+      const cols = database.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+      if (!cols.some((c) => c.name === 'code')) {
+        database.exec(`ALTER TABLE ${table} ADD COLUMN code TEXT`);
+      }
+      const setCode = database.prepare(`UPDATE ${table} SET code = ? WHERE id = ? AND code IS NULL`);
+      for (const row of seed) setCode.run(row.code, `${prefix}${row.code}`);
+      database.exec(
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_${table}_org_code ON ${table}(organization_id, code) WHERE code IS NOT NULL`);
+    }
+  } catch (e: any) {
+    console.error('[DB] 0097 catalogue code column:', e.message);
+  }
+
+  // --- 0098 (ключі довідників з орендарем) — НЕ ЗРОБЛЕНО, і ось чому ---
+  //
+  // План був: складений зовнішній ключ
+  // `(organization_id, category_id) REFERENCES expense_categories(organization_id, id)`
+  // замість одноколонкового. Він і є тим, що робить клас INC-025 неможливим,
+  // а не лише невживаним: одноколонковий ключ пропускає операцію одного
+  // готелю на рядок довідника ІНШОГО (RI-тригери виконуються з вимкненою row
+  // security, тож ключ бачить рядок, а політика при читанні його ховає).
+  //
+  // Написано, перебудовано, доведено червоністю на порожній базі — і
+  // ВІДКОЧЕНО, бо `scripts/pg-schema.mjs` складених ключів не вміє. Він
+  // розкладає їх на два одноколонкові й видає, зокрема,
+  // `FOREIGN KEY (organization_id) REFERENCES business_units(organization_id)`
+  // — констрейнт, який означає не те й якого в базі бути не має. Схема
+  // Postgres генерується з цієї SQLite (інваріант 10), тож поки генератор не
+  // навчиться, складений ключ у `db/postgres/schema.sql` не потрапить —
+  // а неправильний констрейнт там гірший за відсутній.
+  //
+  // Що вже тримає межу без нього: жоден шлях коду більше не вміє скласти
+  // посилання на чужий рядок — ідентифікатори випадкові й потенантні,
+  // літералів у коді немає (0097 і `chart-of-accounts.check`). Ключ — це
+  // друга лінія, і вона робиться разом із правкою генератора.
+
+  // --- 0095: статус оплати броні перераховується З ФОЛІО (В3) ---
+  //
+  // Дві книги вже розійшлися в чинних базах: слово в `reservations` ставили
+  // троє — картка фоліо, фінансовий модуль зі своєї суми і маркер оплати з
+  // типу натиснутої кнопки. Тепер книга одна, і спадок треба привести до неї.
+  //
+  // Міграція нічого не вигадує, але вона НЕ тотожна `statusFromFolio` і не
+  // мусить бути: вона одноразова і навмисно ОБЕРЕЖНІША. Тут: є нарахування
+  // проживання і борг нуль — `paid`; є проживання, гроші є, але не всі —
+  // `partial`; усе інше — слово лишається як стояло. Чого тут НЕМАЄ і що є в
+  // домені: «нараховано, а грошей у книзі БУЛО і не стало» → `unpaid`. Це
+  // відповідь про подію (зустрічний рядок зняв платіж), а не про залишок, і
+  // застосовувати її оптом до спадку означало б перевести в «не оплачено»
+  // броні, яких ніхто не чіпав. Тотожність тут раніше була заявлена — і після
+  // Р8.7 перестала бути правдою (Р10.10).
+  //
+  // І кожну бронь, де було інакше, міграція називає в лозі поіменно:
+  // розбіжність — це те, що хтось має побачити, а не те, що тихо зникає під
+  // `UPDATE`.
+  //
+  // `is_prepaid` не чіпається: канал зібрав гроші з гостя, і часткова виплата
+  // на рахунок готелю не робить бронь «частково оплаченою» для рецепції.
+  try {
+    const rows = database.prepare(`
+      SELECT r.id, r.payment_status,
+        (SELECT COALESCE(SUM(i.total_gross), 0) FROM fin_folio_items i
+            JOIN fin_folios f ON f.id = i.folio_id
+           WHERE f.reservation_id = r.id AND i.voided_by_item_id IS NULL) AS charged,
+        (SELECT COALESCE(SUM(p.amount), 0) FROM fin_folio_payments p
+            JOIN fin_folios f ON f.id = p.folio_id
+           WHERE f.reservation_id = r.id) AS paid,
+        (SELECT COUNT(*) FROM fin_folio_items i
+            JOIN fin_folios f ON f.id = i.folio_id
+           WHERE f.reservation_id = r.id AND i.voided_by_item_id IS NULL AND i.kind = 'lodging') AS lodging
+        FROM reservations r
+       WHERE COALESCE(r.is_prepaid, 0) <> 1
+    `).all() as { id: string; payment_status: string; charged: number; paid: number; lodging: number }[];
+
+    const upd = database.prepare('UPDATE reservations SET payment_status = ? WHERE id = ?');
+    const diverged: string[] = [];
+    for (const r of rows) {
+      const charged = Number(r.charged) || 0;
+      const paid = Number(r.paid) || 0;
+      if (!(charged > 0) || Number(r.lodging) === 0) continue;   // фоліо мовчить
+      // Порівняння з допуском у півкопійки, а не `Math.round(x*100)/100`:
+      // остання форма заборонена інваріантом 9 і бреше саме на копійках
+      // (1.005 * 100 = 100.49999999999999). `money()` сюди не імпортується —
+      // db.ts живе до модулів.
+      const word = (charged - paid) <= 0.005
+        ? 'paid'
+        : (paid > 0 ? 'partial' : null);
+      if (!word || word === r.payment_status) continue;
+      diverged.push(`${r.id}: ${r.payment_status} → ${word}`);
+      upd.run(word, r.id);
+    }
+    if (diverged.length) {
+      console.log(`[DB] 0095: статус оплати перераховано з фоліо для ${diverged.length} брон(і/ей) — книги розходились:`);
+      for (const line of diverged) console.log(`[DB]   ${line}`);
+    }
+  } catch (e: any) {
+    console.error('[DB] 0095 payment status from folio:', e.message);
+  }
+
+  // --- Колонки, які зносить чужа перебудова, дописуються ОСТАННІМИ ---
+  //
+  // `fin_operation_id` додається через ALTER на рядок ~2490, а перебудови
+  // `accruals` (зняття мертвого ключа) і `capex_items` відтворюють таблицю з
+  // ЇЇ CREATE — тобто пізніше і без цієї колонки. На порожній базі вона
+  // зникала тут-таки: мігрований клієнт її мав, а НОВИЙ — ні.
+  //
+  // Побачив це не гейт, а генератор схеми, коли її вперше зібрали з
+  // по-справжньому свіжої бази: `check-fresh-schema` звіряє SQLite із SQLite,
+  // і там колонки бракує з обох боків — рівно та сліпота, про яку AGENTS §4
+  // каже про індекси. Тому дописуємо в кінці, коли всі перебудови позаду;
+  // перевірка ідемпотентна, на мігрованій базі це no-op.
+  for (const tbl of ['capex_items', 'accruals', 'invoices']) {
+    try {
+      const cols = database.prepare(`PRAGMA table_info(${tbl})`).all() as { name: string }[];
+      if (cols.length > 0 && !cols.some((c) => c.name === 'fin_operation_id')) {
+        database.exec(`ALTER TABLE ${tbl} ADD COLUMN fin_operation_id TEXT REFERENCES fin_operations(id)`);
+        console.log(`[DB] ${tbl}: fin_operation_id повернуто після перебудов`);
+      }
+    } catch { /* таблиці може не бути */ }
   }
 
   // The last line of runMigrations, and the only reliable signal that the

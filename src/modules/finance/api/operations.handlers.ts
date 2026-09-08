@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { recalcPaymentStatusFromFolio } from '@bookings/kernel';
 import { cookies } from 'next/headers';
 import { getSql } from '@core/db/async';
 import { todayFor } from '@core/hotel-day';
@@ -9,8 +10,14 @@ import { getSessionUser } from '@core/auth';
 import { loadActiveRules, isRuleApplicable } from '../data/auto-rules-engine';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { ownedFinanceRow } from '../data/owned.repo';
+// Зняття грошей із книги гостя після видалення рядка — одні двері на всіх
+// (Р8.7). Файл листковий навмисно: інакше тут був би цикл із `payment-bridge`.
+import { reverseOperationInFolio } from './folio-reversal';
 import { serverError, refuse, handleError } from '@core/http/errors';
 import { organizationCurrency } from '@core/currency';
+// Стаття довідника — за СТАЛИМ кодом цього готелю, не за літеральним
+// ідентифікатором рядка, який належить готелю, що завівся першим (INC-025).
+import { categoryIdByCode } from '@core/chart-of-accounts';
 
 const OP_TYPES = ['income', 'expense', 'transfer'] as const;
 type OpType = typeof OP_TYPES[number];
@@ -58,16 +65,36 @@ export async function writeOperationAudit(
   }
 }
 
-async function computeAmountCompany(amount: number, currency: string, paidAt: string): Promise<number> {
+/**
+ * Сума операції у ВАЛЮТІ ГОТЕЛЮ — не в кронах.
+ *
+ * Тут стояло `to_currency = 'CZK'` літералом, і це був блокер для всієї
+ * Європи й України (INC-028, ланка 4; інваріанти 20 і 22): готель, чия базова
+ * валюта не крона, узагалі не міг провести готівкову оплату — відмова
+ * `No EUR→CZK exchange rate configured` приходила на кожну, доки хтось руками
+ * не заводив курс ДО КРОНИ. Крона при цьому не має до такого готелю жодного
+ * стосунку: вона була валютою першого клієнта, а не валютою світу.
+ *
+ * `check-currency-literals` це пропускав за побудовою — він шукає запасні
+ * `|| 'CZK'`, а тут крона стояла ЦІЛЬОВОЮ валютою конверсії.
+ *
+ * Операція у валюті готелю не конвертується взагалі: курс сам до себе — це
+ * одиниця, і питати про нього таблицю означало б вимагати налаштування там,
+ * де нічого не відбувається. Саме цим шляхом іде типовий готель, який працює
+ * в одній валюті (`secondaryCurrencies` порожній — нормальний стан).
+ */
+async function computeAmountCompany(
+  amount: number, currency: string, paidAt: string, companyCurrency: string,
+): Promise<number> {
   const sql = getSql();
-  if (currency === 'CZK') return amount;
+  if (currency === companyCurrency) return amount;
 
   // Prefer the latest rate effective ON or BEFORE the operation date.
   let rate = await sql.row<any>(`
     SELECT rate FROM finance_exchange_rates
-    WHERE from_currency = ? AND to_currency = 'CZK' AND effective_from <= ?
+    WHERE from_currency = ? AND to_currency = ? AND effective_from <= ?
     ORDER BY effective_from DESC LIMIT 1
-  `, [currency, paidAt]) as { rate: number } | undefined;
+  `, [currency, companyCurrency, paidAt]) as { rate: number } | undefined;
 
   // No historical rate yet — fall back to the latest known rate of any
   // date so we never silently treat a foreign-currency op as 1:1 (EUR
@@ -75,11 +102,11 @@ async function computeAmountCompany(amount: number, currency: string, paidAt: st
   if (!rate) {
     rate = await sql.row<any>(`
       SELECT rate FROM finance_exchange_rates
-      WHERE from_currency = ? AND to_currency = 'CZK'
+      WHERE from_currency = ? AND to_currency = ?
       ORDER BY effective_from DESC LIMIT 1
-    `, [currency]) as { rate: number } | undefined;
+    `, [currency, companyCurrency]) as { rate: number } | undefined;
     if (rate) {
-      console.warn(`[finance] computeAmountCompany: no rate for ${currency}→CZK on ${paidAt}, using latest available rate ${rate.rate}`);
+      console.warn(`[finance] computeAmountCompany: no rate for ${currency}→${companyCurrency} on ${paidAt}, using latest available rate ${rate.rate}`);
     }
   }
 
@@ -88,7 +115,7 @@ async function computeAmountCompany(amount: number, currency: string, paidAt: st
     // `refuse`, а не голий `Error`: у `catch` рід помилки має бути видимий,
     // інакше вона поїде клієнтові поряд із текстом драйвера (див.
     // @core/http/errors, друга вісь check-error-leak).
-    refuse(`No ${currency}→CZK exchange rate configured. Add one at /finance/settings → Курси валют before saving this operation.`);
+    refuse(`Немає курсу ${currency}→${companyCurrency}. Додайте його в Фінанси → Налаштування → Курси валют, перш ніж зберігати операцію.`);
   }
 
   return amount * rate.rate;
@@ -432,13 +459,19 @@ export async function autoResolveCategory(
   // написав, і робила це чужою мовою.
 
   // 3. Fallbacks by op_type
+  //
+  // Запасне значення тут — код ЦЬОГО готелю, не літеральний ідентифікатор
+  // (INC-025). Стояло `|| 'ec_accommodation'`: рядок, який належить готелю,
+  // що завівся першим. Для другого готелю це або відмова зовнішнього ключа,
+  // або тихе чіпляння на ЧУЖИЙ рядок довідника, який його ж політика ховає, —
+  // і проживання лягало в P&L не в той рядок.
   if (opType === 'income') {
     const defaultInc = await sql.row<any>("SELECT id FROM expense_categories WHERE organization_id = ? AND op_type = 'income' ORDER BY sort_order ASC LIMIT 1", [orgId]) as { id: string } | undefined;
-    return defaultInc?.id || 'ec_accommodation';
+    return defaultInc?.id || await categoryIdByCode('accommodation');
   }
   if (opType === 'expense') {
     const defaultExp = await sql.row<any>("SELECT id FROM expense_categories WHERE organization_id = ? AND op_type = 'expense' ORDER BY sort_order ASC LIMIT 1", [orgId]) as { id: string } | undefined;
-    return defaultExp?.id || 'ec_other_exp';
+    return defaultExp?.id || await categoryIdByCode('other_exp');
   }
 
   return null;
@@ -472,14 +505,19 @@ export async function createOperationInTx(
   }
 
   // Валюта готелю, а не крони. `orgId` тут уже є — питати нема кого іншого.
-  const currency = input.currency || await organizationCurrency(orgId);
+  const companyCurrency = await organizationCurrency(orgId);
+  const currency = input.currency || companyCurrency;
   const accruedAt = input.accrued_at || paid_at;
   const amountCompany = (input.fx_rate_override && input.fx_rate_override > 0)
     ? amount * input.fx_rate_override
-    : await computeAmountCompany(amount, currency, paid_at);
+    : await computeAmountCompany(amount, currency, paid_at, companyCurrency);
+  // Курс СВОЄЇ валюти до себе не записується: `null` тут означає «конверсії не
+  // було», а `1` виглядав би як заведений курс. Порівняння теж із валютою
+  // готелю, не з кроною — інакше готель на євро мав би `fx_rate` на кожній
+  // власній операції.
   const fxRate = (input.fx_rate_override && input.fx_rate_override > 0)
     ? input.fx_rate_override
-    : (currency === 'CZK' ? null : (amountCompany / amount) || null);
+    : (currency === companyCurrency ? null : (amountCompany / amount) || null);
 
   const status: Status = input.status && (STATUSES as readonly string[]).includes(input.status) ? input.status : 'completed';
   const source = input.source || 'manual';
@@ -536,6 +574,15 @@ export async function createOperation(request: NextRequest): Promise<NextRespons
     const id = await createOperationInTx(orgId, body, actor);
     const created = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [id]);
 
+    // Р8.9, зміна поведінки, названа вголос: ця операція статусу броні БІЛЬШЕ
+    // НЕ РУХАЄ. Слово виводиться з фоліо (В3), а сюди рядок лягає повз нього —
+    // Фінанси → Операції не пишуть у книгу гостя. Тобто дохід, заведений тут
+    // із `reservation_id`, раніше давав `partial`/`paid`, а тепер не дає
+    // нічого; перерахунок кличеться, але фоліо каже те, що казало.
+    // Це не забутий випадок: гроші, які має бачити рахунок гостя, вносяться
+    // «Оплатою» на картці броні або касою (`payment-bridge`) — обидві пишуть у
+    // фоліо. Ручна операція у Фінансах — це проводка обліку, а не платіж
+    // гостя. Двері з Фінансів у фоліо — окреме рішення власника, не наше.
     if (body.reservation_id) await recalcReservationPaymentStatus(body.reservation_id);
 
     return NextResponse.json(await enrichOperation(created), { status: 201 });
@@ -584,15 +631,22 @@ export async function updateOperation(
       const newAmount = body.amount ?? existing.amount;
       const newCurrency = body.currency ?? existing.currency;
       const newPaid = body.paid_at ?? existing.paid_at;
+      const companyCurrency = await organizationCurrency(orgId);
       const amountCompany = (body.fx_rate_override && body.fx_rate_override > 0)
         ? newAmount * body.fx_rate_override
-        : await computeAmountCompany(newAmount, newCurrency, newPaid);
+        : await computeAmountCompany(newAmount, newCurrency, newPaid, companyCurrency);
       fields.push('amount_company = ?');
       params.push(amountCompany);
       if (body.fx_rate_override && body.fx_rate_override > 0) {
         fields.push('fx_rate = ?');
         params.push(body.fx_rate_override);
-      } else if (newCurrency !== 'CZK') {
+      } else if (newCurrency !== companyCurrency) {
+        // Порівняння з валютою ГОТЕЛЮ, не з кроною. Тут стояло
+        // `newCurrency !== 'CZK'` — і готель на євро, редагуючи свою ж
+        // операцію в євро, отримував `fx_rate = 1`. Тобто «курс один до
+        // одного» замість «конверсії не було» (Д27), і рівно та половина
+        // ланки 4, яку я минулого разу проґавив: створення виправив, а
+        // редагування — ні.
         fields.push('fx_rate = ?');
         params.push(amountCompany / newAmount);
       }
@@ -648,7 +702,10 @@ export async function deleteOperation(
 
     await sql.run('DELETE FROM fin_operations WHERE id = ? AND organization_id = ?', [id, orgId]);
 
-    if (existing.reservation_id) await recalcReservationPaymentStatus(existing.reservation_id);
+    // Гроші, зняті з фінансової книги, знімаються і з книги гостя (Р8.7).
+    // Доти тут стояв самий перерахунок — а він читає ФОЛІО, де видалений
+    // платіж лишався: рядок зникав, а бронь далі стояла «оплачено».
+    await reverseOperationInFolio(existing);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
     return serverError('modules/finance/api/operations deleteOperation', error);
@@ -714,7 +771,9 @@ export async function mergeOperations(request: NextRequest): Promise<NextRespons
     await writeOperationAudit(incOp.id, 'delete', actor, incOp, null);
     await sql.run('DELETE FROM fin_operations WHERE id = ? AND organization_id = ?', [incOp.id, orgId]);
 
-    if (incOp.reservation_id) await recalcReservationPaymentStatus(incOp.reservation_id);
+    // Дохід зник із фінансової книги — знімається і з книги гостя (Р8.7).
+    // Витрата не зникла, вона стала переміщенням: там лише перерахунок.
+    await reverseOperationInFolio(incOp);
     if (expOp.reservation_id) await recalcReservationPaymentStatus(expOp.reservation_id);
 
     return NextResponse.json({ ok: true, merged_into: expOp.id });
@@ -872,38 +931,31 @@ export async function getReservationPaymentTotals(reservationId: string): Promis
 }
 
 export async function recalcReservationPaymentStatus(reservationId: string): Promise<void> {
-  const sql = getSql();
-  const res = await sql.row<any>('SELECT id, total_price, is_prepaid FROM reservations WHERE id = ?', [reservationId]) as { id: string; total_price: number; is_prepaid: number } | undefined;
-  if (!res) return;
-
-  // Channel-prepaid reservations (Booking / Airbnb / VRBO with is_prepaid=1
-  // from Hostex) are paid by definition — the platform already collected
-  // the money on the guest's behalf. Real cash arrives later as a bank
-  // payout but we don't want a partial bank op (e.g. tourist tax cleared
-  // separately, or a service add-on) to flip the booking back to
-  // 'partial' or 'unpaid'. PMS check-in trusts the platform flag.
-  if (res.is_prepaid === 1) return;
-
-  const { paid, refunded } = await getReservationPaymentTotals(reservationId);
-  const net = paid - refunded;
-  const total = Number(res.total_price) || 0;
-  let paymentStatus: 'unpaid' | 'partial' | 'paid' = 'unpaid';
-  if (total > 0 && net >= total - 0.005) paymentStatus = 'paid';
-  else if (net > 0) paymentStatus = 'partial';
-
-  // Read old status before update for TG notification editing
-  const oldRow = await sql.row<any>('SELECT payment_status FROM reservations WHERE id = ?', [reservationId]) as any;
-  const oldPaymentStatus = oldRow?.payment_status || 'unpaid';
-
-  await sql.run('UPDATE reservations SET payment_status = ? WHERE id = ?', [paymentStatus, reservationId]);
-
-  // Emit event if status changed
-  if (oldPaymentStatus !== paymentStatus) {
+  // В3: цей модуль статус БІЛЬШЕ НЕ РАХУЄ.
+  //
+  // Раніше він рахував його зі своєї книги — суми `fin_operations`, — поки
+  // фоліо рахувало зі своєї. Дві книги, які не знають одна про одну, дали
+  // видиму розбіжність: 3000 наперед із 5000 через фоліо давали борг 2000 на
+  // виселенні, а ті самі 3000 через касу — 5000. Рішення власника (В3): фоліо
+  // — єдина книга проживання, і слово виводиться з неї одним перерахунком.
+  //
+  // Функція лишається як ІМʼЯ, за яким її кличуть сім місць фінансів, і
+  // делегує. `is_prepaid`, стара подія про зміну статусу і повідомлення —
+  // усередині спільного перерахунку.
+  //
+  // Р8.9 — наслідок, який мусить бути сказаний, а не виявлений: усі сім місць
+  // тепер питають ФОЛІО, куди самі нічого не пишуть. Ручна операція у
+  // Фінансах із `reservation_id` статусу броні не рухає взагалі — ні
+  // створення, ні правка, ні видалення, ні обʼєднання. Раніше рухала. Хто
+  // хоче, щоб гроші побачив рахунок гостя, вносить їх «Оплатою» на картці або
+  // касою: обидві пишуть у фоліо.
+  const change = await recalcPaymentStatusFromFolio(reservationId);
+  if (change?.changed) {
     import('@core/event-bus').then(({ eventBus }) => {
       eventBus.emit('booking.payment_status_changed', {
         bookingId: reservationId,
-        oldStatus: oldPaymentStatus,
-        newStatus: paymentStatus,
+        oldStatus: change.was,
+        newStatus: change.now,
       });
     }).catch(() => {});
   }
