@@ -94,6 +94,56 @@ export const CHART_OF_ACCOUNTS: ChartAccount[] = [
   { code: 'transfer', name: 'Transfer', stdGroup: 'Transfer', opType: 'transfer', classifier: 'other', pnlLine: 'Transfer', includeInPnl: false, includeInCash: true, allocMethod: 'NONE', isCapex: false, icon: '↔️', color: '#94a3b8', sortOrder: 15 },
 ];
 
+/**
+ * Осі за групою обліку — ОДНЕ правило на весь продукт (Р13.5).
+ *
+ * Правило «вивести вісь із `stdGroup`» жило у трьох місцях і в двох із них
+ * розходилося з засівом:
+ *
+ *   - `expense-categories.handlers.ts` (стаття, яку заводить сам готель) казав
+ *     `Financing → expense`;
+ *   - засів каже `investors: Financing, opType 'income'` (рядок нижче);
+ *   - легасі-бекфіл у `db.ts` не мав `Financing` у жодному `WHEN` узагалі, тож
+ *     стаття діставала `other/other`.
+ *
+ * Наслідок був не в коді, а в грошах: готель, який заводив ВЛАСНУ статтю
+ * фінансування, діставав статтю, якої немає у формі надходження — тобто внесок
+ * власника нікуди було провести; а стаття з `other/other` клала цей внесок у
+ * «Інше» нижче EBITDA, і чистий результат зменшувався на суму, яку в готель
+ * ПРИНЕСЛИ.
+ *
+ * Джерело правди тут, бо саме цей файл сіє. `Financing → income` — за засівом.
+ *
+ * ЧЕКПОІНТ, свідомо лишений відкритим: чи має «Financing» бути видимим і у
+ * формі надходження, і у формі витрати (внесок і повернення позики — це різні
+ * боки однієї групи). Це питання про форму обліку, не про код; варіанти в
+ * `docs/tasks/2026-09-09-finance-reference-ownership.notes.md`. Доти діє одне
+ * правило замість трьох різних.
+ *
+ * Рядок плану може відхилитись від своєї групи — і два відхиляються навмисно:
+ * `variable` (COGS, але власний рядок P&L «Змінні») і `investors` (Financing,
+ * але надходження). Тому значення в `CHART_OF_ACCOUNTS` явні: ця мапа —
+ * правило для статей, яких у плані немає.
+ */
+export const AXIS_BY_STD_GROUP: Record<string, { opType: string; classifier: string }> = {
+  Revenue:   { opType: 'income',   classifier: 'revenue' },
+  COGS:      { opType: 'expense',  classifier: 'cogs' },
+  OPEX:      { opType: 'expense',  classifier: 'operational' },
+  Taxes:     { opType: 'expense',  classifier: 'tax' },
+  CAPEX:     { opType: 'expense',  classifier: 'capex' },
+  Financing: { opType: 'income',   classifier: 'financing' },
+  Transfer:  { opType: 'transfer', classifier: 'other' },
+};
+
+/**
+ * Осі, які знає читач звітів. Стаття, чий `classifier` не з цього списку, —
+ * не «Інше», а НЕВІДОМЕ: читач П&L називає її і відмовляється (інваріант 13).
+ */
+export const KNOWN_CLASSIFIERS = [
+  'revenue', 'cogs', 'variable', 'operational', 'tax', 'capex', 'financing',
+  'other', 'uncategorized',
+] as const;
+
 /** Бізнес-юніт. Той самий клас проблеми, той самий вигляд рішення. */
 export interface BusinessUnitSeed {
   code: string;

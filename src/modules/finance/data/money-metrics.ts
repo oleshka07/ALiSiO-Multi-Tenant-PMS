@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getSql } from '@core/db/async';
+import { AXIS_BY_STD_GROUP } from '@core/chart-of-accounts';
 // ════════════════════════════════════════════════════════════
 // Canonical month money metrics — SINGLE DEFINITION of revenue/expenses
 // for every cash-based report (overview, indicators, P&L, cashflow).
@@ -39,17 +40,35 @@ export interface MonthMoney {
   ebitda: number;
 }
 
-const CLS_SQL = `
+/**
+ * Вісь рядка звіту: `classifier`, а якщо його немає — `std_group`.
+ *
+ * Один вираз на ВСІ читання (Р13.4). Тут він був правильний, а
+ * `reports.handlers.ts` поруч брав `COALESCE(ec.classifier, 'other')` — тобто
+ * ліки були написані й не застосовані, і будь-який рядок із порожньою віссю
+ * тихо йшов у «Інше». Жоден гейт цього не бачив, бо після Р12.1 усі фікстури
+ * сіються з осями.
+ *
+ * `WHEN`-и будуються з `AXIS_BY_STD_GROUP` — тієї самої мапи, за якою вісь
+ * ставить засів і форма нової статті. Список у трьох місцях розходився двічі
+ * (`Financing` був то `expense`, то `income`, то ніде), тож він тут один.
+ *
+ * `ELSE 'unknown:' || std_group` — навмисно НЕ «other». «Не знаю, куди це» і
+ * «це інше» — різні твердження (інваріант 13), і читач звіту мусить уміти
+ * назвати перше. `other_expense` лишається для статей, чий `classifier`
+ * СПРАВДІ `other` (рядок `transfer` плану рахунків).
+ */
+const CASE_BY_GROUP = Object.entries(AXIS_BY_STD_GROUP)
+  .map(([group, axis]) => `WHEN '${group}' THEN '${axis.classifier}'`)
+  .join('\n      ');
+
+export const CLS_SQL = `
   LOWER(COALESCE(
     NULLIF(TRIM(COALESCE(ec.classifier, '')), ''),
-    CASE ec.std_group
-      WHEN 'COGS' THEN 'cogs'
-      WHEN 'OPEX' THEN 'operational'
-      WHEN 'Taxes' THEN 'tax'
-      WHEN 'CAPEX' THEN 'capex'
-      WHEN 'Financing' THEN 'financing'
-      WHEN 'Revenue' THEN 'revenue'
-      ELSE 'other'
+    CASE TRIM(COALESCE(ec.std_group, ''))
+      ${CASE_BY_GROUP}
+      WHEN '' THEN 'uncategorized'
+      ELSE 'unknown:' || ec.std_group
     END,
     'uncategorized'
   ))
@@ -104,7 +123,13 @@ export async function getMonthMoney(organizationId: string, month: string): Prom
       case 'capex':         m.capex_out += r.total; break;
       case 'financing':     m.financing_out += r.total; break;
       case 'uncategorized': m.uncategorized_expense += r.total; break;
-      default:              m.other_expense += r.total; break;
+      // Невідома група (`unknown:…`) сюди теж: гроші НЕ зникають, і рядок
+      // видно як некласифікований, а не як «Інше». Назвати статтю поіменно —
+      // робота звіту (`getPnlMatrix`), не місячних підсумків.
+      default:
+        if (String(r.cls).startsWith('unknown:')) m.uncategorized_expense += r.total;
+        else m.other_expense += r.total;
+        break;
     }
   }
 

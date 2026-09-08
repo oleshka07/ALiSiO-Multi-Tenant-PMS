@@ -4,6 +4,7 @@ import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { serverError } from '@core/http/errors';
+import { AXIS_BY_STD_GROUP } from '@core/chart-of-accounts';
 
 export async function listExpenseCategories(): Promise<NextResponse> {
   try {
@@ -39,23 +40,16 @@ export async function createExpenseCategory(request: Request): Promise<NextRespo
     const maxOrder = await sql.row<any>(
       "SELECT MAX(sort_order) as mx FROM expense_categories WHERE organization_id = ?", [orgRow.id]) as any;
 
-    // Keep both classification axes in sync — a category without
-    // op_type/classifier is invisible to the matrix reports.
-    const AXIS: Record<string, { op_type: string; classifier: string }> = {
-      Revenue:   { op_type: 'income',   classifier: 'revenue' },
-      COGS:      { op_type: 'expense',  classifier: 'cogs' },
-      OPEX:      { op_type: 'expense',  classifier: 'operational' },
-      Taxes:     { op_type: 'expense',  classifier: 'tax' },
-      CAPEX:     { op_type: 'expense',  classifier: 'capex' },
-      Financing: { op_type: 'expense',  classifier: 'financing' },
-      Transfer:  { op_type: 'transfer', classifier: 'other' },
-    };
-    const axis = AXIS[std_group] || { op_type: 'other', classifier: 'other' };
+    // Осі — з `core/chart-of-accounts.ts`, бо саме він СІЄ (Р13.5, Д37).
+    // Тут стояла власна копія мапи, і в ній `Financing → expense` проти
+    // засіву `investors → income`: готель, який заводив власну статтю
+    // фінансування, діставав статтю, якої немає у формі надходження.
+    const axis = AXIS_BY_STD_GROUP[std_group] || { opType: 'other', classifier: 'other' };
 
     await sql.run(`
       INSERT INTO expense_categories (id, organization_id, name, std_group, pnl_line, alloc_method, icon, color, sort_order, op_type, classifier)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [id, orgRow.id, name, std_group, pnl_line, alloc_method || 'DIRECT', icon || '📋', color || '#6b7280', (maxOrder?.mx || 0) + 1, axis.op_type, axis.classifier]);
+    `, [id, orgRow.id, name, std_group, pnl_line, alloc_method || 'DIRECT', icon || '📋', color || '#6b7280', (maxOrder?.mx || 0) + 1, axis.opType, axis.classifier]);
 
     return NextResponse.json(await sql.row<any>("SELECT * FROM expense_categories WHERE id = ?", [id]), { status: 201 });
   } catch (error: any) {

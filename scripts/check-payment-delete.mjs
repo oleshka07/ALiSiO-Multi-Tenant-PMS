@@ -49,6 +49,7 @@ const NOT_MONEY = new Set([
   // І цей — рівно того ж роду: прибирає власні пробні організації, у яких
   // немає ні броні, ні гостя, ні фоліо (Р13.2).
   'src/modules/finance/data/operation-tags.check.ts',
+  'src/modules/finance/api/pnl-classifier.check.ts',
 ]);
 
 const DELETES = /DELETE\s+FROM\s+fin_operations\b/i;

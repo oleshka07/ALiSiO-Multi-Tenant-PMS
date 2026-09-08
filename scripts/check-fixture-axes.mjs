@@ -468,6 +468,18 @@ const AXES = [
     axis: 'імена міток: спільне «spa» ≠ власне «тільки-…» (витік читача видно лише за назвою)',
     distinct: /INSERT INTO finance_tags[\s\S]*?\[\w+, organizationId, ([^\]]+)\]/g, min: 2,
   },
+  // П&L: з однією сумою «потрапило в свою секцію» і «потрапило в сусідню»
+  // дають однакове число; з рівними сумами не видно, котра з них де.
+  {
+    file: 'src/modules/finance/api/pnl-classifier.check.ts',
+    axis: 'суми трьох статей у звіті (фінансування ≠ оренда ≠ виручка)',
+    distinct: /amount: (\d+),/g, min: 3,
+  },
+  {
+    file: 'src/modules/finance/api/pnl-classifier.check.ts',
+    axis: 'групи обліку в сценах (Financing ≠ OPEX ≠ Revenue ≠ невідома)',
+    distinct: /blindCategory\('\w+', '([^']+)'/g, min: 4,
+  },
   {
     file: 'src/modules/finance/data/operation-tags.check.ts',
     axis: 'ідентифікатори міток двох готелів (спільне імʼя, різні рядки)',

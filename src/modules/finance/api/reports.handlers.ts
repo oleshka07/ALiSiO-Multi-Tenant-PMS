@@ -2,9 +2,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
-import { getMonthMoney } from '../data/money-metrics';
+import { getMonthMoney, CLS_SQL } from '../data/money-metrics';
 import { requireOrganizationId } from '@core/auth/tenant-context';
-import { serverError } from '@core/http/errors';
+import { serverError, refuse, handleError } from '@core/http/errors';
 import { todayFor, shiftMonths, daysBetween, dayString } from '@core/hotel-day';
 
 // Helpers: SQL fragments that filter fin_operations by semantic slice.
@@ -396,10 +396,21 @@ export async function getPnlMatrix(request: NextRequest): Promise<NextResponse> 
       ? `AND o.id IN (SELECT operation_id FROM fin_operation_tags WHERE tag_id IN (${tagIds.map(() => '?').join(',')}))`
       : '';
 
+    // Вісь рядка читає `CLS_SQL` — ОДИН вираз на всі місця (Р13.4). Тут
+    // стояло `COALESCE(ec.classifier, 'other')`: стаття з порожньою віссю
+    // тихо йшла в «Інше» — нижче EBITDA, зі знаком мінус, — і надходження від
+    // інвестора зменшувало чистий результат замість власного рядка. Правильний
+    // вираз лежав поруч, у `money-metrics.ts`, і не був застосований.
+    //
+    // Пояснення живе тут, а не коментарем SQL усередині шаблонного рядка:
+    // стрипери гейтів знають коментар JS і не знають коментаря SQL у шаблоні
+    // (`check-catalogue-ids`), а зворотна лапка в такому коментарі ще й рве
+    // сам шаблон — рівно так цей запит і зламався з першого разу.
     const rows = await sql.rows<any>(`
       SELECT
         ec.id AS cat_id, ec.name AS cat_name, ec.icon AS cat_icon,
-        COALESCE(ec.classifier, 'other') AS classifier,
+        ${CLS_SQL} AS classifier,
+        ec.code AS cat_code, ec.std_group AS cat_std_group,
         ec.op_type AS cat_op_type, ec.parent_id,
         o.op_type, ${monthOf} AS month,
         SUM(o.amount_company) AS total
@@ -410,14 +421,27 @@ export async function getPnlMatrix(request: NextRequest): Promise<NextResponse> 
         AND o.organization_id = ?
         AND o.op_type != 'transfer'
         ${tagFilter}
-      GROUP BY ec.id, ec.name, ec.icon, ec.classifier, ec.op_type, ec.parent_id,
-               o.op_type, month
+      GROUP BY ec.id, ec.name, ec.icon, ec.classifier, ec.std_group, ec.code,
+               ec.op_type, ec.parent_id, o.op_type, month
     `, [from, to, org, ...tagIds]) as any[];
+
+    // Вісь, якої читач не знає, НАЗИВАЄТЬСЯ, а не тоне в «Іншому».
+    //
+    // «Не знаю, куди це» і «це інше» — різні твердження (інваріант 13). Мовчазне
+    // «Інше» означає, що готель шукатиме, звідки в рядку взялися гроші; названа
+    // відмова означає, що він побачить статтю і полагодить її за хвилину.
+    const unknown = rows.filter((r: any) => String(r.classifier || '').startsWith('unknown:'));
+    if (unknown.length > 0) {
+      const names = [...new Set(unknown.map((r: any) => `«${r.cat_name}» (${r.cat_code || r.cat_id}, група «${r.cat_std_group}»)`))];
+      refuse(`Звіт не побудовано: у ${names.length === 1 ? 'статті' : 'статей'} ${names.join(', ')} `
+        + 'група обліку не належить до відомих. Виправте групу в Фінанси → Налаштування → Статті обліку — '
+        + 'інакше ці гроші стали б рядком «Інше», і знайти їх було б нічим.');
+    }
 
     // Classify
     const byClassifier: Record<string, MatrixRow[]> = {
       revenue: [], cogs: [], variable: [], operational: [],
-      tax: [], capex: [], financing: [], other: [],
+      tax: [], capex: [], financing: [], other: [], uncategorized: [],
     };
 
     const catMap = new Map<string, MatrixRow>();
@@ -455,7 +479,14 @@ export async function getPnlMatrix(request: NextRequest): Promise<NextResponse> 
         if ((r.classifier || '') === 'financing') financingIncome.push(r);
         else byClassifier.revenue.push(r);
       } else {
-        const cls = r.classifier || 'other';
+        // `|| 'other'` тут більше немає: вираз осі порожнім не буває, а
+        // невідома група відмовлена вище поіменно. Лишається `uncategorized`
+        // — стаття без групи ВЗАГАЛІ, і вона теж не «Інше»: гроші видно
+        // окремим рядком, як і в місячних підсумках.
+        // `?? 'uncategorized'`, не `|| 'other'`: операція взагалі без статті
+        // (`LEFT JOIN` не знайшов рядка) — це «не класифіковано», і воно теж
+        // мусить бути видиме окремо, а не змішане з «Іншим».
+        const cls = r.classifier ?? 'uncategorized';
         if (byClassifier[cls]) byClassifier[cls].push(r);
         else byClassifier.other.push(r);
       }
@@ -531,7 +562,7 @@ export async function getPnlMatrix(request: NextRequest): Promise<NextResponse> 
       ],
     });
   } catch (error: any) {
-    return serverError('modules/finance/api/reports getPnlMatrix', error);
+    return handleError('modules/finance/api/reports getPnlMatrix', error);
   }
 }
 
