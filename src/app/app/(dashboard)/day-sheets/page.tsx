@@ -20,8 +20,6 @@
 
 import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { Printer, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { money } from '@core/money';
 
@@ -38,7 +36,6 @@ function shift(date: string, days: number): string {
 
 export default function DaySheetsPage() {
   const t = useT();
-  const onMenuClick = useMobileMenu();
 
   const [date, setDate] = useState(today());
   const [kind, setKind] = useState<Kind>('house');
@@ -69,7 +66,6 @@ export default function DaySheetsPage() {
 
   return (
     <>
-      <Header title={t('Аркуші дня')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {/* Друкується лише .sheet — решта зникає. */}
         <style>{`

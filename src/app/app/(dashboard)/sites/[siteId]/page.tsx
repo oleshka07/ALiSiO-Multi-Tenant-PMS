@@ -4,7 +4,6 @@ import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { Globe, ArrowLeft, Loader2 } from 'lucide-react';
 import { TABS } from './_components/SiteHelpers';
 import { AnalyticsTab } from './_components/AnalyticsTab';
@@ -45,7 +44,6 @@ export default function SiteDetailPage() {
   const params = useParams<{ siteId: string }>();
   const siteId = params?.siteId as string;
   const router = useRouter();
-  const onMenuClick = useMobileMenu();
 
   const [site, setSite] = useState<Site | null>(null);
   const [loading, setLoading] = useState(true);
@@ -113,7 +111,6 @@ export default function SiteDetailPage() {
 
   if (loading) return (
     <>
-      <Header title={tUi('Завантаження...')} onMenuClick={onMenuClick} />
       <div className="app-content" style={{ display: 'flex', justifyContent: 'center', padding: 80 }}>
         <Loader2 size={36} className="spin" style={{ color: 'var(--accent-primary)' }} />
       </div>
@@ -122,7 +119,6 @@ export default function SiteDetailPage() {
 
   if (!site) return (
     <>
-      <Header title={tUi('Сайт не знайдено')} onMenuClick={onMenuClick} />
       <div className="app-content" style={{ padding: 40, textAlign: 'center' }}>
         <div style={{ fontSize: 16, marginBottom: 12 }}>{tUi('Сайт не знайдено або видалено')}</div>
         <button className="btn btn-primary" onClick={() => router.push('/app/sites')}><ArrowLeft size={16} /> {tUi('Назад до списку')}</button>
@@ -132,7 +128,7 @@ export default function SiteDetailPage() {
 
   return (
     <>
-      <Header title={site.name} onMenuClick={onMenuClick} onBack={() => router.push('/app/sites')} />
+      <Header onBack={() => router.push('/app/sites')} />
 
       <div className="app-content">
         {/* Breadcrumb */}

@@ -11,8 +11,6 @@
  */
 import Link from 'next/link';
 import { useT } from '@core/i18n/client';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import { hasPermission, type Permission } from '@core/auth/permissions';
 import { EmptyState } from '@/components/ui/State';
@@ -53,7 +51,6 @@ const GROUPS: { title: string; items: ReportLink[] }[] = [
 
 export default function ReportsHubPage() {
   const t = useT();
-  const onMenuClick = useMobileMenu();
   const { user, features, organization, loading } = useCurrentUser();
 
   const visible = GROUPS
@@ -71,7 +68,6 @@ export default function ReportsHubPage() {
 
   return (
     <>
-      <Header title={t('Звіти')} onMenuClick={onMenuClick} />
       <div className="app-content">
         <div className="page-header">
           <div>

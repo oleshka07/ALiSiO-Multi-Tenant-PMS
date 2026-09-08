@@ -5,7 +5,6 @@ import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import { BarChart3, TrendingUp, Calendar, Users, Wallet, RefreshCw, Loader2 } from 'lucide-react';
 
@@ -97,7 +96,6 @@ export default function SalesReportPage() {
   const [activePreset, setActivePreset] = useState('thisMonth');
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const onMenuClick = useMobileMenu();
   // Звіт — за обраним у шапці обʼєктом; «Усі обʼєкти» — організація цілком.
   const { propertyId } = usePropertyScope();
 
@@ -127,7 +125,7 @@ export default function SalesReportPage() {
 
   return (
     <>
-      <Header title={tUi('Аналітика продажів')} onMenuClick={onMenuClick} onBack={() => router.push('/app/reports')} />
+      <Header onBack={() => router.push('/app/reports')} />
       <div className="app-content">
         <div className="page-header">
           <div>

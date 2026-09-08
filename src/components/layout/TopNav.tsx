@@ -24,28 +24,69 @@ import AccountMenu from './AccountMenu';
 import PropertySwitcher from './PropertySwitcher';
 import { TOP_NAV, navItemActive, visibleNavItems, type NavItem } from './nav-items';
 
+/**
+ * Випадайка розділу — і чому вона малюється КООРДИНАТАМИ, а не просто «під
+ * кнопкою».
+ *
+ * Симптом від власника: меню «Гості» ховається під вміст сторінки. Причина
+ * виявилась не в порядку накладання, хоч виглядала саме так. `.topnav-items`
+ * має `overflow-x: auto` — щоб пункти прокручувались на вузькому вікні, — а
+ * `overflow-x: auto` з видимим `overflow-y` за специфікацією обчислюється в
+ * `auto` по ОБОХ осях: одну вісь зробити прокруткою, а другу лишити видимою
+ * не можна. Виміряно в браузері: `getComputedStyle(.topnav-items)` дає
+ * `auto/auto`, і меню, що звисає нижче 56-піксельної смуги, просто
+ * ОБРІЗАЄТЬСЯ — воно має правильний прямокутник, але не малюється зовсім.
+ *
+ * Саме тому жоден z-index не допомагав: перевірено чотири розклади (nav 100 /
+ * header 90, перевернутий, `z-index: auto`, `position: static`) — у всіх меню
+ * лишалось невидимим, бо обрізання це не накладання. Доказ від протилежного:
+ * `overflow: visible` на `.topnav-items` робить меню клікабельним негайно.
+ *
+ * Прибрати `overflow-x` не можна — він тримає прокрутку пунктів на середніх
+ * ширинах (на ≤768 px пункти й так сховані). Тож меню виходить із коробки, що
+ * його ріже: `position: fixed` і координати від кнопки. Позиція
+ * перераховується на прокрутку смуги пунктів і на зміну розміру вікна, бо
+ * фіксований елемент за кнопкою сам не піде.
+ */
 function Dropdown({ item, active, t }: { item: NavItem; active: boolean; t: (s: string) => string }) {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
   const pathname = usePathname() || '';
   useEffect(() => {
     if (!open) return;
+    const place = () => {
+      const b = btnRef.current?.getBoundingClientRect();
+      if (b) setPos({ top: Math.round(b.bottom + 6), left: Math.round(b.left) });
+    };
+    place();
     const onDown = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+    window.addEventListener('resize', place);
+    // Смуга пунктів прокручується по горизонталі — фіксоване меню має їхати
+    // за своєю кнопкою, інакше воно лишиться там, де кнопка була.
+    const items = btnRef.current?.closest('.topnav-items');
+    items?.addEventListener('scroll', place);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', place);
+      items?.removeEventListener('scroll', place);
+    };
   }, [open]);
   const Icon = item.icon;
   return (
     <div ref={ref} className="topnav-wrap">
-      <button type="button" className={`topnav-item ${active ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <button ref={btnRef} type="button" className={`topnav-item ${active ? 'active' : ''}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         <Icon size={16} />
         {t(item.label)}
         <ChevronDown size={14} />
       </button>
-      {open && (
-        <div className="topnav-menu" role="menu">
+      {open && pos && (
+        <div className="topnav-menu" role="menu" style={{ top: pos.top, left: pos.left }}>
           {item.children!.map((c) => {
             const CIcon = c.icon;
             const isActive = pathname === c.href || pathname.startsWith(`${c.href}/`);

@@ -11,9 +11,7 @@
 
 import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
-import Header from '@/components/layout/Header';
 import InvoiceBlank from './_components/InvoiceBlank';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { Plus, Trash2, X, Save, Loader2, ArrowLeft, Hash, Percent, Lock } from 'lucide-react';
 import Link from 'next/link';
 
@@ -61,7 +59,6 @@ function Modal({ open, onClose, title, children, footer }: {
 
 export default function InvoicingSettingsPage() {
   const t = useT();
-  const onMenuClick = useMobileMenu();
 
   const [rates, setRates] = useState<TaxRate[]>([]);
   const [series, setSeries] = useState<Series[]>([]);
@@ -176,7 +173,6 @@ export default function InvoicingSettingsPage() {
 
   return (
     <>
-      <Header title={t('Фактурування')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {toast && (
           <div style={{

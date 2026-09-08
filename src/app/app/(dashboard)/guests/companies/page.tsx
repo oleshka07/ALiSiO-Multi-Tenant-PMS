@@ -10,8 +10,6 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useT } from '@core/i18n/client';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { EmptyState, LoadingState, ErrorState } from '@/components/ui/State';
 import {
   Plus, Search, Building2, Landmark, Phone, Mail, MapPin, Flag, Users, Archive, ArchiveRestore, Trash2, X, Save, Loader2, Copy, FileText,
@@ -54,7 +52,6 @@ const FORM_KEYS = Object.keys(EMPTY) as (keyof Form)[];
 
 export default function CompaniesPage() {
   const t = useT();
-  const onMenuClick = useMobileMenu();
   const [rows, setRows] = useState<CompanyRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -162,7 +159,6 @@ export default function CompaniesPage() {
 
   return (
     <>
-      <Header title={t('Компанії')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {toast && (
           <div style={{ position: 'fixed', top: 80, right: 24, zIndex: 1000, background: 'var(--bg-tooltip)', color: 'var(--text-inverse)', padding: '10px 16px', borderRadius: 'var(--radius-md)', fontSize: 13 }}>{toast}</div>

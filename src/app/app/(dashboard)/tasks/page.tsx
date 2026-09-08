@@ -1364,7 +1364,6 @@ function TasksDesktop() {
   );
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
-  const onMenuClick = useMobileMenu();
   const { propertyId: scopedPropertyId } = usePropertyScope();
 
   // ── Table filters ──
@@ -1781,7 +1780,6 @@ function TasksDesktop() {
 
   return (
     <>
-      <Header title={tUi('Задачі')} onMenuClick={onMenuClick} />
       <div
         className="app-content"
         style={{ paddingLeft: 0, paddingRight: 0, paddingBottom: 0 }}

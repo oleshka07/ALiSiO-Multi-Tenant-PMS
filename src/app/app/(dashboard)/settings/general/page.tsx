@@ -4,9 +4,7 @@ import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Loader2, Save } from 'lucide-react';
-import Header from '@/components/layout/Header';
 import SecondaryCurrencies from './_components/SecondaryCurrencies';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import PropertyRequired from '@/components/layout/PropertyRequired';
 
@@ -68,7 +66,6 @@ const TIMEZONES = [
 
 export default function GeneralSettingsPage() {
   const t = useT();
-  const onMenuClick = useMobileMenu();
   const [org, setOrg] = useState<Organization | null>(null);
   // Форма обʼєкта — ОБРАНОГО в шапці (область обʼєкта). Без параметра
   // сервер віддавав перший за датою створення, і в готелю з двома цей екран
@@ -129,7 +126,6 @@ export default function GeneralSettingsPage() {
 
   return (
     <>
-      <Header title={t('Загальні налаштування')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {toast && (
           <div style={{

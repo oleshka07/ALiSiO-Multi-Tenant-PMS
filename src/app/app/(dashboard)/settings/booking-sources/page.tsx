@@ -2,8 +2,6 @@
 
 import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { Plus, Edit3, Trash2, X, Save, Loader2, ArrowLeft, Palette } from 'lucide-react';
 import Link from 'next/link';
 
@@ -54,7 +52,6 @@ export default function BookingSourcesPage() {
   const [form, setForm] = useState({ name: '', code: '', icon_letter: '', color: '#3b82f6', sort_order: 0, commission_percent: 0 });
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
-  const onMenuClick = useMobileMenu();
 
   const fetchSources = useCallback(async () => {
     setLoading(true);
@@ -134,7 +131,6 @@ export default function BookingSourcesPage() {
 
   return (
     <>
-      <Header title={t('Джерела бронювань')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {toast && (
           <div style={{

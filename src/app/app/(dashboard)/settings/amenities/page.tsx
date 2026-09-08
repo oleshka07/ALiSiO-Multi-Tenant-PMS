@@ -16,9 +16,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, Loader2, Save, AlertTriangle, Check, X } from 'lucide-react';
-import Header from '@/components/layout/Header';
 import { useT } from '@core/i18n/client';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 
 /** Модалка тут своя, як і на сусідніх екранах налаштувань: спільної немає. */
@@ -53,7 +51,6 @@ interface UnitType { id: string; name: string; code: string }
 
 export default function AmenitiesPage() {
   const tUi = useT();
-  const onMenuClick = useMobileMenu();
   const { propertyId } = usePropertyScope();
 
   const [tab, setTab] = useState<'catalog' | 'assign'>('catalog');
@@ -186,7 +183,6 @@ export default function AmenitiesPage() {
 
   return (
     <>
-      <Header title={tUi('Зручності')} onMenuClick={onMenuClick} />
 
       <div className="page-content">
         {error && (

@@ -2,8 +2,6 @@
 
 import { useT, usePlural } from '@core/i18n/client';
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import PropertyRequired from '@/components/layout/PropertyRequired';
 import { EmptyState, LoadingState } from '@/components/ui/State';
@@ -138,7 +136,6 @@ export default function SettingsPropertiesPage() {
   const pluralUi = usePlural();
   const tUi = useT();
   // ── Data ──
-  const onMenuClick = useMobileMenu();
   const [properties, setProperties] = useState<PropertyRow[]>([]);
   // Який обʼєкт відкрито — область у шапці, не власний стан
   // (check-property-scope). Список тут свій, бо картці потрібні поля, яких
@@ -535,7 +532,6 @@ export default function SettingsPropertiesPage() {
      ════════════════════════════════════════════════════════════ */
   return (
     <>
-      <Header title={tUi('Об\'єкти')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {/* Toast */}
         {toast && (

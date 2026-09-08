@@ -11,7 +11,6 @@
 import { useRouter } from 'next/navigation';
 import { useT } from '@core/i18n/client';
 import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 
 interface LegendRow { token: string; label: string; desc: string }
 
@@ -63,10 +62,9 @@ function Table({ rows, t }: { rows: LegendRow[]; t: (s: string) => string }) {
 export default function LegendPage() {
   const t = useT();
   const router = useRouter();
-  const onMenuClick = useMobileMenu();
   return (
     <>
-      <Header title={t('Легенда')} onMenuClick={onMenuClick} onBack={() => router.push('/app/settings')} />
+      <Header onBack={() => router.push('/app/settings')} />
       <div className="app-content" style={{ maxWidth: 900 }}>
         <div className="page-header">
           <div>

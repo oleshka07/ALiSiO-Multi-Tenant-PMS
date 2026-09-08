@@ -4,8 +4,6 @@ import { useT, usePlural } from '@core/i18n/client';
 import { paymentStatusLabel, paymentStatusLook } from '@/modules/bookings/ui/payment-status';
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { useDevice } from '@/ui/hooks/useDevice';
 import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import MobileGuests from '@/components/mobile/pages/MobileGuests';
@@ -164,7 +162,6 @@ function DesktopGuests({ initialSearch }: { initialSearch?: string }) {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
   const [toastType, setToastType] = useState<'success' | 'error'>('success');
-  const onMenuClick = useMobileMenu();
 
   /* ── fetch guests list ───────────────────────────── */
   // Один опис фільтрів на список і на експорт (Блок 4 §2.5): файл, який
@@ -435,7 +432,6 @@ function DesktopGuests({ initialSearch }: { initialSearch?: string }) {
 
   return (
     <>
-      <Header title={t('Гості')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {/* Toast */}
         {toast && (

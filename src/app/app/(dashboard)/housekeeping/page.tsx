@@ -10,8 +10,6 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useT } from '@core/i18n/client';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import { EmptyState, LoadingState, ErrorState } from '@/components/ui/State';
 import { Sparkles, Brush, Clock, Ban, LogIn, LogOut, RefreshCw } from 'lucide-react';
@@ -24,7 +22,6 @@ const NEXT: Record<Cleaning, Cleaning> = { dirty: 'in_progress', in_progress: 'c
 
 export default function HousekeepingPage() {
   const t = useT();
-  const onMenuClick = useMobileMenu();
   const { propertyId, properties } = usePropertyScope();
   const [view, setView] = useState<'board' | 'history'>('board');
   const [board, setBoard] = useState<{ today: string; units: any[] } | null>(null);
@@ -125,7 +122,6 @@ export default function HousekeepingPage() {
 
   return (
     <>
-      <Header title={t('Прибирання')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {toast && (
           <div style={{ position: 'fixed', top: 80, right: 24, zIndex: 1000, background: 'var(--bg-tooltip)', color: 'var(--text-inverse)', padding: '10px 16px', borderRadius: 'var(--radius-md)', fontSize: 13 }}>{toast}</div>

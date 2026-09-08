@@ -13,8 +13,6 @@
  */
 import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { Plus, X, Loader2, FileText, Ban } from 'lucide-react';
 import { suggestedBlockPrice, minutesBetween } from '@/modules/events/domain/event-pricing';
 
@@ -50,7 +48,6 @@ const labelStyle: React.CSSProperties = {
 
 export default function EventsPage() {
   const t = useT();
-  const onMenuClick = useMobileMenu();
 
   const today = new Date().toISOString().slice(0, 10);
   const [date, setDate] = useState(today);
@@ -174,7 +171,6 @@ export default function EventsPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)' }}>
-      <Header title={t('Зали')} onMenuClick={onMenuClick} />
       <div style={{ padding: 20, maxWidth: 900, margin: '0 auto' }}>
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 18, flexWrap: 'wrap' }}>

@@ -15,8 +15,6 @@
  */
 import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import PropertyRequired from '@/components/layout/PropertyRequired';
 import { EmptyState, LoadingState } from '@/components/ui/State';
@@ -51,7 +49,6 @@ const EMPTY: Form = {
 
 export default function PriceRulesSettingsPage() {
   const t = useT();
-  const onMenuClick = useMobileMenu();
   const ERRORS: Record<string, string> = {
     rule_name_required: t('Назва обовʼязкова'),
     rule_value_invalid: t('Значення — додатне число; знижка у відсотках менша за 100'),
@@ -176,7 +173,6 @@ export default function PriceRulesSettingsPage() {
 
   return (
     <>
-      <Header title={t('Правила цін і промо')} onMenuClick={onMenuClick} />
       <div className="app-content">
         <Link href="/app/settings" className="btn btn-ghost btn-sm" style={{ marginBottom: 12 }}><ArrowLeft size={14} /> {t('Налаштування')}</Link>
         <PropertyRequired>

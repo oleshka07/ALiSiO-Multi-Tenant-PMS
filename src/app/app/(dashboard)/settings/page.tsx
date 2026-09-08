@@ -11,8 +11,6 @@
  * меню не показуються взагалі.
  */
 import { useT } from '@core/i18n/client';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import { hasPermission, type Permission } from '@core/auth/permissions';
 import Link from 'next/link';
@@ -82,7 +80,6 @@ const GROUPS: { title: string; desc: string; items: SettingsLink[] }[] = [
 
 export default function SettingsPage() {
   const t = useT();
-  const onMenuClick = useMobileMenu();
   const { user, features } = useCurrentUser();
   const visible = GROUPS
     .map((g) => ({
@@ -97,7 +94,6 @@ export default function SettingsPage() {
 
   return (
     <>
-      <Header title={t('Налаштування')} onMenuClick={onMenuClick} />
       <div className="app-content">
         <div className="page-header">
           <div>

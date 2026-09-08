@@ -2,8 +2,6 @@
 
 import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import {
   Plus, Edit3, Trash2, X, Save, Loader2, ArrowLeft,
   RefreshCw, Copy, Check, ExternalLink, Clock, AlertCircle,
@@ -130,7 +128,6 @@ function Modal({ open, onClose, title, children, footer, width }: {
 
 export default function ChannelManagerPage() {
   const tUi = useT();
-  const onMenuClick = useMobileMenu();
 
   const [channels, setChannels] = useState<ICalChannel[]>([]);
   const [sources, setSources] = useState<BookingSource[]>([]);
@@ -338,7 +335,6 @@ export default function ChannelManagerPage() {
 
   return (
     <>
-      <Header title={tUi('Канал-менеджер')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {toast && (
           <div style={{

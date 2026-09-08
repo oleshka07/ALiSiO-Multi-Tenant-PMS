@@ -2,8 +2,6 @@
 
 import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import {
   Plus, Pencil, Trash2, X, Check, Shield, Eye, EyeOff, Search, ChevronDown,
   Key,
@@ -52,7 +50,6 @@ const ALL_ROLES: UserRole[] = ['owner', 'director', 'manager', 'receptionist', '
 
 export default function UsersPage() {
   const t = useT();
-  const onMenuClick = useMobileMenu();
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -283,7 +280,6 @@ export default function UsersPage() {
 
   return (
     <>
-      <Header title={t('Користувачі')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {/* Page Header */}
         <div className="page-header">

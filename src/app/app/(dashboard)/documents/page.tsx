@@ -3,8 +3,6 @@
 import { useT } from '@core/i18n/client';
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import {
   FileText, Download, Eye, RefreshCw, Receipt,
   CheckCircle, AlertCircle, Calendar, User,
@@ -120,7 +118,6 @@ interface Supplier {
 
 export default function DocumentsPage() {
   const tUi = useT();
-  const onMenuClick = useMobileMenu();
   const searchParams = useSearchParams();
 
   const [supplier, setSupplier] = useState<Supplier | null>(null);
@@ -590,7 +587,6 @@ export default function DocumentsPage() {
 
   return (
     <>
-      <Header title={tUi('Документи')} onMenuClick={onMenuClick} />
       <div className="app-content">
 
         {/* ─── Page Header ──────────────────────────────────────── */}

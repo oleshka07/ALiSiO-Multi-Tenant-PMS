@@ -22,8 +22,6 @@
 
 import { useT } from '@core/i18n/client';
 import { useState, useEffect, use } from 'react';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { Printer, Loader2, ArrowLeft } from 'lucide-react';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -44,7 +42,6 @@ const LABEL: Record<string, string> = {
 export default function MeldescheinPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const t = useT();
-  const onMenuClick = useMobileMenu();
 
   const [form, setForm] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -78,7 +75,6 @@ export default function MeldescheinPage({ params }: { params: Promise<{ id: stri
 
   return (
     <>
-      <Header title={t('Meldeschein')} onMenuClick={onMenuClick} />
       <div className="app-content">
         <style>{`
           @media print {

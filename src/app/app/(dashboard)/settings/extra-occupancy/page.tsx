@@ -16,8 +16,6 @@
  */
 import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import PropertyRequired from '@/components/layout/PropertyRequired';
 import { EmptyState, LoadingState } from '@/components/ui/State';
@@ -41,7 +39,6 @@ const EMPTY: Form = { id: null, ratePlanId: '', unitTypeId: '', guestKind: 'adul
 
 export default function ExtraOccupancySettingsPage() {
   const t = useT();
-  const onMenuClick = useMobileMenu();
   const ERRORS: Record<string, string> = {
     rule_conflict: t('На цю клітинку (тариф × тип × гість × вилка) правило вже є — змініть його'),
     rule_invalid: t('Перевірте правило: потрібне проживання або харчування, значення не відʼємні, вилка — з наявних'),
@@ -142,7 +139,6 @@ export default function ExtraOccupancySettingsPage() {
 
   return (
     <>
-      <Header title={t('Надбавки за заселеність')} onMenuClick={onMenuClick} />
       <div className="app-content">
         <Link href="/app/settings" className="btn btn-ghost btn-sm" style={{ marginBottom: 12 }}><ArrowLeft size={14} /> {t('Налаштування')}</Link>
         <PropertyRequired>
