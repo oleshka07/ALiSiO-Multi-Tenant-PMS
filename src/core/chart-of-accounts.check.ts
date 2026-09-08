@@ -42,7 +42,21 @@ const SLUGS = ['coa-check-one', 'coa-check-two'];
 async function cleanup() {
   for (const slug of SLUGS) {
     const org = await sql.row<{ id: string }>('SELECT id FROM organizations WHERE slug = ?', [slug]);
-    if (org) await sql.run('DELETE FROM organizations WHERE id = ?', [org.id]);
+    if (!org) continue;
+    // Дочірні рядки знімаються В КОНТЕКСТІ ОРЕНДАРЯ (INC-014): на Postgres під
+    // роллю застосунку вони під політикою, і `DELETE` без контексту прибирає
+    // НУЛЬ — мовчки, бо «нічого не видалено» це не помилка.
+    await runWithOrganization(org.id, async () => {
+      // ПОРЯДОК: `app_users` перед `finance_accounts`. Власник посилається на
+      // касу через `default_cash_account_id` (Д26), і ключ не каскадний —
+      // видалення каси, поки на неї дивиться користувач, відхиляється.
+      await sql.run('DELETE FROM expense_categories WHERE organization_id = ?', [org.id]);
+      await sql.run('DELETE FROM business_units WHERE organization_id = ?', [org.id]);
+      await sql.run('DELETE FROM app_users WHERE organization_id = ?', [org.id]);
+      await sql.run('DELETE FROM finance_accounts WHERE organization_id = ?', [org.id]);
+      await sql.run('DELETE FROM properties WHERE organization_id = ?', [org.id]);
+    });
+    await sql.run('DELETE FROM organizations WHERE id = ?', [org.id]);
   }
 }
 
@@ -62,40 +76,42 @@ try {
   });
 
   // ── 1. У КОЖНОГО свій повний довідник ────────────────────────────────────
+  //
+  // КОЖНЕ читання — у контексті СВОГО орендаря (INC-014). На Postgres під роллю
+  // застосунку довідник під політикою: запит без контексту віддає нуль рядків,
+  // і твердження «отримав 0 статей» було б правдою про перевірку, а не про код.
+  // Під суперкористувачем і на SQLite цього не видно — саме так ця перевірка
+  // проходила локально й падала в CI.
+  const catsOf = (org: { organizationId: string }) => runWithOrganization(org.organizationId, () =>
+    sql.rows<{ id: string; code: string }>(
+      'SELECT id, code FROM expense_categories WHERE organization_id = ? ORDER BY code', [org.organizationId]));
+  const unitsOf = (org: { organizationId: string }) => runWithOrganization(org.organizationId, () =>
+    sql.rows<{ id: string; code: string }>(
+      'SELECT id, code FROM business_units WHERE organization_id = ? ORDER BY code', [org.organizationId]));
+
   for (const [label, org] of [['перший', one], ['другий', two]] as const) {
-    const cats = await sql.rows<{ id: string; code: string }>(
-      'SELECT id, code FROM expense_categories WHERE organization_id = ? ORDER BY code', [org.organizationId]);
+    const cats = await catsOf(org);
     say(cats.length === CHART_OF_ACCOUNTS.length,
       `${label} готель отримав ${cats.length} статей замість ${CHART_OF_ACCOUNTS.length} — план рахунків сіявся не йому`);
-    const units = await sql.rows<{ id: string; code: string }>(
-      'SELECT id, code FROM business_units WHERE organization_id = ? ORDER BY code', [org.organizationId]);
+    const units = await unitsOf(org);
     say(units.length === BUSINESS_UNITS.length,
       `${label} готель отримав ${units.length} бізнес-юнітів замість ${BUSINESS_UNITS.length}`);
   }
 
   // ── 2. Коди ті самі, ІДЕНТИФІКАТОРИ різні ────────────────────────────────
-  const codesOne = (await sql.rows<{ code: string }>(
-    'SELECT code FROM expense_categories WHERE organization_id = ? ORDER BY code', [one.organizationId]))
-    .map((r) => r.code);
-  const codesTwo = (await sql.rows<{ code: string }>(
-    'SELECT code FROM expense_categories WHERE organization_id = ? ORDER BY code', [two.organizationId]))
-    .map((r) => r.code);
+  const codesOne = (await catsOf(one)).map((r) => r.code);
+  const codesTwo = (await catsOf(two)).map((r) => r.code);
   say(codesOne.length > 0 && JSON.stringify(codesOne) === JSON.stringify(codesTwo),
     'коди довідника мусять збігатися в обох готелів — інакше це не «у кожного своє», а «у другого інше»');
 
-  const idsOne = new Set((await sql.rows<{ id: string }>(
-    'SELECT id FROM expense_categories WHERE organization_id = ?', [one.organizationId])).map((r) => r.id));
-  const idsTwo = (await sql.rows<{ id: string }>(
-    'SELECT id FROM expense_categories WHERE organization_id = ?', [two.organizationId])).map((r) => r.id);
+  const idsOne = new Set((await catsOf(one)).map((r) => r.id));
+  const idsTwo = (await catsOf(two)).map((r) => r.id);
   const shared = idsTwo.filter((id) => idsOne.has(id));
   say(shared.length === 0,
     `${shared.length} ідентифікаторів довідника СПІЛЬНІ для двох готелів (${shared.slice(0, 3).join(', ')}) — рядок належить тому, хто завівся першим`);
 
-  const buIdsOne = new Set((await sql.rows<{ id: string }>(
-    'SELECT id FROM business_units WHERE organization_id = ?', [one.organizationId])).map((r) => r.id));
-  const buShared = (await sql.rows<{ id: string }>(
-    'SELECT id FROM business_units WHERE organization_id = ?', [two.organizationId]))
-    .map((r) => r.id).filter((id) => buIdsOne.has(id));
+  const buIdsOne = new Set((await unitsOf(one)).map((r) => r.id));
+  const buShared = (await unitsOf(two)).map((r) => r.id).filter((id) => buIdsOne.has(id));
   say(buShared.length === 0,
     `${buShared.length} бізнес-юнітів СПІЛЬНІ для двох готелів — той самий клас, що зі статтями`);
 
@@ -132,9 +148,10 @@ try {
     ['другий', two, String(resolvedOne)],
     ['перший', one, String(resolvedTwo)],
   ] as const) {
-    const reachable = await sql.row<{ id: string }>(
-      'SELECT id FROM expense_categories WHERE organization_id = ? AND id = ?',
-      [mine.organizationId, foreign]);
+    const reachable = await runWithOrganization(mine.organizationId, () =>
+      sql.row<{ id: string }>(
+        'SELECT id FROM expense_categories WHERE organization_id = ? AND id = ?',
+        [mine.organizationId, foreign]));
     say(!reachable,
       `${label} готель ДІСТАЄ статтю сусіда за її ідентифікатором (${foreign}) — довідник спільний`);
     // І з іншого боку: своя стаття за тим самим кодом знаходиться завжди,

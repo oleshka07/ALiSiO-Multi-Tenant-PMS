@@ -62,7 +62,19 @@ async function cleanup() {
   // пробоєм межі (`check-boundaries`), і гейт це одразу й сказав: сцена
   // модуля bookings не має права ходити в таблиці invoicing навіть на
   // прибиранні.
-  await sql.run("DELETE FROM reservations WHERE id LIKE '__folbook__%'", []);
+  //
+  // Броні знімаються В КОНТЕКСТІ ОРЕНДАРЯ, і це не косметика (INC-014).
+  // `reservations` під політикою; без контексту `DELETE` не бачить жодного
+  // рядка й прибирає НУЛЬ — мовчки, бо «нічого не видалено» це не помилка. А
+  // ключ `fk_reservations_organization_id_4` НЕ каскадний, тож наступний
+  // `DELETE FROM organizations` падає, і падає не там, де причина.
+  //
+  // На SQLite і під суперкористувачем цього не видно: політик там немає, тож
+  // прибирання «працювало» рівно тому, що обходило їх. Побачив це CI після
+  // того, як `check:pg` перевели на роль застосунку.
+  await runWithOrganization(ORG, async () => {
+    await sql.run("DELETE FROM reservations WHERE id LIKE '__folbook__%'", []);
+  });
   await sql.run('DELETE FROM organizations WHERE id = ?', [ORG]);
 }
 
