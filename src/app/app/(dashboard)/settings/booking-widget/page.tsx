@@ -3,8 +3,6 @@
 import { useT } from '@core/i18n/client';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from 'react';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 
 /**
  * Код для вставки форми бронювання на зовнішній сайт. Модулі «Бронювання
@@ -13,7 +11,6 @@ import { useMobileMenu } from '@/ui/MobileMenuContext';
  */
 export default function BookingWidgetSettingsPage() {
   const t = useT();
-  const onMenuClick = useMobileMenu();
   const [sites, setSites] = useState<any[]>([]);
   const [selectedSite, setSelectedSite] = useState('');
   const [listings, setListings] = useState<any[]>([]);
@@ -94,7 +91,6 @@ export default function BookingWidgetSettingsPage() {
 
   return (
     <>
-      <Header title={t('Віджети бронювання')} onMenuClick={onMenuClick} />
       <div className="app-content">
         <div className="page-header">
           <div>

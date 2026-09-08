@@ -4,8 +4,6 @@ import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Check, CreditCard, Loader2, ShieldAlert } from 'lucide-react';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 
 /**
  * Which payment gateway this hotel uses.
@@ -37,7 +35,6 @@ interface Provider {
 
 export default function PaymentsSettingsPage() {
   const t = useT();
-  const onMenuClick = useMobileMenu();
   const [enabled, setEnabled] = useState(false);
   const [anyLive, setAnyLive] = useState(false);
   const [secretsOk, setSecretsOk] = useState(true);
@@ -100,7 +97,6 @@ export default function PaymentsSettingsPage() {
 
   return (
     <>
-      <Header title={t('Онлайн-оплата')} onMenuClick={onMenuClick} />
       <div className="p-4 md:p-6 max-w-3xl mx-auto space-y-5">
         <Link href="/app/settings" className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white">
           <ArrowLeft size={16} /> {t('Налаштування')}

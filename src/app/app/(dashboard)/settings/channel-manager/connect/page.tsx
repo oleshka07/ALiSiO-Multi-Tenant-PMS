@@ -2,8 +2,6 @@
 
 import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import PropertyRequired from '@/components/layout/PropertyRequired';
 import { ArrowLeft, Check, Loader2, RefreshCw, ExternalLink } from 'lucide-react';
@@ -53,7 +51,6 @@ const STEPS: Step[] = ['key', 'connection', 'catalog', 'mapping', 'done'];
 
 export default function ConnectChannelManagerPage() {
   const tUi = useT();
-  const onMenuClick = useMobileMenu();
 
   const [setup, setSetup] = useState<Setup | null>(null);
   // Обʼєкт — з області в шапці, не з власного стану (check-property-scope):
@@ -216,7 +213,6 @@ export default function ConnectChannelManagerPage() {
 
   return (
     <>
-      <Header title={tUi('Підключення менеджера каналів')} onMenuClick={onMenuClick} />
       <div className="app-content">
         <div className="page-header">
           <div>

@@ -18,9 +18,7 @@
  */
 import { useEffect, useState } from 'react';
 import { Plus, Loader2, Save, AlertTriangle, Trash2, Check } from 'lucide-react';
-import Header from '@/components/layout/Header';
 import { useT } from '@core/i18n/client';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 
 interface Secondary {
   code: string;
@@ -31,7 +29,6 @@ interface Secondary {
 
 export default function CurrenciesPage() {
   const tUi = useT();
-  const onMenuClick = useMobileMenu();
 
   const [base, setBase] = useState('');
   const [rows, setRows] = useState<Secondary[]>([]);
@@ -138,7 +135,6 @@ export default function CurrenciesPage() {
 
   return (
     <>
-      <Header title={tUi('Валюти')} onMenuClick={onMenuClick} />
 
       <div className="page-content">
         {error && (

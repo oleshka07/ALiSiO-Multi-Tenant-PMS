@@ -3,8 +3,6 @@
 import { useT } from '@core/i18n/client';
 import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 // Двері модуля цін для React — `ui/`, не фасад `@pricing`: фасад тягне
 // серверний шар у клієнтський бандл, і збірка падає на `node:module`.
@@ -583,7 +581,6 @@ function TestQuoteSection({ unitTypes }: { unitTypes: UnitType[] }) {
 export default function PricingPage() {
   const t = useT();
   const today = new Date();
-  const onMenuClick = useMobileMenu();
 
   // State
   const [unitTypes, setUnitTypes] = useState<UnitType[]>([]);
@@ -797,7 +794,6 @@ export default function PricingPage() {
 
   return (
     <>
-      <Header title={t('Ціноутворення')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {/* Toast */}
         {toast && (

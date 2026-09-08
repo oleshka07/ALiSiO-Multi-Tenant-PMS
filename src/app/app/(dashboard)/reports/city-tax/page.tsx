@@ -3,8 +3,6 @@
 import { useT } from '@core/i18n/client';
 import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import { useState, useEffect, useCallback } from 'react';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { Loader2, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -22,7 +20,6 @@ const TAX_STATUS: Record<string, { label: string; color: string; icon: string }>
 
 export default function CityTaxReportPage() {
   const t = useT();
-  const onMenuClick = useMobileMenu();
   // The organization's own currency — the amounts here used to say CZK to
   // every hotel on the server (audit A5).
   const { organization } = useCurrentUser();
@@ -75,8 +72,7 @@ export default function CityTaxReportPage() {
 
   return (
     <>
-      <Header title={t('Туристичний збір')} onMenuClick={onMenuClick} />
-      <div className="app-content" style={{ padding: '16px 24px', paddingTop: 'calc(var(--header-height) + 16px)' }}>
+      <div className="app-content" style={{ padding: '16px 24px', paddingTop: 'calc(var(--topnav-height) + 16px)' }}>
 
         {/* Month selector */}
         <div style={{

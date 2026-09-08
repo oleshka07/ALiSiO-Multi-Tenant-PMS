@@ -2,8 +2,6 @@
 
 import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import PropertyRequired from '@/components/layout/PropertyRequired';
 import { EmptyState, LoadingState } from '@/components/ui/State';
@@ -46,7 +44,6 @@ const MEAL_OPTIONS = ['', 'room_only', 'breakfast', 'half_board', 'full_board', 
 
 export default function RatePlansSettingsPage() {
   const tUi = useT();
-  const onMenuClick = useMobileMenu();
 
   // Обʼєкт — з області в шапці, не з власного стану (check-property-scope).
   const { propertyId } = usePropertyScope();
@@ -194,7 +191,6 @@ export default function RatePlansSettingsPage() {
 
   return (
     <>
-      <Header title={tUi('Тарифи')} onMenuClick={onMenuClick} />
       <div className="app-content">
         <div className="page-header">
           <div>

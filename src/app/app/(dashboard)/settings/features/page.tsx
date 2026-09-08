@@ -4,9 +4,7 @@ import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Check, Loader2, ToggleLeft, ToggleRight } from 'lucide-react';
-import Header from '@/components/layout/Header';
 import PaymentGatewayNotice from '@/components/payments/PaymentGatewayNotice';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { notifyCurrentUserChanged } from '@/ui/hooks/useCurrentUser';
 
 /**
@@ -57,7 +55,6 @@ interface Status {
 
 export default function FeaturesSettingsPage() {
   const t = useT();
-  const onMenuClick = useMobileMenu();
   const [catalog, setCatalog] = useState<Record<string, string>>({});
   const [features, setFeatures] = useState<Record<string, boolean>>({});
   const [fields, setFields] = useState<Record<string, FieldSpec[]>>({});
@@ -142,7 +139,6 @@ export default function FeaturesSettingsPage() {
 
   return (
     <>
-      <Header title={t('Модулі та інтеграції')} onMenuClick={onMenuClick} />
       <div className="app-content">
         <div className="page-header">
           <div>

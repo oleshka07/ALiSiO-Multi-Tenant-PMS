@@ -4,8 +4,6 @@ import { useT, usePlural } from '@core/i18n/client';
 import { PAYMENT_STATUS_VALUES, paymentStatusLabel, paymentStatusLook } from '@/modules/bookings/ui/payment-status';
 import { useRouter } from 'next/navigation';
 import { useState, useRef, useEffect, useMemo, useCallback, type MouseEvent, type DragEvent } from 'react';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { useDevice } from '@/ui/hooks/useDevice';
 import MobileCalendar from '@/components/mobile/pages/MobileCalendar';
 import BookingViewModal from '@/components/booking/BookingViewModal';
@@ -181,7 +179,6 @@ function CalendarDesktop() {
   const pluralUi = usePlural();
   const tUi = useT();
   // ─── State ──────
-  const onMenuClick = useMobileMenu();
   const [units, setUnits] = useState<UnitRow[]>([]);
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -801,7 +798,6 @@ function CalendarDesktop() {
   if (loading) {
     return (
       <>
-        <Header title={tUi('Календар')} onMenuClick={onMenuClick} />
         <div className="app-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '50vh' }}>
           <Loader2 size={24} className="animate-pulse" /> <span style={{ marginLeft: 8, color: 'var(--text-secondary)' }}>{tUi('Завантаження...')}</span>
         </div>
@@ -811,7 +807,6 @@ function CalendarDesktop() {
 
   return (
     <>
-      <Header title={tUi('Календар')} onMenuClick={onMenuClick} />
       {/*
         Прокручується СІТКА, а не сторінка — інакше шапка з датами і рядок
         «Вільних» їдуть угору разом із номерами, і на 25-му номері вже не
@@ -834,7 +829,9 @@ function CalendarDesktop() {
         нижче не має чого обрізати, і висота знову тече знизу вгору.
       */}
       <div className="app-content" style={{
-        padding: '16px 24px', paddingTop: 'calc(var(--header-height) + 16px)',
+        // Відступ рахується від ВЕРХНЬОГО МЕНЮ: рядка заголовка екрана тут
+        // більше немає, а `--header-height` лишався від нього.
+        padding: '16px 24px', paddingTop: 'calc(var(--topnav-height) + 16px)',
         display: 'flex', flexDirection: 'column', flex: 'none',
         height: 'calc(100vh - 16px)', minHeight: 0, overflow: 'hidden',
       }}>

@@ -3,8 +3,6 @@
 import { useT, usePlural } from '@core/i18n/client';
 import { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import { EmptyState, LoadingState } from '@/components/ui/State';
 import { useDevice } from '@/ui/hooks/useDevice';
@@ -289,7 +287,6 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
   const [payForm, setPayForm] = useState({ amount: '', method: 'cash', type: 'partial', notes: '' });
   const [registrations, setRegistrations] = useState<any[]>([]);
   const [alerts, setAlerts] = useState<any[]>([]);
-  const onMenuClick = useMobileMenu();
 
   // Тут будувався «змішаний» список: шапка групи, під нею її броні, поряд
   // одиночні. Групові броні (`reservation_groups`) видалено 2026-08-27 —
@@ -483,7 +480,6 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
 
   return (
     <>
-      <Header title={t('Бронювання')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {/* Toast */}
         {toast && (

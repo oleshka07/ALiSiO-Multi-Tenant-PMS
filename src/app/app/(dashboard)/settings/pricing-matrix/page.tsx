@@ -24,8 +24,6 @@
 
 import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import PropertyRequired from '@/components/layout/PropertyRequired';
 import { LoadingState } from '@/components/ui/State';
@@ -113,7 +111,6 @@ function Modal({ open, onClose, title, children, footer }: {
 
 export default function PricingMatrixPage() {
   const t = useT();
-  const onMenuClick = useMobileMenu();
 
   const [prices, setPrices] = useState<Price[]>([]);
   const [tiers, setTiers] = useState<Tier[]>([]);
@@ -299,7 +296,6 @@ export default function PricingMatrixPage() {
 
   return (
     <>
-      <Header title={t('Ціни за заселеністю')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {toast && (
           <div style={{

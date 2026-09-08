@@ -3,8 +3,6 @@
 import { useT } from '@core/i18n/client';
 import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
 import { useState, useEffect } from 'react';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import { EmptyState } from '@/components/ui/State';
 import { useDevice } from '@/ui/hooks/useDevice';
@@ -110,7 +108,6 @@ function DashboardDesktop() {
   const [soDate, setSoDate] = useState(new Date().toISOString().split('T')[0]);
   const [soPeriod, setSoPeriod] = useState<'day'|'week'|'all'>('day');
   const [loading, setLoading] = useState(true);
-  const onMenuClick = useMobileMenu();
 
   /** DD.MM.YYYY */
   const fmtDate = (iso: string | null | undefined) => {
@@ -169,7 +166,6 @@ function DashboardDesktop() {
   if (loading || !data) {
     return (
       <>
-        <Header title="Dashboard" onMenuClick={onMenuClick} />
         <div className="app-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '50vh' }}>
           <Loader2 size={24} className="animate-pulse" /> <span style={{ marginLeft: 8, color: 'var(--text-secondary)' }}>{t('Завантаження...')}</span>
         </div>
@@ -179,7 +175,6 @@ function DashboardDesktop() {
 
   return (
     <>
-      <Header title="Dashboard" onMenuClick={onMenuClick} />
       <div className="app-content">
         {/* Setup progress (MASTER-PLAN §1.4) — поки не 8/8 */}
         <SetupProgressCard />

@@ -21,8 +21,6 @@
 
 import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { Plus, Trash2, X, Loader2, ArrowLeft, Coffee } from 'lucide-react';
 import Link from 'next/link';
 
@@ -75,7 +73,6 @@ function Modal({ open, onClose, title, children, footer }: {
 
 export default function ChannelRulesPage() {
   const t = useT();
-  const onMenuClick = useMobileMenu();
 
   const [rules, setRules] = useState<Rule[]>([]);
   const [rates, setRates] = useState<TaxRate[]>([]);
@@ -165,7 +162,6 @@ export default function ChannelRulesPage() {
 
   return (
     <>
-      <Header title={t('Ціни каналів')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {toast && (
           <div style={{

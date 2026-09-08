@@ -3,8 +3,6 @@
 
 import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import PropertyRequired from '@/components/layout/PropertyRequired';
 import { Save, Check, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, Loader2 } from 'lucide-react';
@@ -85,7 +83,6 @@ export default function GuestPageSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
   const [openSections, setOpenSections] = useState<Set<string>>(new Set(['wifi', 'restaurant']));
-  const onMenuClick = useMobileMenu();
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
   const toggleSection = (id: string) => {
@@ -509,7 +506,6 @@ export default function GuestPageSettingsPage() {
   // ═════════════════════════════════════════════════
   return (
     <>
-      <Header title={t('Гостьова сторінка')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {/* Toast */}
         {toast && (

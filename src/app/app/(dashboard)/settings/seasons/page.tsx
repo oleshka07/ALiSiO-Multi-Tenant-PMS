@@ -13,8 +13,6 @@
  */
 import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import PropertyRequired from '@/components/layout/PropertyRequired';
 import { EmptyState, LoadingState } from '@/components/ui/State';
@@ -28,7 +26,6 @@ interface RatePlan { id: string; name: string; code: string; isActive: boolean; 
 
 export default function SeasonsSettingsPage() {
   const t = useT();
-  const onMenuClick = useMobileMenu();
   const ERRORS: Record<string, string> = {
     season_overlap: t('Сезон перетинається з іншим — межі мають іти одна за одною'),
     season_dates_invalid: t('Перевірте дати: кінець не раніше початку'),
@@ -172,7 +169,6 @@ export default function SeasonsSettingsPage() {
 
   return (
     <>
-      <Header title={t('Сезони')} onMenuClick={onMenuClick} />
       <div className="app-content">
         <Link href="/app/settings" className="btn btn-ghost btn-sm" style={{ marginBottom: 12 }}><ArrowLeft size={14} /> {t('Налаштування')}</Link>
         <PropertyRequired>

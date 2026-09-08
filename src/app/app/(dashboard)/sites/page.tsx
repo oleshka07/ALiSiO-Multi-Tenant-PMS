@@ -3,8 +3,6 @@
 import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import {
   Globe, Plus, Search, Trash2, ExternalLink, BarChart,
   Loader2, X, ToggleLeft, ToggleRight, Settings, Info
@@ -63,7 +61,6 @@ function fmt(d: string) {
 export default function SitesPage() {
   const t = useT();
   const router = useRouter();
-  const onMenuClick = useMobileMenu();
 
   const [sites, setSites] = useState<BookingSite[]>([]);
   const [loading, setLoading] = useState(true);
@@ -181,7 +178,6 @@ export default function SitesPage() {
   /* ── render ── */
   return (
     <>
-      <Header title={t('Сайти бронювання')} onMenuClick={onMenuClick} />
 
       <div className="app-content">
 

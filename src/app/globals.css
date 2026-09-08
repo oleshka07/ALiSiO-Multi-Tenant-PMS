@@ -273,7 +273,7 @@ a:hover {
 .app-content {
   flex: 1;
   padding: 24px;
-  padding-top: calc(var(--topnav-height) + var(--header-height) + 24px);
+  padding-top: calc(var(--topnav-height) + 24px);
 }
 
 /* ─── Top navigation (П12) ────────────────────── */
@@ -393,10 +393,12 @@ a:hover {
   margin-left: auto;
 }
 
+/* `fixed`, а не `absolute`: `.topnav-items` має `overflow-x: auto`, що за
+   специфікацією робить `auto` по ОБОХ осях, і абсолютне меню, яке звисає нижче
+   смуги, обрізалось повністю (виглядало як «ховається під сторінку»). Точні
+   `top`/`left` ставить `Dropdown` від прямокутника кнопки. */
 .topnav-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
+  position: fixed;
   min-width: 220px;
   background: var(--bg-card);
   border: 1px solid var(--border-primary);
@@ -422,33 +424,21 @@ a:hover {
 .topnav-wrap { position: relative; }
 
 /* ─── Header ──────────────────────────────────── */
+/* Рядок «назад» — лише на екранах, які його передають, і В ПОТОЦІ сторінки.
+   Фіксованим він накривав випадайку верхнього меню на кожному розділі
+   (виміряно: перекриття 60 px, `elementFromPoint` у центрі меню повертав
+   `header`), і порядком накладання це не лікувалось. У потоці накривати нема
+   чим. Висоти на порожньому місці більше не резервує ніхто: `Header` без
+   `onBack` не малює нічого. */
 .header {
-  position: fixed;
-  top: var(--topnav-height);
-  right: 0;
-  left: 0;
+  display: flex;
+  align-items: center;
   height: var(--header-height);
-  background: var(--bg-header);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--border-primary);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  z-index: var(--z-header);
+  margin-bottom: 4px;
 }
 
-.header-title {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
 
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
+
 
 /* ─── Page Header (in content) ────────────────── */
 .page-header {
@@ -1941,21 +1931,11 @@ a:hover {
     padding: 0 12px;
   }
 
-  .header {
-    padding: 0 12px;
-    gap: 8px;
-  }
 
-  .header-title {
-    font-size: 15px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
 
   .app-content {
     padding: 12px;
-    padding-top: calc(var(--header-height) + 12px);
+    padding-top: calc(var(--topnav-height) + 12px);
   }
 
   /* ── Page Header ────────────────────── */
@@ -2163,12 +2143,6 @@ a:hover {
     grid-template-columns: 1fr;
   }
 
-  .header-actions .btn-icon {
-    /* Keep 44×44px touch target on small phones */
-    padding: 8px;
-    width: 44px;
-    height: 44px;
-  }
 }
 
 /* ─── Mobile Modal Animation ─────────────────── */
