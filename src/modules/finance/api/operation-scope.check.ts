@@ -60,6 +60,7 @@ async function cleanup() {
     // прибирає НУЛЬ рядків і не каже про це нічого (INC-014).
     await runWithOrganization(org.id, async () => {
       await sql.run('DELETE FROM fin_operations WHERE organization_id = ?', [org.id]);
+      await sql.run('DELETE FROM fin_auto_rules WHERE organization_id = ?', [org.id]);
       await sql.run('DELETE FROM finance_counterparties WHERE organization_id = ?', [org.id]);
       await sql.run('DELETE FROM expense_categories WHERE organization_id = ?', [org.id]);
       await sql.run('DELETE FROM business_units WHERE organization_id = ?', [org.id]);
@@ -142,6 +143,11 @@ try {
   for (const [field, value] of [
     ['category_id', alien.category],
     ['account_from_id', alien.account],
+    // Пʼяте поле. `requireOwnedReferences` перевіряє його з самого початку, а
+    // цей гейт питав лише про чотири — тобто про `account_to_id` він не
+    // стверджував нічого, і зняття варти саме з нього лишилось би зеленим.
+    // Перевірка, яка не питає про поле, його не стереже (Р13.8).
+    ['account_to_id', alien.account],
     ['project_id', alien.unit],
     ['counterparty_id', alien.counterparty],
   ] as const) {
@@ -162,7 +168,7 @@ try {
   const after = await runWithOrganization(one.organizationId, () => sql.row<{ n: number }>(
     'SELECT COUNT(*) AS n FROM fin_operations WHERE organization_id = ?', [one.organizationId]));
   say(Number(after?.n) === Number(before?.n),
-    `жодна з чотирьох відмов не лишила рядка (було ${before?.n}, стало ${after?.n})`);
+    `жодна з пʼяти відмов не лишила рядка (було ${before?.n}, стало ${after?.n})`);
 
   // ── 2b. Те саме на РЕДАГУВАННІ ──────────────────────────────────────────
   //
@@ -192,6 +198,51 @@ try {
     say(still?.category_id === mine.category,
       `стаття операції лишилась своєю (${still?.category_id})`);
   }
+
+  // ── 2c. Авто-правило — той самий запис, інші двері ──────────────────────
+  //
+  // `applyRulesToOperation` виконує `UPDATE fin_operations SET category_id = ?
+  // … WHERE id = ? AND organization_id = ?` ПОВЗ `createOperationInTx` і
+  // `updateOperation`, тобто повз варту вище. RLS тут не сторож: політика
+  // `fin_operations` дивиться на `organization_id` ОПЕРАЦІЇ, а не на власника
+  // статті, тож вада жива й на Postgres — і вона автоматизована, бо правило
+  // зберігається раз, а спрацьовує на кожній наступній операції.
+  //
+  // Варта стоїть на ЗБЕРЕЖЕННІ: правило з чужим id не має лягти в базу взагалі.
+  const { createAutoRule } = await import('./auto-rules.handlers');
+  const saveRule = (actions: Record<string, unknown>) => runWithOrganization(one.organizationId,
+    async () => {
+      const res = await createAutoRule({
+        json: async () => ({
+          name: 'правило з чужою статтею', op_type: 'expense',
+          conditions: [{ field: 'comment', op: 'contains', value: 'оренда' }],
+          actions,
+        }),
+        nextUrl: new URL('http://local/api/finance/auto-rules'),
+      } as never);
+      return res.status;
+    });
+
+  for (const [field, value, what] of [
+    ['set_category_id', alien.category, 'статтю'],
+    ['set_project_id', alien.unit, 'бізнес-юніт'],
+    ['set_counterparty_id', alien.counterparty, 'контрагента'],
+  ] as const) {
+    let status = 0;
+    try { status = await saveRule({ [field]: value }); } catch (e) { status = isRefusal(e) ? 404 : -1; }
+    say(status === 404, `правило з посиланням на чужий ${what} (${field}) відхилено, і саме 404 (${status})`);
+  }
+
+  const rulesLeft = await runWithOrganization(one.organizationId, () => sql.row<{ n: number }>(
+    'SELECT COUNT(*) AS n FROM fin_auto_rules WHERE organization_id = ?', [one.organizationId]));
+  say(Number(rulesLeft?.n) === 0,
+    `жодна з трьох відмов не лишила правила в базі (${rulesLeft?.n})`);
+
+  // Своє посилання правило приймає — інакше «відмовляє завжди» виглядало б
+  // так само зелено, як «відмовляє правильно».
+  let ownRuleStatus = 0;
+  try { ownRuleStatus = await saveRule({ set_category_id: mine.category }); } catch { ownRuleStatus = -1; }
+  say(ownRuleStatus === 201, `правило з ВЛАСНОЮ статтею зберігається (${ownRuleStatus})`);
 
   // ── 3. І з другого боку: другий готель не пише в довідник першого ───────
   let secondRefused = false;

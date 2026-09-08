@@ -7,8 +7,11 @@ import {
   type AutoRuleRow, type Condition, type Actions, type Operation,
 } from '../data/auto-rules-engine';
 import { requireOrganizationId } from '@core/auth/tenant-context';
-import { serverError } from '@core/http/errors';
-import { ownedFinanceRow } from '../data/owned.repo';
+import { serverError, handleError } from '@core/http/errors';
+import {
+  ownedFinanceRow, requireOwnedReferences, RULE_ACTION_REFERENCES,
+} from '../data/owned.repo';
+import { requireOwnedTags } from '../data/operation-tags.repo';
 
 const OP_TYPES = ['income', 'expense', 'any'] as const;
 
@@ -29,7 +32,29 @@ function validateConditions(conditions: unknown): Condition[] {
   });
 }
 
-function validateActions(actions: unknown): Actions {
+/**
+ * Дії правила — і належність кожного посилання (Р13.1).
+ *
+ * Тут стояв самий фільтр типів: `set_category_id`, `set_project_id`,
+ * `set_counterparty_id` і `add_tag_ids` їхали з тіла запиту прямо в
+ * `actions_json`, а звідти — в `UPDATE fin_operations SET category_id = ? …`
+ * (`auto-rules-engine.ts`), тобто ПОВЗ варту `createOperationInTx` і
+ * `updateOperation`.
+ *
+ * RLS тут не сторож, і це треба сказати вголос: політика `fin_operations`
+ * дивиться на `organization_id` ОПЕРАЦІЇ, а не на власника статті. Операція
+ * своя, стаття чужа — політика пропускає. Тобто вада жива й на Postgres, і
+ * вона автоматизована: правило зберігається ОДИН раз, а спрацьовує на кожній
+ * наступній операції готелю.
+ *
+ * Тому варта стоїть саме на ЗБЕРЕЖЕННІ, а не на спрацюванні: одна перевірка
+ * замість тисяч, і оператор чує відмову тоді, коли ще розуміє, що робив.
+ * Чужий id → 404 (інваріант 5).
+ *
+ * `add_tag_ids` іде тією самою вартою, що й `tag_ids` операції
+ * (`operation-tags.repo`): це ОДНЕ поле і два входи, а не два поля.
+ */
+async function validateActions(organizationId: string, actions: unknown): Promise<Actions> {
   if (!actions || typeof actions !== 'object') return {};
   const a = actions as any;
   const out: Actions = {};
@@ -39,6 +64,11 @@ function validateActions(actions: unknown): Actions {
   if ('auto_match_counterparty' in a) out.auto_match_counterparty = !!a.auto_match_counterparty;
   if ('set_comment' in a && typeof a.set_comment === 'string') out.set_comment = a.set_comment;
   if (Array.isArray(a.add_tag_ids)) out.add_tag_ids = a.add_tag_ids.filter((x: any) => typeof x === 'string');
+
+  await requireOwnedReferences(organizationId, out, RULE_ACTION_REFERENCES);
+  if (out.add_tag_ids && out.add_tag_ids.length > 0) {
+    out.add_tag_ids = await requireOwnedTags(organizationId, out.add_tag_ids);
+  }
   return out;
 }
 
@@ -70,16 +100,19 @@ export async function createAutoRule(request: NextRequest): Promise<NextResponse
       return NextResponse.json({ error: `op_type must be one of ${OP_TYPES.join(', ')}` }, { status: 400 });
     }
 
+    const orgId = await requireOrganizationId();
+
     let parsedConditions: Condition[];
-    let parsedActions: Actions;
     try {
       parsedConditions = validateConditions(conditions);
-      parsedActions = validateActions(actions);
     } catch (e: any) {
       return NextResponse.json({ error: e.message }, { status: 400 });
     }
-
-    const orgId = await requireOrganizationId();
+    // ПОЗА цим `catch` навмисно: `validateActions` кидає НАЗВАНУ відмову 404
+    // (чужий id), і глухий рукав перетворив би її на 400 з чужим текстом —
+    // рівно те, від чого стереже інваріант 6. `handleError` нижче віддає
+    // названій відмові її статус, решті — 500 і рядок у лог.
+    const parsedActions: Actions = await validateActions(orgId, actions);
     const id = `ar_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const maxOrder = await sql.row<any>("SELECT COALESCE(MAX(sort_order), 0) AS mx FROM fin_auto_rules WHERE organization_id = ?", [orgId]) as { mx: number };
 
@@ -95,7 +128,7 @@ export async function createAutoRule(request: NextRequest): Promise<NextResponse
     const row = await ownedFinanceRow('fin_auto_rules', id, orgId) as AutoRuleRow;
     return NextResponse.json(await enrichRule(row), { status: 201 });
   } catch (error: any) {
-    return serverError('modules/finance/api/auto-rules createAutoRule', error);
+    return handleError('modules/finance/api/auto-rules createAutoRule', error);
   }
 }
 
@@ -125,7 +158,7 @@ export async function updateAutoRule(
     }
     if (body.actions !== undefined) {
       fields.push('actions_json = ?');
-      params.push(JSON.stringify(validateActions(body.actions)));
+      params.push(JSON.stringify(await validateActions(orgId, body.actions)));
     }
     if (body.is_active !== undefined) { fields.push('is_active = ?'); params.push(body.is_active ? 1 : 0); }
     if (body.stop_on_match !== undefined) { fields.push('stop_on_match = ?'); params.push(body.stop_on_match ? 1 : 0); }
@@ -138,7 +171,7 @@ export async function updateAutoRule(
     const row = await ownedFinanceRow('fin_auto_rules', id, orgId) as AutoRuleRow;
     return NextResponse.json(await enrichRule(row));
   } catch (error: any) {
-    return serverError('modules/finance/api/auto-rules updateAutoRule', error);
+    return handleError('modules/finance/api/auto-rules updateAutoRule', error);
   }
 }
 
