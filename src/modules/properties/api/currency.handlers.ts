@@ -7,7 +7,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
-import { serverError, handleError } from '@core/http/errors';
+import { handleError } from '@core/http/errors';
 import { todayFor } from '@core/hotel-day';
 import {
   organizationCurrency, secondaryCurrencies, latestRate,
@@ -105,7 +105,7 @@ export const saveCurrencies = withPermission('manage_properties', async (request
     await setSecondaryCurrencies(actor.organizationId, clean);
     return NextResponse.json({ ok: true, secondary: await secondaryCurrencies(actor.organizationId) });
   } catch (e: any) {
-    return serverError('PUT /api/settings/currencies', e);
+    return handleError('PUT /api/settings/currencies', e);
   }
 });
 
@@ -154,6 +154,6 @@ export const saveManualRate = withPermission('manage_properties', async (request
 
     return NextResponse.json({ ok: true, rate: await latestRate(actor.organizationId, code, base) });
   } catch (e: any) {
-    return serverError('POST /api/settings/currencies/rate', e);
+    return handleError('POST /api/settings/currencies/rate', e);
   }
 });

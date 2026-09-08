@@ -616,6 +616,33 @@ try {
     console.log('  ok  нуль у колонці вихідних не стає ціною: ні в сітці, ні в шахматці, ні у гостя — і в суботу, і в середу');
   });
 
+  // ── 19. «Стоїть на N днях» — це ДНІ, а не рядки ────────────────────────
+  //
+  // Той самий клас, що INC-027, лише слабший: там рядок ПІДМІНЯВСЯ, тут
+  // ПОДВОЮВАВСЯ. `weekendPriceDayCount` рахував `COUNT(*)`, а в
+  // `price_calendar` на одну дату лежать рядки двох родів — базовий рядок
+  // типу і власний рядок тарифу. День із ціною вихідних на обох рахувався
+  // двічі, і попередження при вимиканні розширеного режиму (Р9.5) називало
+  // число більше за кількість днів.
+  //
+  // Осі (інваріант 26): день, де ціна вихідних лише на базовому рядку, і
+  // день, де вона й на базовому, і на рядку тарифу. З одного роду рядків
+  // `COUNT(*)` і `COUNT(DISTINCT date)` дають однакову відповідь.
+  await runWithOrganization(A, async () => {
+    const { weekendPriceDayCount } = await import('./price-mode.repo.ts');
+    await sql.run('DELETE FROM price_calendar WHERE unit_type_id = ?', [UT(A)]);
+    // D1 — лише базовий рядок; D2 — базовий І рядок тарифу, обидва з ціною вихідних.
+    await upsertPrices(UT(A), [{ date: D1, base_price: 100, weekend_price: 115 }]);
+    await upsertPrices(UT(A), [{ date: D2, base_price: 100, weekend_price: 115 }]);
+    await upsertPrices(UT(A), [{ date: D2, base_price: 120, weekend_price: 130 }], { ratePlanId: BAR(A) });
+
+    const n = await weekendPriceDayCount(A, D1);
+    assert.strictEqual(n, 2,
+      `днів з окремою ціною вихідних — 2 (${D1} і ${D2}), а порахувалось ${n}: `
+      + 'рядок тарифу на ту саму дату — не другий день');
+    console.log('  ok  «окрема ціна вихідних стоїть на N днях» рахує ДНІ, а не рядки двох родів');
+  });
+
   console.log('price-calendar: ціна тарифу на дату — своя, успадкована названа, чуже — відмова; ціни немає — NULL, нуль — відмова');
 } finally {
   await cleanup();
