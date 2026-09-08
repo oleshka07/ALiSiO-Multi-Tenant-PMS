@@ -22,6 +22,10 @@ curl -sS https://docs.channex.io/llms.txt -o docs/vendor/channex/llms.txt
 grep -o 'https://docs\.channex\.io/[^)]*\.md' docs/vendor/channex/llms.txt | sort -u |
 while read -r url; do
   rel="${url#https://docs.channex.io/}"
+  # Вендорський readme.md і наш README.md — ОДИН файл на Windows і macOS.
+  # Без цього рядка перезняття мовчки затирає опис теки, і робоча копія
+  # ніколи не буває чистою. На Linux-CI не видно взагалі.
+  [ "$rel" = "readme.md" ] && rel="vendor-readme.md"
   mkdir -p "docs/vendor/channex/$(dirname "$rel")"
   curl -sS --retry 2 "$url" -o "docs/vendor/channex/$rel"
 done
@@ -57,3 +61,7 @@ curl -sS 'https://documenter.getpostman.com/api/collections/681982/RztkPpne?envi
    рішення — в [CHANNEX-INTEGRATION.md](../../CHANNEX-INTEGRATION.md).
 3. **Оновлення — повним перезняттям** тими самими командами, окремим
    комітом, без змішування з кодом. Тоді diff читається.
+4. **Жодних двох шляхів, що різняться лише регістром.** Вендорська головна
+   сторінка лежить як `vendor-readme.md`, не `readme.md`: інакше вона і цей
+   файл — один файл на файловій системі власника, і git ніколи не покаже теку
+   чистою. Клас стереже гейт `check-case-collisions`.
