@@ -412,7 +412,8 @@ export async function postCatalogService(input: {
   serviceId: string;
   quantity: number;
   serviceDate: string;
-}): Promise<PostResult | PostRefusal | { reason: 'no_service' } | { reason: 'no_folio' }> {
+}): Promise<PostResult | PostRefusal | { reason: 'no_service' } | { reason: 'no_folio' }
+  | { reason: 'folio_without_property' }> {
   const organizationId = await requireOrganizationId();
   const sql = getSql();
 
@@ -427,13 +428,29 @@ export async function postCatalogService(input: {
     [input.folioId, organizationId]);
   if (!folio) return { reason: 'no_folio' };
 
-  // Послуга — обʼєкта цієї організації; чужий id виглядає як відсутній.
+  // Послуга — ОБʼЄКТА ЦЬОГО ФОЛІО, не просто цієї організації (INC-036).
+  //
+  // Тут стояло `p.organization_id = ?` і більше нічого, а обʼєкт фоліо був уже
+  // обчислений рядком вище і вживався двадцятьма рядками нижче — для мови
+  // документа. Два звірені значення, між собою не звірені жодного разу: у
+  // нарахування їхали `price` і `vat_code` СУСІДНЬОГО обʼєкта, тобто ставка
+  // чужої юрисдикції (інваріант 22) в документі, мова якого взята від свого.
+  // Один рахунок склеювався з двох податкових режимів.
+  //
+  // `folio.property_id` НУЛЬОВИЙ (`fin_folios.property_id TEXT`, `reservations`
+  // через `LEFT JOIN`, `createFolio` приймає обидва як `null`) — фоліо без
+  // броні й без обʼєкта досяжне: подія, рахунок компанії. Просто дописати
+  // `AND s.property_id = ?` означало б відмовити такому фоліо в КОЖНІЙ послузі
+  // мовчки, під виглядом «послуги не знайдено» — «функція зникла» з AGENTS §7.
+  // Тому стан називається окремо, а не ховається в чужу відмову (інваріант 13).
+  if (!folio.property_id) return { reason: 'folio_without_property' };
+
   const svc = await sql.row<any>(
     `SELECT s.id, s.name, s.name_de, s.price, s.vat_code, s.vat_split
        FROM additional_services s
        JOIN properties p ON p.id = s.property_id
-      WHERE s.id = ? AND p.organization_id = ?`,
-    [input.serviceId, organizationId]);
+      WHERE s.id = ? AND p.organization_id = ? AND s.property_id = ?`,
+    [input.serviceId, organizationId, folio.property_id]);
   if (!svc) return { reason: 'no_service' };
   if (!svc.vat_code) return { reason: 'service_without_tax_code', services: [String(svc.name)] };
 

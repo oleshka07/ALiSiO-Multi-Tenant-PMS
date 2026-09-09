@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as registryRepo from '../data/registry.repo';
 import { withPermission, notFound, type Actor } from '@core/auth/session';
+import { requestPropertyScope } from '@core/auth/property-scope';
 
 /**
  * The guest registry — names, dates of birth, nationality, document type and
@@ -25,10 +26,15 @@ export const getRegistry = withPermission('manage_guests', async (request: NextR
     const foreignersOnly = searchParams.get('foreignersOnly') === 'true';
     const unregisteredOnly = searchParams.get('unregisteredOnly') === 'true';
     const search = searchParams.get('search') || undefined;
-    const propertyId = searchParams.get('propertyId') || undefined;
+    // Область — через спільні двері, а не через власний `searchParams.get`
+    // (INC-037). Тут стояло `get('propertyId')`, тоді як провайдер області і
+    // решта екранів шлють `property_id` (NAMING §8): переведений «як усі»
+    // екран відправив би `property_id`, маршрут прочитав би `undefined`, і не
+    // змінилось би НІЧОГО — а правка виглядала б зробленою.
+    const scope = await requestPropertyScope(request, actor.organizationId);
 
-    const entries = await registryRepo.getRegistryEntries(actor.organizationId, { month, foreignersOnly, unregisteredOnly, search, propertyId });
-    const summary = await registryRepo.getRegistrySummary(actor.organizationId, { month, propertyId });
+    const entries = await registryRepo.getRegistryEntries(actor.organizationId, { month, foreignersOnly, unregisteredOnly, search, scope });
+    const summary = await registryRepo.getRegistrySummary(actor.organizationId, { month, scope });
 
     return NextResponse.json({ entries, summary });
   } catch (error: any) {
@@ -93,9 +99,11 @@ export const exportRegistry = withPermission('manage_guests', async (request: Ne
     const foreignersOnly = searchParams.get('foreignersOnly') === 'true';
     const unregisteredOnly = searchParams.get('unregisteredOnly') === 'true';
     const search = searchParams.get('search') || undefined;
-    const propertyId = searchParams.get('propertyId') || undefined;
+    // Вивантаження — та сама книга, що на екрані, тож і та сама область:
+    // CSV, ширший за екран, з якого його натиснули, це той самий INC-037.
+    const scope = await requestPropertyScope(request, actor.organizationId);
 
-    const entries = await registryRepo.getRegistryEntries(actor.organizationId, { month, foreignersOnly, unregisteredOnly, search, propertyId });
+    const entries = await registryRepo.getRegistryEntries(actor.organizationId, { month, foreignersOnly, unregisteredOnly, search, scope });
 
     const headers = [
       'Jméno', 'Příjmení', 'Datum narození', 'Státní příslušnost',

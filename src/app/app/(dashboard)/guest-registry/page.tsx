@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import {
   ClipboardList, Search, Download, Filter, CheckCircle2,
   AlertTriangle, Users, Globe, Banknote, ChevronLeft, ChevronRight,
@@ -89,10 +90,20 @@ export default function GuestRegistryPage() {
   const [updating, setUpdating] = useState<string | null>(null);
   const [hideConfirm, setHideConfirm] = useState<RegistryEntry | null>(null);
 
+  // Книгу гостей і суму збору подають ПО ЗАКЛАДУ, тож екран мусить сказати,
+  // про який обʼєкт питає (INC-037). Порожнє `propertyId` — це «Усі обʼєкти»,
+  // і воно теж СКАЗАНЕ: `property_id=all`, а не мовчання.
+  //
+  // Імʼя параметра — `property_id` (NAMING §8), те саме, що шлють решта
+  // екранів. Маршрут раніше читав `propertyId`, тобто цей рядок сам по собі
+  // нічого б не змінив; вони переведені одним комітом.
+  const { propertyId } = usePropertyScope();
+  const scopeParam = propertyId ?? 'all';
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ month });
+      const params = new URLSearchParams({ month, property_id: scopeParam });
       if (foreignersOnly) params.set('foreignersOnly', 'true');
       if (unregisteredOnly) params.set('unregisteredOnly', 'true');
       if (search) params.set('search', search);
@@ -111,7 +122,7 @@ export default function GuestRegistryPage() {
     } finally {
       setLoading(false);
     }
-  }, [month, foreignersOnly, unregisteredOnly, search]);
+  }, [month, foreignersOnly, unregisteredOnly, search, scopeParam]);
 
   useEffect(() => {
     fetchData();
@@ -152,7 +163,7 @@ export default function GuestRegistryPage() {
   };
 
   const handleExportCSV = () => {
-    const params = new URLSearchParams({ month, format: 'csv' });
+    const params = new URLSearchParams({ month, format: 'csv', property_id: scopeParam });
     if (foreignersOnly) params.set('foreignersOnly', '1');
     if (unregisteredOnly) params.set('unregisteredOnly', '1');
     if (search) params.set('search', search);
