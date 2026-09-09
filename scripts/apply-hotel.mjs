@@ -159,6 +159,7 @@ const amenities = await import('../src/modules/properties/data/amenities.repo.ts
 const currency = await import('../src/core/currency.ts');
 const pricing = await import('../src/modules/pricing/data/occupancy-price.repo.ts');
 const { priceNights } = await import('../src/modules/pricing/data/nightly-price.ts');
+const { oneProperty } = await import('../src/core/property-scope.ts');
 
 /**
  * Читати і camelCase, і snake_case.
@@ -401,7 +402,14 @@ async function applyStructure(organizationId, plan) {
   }
 
   // ── категорії ─────────────────────────────────────────────────────────────
-  const catByName = new Map((await cats.listCategories(organizationId)).map((c) => [c.name, c]));
+  // Область — ЦЕЙ обʼєкт, не «усі обʼєкти рахунку» (INC-029). Різниця тут не
+  // косметична: файл готелю описує один будинок, а пошук «категорія за
+  // назвою» по всьому рахунку знайшов би однойменну категорію СУСІДНЬОГО
+  // будинку і сказав «уже є» — новий будинок лишився б без неї, мовчки і з
+  // виглядом успіху. Друге заведення в ту саму організацію саме так і
+  // працювало б.
+  const inThisProperty = oneProperty(property.id);
+  const catByName = new Map((await cats.listCategories(organizationId, inThisProperty)).map((c) => [c.name, c]));
   for (const c of plan.categories || []) {
     const name = both(c, 'name');
     if (catByName.has(name)) { say.same(`категорія ${name}`); continue; }
@@ -426,7 +434,7 @@ async function applyStructure(organizationId, plan) {
   }
 
   // ── типи номерів, а з ними ціни й LOS ─────────────────────────────────────
-  const typeByCode = new Map((await types.listUnitTypes(organizationId)).map((t) => [t.code, t]));
+  const typeByCode = new Map((await types.listUnitTypes(organizationId, inThisProperty)).map((t) => [t.code, t]));
   for (const t of plan.unitTypes || plan.unit_types || []) {
     const code = both(t, 'code');
     let ut = typeByCode.get(code);

@@ -172,6 +172,31 @@ assert.strictEqual(propertyOrSharedFilter(oneProperty('__prop_x'), '').sql,
 
 console.log('  ok  другі двері (О14): (property_id = ? OR IS NULL), «усі» — те саме TRUE');
 
+// ── Пропущена область — відмова, а не «усі обʼєкти» ─────────────────────────
+//
+// `tsc` тримає це в TypeScript і НІДЕ БІЛЬШЕ: scripts/*.mjs ходять у ті самі
+// репозиторії через хук аліасів, тобто без типів. 09.09.2026 apply-hotel.mjs
+// кликав listCategories(organizationId) з одним аргументом — заведення КОЖНОГО
+// готелю падало, і повідомлення `Cannot read properties of undefined (reading
+// 'kind')` не називало ні дверей, ні винного. Чотири коміти CI був червоний.
+//
+// Твердження тут — про ОБИДВІ половини: (1) відмова є, (2) вона не мовчазне
+// «усі обʼєкти». Друга половина важливіша: `scope ?? ALL_PROPERTIES` виглядало
+// б доброзичливо і зробило б із забутого аргументу рівно ту ваду, від якої весь
+// INC-029 (інваріант 8).
+for (const [name, door] of [
+  ['propertyScopeFilter', propertyScopeFilter],
+  ['propertyOrSharedFilter', propertyOrSharedFilter],
+] as const) {
+  for (const missing of [undefined, null, {}, 'prop_1']) {
+    assert.throws(
+      () => (door as (s: unknown, a: string) => unknown)(missing, 'u'),
+      (e: unknown) => e instanceof TypeError && String((e as Error).message).includes(name),
+      `${name} прийняв ${JSON.stringify(missing) ?? 'undefined'} замість області`);
+  }
+}
+console.log('  ok  пропущена область — названа відмова від самих дверей, не «усі обʼєкти»');
+
 // ─── 3. Відсутність області — не «усі» ──────────────────────────────────────
 
 const status = (e: unknown) => (e as { status?: number }).status;

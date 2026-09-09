@@ -97,10 +97,34 @@ export interface PropertyScopeFilter {
  * засипати міграцією чи назвати «спільний для рахунку» і читати
  * `(… = ? OR … IS NULL)` свідомо. Мовчки додати фільтр — це втратити рядки.
  */
+/**
+ * Область, якої не передали, — це НЕ «усі обʼєкти».
+ *
+ * `tsc` тримає це в TypeScript і не тримає ніде більше: `scripts/*.mjs`
+ * імпортують репозиторії через хук аліасів, тобто типів там немає взагалі.
+ * 09.09.2026 `apply-hotel.mjs` кликав `listCategories(organizationId)` з одним
+ * аргументом — заведення КОЖНОГО готелю падало з
+ * `Cannot read properties of undefined (reading 'kind')`, і на це пішло
+ * чотири коміти, бо повідомлення не називало ні дверей, ні винного.
+ *
+ * Тому двері питають самі. Не `?? ALL_PROPERTIES`: мовчазний дефолт зробив би
+ * з пропущеного аргументу «усі обʼєкти» — рівно ту ваду, від якої весь
+ * INC-029 (інваріант 8: дефолту, якого ніхто не називав, не буває).
+ */
+function scopeOrRefuse(scope: PropertyScope, door: string): PropertyScope {
+  if (!scope || typeof (scope as { kind?: unknown }).kind !== 'string') {
+    throw new TypeError(
+      `${door}: область обʼєкта не передана. Викличте з oneProperty(id) або ALL_PROPERTIES — ` +
+      'пропущений аргумент НЕ означає «усі обʼєкти» (INC-029).');
+  }
+  return scope;
+}
+
 export function propertyScopeFilter(scope: PropertyScope, alias: string): PropertyScopeFilter {
   const column = alias ? `${alias}.property_id` : 'property_id';
-  return scope.kind === 'one'
-    ? { sql: `${column} = ?`, params: [scope.id] }
+  const asked = scopeOrRefuse(scope, 'propertyScopeFilter');
+  return asked.kind === 'one'
+    ? { sql: `${column} = ?`, params: [asked.id] }
     : { sql: 'TRUE', params: [] };
 }
 
@@ -126,8 +150,9 @@ export function propertyScopeFilter(scope: PropertyScope, alias: string): Proper
  */
 export function propertyOrSharedFilter(scope: PropertyScope, alias: string): PropertyScopeFilter {
   const column = alias ? `${alias}.property_id` : 'property_id';
-  return scope.kind === 'one'
-    ? { sql: `(${column} = ? OR ${column} IS NULL)`, params: [scope.id] }
+  const asked = scopeOrRefuse(scope, 'propertyOrSharedFilter');
+  return asked.kind === 'one'
+    ? { sql: `(${column} = ? OR ${column} IS NULL)`, params: [asked.id] }
     : { sql: 'TRUE', params: [] };
 }
 
