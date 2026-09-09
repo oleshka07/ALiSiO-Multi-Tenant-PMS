@@ -67,7 +67,7 @@
   "src/modules/invoicing/data/folio.repo.ts": 9,
   "src/modules/invoicing/data/invoice-document.repo.ts": 2,
   "src/modules/invoicing/data/reservation-invoice.repo.ts": 2,
-  "src/modules/invoicing/data/stay-charges.repo.ts": 10,
+  "src/modules/invoicing/data/stay-charges.repo.ts": 9,
   "src/modules/pricing/api/quote.handlers.ts": 1,
   "src/modules/pricing/data/extra-occupancy.repo.ts": 1,
   "src/modules/pricing/data/nightly-price.ts": 2,

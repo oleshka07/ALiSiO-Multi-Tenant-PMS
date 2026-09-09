@@ -578,6 +578,11 @@ const AXES = [
     distinct: /, (\d+)\]/g, min: 2,
   },
   {
+    file: 'src/modules/invoicing/data/stay-charges.rule-scope.check.ts',
+    axis: 'ціни сніданку в правилі будинку, сусіда і рахунку (чуже правило видно сумою)',
+    distinct: /const (?:[AB]|ORG)_FOOD = (\d+),/g, min: 3,
+  },
+  {
     file: 'src/app/api/gift-cards/gift-card-scope.check.ts',
     axis: 'ваучерів і номіналів на обʼєкті (чужий список видно і лічильником, і сумою)',
     distinct: /const (?:CARDS|VALUE)_[AB] = (\d+);/g, min: 4,
