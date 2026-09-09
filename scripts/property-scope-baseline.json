@@ -1,7 +1,6 @@
 {
   "src/app/api/accounting/invoice-batch/zip/route.ts": 4,
-  "src/app/api/accounting/invoices/list/route.ts": 2,
-  "src/app/api/accounting/isdoc-batch/route.ts": 3,
+  "src/app/api/accounting/isdoc-batch/route.ts": 1,
   "src/app/api/booking-sites/[id]/listings/route.ts": 2,
   "src/app/api/booking-sites/[id]/route.ts": 1,
   "src/app/api/booking-sites/_owned-site.ts": 1,

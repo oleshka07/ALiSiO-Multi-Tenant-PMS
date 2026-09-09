@@ -62,6 +62,7 @@ const { runWithOrganization } = await import('@core/auth/tenant-context.ts');
 const { seedTwoProperties } = await import('@core/fixtures/two-properties.ts');
 const { exportBookings } = await import('./bookings/export-csv/route.ts');
 const { exportInvoices } = await import('./invoices/export/route.ts');
+const { accountingInvoiceList } = await import('./accounting/invoices/list/route.ts');
 
 const sql = getSql();
 const fx = await seedTwoProperties();
@@ -137,6 +138,39 @@ say(count(invA.text, /INV-БЕЗ-БРОНІ/g) === 1,
 const invAll = await call(exportInvoices as never, 'http://local/api/invoices/export?format=csv&property_id=all');
 say(count(invAll.text, /INV-/g) === A + B + 1,
   `сказане «усі» дає ${A + B + 1} фактур, отримали ${count(invAll.text, /INV-/g)}`);
+
+// ── Бухгалтерський список фактур ───────────────────────────────────────────
+//
+// Той самий рід, що вивантаження: список несе номери, покупців і суми, і в
+// коментарі над його запитом уже зафіксована ПОЛОВИНА того самого класу —
+// «the tenant is named here, not left to the policy». Вісь обʼєкта лишалась
+// відкритою.
+
+const accA = await call(accountingInvoiceList as never, `http://local/api/accounting/invoices/list?property_id=${fx.a.id}`);
+// Відповідь — ПЛОСКИЙ масив, не обгорнутий обʼєкт: форма теж твердження.
+const accBody = JSON.parse(accA.text) as unknown;
+say(Array.isArray(accBody), `бухгалтерський список віддає масив (${typeof accBody})`);
+const accRows = (Array.isArray(accBody) ? accBody : []) as { invoice_number: string }[];
+say(accRows.filter((r) => /INV-A-/.test(r.invoice_number)).length === A
+  && accRows.filter((r) => /INV-B-/.test(r.invoice_number)).length === 0,
+  `бухгалтерський список обʼєкта А: ${A} своїх, чужих ${accRows.filter((r) => /INV-B-/.test(r.invoice_number)).length}`);
+say(accRows.some((r) => r.invoice_number === 'INV-БЕЗ-БРОНІ'),
+  'фактура БЕЗ броні лишається і в бухгалтерському списку');
+
+// ── Пакет ISDOC сцени тут НЕ має, і причина названа ────────────────────────
+//
+// `accounting/isdoc-batch` переведено тим самим рухом (та сама таблиця, ті
+// самі двері `propertyOrSharedFilter`, той самий коментар про полагоджену
+// половину орендаря). Сцени немає не через ZIP: імена файлів JSZip кладе в
+// заголовки нестисненими, тож твердження про них було б можливе. Імпорт
+// маршруту тягне `domain/invoice-pdf.ts`, а той на верхньому рівні читає
+// `__dirname` — у модулі ESM його немає, і перевірка падає ще до першого
+// твердження.
+//
+// Тобто це другий рід недосяжності поруч із `cookies()` вище, і обидва — не
+// про вісь. Закривається або перенесенням `resolveFont` під ліниве читання,
+// або живим проходом `check-routes-live`. Названо у звіті; сама правка осі
+// лишається, бо вона строго вужча за попередню поведінку.
 
 fs.rmSync(tmp, { recursive: true, force: true });
 
