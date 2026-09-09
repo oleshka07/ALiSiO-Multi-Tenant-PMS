@@ -1,46 +1,30 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
-import { getSql } from '@core/db/async';
-import { serverError } from '@core/http/errors';
+import { handleError } from '@core/http/errors';
 import { withActor, type Actor } from '@core/auth/session';
+import { requestPropertyScope } from '@core/auth/property-scope';
+import { widgetSiteSourcesOf } from '../data/lists.repo';
 
 /**
  * GET /api/booking-sources/widget-sites
  *
- * Returns all active booking_sites as pseudo-sources for the CRM booking form.
- * Each site is represented as a BookingSourceRow-compatible object so the
- * BookingForm dropdown can render them under an "Widgets" optgroup.
+ * Сайти бронювання як псевдо-джерела для форми броні: кожен подається у формі
+ * `BookingSourceRow`, щоб випадний список рендерив їх групою «Віджети». Код
+ * має префікс `widget:`, щоб бекенд відрізняв ручний запис із віджета від
+ * звичайного джерела OTA.
  *
- * The `code` is prefixed with `widget:` so the backend can distinguish
- * widget-originated manual entries from regular OTA sources.
+ * Який ОБʼЄКТ, а не лише який орендар (INC-029): рецепція будинку А бачила в
+ * цьому списку сайти будинку Б і могла приписати бронь чужому сайту — а
+ * джерело броні це комісія, звітність і атрибуція. Запит і його доводи — у
+ * `data/lists.repo.ts`: `withActor` кличе `cookies()`, тож сцени на хендлер не
+ * буває.
  */
-export const listWidgetSiteSources = withActor(async (_request: Request, _ctx, actor: Actor) => {
+export const listWidgetSiteSources = withActor(async (request: Request, _ctx, actor: Actor) => {
   try {
-    const sql = getSql();
+    const scope = await requestPropertyScope(request, actor.organizationId);
+    const sites = await widgetSiteSourcesOf(actor.organizationId, scope) as any[];
 
-    // Guard: table may not exist in older DBs. Filtered here rather than in
-    // SQL — the catalogue column is called `tablename` on Postgres and `name`
-    // on SQLite, and only the output alias is shared.
-    const tableExists = (await sql.rows<any>(sql.dialect.tables()) as { name: string }[])
-      .some((t) => t.name === 'booking_sites');
-
-    if (!tableExists) {
-      return NextResponse.json([]);
-    }
-
-    // Scoped to this hotel: unscoped, the "Widgets" group in the booking form
-    // listed every hotel's sites on the server. booking_sites reaches the
-    // tenant through property_id, and its RLS policy deliberately allows the
-    // pre-tenant read the public widget needs — so the filter has to be here.
-    const sites = await sql.rows<any>(`
-      SELECT id, name, slug, site_url, status
-      FROM booking_sites
-      WHERE status != 'deleted'
-        AND property_id IN (SELECT id FROM properties WHERE organization_id = ?)
-      ORDER BY name
-    `, [actor.organizationId]) as any[];
-
-    const rows = sites.map((s) => ({
+    return NextResponse.json(sites.map((s) => ({
       code: `widget:${s.id}`,
       name: s.name || s.slug || s.id,
       color: '#6366f1',        // indigo — consistent "widget" brand colour
@@ -49,10 +33,9 @@ export const listWidgetSiteSources = withActor(async (_request: Request, _ctx, a
       city_tax_included_default: 0,
       site_url: s.site_url || null,
       site_id: s.id,
-    }));
-
-    return NextResponse.json(rows);
-  } catch (e: any) {
-    return serverError('modules/bookings/api/booking-source-widgets listWidgetSiteSources', e);
+    })));
+  } catch (e: unknown) {
+    // Названа відмова їде своїм статусом: чужий `property_id` — 404, не 500.
+    return handleError('modules/bookings/api/booking-source-widgets listWidgetSiteSources', e);
   }
 });

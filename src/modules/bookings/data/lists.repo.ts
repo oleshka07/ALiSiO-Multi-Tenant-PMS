@@ -1,6 +1,6 @@
 /**
- * Чотири списки модуля броней: самі броні, канали продажу, платні послуги,
- * закриття номерів.
+ * Пʼять списків модуля броней: самі броні, канали продажу, платні послуги,
+ * закриття номерів і сайти бронювання.
  *
  * ── Чому вони переїхали з хендлерів сюди ────────────────────────────────
  *
@@ -257,4 +257,34 @@ export async function countDraftsOf(organizationId: string, scope: PropertyScope
     [organizationId, ...inScope.params],
   );
   return Number(row?.count || 0);
+}
+
+/**
+ * Сайти бронювання як псевдо-джерела для форми броні («Віджети» у випадному
+ * списку джерел).
+ *
+ * Вісь обʼєкта тут не косметика: рецепція будинку А бачила в списку сайти
+ * будинку Б і могла приписати бронь чужому сайту — а джерело броні це і
+ * комісія, і звітність, і атрибуція в аналітиці.
+ *
+ * `booking_sites` дістається орендаря через `property_id`, і його політика
+ * НАВМИСНО дозволяє дотенантне читання, потрібне публічному віджету, — тож
+ * фільтр мусить стояти саме тут, а не покладатися на RLS.
+ */
+export async function widgetSiteSourcesOf(organizationId: string, scope: PropertyScope) {
+  const sql = getSql();
+  // Таблиці може не бути в старих базах. Фільтрується тут, а не в SQL: колонка
+  // каталогу зветься `tablename` на Postgres і `name` на SQLite, спільний лише
+  // псевдонім виводу.
+  const tables = await sql.rows<{ name: string }>(sql.dialect.tables());
+  if (!tables.some((t) => t.name === 'booking_sites')) return [];
+
+  const inScope = propertyScopeFilter(scope, '');
+  return sql.rows<Record<string, unknown>>(
+    `SELECT id, name, slug, site_url, status
+       FROM booking_sites
+      WHERE status != 'deleted' AND ${OWNED()} AND ${inScope.sql}
+      ORDER BY name`,
+    [organizationId, ...inScope.params],
+  );
 }

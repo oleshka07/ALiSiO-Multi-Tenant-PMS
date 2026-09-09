@@ -749,6 +749,7 @@ async function main() {
       ['/api/additional-services', 'list'], ['/api/availability-blocks', 'list'],
       ['/api/fees', 'list'], ['/api/guest-page-config', 'list'],
       ['/api/booking/drafts-count', 'count'], ['/api/service-orders', 'wrapped'],
+      ['/api/booking-sources/widget-sites', 'list'],
     ];
     const rightShape = (shape, v) => {
       if (shape === 'list') return Array.isArray(v);
