@@ -35,7 +35,7 @@
   "src/modules/bookings/api/reservation-registrations.handlers.ts": 1,
   "src/modules/bookings/api/reservation.handlers.ts": 21,
   "src/modules/bookings/api/reservations.handlers.ts": 3,
-  "src/modules/bookings/api/service-orders.handlers.ts": 8,
+  "src/modules/bookings/api/service-orders.handlers.ts": 2,
   "src/modules/bookings/api/sub-bookings.handlers.ts": 4,
   "src/modules/bookings/data/booking-history.repo.ts": 6,
   "src/modules/bookings/data/booking-search.ts": 2,

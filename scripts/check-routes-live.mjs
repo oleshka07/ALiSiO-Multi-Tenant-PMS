@@ -748,16 +748,18 @@ async function main() {
       ['/api/bookings', 'list'], ['/api/booking-sources', 'list'],
       ['/api/additional-services', 'list'], ['/api/availability-blocks', 'list'],
       ['/api/fees', 'list'], ['/api/guest-page-config', 'list'],
-      ['/api/booking/drafts-count', 'count'],
+      ['/api/booking/drafts-count', 'count'], ['/api/service-orders', 'wrapped'],
     ];
-    const rightShape = (shape, v) => (shape === 'list'
-      ? Array.isArray(v)
-      : v !== null && typeof v === 'object' && typeof v.count === 'number');
+    const rightShape = (shape, v) => {
+      if (shape === 'list') return Array.isArray(v);
+      if (!v || typeof v !== 'object') return false;
+      return shape === 'count' ? typeof v.count === 'number' : Array.isArray(v.orders);
+    };
     for (const [route, shape] of AXIS_ROUTES) {
       const mineRes = await call(cookie, `${route}?property_id=${property.id}`);
       const mine = await body(mineRes);
       claim('вісь обʼєкта', mineRes.status === 200 && rightShape(shape, mine),
-        `${route}: свій обʼєкт — 200 і ${shape === 'list' ? 'список' : 'число'} (${mineRes.status})`);
+        `${route}: свій обʼєкт — 200 і ${{ list: 'список', count: 'число', wrapped: 'обгорнутий список' }[shape]} (${mineRes.status})`);
 
       // Порожнє значення означає «усі обʼєкти» СКАЗАНО — так пишуть екрани
       // (`propertyId ? …id=… : ''`). Воно не має ставати ні відмовою, ні
