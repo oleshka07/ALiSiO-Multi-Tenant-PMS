@@ -2,6 +2,10 @@
 import { getSql } from '@core/db/async';
 import { runWithPublicToken, runWithOrganization } from '@core/auth/tenant-context';
 import { generateICal } from '@/modules/channels/domain/ical'; // TODO: move to @core/ical
+import { ALL_PROPERTIES, oneProperty, propertyScopeFilter } from '@core/property-scope';
+
+/** Вхід за токеном: орендаря ще немає, і будинок називає сам знайдений рядок. */
+const TOKEN_IS_THE_AXIS = propertyScopeFilter(ALL_PROPERTIES, '');
 
 /**
  * The calendar a channel manager subscribes to. The token in the URL is the
@@ -24,8 +28,16 @@ export async function exportIcal(
   try {
     const { token } = await params;
 
+    // Токен і Є вісь: він відкриває РІВНО ОДИН рядок, а рядок називає і
+    // орендаря, і будинок. Звузити цей запит по будинку можна було б лише
+    // взявши будинок із нього самого — спитати відповідь у питання. Тому
+    // `ALL_PROPERTIES`, і це те саме слово й та сама причина, що в
+    // `connectionByWebhookToken`: вхід за токеном, де орендаря ще немає.
+    // Справжня вісь починається нижче — з `channel.property_id`.
     const channel = await runWithPublicToken(token, () =>
-      getSql().row<any>('SELECT * FROM ical_channels WHERE export_token = ?', [token])) as any;
+      getSql().row<any>(
+        `SELECT * FROM ical_channels WHERE export_token = ? AND ${TOKEN_IS_THE_AXIS.sql}`,
+        [token, ...TOKEN_IS_THE_AXIS.params])) as any;
     if (!channel) {
       return new Response(generateICal([], 'ALiSiO — Unknown'), {
         status: 200,
@@ -46,10 +58,18 @@ export async function exportIcal(
 
     return await runWithOrganization(channel.organization_id, async () => {
     const sql = getSql();
+    // Вісь ОБʼЄКТА фіда — будинок каналу, і саме тут вона важить найбільше:
+    // це публічна поверхня без сесії, а віддає вона заїзди, виїзди й імена
+    // гостей. `WHERE id = ?` і `WHERE unit_id IN (…)` осі не мали, тож канал,
+    // заведений на номер сусіднього будинку (INC-041), публікував його
+    // календар назовні під своїм токеном.
+    const house = propertyScopeFilter(oneProperty(String(channel.property_id)), '');
     let unitIds: string[] = [];
     let calName = 'ALiSiO';
     {
-      const unit = await sql.row<any>('SELECT name FROM units WHERE id = ?', [channel.unit_id]) as any;
+      const unit = await sql.row<any>(
+        `SELECT name FROM units WHERE id = ? AND ${house.sql}`,
+        [channel.unit_id, ...house.params]) as any;
       calName = `ALiSiO — ${unit?.name || 'Unit'}`;
       unitIds = [channel.unit_id];
     }
@@ -73,7 +93,8 @@ export async function exportIcal(
       WHERE r.unit_id IN (${placeholders})
         AND r.status IN ('confirmed', 'checked_in', 'tentative')
         AND r.check_out >= ?
-    `, [...unitIds, thirtyDaysAgo]) as any[];
+        AND ${propertyScopeFilter(oneProperty(String(channel.property_id)), 'r').sql}
+    `, [...unitIds, thirtyDaysAgo, ...house.params]) as any[];
 
     const events = reservations.map((r: any) => ({
       uid: `${r.id}@alisio-pms`,

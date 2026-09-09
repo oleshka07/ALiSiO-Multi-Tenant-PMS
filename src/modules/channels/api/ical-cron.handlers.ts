@@ -5,6 +5,7 @@ import { runWithOrganization } from '@core/auth/tenant-context';
 import { secretAuthFailure } from '@core/security/cron-auth';
 import { serverError } from '@core/http/errors';
 import { syncChannel } from './ical-sync.handlers';
+import { ALL_PROPERTIES, propertyScopeFilter } from '@core/property-scope';
 
 /**
  * The scheduled iCal pull. It had never run.
@@ -29,6 +30,16 @@ import { syncChannel } from './ical-sync.handlers';
  * One channel failing does not stop the rest: an OTA feed that is down, or a
  * URL somebody typed wrong, must not hold up the other hotels' imports.
  */
+/**
+ * Крон обходить УСІ будинки всіх рахунків — і це сказано дверима.
+ *
+ * Тут `ALL_PROPERTIES` не поступка гейту, а опис роботи: планова робота не
+ * має ні сесії, ні обраного обʼєкта, і звужена до одного будинку вона
+ * перестала б бути кроном. Різниця з читачами екрана саме в цьому, і саме
+ * тому слово написане, а не мається на увазі (INC-029, К19).
+ */
+const EVERY_HOUSE = propertyScopeFilter(ALL_PROPERTIES, 'ic');
+
 export async function runIcalCron(request: Request) {
   // The secret defaulted to 'alisio-ical-sync' — a password written in this
   // file. Unset now refuses instead: the container never received
@@ -44,7 +55,7 @@ export async function runIcalCron(request: Request) {
       SELECT ic.*, p.organization_id
       FROM ical_channels ic
       JOIN properties p ON ic.property_id = p.id
-      WHERE ic.is_active = TRUE
+      WHERE ic.is_active = TRUE AND ${EVERY_HOUSE.sql}
         AND ic.ical_url IS NOT NULL
         AND (
           ic.last_synced_at IS NULL

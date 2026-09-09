@@ -11,6 +11,7 @@ import { channelsSyncedAt } from '../data/channels.repo';
 import { refreshConnectionChannelsFor, channelsMirrorAgeMs } from './channels.ops';
 import type { PullReport } from '../data/pull-bookings';
 import { pullerFor, adapterFor } from '../providers';
+import { ALL_PROPERTIES, propertyScopeFilter } from '@core/property-scope';
 
 /**
  * Прохід крона по стрічках бронювань — з боку модуля.
@@ -32,6 +33,15 @@ import { pullerFor, adapterFor } from '../providers';
  * Розкладка на «пропущено / зламано / порожньо» — у `pullAllConnections()`,
  * і там же перевірка. Тут лише шов зі світом.
  */
+/**
+ * Крон обходить УСІ будинки всіх рахунків — і це сказано дверима.
+ *
+ * `ALL_PROPERTIES` тут не поступка гейту, а опис роботи: планова робота не
+ * має ні сесії, ні обраного обʼєкта, і звужена до одного будинку вона
+ * перестала б бути кроном (INC-029, К19).
+ */
+const EVERY_HOUSE = propertyScopeFilter(ALL_PROPERTIES, '');
+
 export async function runChannelPullCron(): Promise<PullAllReport> {
   const sql = getSql();
 
@@ -49,8 +59,9 @@ export async function runChannelPullCron(): Promise<PullAllReport> {
     // розробки, під `npm run dev` і в CI.
     connections: async (organizationId) => {
       const rows = await sql.rows<{ id: string; provider: string; is_enabled: unknown }>(
-        'SELECT id, provider, is_enabled FROM cm_connections WHERE organization_id = ?',
-        [organizationId],
+        `SELECT id, provider, is_enabled FROM cm_connections
+          WHERE organization_id = ? AND ${EVERY_HOUSE.sql}`,
+        [organizationId, ...EVERY_HOUSE.params],
       );
       return rows.map((r) => ({
         id: r.id,
