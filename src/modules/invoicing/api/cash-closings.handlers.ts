@@ -5,6 +5,7 @@
  */
 import { NextResponse } from 'next/server';
 import { withPermission } from '@core/auth/session';
+import { requestPropertyScope } from '@core/auth/property-scope';
 import * as closings from '../data/cash-closings.repo';
 
 function refuse(e: unknown) {
@@ -17,11 +18,13 @@ function refuse(e: unknown) {
   );
 }
 
-export const listCashClosings = withPermission('manage_documents', async (request: Request) => {
+export const listCashClosings = withPermission('manage_documents', async (request: Request, _ctx, actor) => {
   const url = new URL(request.url);
+  // Спільні двері замість власного `get('property_id')`: чужий обʼєкт — 404,
+  // сказане `all` — усі обʼєкти, а не ідентифікатор (Д49).
+  const scope = await requestPropertyScope(request, actor.organizationId);
   return NextResponse.json({
-    closings: await closings.listClosings({
-      propertyId: url.searchParams.get('property_id') || undefined,
+    closings: await closings.listClosings(scope, {
       from: url.searchParams.get('from') || undefined,
       to: url.searchParams.get('to') || undefined,
     }),

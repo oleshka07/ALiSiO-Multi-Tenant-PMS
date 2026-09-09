@@ -3,7 +3,9 @@ import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { todayFor, shiftMonths } from '@core/hotel-day';
 import type { Actor } from '@core/auth/session';
-import { serverError } from '@core/http/errors';
+import { handleError } from '@core/http/errors';
+import { requestPropertyScope } from '@core/auth/property-scope';
+import { propertyScopeFilter } from '@core/property-scope';
 
 /** reservations reach an organization through property_id — see reports.handlers.ts. */
 const OWN = (alias = '') => `${alias}property_id IN (SELECT id FROM properties WHERE organization_id = ?)`;
@@ -29,6 +31,15 @@ export async function getCityTaxReport(request: Request, _ctx: unknown, actor: A
     // хтось запустив би сервер у своєму поясі.
     const endDate = shiftMonths(startDate, 1);
 
+    // Область обʼєкта (INC-037, той самий рід у сусідньому звіті). Це число
+    // ПОДАЮТЬ у міську раду, і подання робиться по закладу: сума по двох
+    // обʼєктах не є звітом жодного з них. Осі тут не було взагалі — лише
+    // `OWN('r.')`, тобто вісь орендаря, яка означає «усі обʼєкти рахунку».
+    // «Усі» лишається законним (власник двох готелів дивиться зведено), але
+    // тепер це СКАЗАНЕ значення, а не те, що вийшло.
+    const scope = await requestPropertyScope(request, org);
+    const axis = propertyScopeFilter(scope, 'r');
+
     const bookings = await sql.rows<any>(`
       SELECT
         r.id, r.check_in, r.check_out, r.nights, r.adults, r.children, r.status,
@@ -40,11 +51,11 @@ export async function getCityTaxReport(request: Request, _ctx: unknown, actor: A
       JOIN guests g ON r.guest_id = g.id
       LEFT JOIN units u ON r.unit_id = u.id
       LEFT JOIN categories c ON u.category_id = c.id
-      WHERE ${OWN('r.')}
+      WHERE ${OWN('r.')} AND ${axis.sql}
         AND r.status NOT IN ('cancelled', 'no_show')
         AND r.check_in < ? AND r.check_out > ?
       ORDER BY r.check_in
-    `, [org, endDate, startDate]);
+    `, [org, ...axis.params, endDate, startDate]);
 
     const totalGuests = bookings.reduce((s: number, b: any) => s + (b.adults || 0), 0);
     const totalTaxAmount = bookings.reduce((s: number, b: any) => s + (b.city_tax_amount || 0), 0);
@@ -69,6 +80,7 @@ export async function getCityTaxReport(request: Request, _ctx: unknown, actor: A
       bySource, bookings,
     });
   } catch (e: any) {
-    return serverError('modules/reports/api/city-tax getCityTaxReport', e);
+    // `handleError`: чужий обʼєкт у параметрі — це названа 404, а не 500.
+    return handleError('modules/reports/api/city-tax getCityTaxReport', e);
   }
 }

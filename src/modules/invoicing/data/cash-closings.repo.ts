@@ -20,6 +20,7 @@
  */
 import { getSql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { propertyScopeFilter, type PropertyScope } from '@core/property-scope';
 import { TILL_METHODS } from './folio-payments.repo';
 
 export async function closeDay(input: {
@@ -78,15 +79,26 @@ export async function closeDay(input: {
   return { id, closingNumber };
 }
 
-export async function listClosings(filter?: { propertyId?: string; from?: string; to?: string }) {
+export async function listClosings(scope: PropertyScope, filter?: { from?: string; to?: string }) {
   const organizationId = await requireOrganizationId();
-  const where = ['organization_id = ?'];
-  const params: unknown[] = [organizationId];
-  if (filter?.propertyId) { where.push('property_id = ?'); params.push(filter.propertyId); }
-  if (filter?.from) { where.push('closing_date >= ?'); params.push(filter.from); }
-  if (filter?.to) { where.push('closing_date <= ?'); params.push(filter.to); }
+  // Вісь обʼєкта — ТИПОМ, а не необовʼязковим полем фільтра (INC-029, Д49).
+  // Тут стояло `filter?.propertyId`: чужий обʼєкт давав порожній список
+  // замість 404, а слово `all`, яким провайдер пише «усі обʼєкти» в адресу,
+  // потрапило б у фільтр ідентифікатором. Колонка `NOT NULL`, тож двері
+  // звичайні.
+  // Вісь стоїть у САМОМУ шаблоні, а не в масиві `where`, який склеюється
+  // нижче: гейт осі бачить оператор із вузла, де `FROM`, і фрагмент, доданий
+  // окремим присвоєнням, до нього не доходить — запит рахувався б
+  // «невизначеним», тобто виглядав би проскоупленим і лічився як недоведений
+  // (Д50). Дати лишаються в масиві: про них гейт нічого не стверджує.
+  const axis = propertyScopeFilter(scope, '');
+  const extra: string[] = [];
+  const params: unknown[] = [organizationId, ...axis.params];
+  if (filter?.from) { extra.push('closing_date >= ?'); params.push(filter.from); }
+  if (filter?.to) { extra.push('closing_date <= ?'); params.push(filter.to); }
   return await getSql().rows<any>(
-    `SELECT * FROM fin_cash_closings WHERE ${where.join(' AND ')}
+    `SELECT * FROM fin_cash_closings
+      WHERE organization_id = ? AND ${axis.sql}${extra.map((e) => ` AND ${e}`).join('')}
       ORDER BY closing_date DESC, closing_number DESC`,
     params);
 }

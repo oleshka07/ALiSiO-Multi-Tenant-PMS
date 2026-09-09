@@ -23,6 +23,9 @@ import {
 } from '@/modules/invoicing/data/reservation-invoice.repo';
 import { loadInvoiceDocument } from '@/modules/invoicing/data/invoice-document.repo';
 import { generateGermanInvoicePdf } from '@/modules/invoicing/domain/invoice-pdf-de';
+import { handleError } from '@core/http/errors';
+import { requestPropertyScope } from '@core/auth/property-scope';
+import { propertyScopeFilter } from '@core/property-scope';
 
 // `currency` у цих рядках — NOT NULL (invoices, fin_operations, reservations:
 // усі три `TEXT NOT NULL`), тож `|| 'CZK'` тут не спрацьовував ніколи. Він не
@@ -46,9 +49,15 @@ export {
 /**
  * GET /api/invoices — list all invoices
  */
-export async function listInvoices(_request: NextRequest, _ctx: unknown, actor: Actor): Promise<NextResponse> {
+export async function listInvoices(request: NextRequest, _ctx: unknown, actor: Actor): Promise<NextResponse> {
   try {
     const sql = getSql();
+    // Фактура належить броні, бронь — обʼєкту, тож список фактур це список
+    // ОБРАНОГО обʼєкта (INC-029). Тут не було навіть параметра: `_request`
+    // ігнорувався, і готель із двома будинками бачив в одному списку обидва.
+    // «Усі обʼєкти» лишається законним і пишеться словом.
+    const scope = await requestPropertyScope(request, actor.organizationId);
+    const axis = propertyScopeFilter(scope, 'r');
     const rows = await sql.rows<any>(`
       SELECT
         i.id, i.invoice_number, i.issued_at, i.due_date,
@@ -59,14 +68,14 @@ export async function listInvoices(_request: NextRequest, _ctx: unknown, actor: 
       JOIN reservations r ON i.reservation_id = r.id
       JOIN guests g ON r.guest_id = g.id
       LEFT JOIN units u ON r.unit_id = u.id
-      WHERE i.organization_id = ?
+      WHERE i.organization_id = ? AND ${axis.sql}
       ORDER BY i.issued_at DESC, i.invoice_number DESC
       LIMIT 200
-    `, [actor.organizationId]);
+    `, [actor.organizationId, ...axis.params]);
     return NextResponse.json(rows);
   } catch (e: any) {
-    console.error('[Invoices] listInvoices error:', e.message);
-    return NextResponse.json({ error: 'Failed to fetch invoices' }, { status: 500 });
+    // Чужий обʼєкт у параметрі — названа 404, не 500 (інваріант 6).
+    return handleError('modules/invoicing/api/invoices listInvoices', e);
   }
 }
 
