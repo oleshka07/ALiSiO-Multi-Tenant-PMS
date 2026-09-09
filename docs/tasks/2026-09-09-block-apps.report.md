@@ -94,7 +94,12 @@ AssertionError [ERR_ASSERTION]: ключ «booking_engine» реєстру не 
 
 ## 2. Коміти й CI
 
-(заповнюється після кожного коміту — див. кінець файлу)
+| Коміт | Що | Перевірки |
+|---|---|---|
+| `b167997` | увесь блок: 3.1–3.7, гейт, міграція 0140, екрани, e2e | `tsc` 0; `npm run check` зелений; `check:pg` роллю `alisio_app` на локальному Postgres 16 зелений; `rls-check.sql` — усі; `check-schema-drift` — «збігаються — 124 таблиць, 1582 колонок, 404 індексів, 361 обмежень»; `check:i18n` 3532/3532; `check:unwrapped` чисто; `check:i18n-leak` чисто; `check-docs-current --strict` чисто; `check-boundaries --strict` у межах стелі; `check-no-tenant-names` чисто; `build` ok; `check:routes` по живому серверу — усі; `smoke-routes` — 5xx лише крони без секрету і `/api/test-email` з навмисно битим SMTP; Playwright `tests/e2e/apps.spec.ts` — 1 passed (1.1 хв) |
+| `36b5c41` | злиття `origin/claude/channex-integration-66kv65` (19 комітів; конфлікти в `package.json` і трьох словниках зведені ОБʼЄДНАННЯМ, AUTOLOOP п. 1) | після злиття: `tsc` 0, `check:i18n` 3533/3533, `check:unwrapped`, `check:i18n-leak`, `check-boundaries`, `check-docs-current`; повний `npm run check` зелений, `check:pg` роллю `alisio_app` (з 0131 накоченою) зелений, `rls-check.sql` — усі, `check-schema-drift` — збігаються, `build` ok |
+
+CI (`.github/workflows/checks.yml`) на гілці — після пушу; статус дописується.
 
 ## 3. Було → стало по пунктах
 
@@ -263,7 +268,40 @@ fiskaly, бо §5.6 вимагає фікстуру для fiskaly-клієнт�
 
 ## 6. Приймання (§6)
 
-(заповнюється після прогону Playwright)
+`tests/e2e/apps.spec.ts` — один сценарій на весь блок, проти production-збірки
+(`npm run build && npm start`, SQLite, `APP_SECRET_KEY` заданий), готель
+`Apps E2E Hotel` через `provision-org.mjs`, платформний акаунт через
+`platform-user.mjs`. Результат: **1 passed (1.1m)**. Кроки, як у §6:
+
+1. власник → `/app/settings` → картка «Застосунки» → `/app/settings/apps`;
+2. картка fiskaly зі станом; вимикач `fiscal_de` → зʼявились поля «API key» /
+   «API secret»;
+3. Winhotel / DIRS21 / PriceLabs / Unzer — бейдж «скоро», кнопка «хочу»;
+4. «хочу» на Winhotel → «ви позначили»; повторний `POST …/wish` — 200, після
+   перезавантаження стан той самий, кнопки немає;
+5. «Здоровʼя» — пошта, fiskaly, менеджер каналів (і онлайн-оплата з посиланням
+   на екран оплат);
+6. відмова чужої системи з текстом: збережено SMTP `127.0.0.1` (ніхто не
+   слухає) → «Перевірити звʼязок» → картка «помилка», текст
+   `connect ECONNREFUSED 127.0.0.1:587` і час — З7. **Відмова на пошті, не на
+   fiskaly**: проба fiskaly потребує дверей у фасаді `@invoicing` (розділ 7);
+   механізм звіту той самий (`app_connections`, `reported()`), відмова
+   справжня, без мока;
+7. `/app/settings/features` — лише модулі (`module-tasks` є, `module-fiscal_de`
+   і `module-online_payments` немає, жодного поля ключів);
+8. платформна сесія → `/app/platform/apps`: рядок «Apps E2E Hotel · Пошта ·
+   помилка» з тим самим текстом; попит `winhotel_import = 1`.
+
+Знімки: `docs/tasks/2026-09-09-block-apps.screens/settings-apps.png` (екран
+готелю) і `platform-apps.png` (постачальник).
+
+У CI сценарій виконується тим самим файлом (`playwright.ci.config.ts` бере
+`tests/e2e/*`): власник — `owner@ci.test` із `provision-org.mjs`, платформна
+частина пропускається з анотацією, бо CI не заводить платформного акаунта
+(`platform-user.mjs` — лише з оболонки). Локально Chromium узято з
+`/opt/pw-browsers` через тимчасовий конфіг, який не комітиться.
+
+Повний прогін перед звітом — у таблиці §2.
 
 ## 7. Що не вдалося / потрібна зміна в чужій теці
 
