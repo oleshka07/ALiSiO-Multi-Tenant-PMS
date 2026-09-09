@@ -578,6 +578,11 @@ const AXES = [
     distinct: /, (\d+)\]/g, min: 2,
   },
   {
+    file: 'src/app/api/gift-cards/gift-card-scope.check.ts',
+    axis: 'ваучерів і номіналів на обʼєкті (чужий список видно і лічильником, і сумою)',
+    distinct: /const (?:CARDS|VALUE)_[AB] = (\d+);/g, min: 4,
+  },
+  {
     file: 'src/app/api/public/availability/availability-scope.check.ts',
     axis: 'ночей у календарі: свій обʼєкт ≠ сусідній будинок ≠ чужий рахунок',
     distinct: /const NIGHTS_\w+ = (\d+);/g, min: 3,
