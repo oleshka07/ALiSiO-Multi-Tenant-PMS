@@ -61,6 +61,23 @@ async function cleanup() {
     await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
     await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [ORG]);
     await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [ORG]);
+    // Те, що ВИСИТЬ на рядках групи, — перед самими рядками, і саме тому, що
+    // прибирання тут уже падало: `reservation_guests.sub_booking_id` — ключ
+    // без `ON DELETE`, тож гість, прописаний сценою 2e, робив `DELETE`
+    // неможливим, і НАСТУПНИЙ прогін падав у прибиранні, тобто показував
+    // «заведення зламане» замість «сцена не пройшла». Це той самий клас, що
+    // в `provisioning-timezone.check`: сцена мусить прибирати все, що
+    // створює, інакше її червоність читається як чужа поломка.
+    await sql.run(
+      `DELETE FROM reservation_line_items
+        WHERE sub_booking_id IN (SELECT id FROM reservation_sub_bookings
+          WHERE reservation_id IN (SELECT id FROM reservations WHERE organization_id = ?))`, [ORG]);
+    await sql.run(
+      `UPDATE reservation_guests SET sub_booking_id = NULL
+        WHERE reservation_id IN (SELECT id FROM reservations WHERE organization_id = ?)`, [ORG]);
+    await sql.run(
+      `DELETE FROM reservation_guests
+        WHERE reservation_id IN (SELECT id FROM reservations WHERE organization_id = ?)`, [ORG]);
     // Рядки групи — ПЕРЕД бронями: орендар у них не колонкою, а через
     // `reservation_id`, тож після видалення броней політика їх уже не бачить
     // і вони лишились би назавжди.
@@ -519,6 +536,98 @@ try {
       }
       console.log('  ok  прибрана кімната скасовується тим самим рядком і оживає під своїм ключем');
 
+      // 2e. Кімната, на якій ВЖЕ ХТОСЬ Є: гість і позиція фоліо (Б2).
+      //
+      //     Тут жив нескінченний цикл. `reservation_guests.sub_booking_id` —
+      //     зовнішній ключ БЕЗ `ON DELETE`, тож рядок групи, на якому
+      //     прописаний гість, не видалявся взагалі:
+      //
+      //       ERROR: update or delete on table "reservation_sub_bookings"
+      //              violates foreign key constraint
+      //              "fk_reservation_guests_sub_booking_id_1"
+      //
+      //     Виняток валив `apply`, стрічка писала `apply_failed:` і йшла далі,
+      //     `ack` не виконувався НІКОЛИ — і та сама ревізія поверталась кожним
+      //     проходом, доки готель не отримував `non_acked_booking` без кінця.
+      //     Сценарій буденний: рецепція прописала гостя на кімнату 2, канал
+      //     цю кімнату прибрав (рецензія раунду 21, Б2).
+      //
+      //     Вісь сцени — НЕ «гість є / гостя немає», а «на рядку є ГРОШІ»:
+      //     позиції фоліо мають `ON DELETE CASCADE`, тобто зникли б мовчки
+      //     разом із рядком, а чи можна стирати виставлені позиції з волі
+      //     каналу — питання власника, і поки воно відкрите, такий рядок
+      //     ЛИШАЄТЬСЯ. Тому дві кімнати з різними відповідями (§26): у
+      //     першої лише гість — рядок знімається; у другої ще й позиція —
+      //     рядок лишається, і жодного винятку.
+      {
+        const twoRooms = [
+          { key: 'u:49', unitTypeId: TYPE, checkIn: '2026-10-11', checkOut: '2026-10-13', adults: 2, children: 0, amount: 320 },
+          { key: 'u:50', unitTypeId: TYPE2, checkIn: '2026-10-12', checkOut: '2026-10-15', adults: 1, children: 0, amount: 210 },
+        ];
+        const subOf = async (key: string) => {
+          const kid = (await group()).kids.find((k: any) => String(k.external_uid).endsWith(`#${key}`));
+          const all = (await group()).subs;
+          return all.find((x: any) => String(x.child_reservation_id ?? '') === String(kid?.id ?? '')) ?? all[0];
+        };
+
+        // Гість на кімнаті 2 — і більше нічого.
+        const guestOnly = await subOf('u:50');
+        await sql.run(
+          `INSERT INTO reservation_guests (id, reservation_id, first_name, last_name, sub_booking_id)
+           VALUES (?, ?, ?, ?, ?)`,
+          ['__cm_check__g1', groupId, 'Прописаний', 'Гість', String(guestOnly.id)]);
+
+        await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+        const dropGuestRoom = await applyRevision(sql, CONN, groupRev(
+          { remoteRevisionId: 'grp-2e', status: 'modified' }, [twoRooms[0]]));
+        assert.strictEqual(dropGuestRoom.result, 'applied',
+          'ревізія не застосувалась через гостя на прибраній кімнаті — саме тут ack не виконувався НІКОЛИ');
+        {
+          const { subs } = await group();
+          assert.strictEqual(subs.length, 1,
+            'рядок без позицій мав зникнути — гість лише відʼєднується, він не тримає рядок');
+          const guest = await sql.row<any>(
+            'SELECT sub_booking_id FROM reservation_guests WHERE id = ?', ['__cm_check__g1']) as any;
+          assert.ok(guest, 'гостя СТЕРЛИ разом із рядком — він лишається на броні, просто без кімнати');
+          assert.strictEqual(guest.sub_booking_id ?? null, null,
+            'гість лишився прописаним на кімнату, якої вже немає');
+        }
+
+        // Та сама кімната повертається — і цього разу на ній ГРОШІ.
+        await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+        const returned = await applyRevision(sql, CONN, groupRev(
+          { remoteRevisionId: 'grp-2f', status: 'modified' }, twoRooms));
+        assert.strictEqual(returned.result, 'applied');
+        const charged = await subOf('u:50');
+        await sql.run(
+          `INSERT INTO reservation_line_items (id, sub_booking_id, description, quantity, unit_price, total)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          ['__cm_check__li1', String(charged.id), 'Ніч', 1, 210, 210]);
+
+        await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+        const dropCharged = await applyRevision(sql, CONN, groupRev(
+          { remoteRevisionId: 'grp-2g', status: 'modified' }, [twoRooms[0]]));
+        assert.strictEqual(dropCharged.result, 'applied',
+          'ревізія не застосувалась через позиції фоліо на прибраній кімнаті');
+        {
+          const { subs } = await group();
+          assert.strictEqual(subs.length, 2,
+            'рядок із виставленими позиціями СТЕРЛИ — канал не має права мовчки знімати гроші з фоліо');
+          const item = await sql.row<any>(
+            'SELECT id FROM reservation_line_items WHERE id = ?', ['__cm_check__li1']) as any;
+          assert.ok(item, 'позицію фоліо стерто каскадом — саме цього рішення власник ще не ухвалював');
+        }
+
+        // Прибрати за собою: наступний крок рахує рядки групи.
+        await sql.run('DELETE FROM reservation_line_items WHERE id = ?', ['__cm_check__li1']);
+        await sql.run('DELETE FROM reservation_guests WHERE id = ?', ['__cm_check__g1']);
+        await sql.run('DELETE FROM reservation_sub_bookings WHERE id = ?', [String(charged.id)]);
+        await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+        await applyRevision(sql, CONN, groupRev(
+          { remoteRevisionId: 'grp-2h', status: 'modified' }, twoRooms));
+      }
+      console.log('  ok  кімната з гостем знімається, кімната з позиціями фоліо лишається — і ревізія проходить (Б2)');
+
       // 3. Прибрати ПЕРШУ кімнату — ту, яку тримає майстер.
       //
       //    Це вісь усього кроку. Конверт просто скасував би «свою» дочірню;
@@ -592,9 +701,13 @@ try {
           `SELECT action, details FROM booking_activity_log
             WHERE organization_id = ? AND reservation_id = ? ORDER BY created_at ASC, id ASC`,
           [ORG, groupId]) as any[];
+        // Одинадцять ревізій: сім початкових плюс чотири зі сцени 2e (гість,
+        // повернення кімнати, позиції фоліо, повернення для наступного кроку).
+        // Число тут не окраса: воно й стверджує, що КОЖНА ревізія лишає рядок
+        // історії, тож нова сцена мусить його зрушити, а не проскочити повз.
         assert.deepStrictEqual(rows.map((r) => r.action),
-          ['channel_created', ...Array(5).fill('channel_modified'), 'channel_cancelled'],
-          `сім ревізій групи — сім записів історії на майстрі, а є: ${JSON.stringify(rows.map((r) => r.action))}`);
+          ['channel_created', ...Array(9).fill('channel_modified'), 'channel_cancelled'],
+          `одинадцять ревізій групи — стільки ж записів історії на майстрі, а є: ${JSON.stringify(rows.map((r) => r.action))}`);
         assert.ok(String(rows[0].details).includes('555'),
           'сума бронювання цілком (555) не названа ніде: у рядку її нема за задумом, отже вона мусить бути в історії');
         assert.ok(/2\s*кімнат/i.test(String(rows[0].details)),

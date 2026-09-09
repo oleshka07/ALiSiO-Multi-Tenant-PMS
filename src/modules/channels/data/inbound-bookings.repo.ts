@@ -2,6 +2,7 @@ import type { Sql } from '@core/db/async';
 import { connectionInTenant } from './connections.repo';
 import { noteAvailabilityChanged, lastNight } from './outbox-notes';
 import { recordBookingChange, bookingSnapshot, describeChanges, changesToText } from '@bookings/history';
+import { releaseGroupRoom } from '@bookings/group-rooms';
 
 /**
  * Ревізія бронювання з менеджера каналів стає бронню — рівно один раз.
@@ -238,9 +239,9 @@ export async function applyRevision(
               unit_type_id = COALESCE(?, unit_type_id),
               status = 'confirmed',
               updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?`,
+        WHERE id = ? AND organization_id = ?`,
       [rev.checkIn ?? null, rev.checkOut ?? null, rev.adults ?? null, rev.children ?? null,
-        rev.totalPrice ?? null, rev.unitTypeId ?? null, reservationId],
+        rev.totalPrice ?? null, rev.unitTypeId ?? null, reservationId, conn.organizationId],
     );
     // Канал змінив ТИП — кімната старого типу новий не вміщає: бронь
     // повертається у смугу «Без номера» нового типу, і рецепція ставить її
@@ -484,9 +485,10 @@ async function applyGroup(
             SET external_uid = ?, unit_type_id = ?, unit_id = NULL,
                 check_in = ?, check_out = ?, nights = ?, adults = ?, children = ?,
                 total_price = ?, status = 'cancelled', updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?`,
+          WHERE id = ? AND organization_id = ?`,
         [`${code}#${masterKey}`, old.unitTypeId, old.from, old.to,
-          nightsBetween(old.from, old.to), old.adults, old.children, old.amount, displaced.id],
+          nightsBetween(old.from, old.to), old.adults, old.children, old.amount,
+          displaced.id, conn.organizationId],
       );
       handled.add(String(displaced.id));
       byKey.delete(masterRoom.key);
@@ -527,10 +529,11 @@ async function applyGroup(
                 total_price = COALESCE(?, total_price),
                 status = ?,
                 updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?`,
+          WHERE id = ? AND organization_id = ?`,
         [`${code}#${masterRoom.key}`, masterRoom.checkIn ?? null, masterRoom.checkOut ?? null,
           masterRoom.unitTypeId ?? null, masterRoom.adults ?? null, masterRoom.children ?? null,
-          masterRoom.amount ?? null, cancelled ? 'cancelled' : 'confirmed', parentId],
+          masterRoom.amount ?? null, cancelled ? 'cancelled' : 'confirmed',
+          parentId, conn.organizationId],
       );
       // Номер знімається у двох випадках, і обидва про одне: кімната під
       // майстром більше не та. Канал змінив ТИП (Д9) — номер старого типу
@@ -542,8 +545,9 @@ async function applyGroup(
       }
     } else {
       await sql.run(
-        `UPDATE reservations SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-        [cancelled ? 'cancelled' : 'confirmed', parentId]);
+        `UPDATE reservations SET status = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ? AND organization_id = ?`,
+        [cancelled ? 'cancelled' : 'confirmed', parentId, conn.organizationId]);
     }
     // Ночі — ЗБЕРЕЖЕНА колонка: перераховуються з того, що ТЕПЕР у рядку.
     const dates = await sql.row<any>('SELECT check_in, check_out FROM reservations WHERE id = ?', [parentId]);
@@ -611,9 +615,10 @@ async function applyGroup(
               status = ?,
               payment_status = ?,
               updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?`,
+        WHERE id = ? AND organization_id = ?`,
       [from ?? null, to ?? null, room.unitTypeId ?? null, room.adults ?? null, room.children ?? null,
-        room.amount ?? null, now.status, now.payment_status, existing.id],
+        room.amount ?? null, now.status, now.payment_status,
+        existing.id, conn.organizationId],
     );
     // Канал змінив ТИП кімнати, яку рецепція вже поставила в номер (Д9).
     if (room.unitTypeId && wasStay?.unit_id && wasStay.unit_type_id
@@ -661,11 +666,20 @@ async function applyGroup(
  * порожній) — так само, як його заводить рецепція, коли ділить одну кімнату
  * між платниками.
  *
- * Прибрана кімната свій рядок втрачає: грошей за неї не беруть. Сама бронь
- * при цьому лишається скасованою дочірньою — історію тримає вона, а не рядок.
- * Позиції рядка (`reservation_line_items`) їдуть за ним самі: зовнішній ключ
- * із `ON DELETE CASCADE`. Звідси до них не дотягуються — це таблиця броней, і
- * двері до неї не тут.
+ * Прибрана кімната свій рядок втрачає — але ЛИШЕ якщо на ньому нічого не
+ * висить. Сама бронь при цьому лишається скасованою дочірньою: історію тримає
+ * вона, а не рядок.
+ *
+ * Дві речі на рядку поводяться по-різному, і різниця в оборотності:
+ *
+ *   гість (`reservation_guests.sub_booking_id`) — ВІДʼЄДНУЄТЬСЯ. Ключ туди
+ *   не має `ON DELETE`, тож без цього `DELETE` нижче падав, і через нього
+ *   ревізія не підтверджувалась ніколи (Б2);
+ *
+ *   позиції фоліо (`reservation_line_items.sub_booking_id`) — `ON DELETE
+ *   CASCADE`, тобто зникли б МОВЧКИ разом із рядком. Чи можна стирати
+ *   виставлені позиції з волі каналу — питання власнику, і поки воно
+ *   відкрите, рядок із позиціями лишається.
  */
 async function syncGroupRooms(
   sql: Sql,
@@ -716,7 +730,14 @@ async function syncGroupRooms(
 
   for (const row of existing) {
     if (keep.has(String(row.id))) continue;
-    await sql.run('DELETE FROM reservation_sub_bookings WHERE id = ?', [row.id]);
+    // Двері модуля броней: `reservation_sub_bookings` тягне за собою ще дві
+    // таблиці броней, і знання «як саме знімається рядок» живе там, а не тут
+    // (`check-boundaries`). Що робиться і чому — у шапці `@bookings/group-rooms`.
+    const outcome = await releaseGroupRoom(sql, String(row.id));
+    if (outcome === 'kept_has_charges') {
+      console.warn('[channels] кімнату групи прибрано в каналі, але на її рядку є позиції фоліо — '
+        + `рядок лишено, позиції не стерто (sub_booking ${row.id})`);
+    }
   }
 }
 
