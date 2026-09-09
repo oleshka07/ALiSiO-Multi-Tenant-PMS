@@ -2,6 +2,7 @@
 import { getSql } from '@core/db/async';
 import { todayFor } from '@core/hotel-day';
 import type { CreateGuestInput } from '../domain/types';
+import { propertyScopeFilter, ALL_PROPERTIES } from '@core/property-scope';
 
 /** Фільтри списку гостей. Порожній обʼєкт — увесь список готелю. */
 export interface GuestFilters {
@@ -28,6 +29,24 @@ export interface GuestFilters {
  * more than one — which is precisely what happens when the same person stays at
  * two hotels running this system.
  */
+
+/**
+ * Історія гостя — по РАХУНКУ, і це СКАЗАНО, а не забуто (Д52, рішення власника В11).
+ *
+ * `guests` має власний `organization_id` і не має `property_id`: гість
+ * належить компанії, а не будинку. Гість фізично той самий у двох готелях
+ * однієї компанії, і постійний, який у другому виглядає новим, — це втрачена
+ * знижка. Тому `total_stays`, `total_revenue`, останній статус і фільтри
+ * списку рахуються по ВСІХ обʼєктах рахунку.
+ *
+ * Ціна вибору названа в Д52 і мітигована на екрані: число підписується «по
+ * всіх обʼєктах», інакше портьє обʼєкта А читає «5 перебувань» як своє, не
+ * може перевірити і не знає, що не може.
+ *
+ * Пишеться дверима, а не мовчанням: `ALL_PROPERTIES` видно грепом, і наступний
+ * читач бачить рішення, а не відсутність фільтра.
+ */
+const ACROSS_PROPERTIES = propertyScopeFilter(ALL_PROPERTIES, 'r');
 
 export async function listGuests(
   organizationId: string,
@@ -61,7 +80,7 @@ export async function listGuests(
     // Празі бронь не має зникати зі списку через UTC.
     where += ` AND EXISTS (
       SELECT 1 FROM reservations r JOIN properties p ON p.id = r.property_id
-       WHERE r.guest_id = g.id AND p.organization_id = g.organization_id
+       WHERE r.guest_id = g.id AND p.organization_id = g.organization_id AND ${ACROSS_PROPERTIES.sql}
          AND r.status NOT IN ('cancelled', 'no_show') AND r.check_out >= ?)`;
     params.push(await todayFor(organizationId));
   }
@@ -70,7 +89,7 @@ export async function listGuests(
     // сам рядок гостя юрособи не знає, і не має знати.
     where += ` AND EXISTS (
       SELECT 1 FROM reservations r JOIN properties p ON p.id = r.property_id
-       WHERE r.guest_id = g.id AND p.organization_id = g.organization_id
+       WHERE r.guest_id = g.id AND p.organization_id = g.organization_id AND ${ACROSS_PROPERTIES.sql}
          AND r.company_id IS NOT NULL)`;
   }
 
@@ -83,7 +102,7 @@ export async function listGuests(
   const stay = (expr: string) => `(
     SELECT ${expr} FROM reservations r
     JOIN properties p ON p.id = r.property_id
-    WHERE r.guest_id = g.id AND p.organization_id = g.organization_id
+    WHERE r.guest_id = g.id AND p.organization_id = g.organization_id AND ${ACROSS_PROPERTIES.sql}
   )`;
 
   const query = `
@@ -94,7 +113,7 @@ export async function listGuests(
       ${stay('MAX(r.check_in)')} as last_check_in,
       (SELECT r.status FROM reservations r
         JOIN properties p ON p.id = r.property_id
-        WHERE r.guest_id = g.id AND p.organization_id = g.organization_id
+        WHERE r.guest_id = g.id AND p.organization_id = g.organization_id AND ${ACROSS_PROPERTIES.sql}
         ORDER BY r.check_in DESC LIMIT 1) as last_booking_status
     FROM guests g
     ${where}
@@ -113,10 +132,10 @@ export async function getGuestWithReservations(organizationId: string, id: strin
     SELECT g.*,
       (SELECT COUNT(*) FROM reservations r
         JOIN properties p ON p.id = r.property_id
-        WHERE r.guest_id = g.id AND p.organization_id = g.organization_id) as total_stays,
+        WHERE r.guest_id = g.id AND p.organization_id = g.organization_id AND ${ACROSS_PROPERTIES.sql}) as total_stays,
       (SELECT SUM(r.total_price) FROM reservations r
         JOIN properties p ON p.id = r.property_id
-        WHERE r.guest_id = g.id AND p.organization_id = g.organization_id) as total_revenue
+        WHERE r.guest_id = g.id AND p.organization_id = g.organization_id AND ${ACROSS_PROPERTIES.sql}) as total_revenue
     FROM guests g WHERE g.id = ? AND g.organization_id = ?
   `, [id, organizationId]);
 

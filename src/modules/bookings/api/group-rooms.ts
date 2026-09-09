@@ -38,18 +38,31 @@ import type { Sql } from '@core/db/async';
  *
  * Рядок без позицій знімається одразу — там стирати нема чого.
  */
-export type GroupRoomRelease = 'removed' | 'kept_has_charges';
+export interface GroupRoomRelease {
+  outcome: 'removed' | 'kept_has_charges';
+  /** Назва рядка — те, як кімнату видно рецепції в картці. */
+  label: string;
+  /** Скільки вписаних позицій лишилось на рядку, і на яку суму. */
+  charges: { count: number; total: number };
+}
 
 export async function releaseGroupRoom(sql: Sql, subBookingId: string): Promise<GroupRoomRelease> {
+  const row = await sql.row<{ label: string | null }>(
+    'SELECT label FROM reservation_sub_bookings WHERE id = ?', [subBookingId]);
+  const label = String(row?.label ?? '').trim();
+
   await sql.run(
     'UPDATE reservation_guests SET sub_booking_id = NULL WHERE sub_booking_id = ?',
     [subBookingId]);
 
-  const charged = await sql.row<{ n: number }>(
-    'SELECT COUNT(*) AS n FROM reservation_line_items WHERE sub_booking_id = ?',
+  // Скільки і НА ЯКУ СУМУ — обидва числа потрібні тому, хто це читатиме:
+  // «одна позиція» і «одна позиція на 4 200» — різні рішення.
+  const charged = await sql.row<{ n: number; total: number }>(
+    'SELECT COUNT(*) AS n, COALESCE(SUM(total), 0) AS total FROM reservation_line_items WHERE sub_booking_id = ?',
     [subBookingId]);
-  if (Number(charged?.n ?? 0) > 0) return 'kept_has_charges';
+  const charges = { count: Number(charged?.n ?? 0), total: Number(charged?.total ?? 0) };
+  if (charges.count > 0) return { outcome: 'kept_has_charges', label, charges };
 
   await sql.run('DELETE FROM reservation_sub_bookings WHERE id = ?', [subBookingId]);
-  return 'removed';
+  return { outcome: 'removed', label, charges };
 }

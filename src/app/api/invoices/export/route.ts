@@ -9,9 +9,22 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { requireFinanceAccess } from '@core/security/route-guard';
 import type { Actor } from '@core/auth/session';
+import { requestPropertyScope } from '@core/auth/property-scope';
+import { propertyOrSharedFilter } from '@core/property-scope';
 
-export const GET = requireFinanceAccess(_GET);
-async function _GET(req: NextRequest, _ctx: unknown, actor: Actor): Promise<NextResponse> {
+export const GET = requireFinanceAccess(exportInvoices);
+
+/**
+ * Тіло маршруту, названо і експортовано.
+ *
+ * `withPermission`/`requireFinanceAccess` читають куку через `next/headers`, а
+ * той викликає `cookies()`, який поза запитом Next кидає. Тобто загорнутий
+ * маршрут неможливо покликати з `.check.ts` під голим node — не «незручно», а
+ * саме неможливо. Той самий довід, що вже стоїть у
+ * `data/reservation-invoice.repo.ts`: за HTTP-межею, якою функція не
+ * користується, вона недосяжна для перевірки.
+ */
+export async function exportInvoices(req: NextRequest, _ctx: unknown, actor: Actor): Promise<NextResponse> {
   try {
     const { searchParams } = new URL(req.url);
     const source  = searchParams.get('source')  || 'all';
@@ -22,8 +35,18 @@ async function _GET(req: NextRequest, _ctx: unknown, actor: Actor): Promise<Next
 
     // Build query. The organization is not optional here: this writes every
     // matching invoice into a file, and unqualified it wrote every hotel's.
+    // Вісь обʼєкта у ВИВАНТАЖЕННІ (INC-029). Файл виходить із системи: лягає
+    // бухгалтеру на стіл і живе рік, тож «ширший, ніж треба» тут коштує
+    // більше, ніж на екрані, який просто перемальовується.
+    //
+    // `propertyOrSharedFilter`, бо `invoices` не має `property_id` узагалі —
+    // обʼєкт приходить від броні через `LEFT JOIN`, а фактура без броні
+    // (виписана вручну, сторно) обʼєкта не має. Звичайний фільтр викинув би її
+    // з КОЖНОГО вивантаження: документ, якого бухгалтер не побачить ніде (Д51).
+    const scope = await requestPropertyScope(req, actor.organizationId);
+    const axis = propertyOrSharedFilter(scope, 'r');
     const conditions: string[] = ['i.organization_id = ?'];
-    const params: (string | number)[] = [actor.organizationId];
+    const params: (string | number)[] = [actor.organizationId, ...axis.params];
 
     // Source filter
     if (source !== 'all') {
@@ -43,6 +66,11 @@ async function _GET(req: NextRequest, _ctx: unknown, actor: Actor): Promise<Next
     if (from) { conditions.push('i.issued_at >= ?'); params.push(from); }
     if (to)   { conditions.push('i.issued_at <= ?'); params.push(to + 'T23:59:59'); }
 
+    // Вісь — у самому шаблоні запиту, а не в масиві `conditions`, який
+    // склеюється тут: гейт осі бачить оператор із вузла, де `FROM`, і
+    // фрагмент, доданий окремим присвоєнням, до нього не доходить — запит
+    // рахувався б «невизначеним», тобто виглядав би проскоупленим і лічився
+    // як недоведений (Д50).
     const where = 'WHERE ' + conditions.join(' AND ');
 
     const rows = await sql.rows<Record<string, unknown>>(`
@@ -76,7 +104,7 @@ async function _GET(req: NextRequest, _ctx: unknown, actor: Actor): Promise<Next
       LEFT JOIN reservations r ON r.id = i.reservation_id
       LEFT JOIN guests g ON g.id = r.guest_id
       LEFT JOIN units u ON u.id = r.unit_id
-      ${where}
+      ${where} AND ${axis.sql}
       ORDER BY i.issued_at DESC
     `, params);
 

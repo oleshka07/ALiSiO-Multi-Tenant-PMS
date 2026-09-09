@@ -742,14 +742,23 @@ function DesktopGuests({ initialSearch }: { initialSearch?: string }) {
               </div>
 
               {/* Stats row */}
+              {/* Обидва числа — ПО ВСІХ ОБʼЄКТАХ рахунку (Д52, В11): гість
+                  належить компанії, не будинку, і постійний гість, який у
+                  другому готелі виглядає новим, — це втрачена знижка. Але
+                  портьє обʼєкта А не може перевірити «5 візитів», з яких у
+                  нього могло не бути жодного, тож підпис обовʼязковий: без
+                  нього число читається як своє, і людина не знає, що воно не
+                  її. Ціна рішення названа на екрані, а не лише в реєстрі. */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                 <div style={{ padding: 14, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
                   <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Візити')}</div>
                   <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4, color: 'var(--accent-primary)' }}>{viewGuest.total_stays}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2 }}>{t('по всіх обʼєктах')}</div>
                 </div>
                 <div style={{ padding: 14, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
                   <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Загальний дохід')}</div>
                   <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4, color: 'var(--accent-success)' }}>{(viewGuest.total_revenue || 0).toLocaleString()} {cur}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2 }}>{t('по всіх обʼєктах')}</div>
                 </div>
                 <div style={{ padding: 14, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
                   <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Дата створення')}</div>

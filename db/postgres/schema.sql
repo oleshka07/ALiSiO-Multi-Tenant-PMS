@@ -414,9 +414,9 @@ CREATE TABLE "cm_connections" (
   "pricing_modifier_percent" NUMERIC(5,2) DEFAULT 0 NOT NULL,
   "last_full_sync_at" TIMESTAMPTZ,
   "catalog_synced_at" TIMESTAMPTZ,
-  "channels_synced_at" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "channels_synced_at" TIMESTAMPTZ,
   PRIMARY KEY ("id"),
   UNIQUE ("webhook_token"),
   UNIQUE ("organization_id", "property_id", "provider", "environment"),
@@ -2588,7 +2588,7 @@ ALTER TABLE "reservation_guests" ADD CONSTRAINT "fk_reservation_guests_guest_id_
 ALTER TABLE "reservation_guests" ADD CONSTRAINT "fk_reservation_guests_reservation_id_3"
   FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE CASCADE;
 ALTER TABLE "reservation_line_items" ADD CONSTRAINT "fk_reservation_line_items_sub_booking_id_1"
-  FOREIGN KEY ("sub_booking_id") REFERENCES "reservation_sub_bookings" ("id") ON DELETE CASCADE;
+  FOREIGN KEY ("sub_booking_id") REFERENCES "reservation_sub_bookings" ("id");
 ALTER TABLE "reservation_sub_bookings" ADD CONSTRAINT "fk_reservation_sub_bookings_child_reservation_id_1"
   FOREIGN KEY ("child_reservation_id") REFERENCES "reservations" ("id") ON DELETE SET NULL;
 ALTER TABLE "reservation_sub_bookings" ADD CONSTRAINT "fk_reservation_sub_bookings_reservation_id_2"

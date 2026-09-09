@@ -13,6 +13,14 @@ export interface CompanyStayStats {
   last_check_in: string | null;
 }
 
+/**
+ * Лічильник свідомо БЕЗ осі обʼєкта (INC-029).
+ *
+ * `companies` не має `property_id`: компанія-платник належить РАХУНКУ, а не
+ * будинку — той самий контрагент замовляє номери в обох. Звузити лічильник
+ * означало б показувати в довіднику компаній різні числа залежно від того, що
+ * стоїть у шапці, при тому що сама компанія одна.
+ */
 export async function companyStays(organizationId: string): Promise<Map<string, CompanyStayStats>> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rows = await getSql().rows<any>(

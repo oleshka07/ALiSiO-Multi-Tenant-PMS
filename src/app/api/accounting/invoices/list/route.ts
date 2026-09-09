@@ -13,9 +13,20 @@ import { getSql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { requireFinanceAccess } from '@core/security/route-guard';
 import { serverError } from '@core/http/errors';
+import { requestPropertyScope } from '@core/auth/property-scope';
+import { propertyOrSharedFilter } from '@core/property-scope';
 
-export const GET = requireFinanceAccess(_GET);
-async function _GET(request: NextRequest): Promise<NextResponse> {
+export const GET = requireFinanceAccess(accountingInvoiceList);
+
+/**
+ * Тіло маршруту, названо і експортовано — щоб перевірка могла його покликати.
+ *
+ * `requireFinanceAccess` читає сесію через `next/headers`, а `cookies()` поза
+ * запитом Next кидає; отже загорнутий маршрут недосяжний для `.check.ts` під
+ * голим node. Той самий рух і той самий довід, що в
+ * `data/reservation-invoice.repo.ts` і в двох вивантаженнях поруч.
+ */
+export async function accountingInvoiceList(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
     const { searchParams } = new URL(request.url);
@@ -28,6 +39,17 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
     // Build the base query — LEFT JOINs so custom/batch invoices without
     // reservation_id are still returned.
     const orgId = await requireOrganizationId();
+    // Вісь обʼєкта у пакеті документів (INC-029, Д52). Коментар нижче вже
+    // фіксує половину того самого класу — «on SQLite an unscoped month took
+    // every hotel's documents with it»; ту половину (орендар) полагоджено, а
+    // вісь ОБʼЄКТА лишалась відкритою, і бухгалтер обʼєкта А діставав у ZIP
+    // документи обʼєкта Б.
+    //
+    // `propertyOrSharedFilter`: `invoices` не має `property_id`, обʼєкт
+    // приходить від броні `LEFT JOIN`-ом, а фактура без броні (вручну, сторно)
+    // обʼєкта не має — звичайний фільтр викинув би її з КОЖНОГО пакета (Д51).
+    const scope = await requestPropertyScope(request, orgId);
+    const axis = propertyOrSharedFilter(scope, 'r');
     const rows: any[] = await sql.rows<any>(`
       SELECT
         i.id,
@@ -65,10 +87,10 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
       LEFT JOIN units       u ON r.unit_id  = u.id
       -- The tenant is named here, not left to the policy: on SQLite there is
       -- none, and this list carried invoice numbers, buyers and amounts.
-      WHERE i.organization_id = ?
+      WHERE i.organization_id = ? AND ${axis.sql}
       ORDER BY i.issued_at DESC, i.invoice_number DESC
       LIMIT 1000
-    `, [orgId]);
+    `, [orgId, ...axis.params]);
 
     // Apply source + search filters in JS (simpler than dynamic SQL for SQLite)
     let filtered = rows;

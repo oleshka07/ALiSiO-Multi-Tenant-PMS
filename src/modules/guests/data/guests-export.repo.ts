@@ -17,6 +17,7 @@ import { getSql } from '@core/db/async';
 import { companyNames } from '@companies/kernel';
 import type { GuestFilters } from './guests.repo';
 import { listGuests } from './guests.repo';
+import { propertyScopeFilter, ALL_PROPERTIES } from '@core/property-scope';
 
 export type ExportFormat = 'simple' | 'extended';
 
@@ -49,13 +50,20 @@ export function csvDocument(headers: readonly string[], rows: readonly unknown[]
  * лексика), а як компанія називається — довідник, і його таблицю читає
  * лише свій модуль (`@companies/kernel`, `check-boundaries`).
  */
+/**
+ * Компанії-платники — по РАХУНКУ, і це сказано (Д52). Список гостей належить
+ * компанії, тож і компанії, які за них платили, читаються по всіх обʼєктах:
+ * звуження зробило б CSV вужчим за екран, з якого його натиснули.
+ */
+const ACROSS_PROPERTIES = propertyScopeFilter(ALL_PROPERTIES, 'r');
+
 async function companiesByGuest(organizationId: string): Promise<Map<string, string>> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const links = await getSql().rows<any>(
     `SELECT DISTINCT r.guest_id, r.company_id
        FROM reservations r
        JOIN properties p ON p.id = r.property_id
-      WHERE p.organization_id = ? AND r.company_id IS NOT NULL`,
+      WHERE p.organization_id = ? AND ${ACROSS_PROPERTIES.sql} AND r.company_id IS NOT NULL`,
     [organizationId]);
   const names = await companyNames(organizationId, links.map((r: any) => String(r.company_id)));
   const out = new Map<string, string>();

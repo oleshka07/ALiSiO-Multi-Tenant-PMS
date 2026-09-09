@@ -4875,10 +4875,21 @@ function runMigrations(database: any) {
   database.exec('CREATE INDEX IF NOT EXISTS idx_sub_bookings_res ON reservation_sub_bookings(reservation_id)');
 
   // --- Migration: create reservation_line_items table ---
+  //
+  // Ключ на рядок групи — БЕЗ `ON DELETE CASCADE`, і це рішення власника
+  // (В10, реєстр К18): канал володіє тим, що ЗАБРОНЮВАЛИ, готель — тим, що
+  // НАРАХУВАЛИ і що вписала людина. Ці рядки — розбивка кімнати між
+  // платниками, набрана рецепцією; ревізія з боку OTA не має права стерти їх
+  // мовчки, знявши рядок групи.
+  //
+  // Заборона стоїть у БАЗІ, а не в писачі, навмисно. `releaseGroupRoom` уже
+  // не чіпає рядка з позиціями — але це поведінка одного місця, а наступний
+  // `DELETE`, написаний деінде, знову стирав би каскадом і не дізнався про
+  // це. Тепер він відмовляє.
   database.exec(`
     CREATE TABLE IF NOT EXISTS reservation_line_items (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      sub_booking_id TEXT NOT NULL REFERENCES reservation_sub_bookings(id) ON DELETE CASCADE,
+      sub_booking_id TEXT NOT NULL REFERENCES reservation_sub_bookings(id),
       description TEXT NOT NULL,
       quantity REAL NOT NULL DEFAULT 1,
       unit_price REAL NOT NULL DEFAULT 0,
@@ -4888,6 +4899,67 @@ function runMigrations(database: any) {
     )
   `);
   database.exec('CREATE INDEX IF NOT EXISTS idx_line_items_sub ON reservation_line_items(sub_booking_id)');
+
+  // І для БАЗИ, ЯКА ВЖЕ Є: у SQLite зовнішній ключ живе в тексті CREATE, тож
+  // зняти каскад можна лише перебудовою (AGENTS §4 — індекси зняти й
+  // повернути, лічильники звірити). Без цього кроку новий клієнт мав би
+  // заборону, а мігрований — каскад, і сцена була б зелена рівно там, де її
+  // ніхто не перевіряє.
+  try {
+    const liSql = (database.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='reservation_line_items'",
+    ).get() as { sql?: string } | undefined)?.sql ?? '';
+    if (/sub_booking_id[^,]*ON DELETE CASCADE/i.test(liSql)) {
+      console.log('[DB] reservation_line_items: каскад на рядок групи → заборона (К18) — перебудова зі збереженням індексів');
+      const before = (database.prepare('SELECT COUNT(*) AS n FROM reservation_line_items').get() as { n: number }).n;
+      const indexSql = (database.prepare(
+        "SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name='reservation_line_items' AND sql IS NOT NULL",
+      ).all() as { sql: string }[]).map((r) => r.sql);
+      const live = (database.prepare('PRAGMA table_info(reservation_line_items)').all() as { name: string }[])
+        .map((c) => c.name);
+      const carried = ['id', 'sub_booking_id', 'description', 'quantity', 'unit_price', 'total',
+        'category', 'sort_order'].filter((c) => live.includes(c));
+      database.exec('PRAGMA foreign_keys = OFF');
+      try {
+        database.exec('BEGIN');
+        database.exec(`
+          CREATE TABLE reservation_line_items_new (
+            id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+            sub_booking_id TEXT NOT NULL REFERENCES reservation_sub_bookings(id),
+            description TEXT NOT NULL,
+            quantity REAL NOT NULL DEFAULT 1,
+            unit_price REAL NOT NULL DEFAULT 0,
+            total REAL NOT NULL DEFAULT 0,
+            category TEXT DEFAULT 'other',
+            sort_order INTEGER NOT NULL DEFAULT 0
+          )
+        `);
+        database.exec(`INSERT INTO reservation_line_items_new (${carried.join(', ')}) SELECT ${carried.join(', ')} FROM reservation_line_items`);
+        database.exec('DROP TABLE reservation_line_items');
+        database.exec('ALTER TABLE reservation_line_items_new RENAME TO reservation_line_items');
+        for (const ix of indexSql) database.exec(ix);
+        database.exec('COMMIT');
+      } catch (e) {
+        database.exec('ROLLBACK');
+        throw e;
+      } finally {
+        // Прагму повертаємо ЗАВЖДИ: без цього застосунок пішов би далі з
+        // `foreign_keys = 0` і обслуговував запити без жодного ключа.
+        database.exec('PRAGMA foreign_keys = ON');
+      }
+      const after = (database.prepare('SELECT COUNT(*) AS n FROM reservation_line_items').get() as { n: number }).n;
+      if (after !== before) throw new Error(`reservation_line_items rebuild lost rows: ${before} -> ${after}`);
+      const restored = (database.prepare(
+        "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='index' AND tbl_name='reservation_line_items' AND sql IS NOT NULL",
+      ).get() as { n: number }).n;
+      if (restored !== indexSql.length) {
+        throw new Error(`reservation_line_items rebuild lost indexes: ${indexSql.length} -> ${restored}`);
+      }
+      console.log(`[DB] reservation_line_items: заборона на місці (${after} рядків, ${restored} індексів)`);
+    }
+  } catch (e) {
+    console.error('[DB] reservation_line_items cascade → restrict:', (e as Error).message);
+  }
 
   // --- Migration: add sub_booking_id to reservation_guests ---
   try {

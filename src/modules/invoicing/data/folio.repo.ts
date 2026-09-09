@@ -11,6 +11,7 @@
 import { getSql } from '@core/db/async';
 import type { Sql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { propertyOrSharedFilter, type PropertyScope } from '@core/property-scope';
 import { recordPayment } from './folio-payments.repo';
 import { allocateInvoiceNumber, isPeriodLocked, seriesForChannel } from '../domain/invoice-numbering';
 import { buildSnapshot, buildStorno, type FolioItem } from '../domain/invoice-snapshot';
@@ -24,7 +25,7 @@ export interface Folio {
   label: string | null;
 }
 
-export async function listFolios(reservationId?: string): Promise<Folio[]> {
+export async function listFolios(reservationId: string | undefined, scope: PropertyScope): Promise<Folio[]> {
   const organizationId = await requireOrganizationId();
   const sql = getSql();
   // Awaited, not returned as a promise from a ternary: check-await.mjs reads a
@@ -35,9 +36,17 @@ export async function listFolios(reservationId?: string): Promise<Folio[]> {
       'SELECT * FROM fin_folios WHERE organization_id = ? AND reservation_id = ? ORDER BY created_at',
       [organizationId, reservationId]);
   }
+  // Список УСІХ рахунків готелю — тут вісь обʼєкта і є (INC-029). Гілка вище
+  // її не потребує: бронь уже визначає будинок.
+  //
+  // `propertyOrSharedFilter`, не `propertyScopeFilter`: `fin_folios.property_id`
+  // НУЛЬОВИЙ, і рахунок без будинку (подія, рахунок компанії) при звичайному
+  // фільтрі зник би з КОЖНОГО списку — гроші, яких не бачить ніхто. Ціна
+  // вибору названа: такий рядок видно з обох обʼєктів (Д51).
+  const axis = propertyOrSharedFilter(scope, '');
   return await sql.rows<Folio>(
-    'SELECT * FROM fin_folios WHERE organization_id = ? ORDER BY created_at DESC',
-    [organizationId]);
+    `SELECT * FROM fin_folios WHERE organization_id = ? AND ${axis.sql} ORDER BY created_at DESC`,
+    [organizationId, ...axis.params]);
 }
 
 export async function createFolio(input: {

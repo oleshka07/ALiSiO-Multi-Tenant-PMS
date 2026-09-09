@@ -4,6 +4,9 @@ import { getSql } from '@core/db/async';
 import { todayFor } from '@core/hotel-day';
 import { occupancy } from '@core/occupancy-rate';
 import type { Actor } from '@core/auth/session';
+import { requestPropertyScope } from '@core/auth/property-scope';
+import { propertyScopeFilter } from '@core/property-scope';
+import { handleError } from '@core/http/errors';
 
 /**
  * reservations and units carry no organization_id — they reach one through
@@ -21,12 +24,29 @@ export async function getReport(request: NextRequest, _ctx: unknown, actor: Acto
     const hotelToday = await todayFor(org);
     const from = searchParams.get('from') || hotelToday;
     const to = searchParams.get('to') || hotelToday;
-    // Область обʼєкта (BUILD-PLAN, Блок 1): звіт за обраним обʼєктом або за
-    // організацією цілком. Оплати не мають property_id — вони йдуть через
-    // бронь, до якої привʼязані.
-    const propertyFilter = searchParams.get('property_id') || '';
-    const scope = (alias = '') => (propertyFilter ? `${OWN(alias)} AND ${alias}property_id = ?` : OWN(alias));
-    const scoped = (...rest: unknown[]) => (propertyFilter ? [org, propertyFilter, ...rest] : [org, ...rest]);
+    // Область обʼєкта — СПІЛЬНІ двері, не третя приватна копія (INC-029).
+    //
+    // Тут стояв власний `searchParams.get('property_id')` із двома вадами, які
+    // ззовні виглядали як робоча вісь:
+    //
+    //   1. `property_id=all` — слово, яким провайдер області пише «усі
+    //      обʼєкти» прямо в адресу вкладки — потрапляло у фільтр ЯК
+    //      ІДЕНТИФІКАТОР: `property_id = 'all'` не збігається ні з чим, і звіт
+    //      віддавав нулі. Досяжно з інтерфейсу, не тільки з curl;
+    //   2. чужий обʼєкт не відмовляв, а тихо давав порожньо — `OWN()` зрізав
+    //      його орендарем. Порожній звіт і «такого обʼєкта немає» — різні
+    //      відповіді (інваріант 5, і інваріант 13 про «не знайшли»).
+    //
+    // Тепер обидва стани називають себе: `requestPropertyScope` дає 404 на
+    // чужий id і `ALL_PROPERTIES` на сказане `all`. Оплати не мають
+    // `property_id` — вони йдуть через бронь, до якої привʼязані.
+    // Два фрагменти, а не функція, що їх будує: гейт осі впізнає ДВЕРІ за
+    // змінною, ініціалізованою прямо з `propertyScopeFilter`, і обгортка
+    // зробила б запит «невизначеним» — тобто виглядав би він проскоупленим, а
+    // рахувався б як недоведений. Читається так само, а стверджує більше.
+    const scope = await requestPropertyScope(request, org);
+    const axisR = propertyScopeFilter(scope, 'r');
+    const axis = propertyScopeFilter(scope, '');
 
     const bookings = await sql.rows<any>(`
       SELECT r.*, u.name as unit_name, c.type as category_type,
@@ -35,10 +55,10 @@ export async function getReport(request: NextRequest, _ctx: unknown, actor: Acto
       LEFT JOIN units u ON r.unit_id = u.id
       LEFT JOIN categories c ON u.category_id = c.id
       JOIN guests g ON r.guest_id = g.id
-      WHERE ${scope('r.')}
+      WHERE ${OWN('r.')} AND ${axisR.sql}
         AND r.check_in BETWEEN ? AND ?
         AND r.status != 'cancelled'
-    `, scoped(from, to));
+    `, [org, ...axisR.params, from, to]);
 
     const totalBookings = bookings.length;
     const totalGuests = bookings.reduce((s: number, b: any) => s + b.adults + b.children, 0);
@@ -72,8 +92,8 @@ export async function getReport(request: NextRequest, _ctx: unknown, actor: Acto
       WHERE organization_id = ?
         AND reservation_id IS NOT NULL AND status = 'completed'
         AND paid_at BETWEEN ? AND ?
-        ${propertyFilter ? 'AND reservation_id IN (SELECT id FROM reservations WHERE property_id = ?)' : ''}
-    `, propertyFilter ? [org, from, to, propertyFilter] : [org, from, to]);
+        AND reservation_id IN (SELECT id FROM reservations WHERE ${axis.sql})
+    `, [org, from, to, ...axis.params]);
 
     const totalPayments = payments.reduce((s: number, p: any) => {
       const signed = p.op_type === 'expense' && p.payment_subtype === 'refund' ? -p.amount : p.amount;
@@ -97,13 +117,15 @@ export async function getReport(request: NextRequest, _ctx: unknown, actor: Acto
     // продається» і «що зайняте» живе в одному місці, інакше дві копії знову
     // розійдуться. Вікно `check_out > from AND check_in <= to` — не частина
     // формули, а спосіб не тягнути в памʼять усю історію готелю.
-    const unitRows = await sql.rows<any>(`SELECT id, is_active, is_pool FROM units WHERE ${scope()}`, scoped());
+    const unitRows = await sql.rows<any>(
+      `SELECT id, is_active, is_pool FROM units WHERE ${OWN()} AND ${axis.sql}`,
+      [org, ...axis.params]);
 
     const stayRows = await sql.rows<any>(`
       SELECT unit_id, check_in, check_out, status FROM reservations
-      WHERE ${scope()}
+      WHERE ${OWN()} AND ${axis.sql}
         AND check_out > ? AND check_in <= ?
-    `, scoped(from, to));
+    `, [org, ...axis.params, from, to]);
 
     const occ = occupancy(unitRows, stayRows, from, to);
     const totalDays = occ.days;
@@ -116,7 +138,9 @@ export async function getReport(request: NextRequest, _ctx: unknown, actor: Acto
       revenueByCategory, revenueBySource, paymentsByMethod,
     });
   } catch (error) {
-    console.error('GET /api/reports error:', error);
-    return NextResponse.json({ error: 'Failed to generate report' }, { status: 500 });
+    // `handleError`, не голий 500: чужий обʼєкт приходить сюди названою
+    // відмовою `PropertyNotFound` (404), і згорнути її в 500 означало б
+    // сказати «зламалось» там, де сказано «немає» (інваріант 6, Ц43).
+    return handleError('modules/reports/api/reports getReport', error);
   }
 }

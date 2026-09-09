@@ -24,6 +24,7 @@ const { getSql } = await import('@core/db/async');
 const { setFeature } = await import('@core/features');
 const { createFolio, reverseFolioPayment } = await import('./folio.repo.ts');
 const { recordPayment, listPayments, unsignedPayments } = await import('./folio-payments.repo.ts');
+const { ALL_PROPERTIES } = await import('@core/property-scope.ts');
 
 const sql = getSql();
 const ORG = 'org_paych';
@@ -141,7 +142,9 @@ try {
     assert.ok(outage?.started_at && outage?.ended_at,
       'збій мусить лягти в журнал із часом початку І кінця');
     assert.match(String(outage.note), /TSE unreachable/);
-    const unsigned = await unsignedPayments();
+    // Область названа словом: сцена про TSE, не про обʼєкт, і «усі» тут —
+    // відповідь, а не мовчання (INC-029).
+    const unsigned = await unsignedPayments(ALL_PROPERTIES);
     assert.strictEqual(unsigned.length, 1, 'рецепція мусить бачити непідписані операції');
     console.log('  ok  TSE лежить: оплата пройшла, tse_failed на рядку, збій у журналі');
 
