@@ -211,6 +211,32 @@ smtp (пошта організації) і **обов'язково заповн
 розділ «Застосунки» З1–З9 + свої рішення `З10…`. `INDEX-FOR-NEW-SESSION.md` і MASTER-PLAN —
 **не чіпати** (контролер).
 
+### 3.8 Картка fiskaly вміє ПІДКЛЮЧИТИ TSE (кроки 2–3 quickstart), а не лише прийняти ключі
+Факт із коду 09.09: `fiskaly-sign-de.ts` робить лише auth → tx ACTIVE → tx FINISHED і бере
+`tssId`/`clientId` з `fin_fiscal_settings` — а **ніхто в продукті цю таблицю не пише**
+(єдиний INSERT — у `invoice-document.repo.check.ts`). Картка з полями ключів, але без способу
+отримати TSS, — перемикач-обманка (П5). Тому на картці fiskaly, коли ключі збережені і
+об'єкт обраний, з'являється дія **«Підключити TSE»** (`POST /api/settings/apps/fiskaly/connect`,
+тіло `{ propertyId }`), яка за офіційним quickstart (workspace.fiskaly.com/countries/germany/quickstart)
+робить: `PUT /tss/{uuid}` → `PATCH /tss/{id}/admin` (`admin_puk` з відповіді → новий
+`admin_pin`) → `POST /tss/{id}/admin/auth` → `PATCH /tss/{id}` `{state:'INITIALIZED'}` →
+`PUT /tss/{id}/client/{uuid}` `{serial_number}` — і записує `fin_fiscal_settings(property_id,
+tss_id, tse_client_id, recording_system_serial)` для цього об'єкта. `admin_pin` і `admin_puk` —
+секрети: зберігаються через `seal()` (нові поля `fiskaly` у реєстрі: `adminPin`, `adminPuk`;
+`channel_credentials` має три колонки — якщо їх не вистачає, PIN/PUK лягають у
+`fin_fiscal_settings` **зашифровані тим самим `seal()`**, а міграція `0141` додає колонки;
+рішення — твоє, записати в DECISIONS). `serial_number` = `recording_system_serial` =
+`ALISIO-<slug об'єкта>` — це те, що §6 KassenSichV вимагає друкувати на белезі.
+Дія **ідемпотентна**: другий виклик для об'єкта з уже заповненим `tss_id` відмовляє 409 з
+назвою, а не створює другу TSS (кожна TSS у fiskaly коштує грошей). Дія пише `reportOk`/
+`reportError` у `app_connections` (3.4). Стан картки після успіху: «підключено · TSS …last4».
+
+**Базова адреса:** дефолт `FISKALY_BASE_URL` у `fiskaly-sign-de.ts` змінити на
+`https://kassensichv-middleware.fiskaly.com/api/v2` (чинна документація; стара
+`kassensichv.fiskaly.com` — застаріла). Це другий дозволений виклик у чужій теці (разом із 3.4).
+Середовища TEST/LIVE у fiskaly розрізняються **ключем**, не адресою — на екрані поруч із
+ключами написати, що ключ TEST не підписує по-справжньому.
+
 ---
 
 ## 4. Чого не робити
@@ -257,6 +283,10 @@ smtp (пошта організації) і **обов'язково заповн
 9. **Сторінка постачальника відмовляє** звичайній сесії власника готелю 401/403, а
    платформній — віддає **усі** організації (фікстура з двома орендарями).
 10. **i18n:** кожен новий ключ є в усіх словниках (`npm run check:i18n`), дублікатів нуль.
+12. **«Підключити TSE» ідемпотентно і не залишає напів-TSS:** фікстура з двома об'єктами —
+    другий виклик на об'єкт із `tss_id` → 409 і нуль нових звернень до fiskaly (мок рахує
+    виклики); відмова fiskaly на кроці «admin» → у `fin_fiscal_settings` нічого не записано,
+    `app_connections` = `error` з текстом. PIN/PUK у базі — лише у вигляді `enc1:…` (`isSealed`).
 11. **`check-vendor-isolation` лишається зеленим** — слово `channex` у `apps.ts` і на екранах
     не з'являється (там «менеджер каналів»).
 
@@ -271,7 +301,8 @@ Playwright-сценарій (у `tests/`, як решта): власник за�
 «Застосунки» → на ній картка fiskaly зі станом і полями ключів, картки Winhotel/DIRS21/
 PriceLabs/Unzer зі «скоро» і «хочу» → натискає «хочу» на Winhotel → «ви позначили» → повторний
 натиск нічого не змінює → у розділі «Здоров'я» є пошта, fiskaly, менеджер каналів → симулювати
-відмову fiskaly (мок, як у `channex.check.ts`) → картка показує «помилка» **з текстом** → зайти
+відмову fiskaly (мок, як у `channex.check.ts`) → картка показує «помилка» **з текстом** → на моку fiskaly натиснути «Підключити TSE» → у
+`fin_fiscal_settings` з'явився рядок об'єкта, картка «підключено», повторний натиск — 409 → зайти
 платформною сесією на `/app/platform/apps` → той самий рядок червоний, у попиті Winhotel = 1.
 Знімки обох екранів у звіт. `/app/settings/features` показує лише модулі, полів fiskaly там
 немає.
