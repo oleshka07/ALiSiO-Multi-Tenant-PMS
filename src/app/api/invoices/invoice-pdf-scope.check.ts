@@ -1,5 +1,8 @@
 /**
- * PDF фактури рендериться лише для СВОГО рахунку (INC-043, друга половина).
+ * Один документ фактури — лише для СВОГО рахунку (INC-043, друга половина).
+ *
+ * Три маршрути, які віддають ОДНУ фактуру: PDF, ISDOC і лист. Усі три читали
+ * `invoices` тією самою формою і всі три стояли на голому `WHERE i.id = ?`.
  *
  *   node src/app/api/invoices/invoice-pdf-scope.check.ts
  *
@@ -35,6 +38,17 @@
  * твоя», а не «зламана».
  *
  * Номери фактур несуть слово, а не лише номер: «показав чужу» видно рядком.
+ *
+ * ── Чому лист перевіряється саме так ────────────────────────────────────
+ *
+ * `POST /api/invoices/[id]/email` — найдорожчий із трьох: він не показує
+ * документ, він ВІДСИЛАЄ його на адресу, яку назвав той, хто питає (`body.to`).
+ * Тобто це не читання чужого, а винесення чужого назовні.
+ *
+ * Сцена не шле пошти й не потребує заглушки транспорту: гість фікстури не має
+ * адреси, тож своя фактура доходить до 422 «немає куди слати» — тобто ПРОЙШЛА
+ * перевірку належності й спинилась пізніше. Чужа дає 404. Два різні числа на
+ * двох різних шляхах — і жодного листа.
  */
 import assert from 'node:assert';
 import fs from 'node:fs';
@@ -50,6 +64,8 @@ const { getSql } = await import('@core/db/async.ts');
 const { runWithOrganization } = await import('@core/auth/tenant-context.ts');
 const { seedTwoProperties, seedNeighbourOrganization } = await import('@core/fixtures/two-properties.ts');
 const { invoicePdf } = await import('./[id]/pdf/route.ts');
+const { invoiceIsdoc } = await import('./[id]/isdoc/route.ts');
+const { invoiceEmail } = await import('./[id]/email/route.ts');
 
 const sql = getSql();
 const fx = await seedTwoProperties();
@@ -113,11 +129,53 @@ const atHome = await render('__pdf__theirs', neighbour.organizationId);
 say(atHome.status === 200 && atHome.head === '%PDF',
   `та сама фактура під своїм рахунком віддає PDF (статус ${atHome.status}) — тобто 404 вище про належність, а не про поломку`);
 
+// ── ISDOC: той самий документ, той самий шов ──────────────────────────────
+
+const isdoc = (id: string, organizationId: string) => runWithOrganization(organizationId, async () => {
+  const res = await invoiceIsdoc(
+    { url: `http://local/api/invoices/${id}/isdoc` } as never,
+    { params: Promise.resolve({ id }) } as never);
+  return { status: res.status, text: await res.text() };
+});
+
+// ISDOC зрізає дефіси з номера («ISDOC ID: strip dashes» в `isdoc.ts`), тож у
+// документі номер виглядає інакше, ніж у базі. Твердження питає обидві форми —
+// інакше воно перевіряло б написання, а не наявність. Знайдено прогоном: перша
+// редакція шукала «INV-MINE-1» і почервоніла на цілком правильному ISDOC.
+const noDashes = (n: string) => n.replaceAll('-', '');
+const isdocMine = await isdoc('__pdf__mine', fx.organizationId);
+say(isdocMine.status === 200
+  && (isdocMine.text.includes('INV-MINE-1') || isdocMine.text.includes(noDashes('INV-MINE-1'))),
+  `свій ISDOC віддається зі своїм номером (статус ${isdocMine.status})`);
+
+const isdocTheirs = await isdoc('__pdf__theirs', fx.organizationId);
+say(isdocTheirs.status === 404, `ISDOC сусіднього рахунку — 404, отримали ${isdocTheirs.status}`);
+say(!isdocTheirs.text.includes('INV-NEIGHBOUR') && !isdocTheirs.text.includes(noDashes('INV-NEIGHBOUR-1')),
+  'номера чужої фактури в ISDOC-відповіді немає — в жодній із двох форм');
+
+// ── Лист: 404 ДО того, як зʼявиться адресат ───────────────────────────────
+
+const email = (id: string, organizationId: string) => runWithOrganization(organizationId, async () => {
+  const res = await invoiceEmail(
+    { url: `http://local/api/invoices/${id}/email`, json: async () => ({}) } as never,
+    { params: Promise.resolve({ id }) } as never);
+  return { status: res.status, text: (await res.text()).slice(0, 300) };
+});
+
+const mailTheirs = await email('__pdf__theirs', fx.organizationId);
+say(mailTheirs.status === 404,
+  `лист із фактурою сусіднього рахунку — 404, отримали ${mailTheirs.status}`);
+
+const mailMine = await email('__pdf__mine', fx.organizationId);
+say(mailMine.status === 422,
+  `своя фактура доходить до «немає куди слати» (422), отримали ${mailMine.status}`
+  + ' — тобто 404 вище саме про належність, а не про те, що маршрут відмовляє завжди');
+
 fs.rmSync(tmp, { recursive: true, force: true });
 
 if (fails.length) {
   console.log(`\ninvoice-pdf-scope: ${fails.length} червоних`);
   process.exit(1);
 }
-console.log('invoice-pdf-scope: своя фактура — PDF, чужа — 404, і та сама чужа рендериться у себе');
+console.log('invoice-pdf-scope: PDF, ISDOC і лист — лише свої; чужа фактура 404 у всіх трьох');
 assert.ok(true);
