@@ -91,6 +91,12 @@ export async function getRegistryEntries(organizationId: string, filters: Regist
   const sql = getSql();
   const monthStart = `${filters.month}-01`;
   const monthEnd = nextMonth(filters.month);
+  // Вісь — у ПЕРШОМУ шаблоні, поруч із віссю орендаря, а не дописана `+=`
+  // нижче. Причина не в стилі: гейт осі склеює оператор із вузла, де стоїть
+  // `FROM`, і підстановка, дописана окремим оператором, до нього не доходить —
+  // запит рахувався б «невизначеним», тобто виглядав би проскоупленим і
+  // лічився б як недоведений.
+  const scope = propertyScopeFilter(filters.scope, 'r');
 
   let query = `
     SELECT
@@ -129,13 +135,9 @@ export async function getRegistryEntries(organizationId: string, filters: Regist
     JOIN reservations r ON rg.reservation_id = r.id
     JOIN properties p ON r.property_id = p.id
     LEFT JOIN units u ON r.unit_id = u.id
-    WHERE ${ORG_SCOPE} AND r.check_in >= ? AND r.check_in < ?
+    WHERE ${ORG_SCOPE} AND ${scope.sql} AND r.check_in >= ? AND r.check_in < ?
   `;
-  const params: (string | number)[] = [organizationId, monthStart, monthEnd];
-
-  const scope = propertyScopeFilter(filters.scope, 'r');
-  query += ` AND ${scope.sql}`;
-  params.push(...scope.params);
+  const params: (string | number)[] = [organizationId, ...scope.params, monthStart, monthEnd];
 
   if (filters.foreignersOnly) {
     query += " AND UPPER(rg.nationality) NOT IN ('CZ', 'CZE') AND rg.nationality IS NOT NULL";
@@ -164,6 +166,12 @@ export async function getRegistrySummary(
   const sql = getSql();
   const monthStart = `${filters.month}-01`;
   const monthEnd = nextMonth(filters.month);
+  // Вісь — у ПЕРШОМУ шаблоні, поруч із віссю орендаря, а не дописана `+=`
+  // нижче. Причина не в стилі: гейт осі склеює оператор із вузла, де стоїть
+  // `FROM`, і підстановка, дописана окремим оператором, до нього не доходить —
+  // запит рахувався б «невизначеним», тобто виглядав би проскоупленим і
+  // лічився б як недоведений.
+  const scope = propertyScopeFilter(filters.scope, 'r');
 
   let query = `
     SELECT
@@ -176,13 +184,9 @@ export async function getRegistrySummary(
     FROM reservation_guests rg
     JOIN reservations r ON rg.reservation_id = r.id
     JOIN properties p ON r.property_id = p.id
-    WHERE ${ORG_SCOPE} AND r.check_in >= ? AND r.check_in < ?
+    WHERE ${ORG_SCOPE} AND ${scope.sql} AND r.check_in >= ? AND r.check_in < ?
   `;
-  const params: (string | number)[] = [organizationId, monthStart, monthEnd];
-
-  const scope = propertyScopeFilter(filters.scope, 'r');
-  query += ` AND ${scope.sql}`;
-  params.push(...scope.params);
+  const params: (string | number)[] = [organizationId, ...scope.params, monthStart, monthEnd];
 
   query += ' AND COALESCE(rg.is_hidden, FALSE) = FALSE';
 
