@@ -228,3 +228,33 @@ export async function listBlocksOf(organizationId: string, scope: PropertyScope)
     [organizationId, ...inScope.params],
   );
 }
+
+/**
+ * Скільки чернеток чекає — число для бейджа на календарі й у бічному меню.
+ *
+ * ── Чому лічильник живе поруч зі списком ────────────────────────────────
+ *
+ * Шапка маршруту стверджує: «рахується те саме, що показує сторінка за
+ * кліком». Це твердження про ДВА запити одразу, і тримати його можна лише
+ * тримаючи їх поруч: клік веде на `/app/bookings?status=draft`, а той список —
+ * `listReservationRows` двома функціями вище. Щойн сторінка взяла вісь
+ * обʼєкта, бейдж без осі почав казати «7» там, де сторінка показує «3»; ламала
+ * твердження не чиясь помилка, а переведення самої сторінки.
+ *
+ * Одна різниця між ними лишається НАВМИСНО і названа числом у сцені: бейдж не
+ * рахує фальшивих броней, які вливає iCal (гість «OTA block»), а сторінка їх
+ * показує. Це не розбіжність осі — це названий виняток.
+ */
+export async function countDraftsOf(organizationId: string, scope: PropertyScope) {
+  const inScope = propertyScopeFilter(scope, 'r');
+  const row = await getSql().row<{ count: number }>(
+    `SELECT COUNT(*) as count FROM reservations r
+       JOIN guests g ON g.id = r.guest_id
+      WHERE ${OWNED('r.')} AND ${inScope.sql}
+        AND r.status = 'draft'
+        AND LOWER(g.first_name || ' ' || g.last_name) NOT LIKE '%ota%block%'
+        AND LOWER(g.first_name || ' ' || g.last_name) NOT LIKE '%channel%block%'`,
+    [organizationId, ...inScope.params],
+  );
+  return Number(row?.count || 0);
+}
