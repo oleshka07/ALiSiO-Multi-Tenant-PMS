@@ -19,7 +19,6 @@
   "src/app/api/package-offers/[id]/route.ts": 2,
   "src/app/api/package-offers/route.ts": 3,
   "src/app/api/payments/route.ts": 4,
-  "src/app/api/public/availability/route.ts": 3,
   "src/core/i18n/resolve.ts": 1,
   "src/lib/db.ts": 34,
   "src/modules/auth/api/platform.handlers.ts": 2,
