@@ -36,6 +36,7 @@
  */
 import { getSql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { propertyScopeFilter, type PropertyScope } from '@core/property-scope';
 
 /** Statuses that mean a person is actually coming or has come. */
 const LIVE = "('confirmed', 'tentative', 'checked_in', 'checked_out')";
@@ -75,9 +76,15 @@ export interface DayCloseRow {
   by_rate: { vat_rate: number; gross: number; net: number; tax: number }[];
 }
 
-/** Everyone in the house on this date. */
-export async function houseList(date: string): Promise<StayRow[]> {
+/**
+ * Everyone in the house on this date — В ОДНОМУ будинку (INC-029).
+ *
+ * Аркуш друкують на початку зміни, і зміна належить будинку: до правки він
+ * зводив в один папір гостей обох обʼєктів рахунку.
+ */
+export async function houseList(date: string, scope: PropertyScope): Promise<StayRow[]> {
   const organizationId = await requireOrganizationId();
+  const inScope = propertyScopeFilter(scope, 'r');
   const rows = await getSql().rows<any>(
     `SELECT r.id AS reservation_id, u.code AS unit_code, u.name AS unit_name,
             c.name AS category,
@@ -88,11 +95,11 @@ export async function houseList(date: string): Promise<StayRow[]> {
        LEFT JOIN units u ON u.id = r.unit_id
        LEFT JOIN categories c ON c.id = u.category_id
        LEFT JOIN guests g ON g.id = r.guest_id
-      WHERE r.organization_id = ?
+      WHERE r.organization_id = ? AND ${inScope.sql}
         AND r.status IN ${LIVE}
         AND r.check_in <= ? AND r.check_out > ?
       ORDER BY u.code, u.name`,
-    [organizationId, date, date],
+    [organizationId, ...inScope.params, date, date],
   );
   return rows.map(toStay);
 }
@@ -108,9 +115,10 @@ export async function houseList(date: string): Promise<StayRow[]> {
  * `ordered` counts breakfast bought as a service on top. Both are shown,
  * because the kitchen needs the headcount and reception needs to know why.
  */
-export async function breakfastList(date: string): Promise<BreakfastRow[]> {
+export async function breakfastList(date: string, scope: PropertyScope): Promise<BreakfastRow[]> {
   const organizationId = await requireOrganizationId();
   const sql = getSql();
+  const inScope = propertyScopeFilter(scope, 'r');
 
   const rows = await sql.rows<any>(
     `SELECT r.id AS reservation_id, u.code AS unit_code, u.name AS unit_name,
@@ -122,14 +130,21 @@ export async function breakfastList(date: string): Promise<BreakfastRow[]> {
        LEFT JOIN units u ON u.id = r.unit_id
        LEFT JOIN categories c ON c.id = u.category_id
        LEFT JOIN guests g ON g.id = r.guest_id
-      WHERE r.organization_id = ?
+      WHERE r.organization_id = ? AND ${inScope.sql}
         AND r.status IN ${LIVE}
         AND r.check_in < ? AND r.check_out >= ?
       ORDER BY u.code, u.name`,
-    [organizationId, date, date],
+    [organizationId, ...inScope.params, date, date],
   );
   if (rows.length === 0) return [];
 
+  // Правила каналу лишаються по РАХУНКУ свідомо, і це не пропуск осі.
+  // `channel_rate_rules.property_id` — NULLABLE, і NULL там означає «правило
+  // всього рахунку»: додати сюди фільтр обʼєкта — це тихо втратити саме ті
+  // рядки, на яких тримається дефолт (той самий звір, що рядок без орендаря,
+  // інваріант 12). Що означає NULL у цій таблиці — питання власника таблиці
+  // (сесія 2, `modules/channels`), а не аркуша дня; до відповіді правило
+  // читається як загальне, і саме так воно й задумане.
   const rules = await sql.rows<any>(
     'SELECT channel, includes_breakfast FROM channel_rate_rules WHERE organization_id = ?',
     [organizationId],
@@ -145,15 +160,17 @@ export async function breakfastList(date: string): Promise<BreakfastRow[]> {
   // rather than joined into the query above: a stay may have several orders,
   // and a join would multiply the rows and the headcount with them.
   const ordered = new Map<string, number>();
+  const onService = propertyScopeFilter(scope, 's');
   const orders = await sql.rows<any>(
     `SELECT o.reservation_id, SUM(o.quantity) AS qty
        FROM booking_service_orders o
        JOIN additional_services s ON s.id = o.service_id
       WHERE o.status <> 'cancelled'
         AND o.service_date = ?
+        AND ${onService.sql}
         AND s.property_id IN (SELECT id FROM properties WHERE organization_id = ?)
       GROUP BY o.reservation_id`,
-    [date, organizationId],
+    [date, ...onService.params, organizationId],
   );
   for (const o of orders) ordered.set(String(o.reservation_id), Number(o.qty) || 0);
 
@@ -168,9 +185,10 @@ export async function breakfastList(date: string): Promise<BreakfastRow[]> {
   });
 }
 
-/** Keys out (arrivals) and keys in (departures) on this date. */
-export async function keyList(date: string): Promise<KeyRow[]> {
+/** Keys out (arrivals) and keys in (departures) on this date — В ОДНОМУ будинку. */
+export async function keyList(date: string, scope: PropertyScope): Promise<KeyRow[]> {
   const organizationId = await requireOrganizationId();
+  const inScope = propertyScopeFilter(scope, 'r');
   const rows = await getSql().rows<any>(
     `SELECT r.id AS reservation_id, u.code AS unit_code, u.name AS unit_name,
             c.name AS category,
@@ -182,11 +200,11 @@ export async function keyList(date: string): Promise<KeyRow[]> {
        LEFT JOIN units u ON u.id = r.unit_id
        LEFT JOIN categories c ON c.id = u.category_id
        LEFT JOIN guests g ON g.id = r.guest_id
-      WHERE r.organization_id = ?
+      WHERE r.organization_id = ? AND ${inScope.sql}
         AND r.status IN ${LIVE}
         AND (r.check_in = ? OR r.check_out = ?)
       ORDER BY direction DESC, u.code, u.name`,
-    [date, organizationId, date, date],
+    [date, organizationId, ...inScope.params, date, date],
   );
   return rows.map((r) => ({ ...toStay(r), direction: r.direction as 'in' | 'out' }));
 }

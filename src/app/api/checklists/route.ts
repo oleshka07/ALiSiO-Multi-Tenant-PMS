@@ -1,6 +1,8 @@
-import { NextResponse } from 'next/server';
-import { getSql } from '@core/db/async';
+import { NextRequest, NextResponse } from 'next/server';
+import { dirtyUnitsForShift } from '@properties';
+import { requestPropertyScope } from '@core/auth/property-scope';
 import { withActor, type Actor } from '@core/auth/session';
+import { handleError } from '@core/http/errors';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -20,19 +22,22 @@ import { withActor, type Actor } from '@core/auth/session';
  * are something an organization defines. A `checklists` table with per-item
  * rules is the actual feature, and it is not this change.
  */
-export const GET = withActor(async (_req, _ctx, actor: Actor) => {
+export const GET = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
-    const sql = getSql();
-
-    // Scoped: unqualified this listed every hotel's dirty rooms.
-    const dirtyUnits = await sql.rows<any>(`
-      SELECT u.id, u.code, u.name, u.cleaning_status, u.zone
-      FROM units u
-      JOIN properties p ON p.id = u.property_id
-      WHERE p.organization_id = ?
-        AND u.cleaning_status IN ('dirty', 'in_progress')
-      ORDER BY u.code ASC
-    `, [actor.organizationId]);
+    // Який ОБʼЄКТ, а не лише який орендар.
+    //
+    // Тут раніше стояв запит із коментарем «Scoped: unqualified this listed
+    // every hotel's dirty rooms» — і він правдивий рівно наполовину: чужий
+    // РАХУНОК справді не видно, а сусідній ОБʼЄКТ того самого рахунку видно
+    // повністю. Покоївка другого будинку відкривала свій чекліст і бачила
+    // кімнати першого. Перший підтверджений випадок класу «вісь орендаря,
+    // вдягнена як вісь обʼєкта» (INC-029, звуження означення 09.09.2026).
+    //
+    // SQL пішов у `properties/data/cleaning.repo.ts`, де вже живуть усі
+    // читачі стану прибирання: маршрут не пише SQL до `units`, він питає
+    // фасад — так само, як housekeeping.
+    const scope = await requestPropertyScope(request, actor.organizationId);
+    const dirtyUnits = await dirtyUnitsForShift(actor.organizationId, scope);
 
     return NextResponse.json({
       success: true,
@@ -40,8 +45,8 @@ export const GET = withActor(async (_req, _ctx, actor: Actor) => {
       dirtyUnits,
       checklists: [],
     });
-  } catch (error: any) {
-    console.error('GET /api/checklists error:', error?.message || error);
-    return NextResponse.json({ error: 'Failed to load checklists' }, { status: 500 });
+  } catch (error: unknown) {
+    // Чужий обʼєкт у параметрі — названа відмова 404; решта — 500 із логом.
+    return handleError('checklists', error);
   }
 });

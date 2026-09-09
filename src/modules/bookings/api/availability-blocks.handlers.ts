@@ -1,30 +1,29 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { noteAvailabilityChanged, lastNight } from '@channels/outbox';
 import { NextResponse } from 'next/server';
+import { requestPropertyScope } from '@core/auth/property-scope';
 import { getSql } from '@core/db/async';
 import { withActor, type Actor } from '@core/auth/session';
 import { ownedUnit } from '../data/owned.repo';
-import { serverError } from '@core/http/errors';
+import { listBlocksOf } from '../data/lists.repo';
+import { serverError, handleError } from '@core/http/errors';
 
-export const listAvailabilityBlocks = withActor(async (_req, _ctx, actor: Actor) => {
+export const listAvailabilityBlocks = withActor(async (request: Request, _ctx, actor: Actor) => {
   try {
-    const sql = getSql();
-
-    // Scope through the unit's property rather than the denormalized column:
-    // rows inserted before organization_id was set stay visible to their owner.
-    const blocks = await sql.rows<any>(`
-      SELECT b.id, b.unit_id, b.date_from, b.date_to, b.reason, b.notes, b.hostex_code, b.created_at
-      FROM availability_blocks b
-      JOIN units u ON b.unit_id = u.id
-      JOIN properties p ON u.property_id = p.id
-      WHERE p.organization_id = ?
-      ORDER BY b.date_from ASC
-    `, [actor.organizationId]);
-
-    return NextResponse.json(blocks);
+    // Який ОБʼЄКТ, а не лише який орендар (INC-029): закриття номера бачить
+    // той, хто цим номером опікується. Запит — у `data/lists.repo.ts`, там
+    // же довід про область від НОМЕРА, а не від денормалізованої колонки.
+    const scope = await requestPropertyScope(request, actor.organizationId);
+    return NextResponse.json(await listBlocksOf(actor.organizationId, scope));
   } catch (e: any) {
-    console.error('GET /api/availability-blocks error:', e.message);
-    return NextResponse.json([]);
+    // Названа відмова їде своїм статусом (інваріант 6, Ц43). Тут це не
+    // дрібниця: чужий `property_id` кидає `PropertyNotFound` — 404, — і
+    // глухий 500 перетворював «не той будинок» на «сервер зламався».
+    //
+    // Тут стояло `return NextResponse.json([])` — найгірша з трьох форм:
+    // оператор бачив «закриттів немає» замість будь-якої відмови, і в логах
+    // лишався тільки `e.message` без стека.
+    return handleError('modules/bookings/api/availability-blocks listAvailabilityBlocks', e);
   }
 });
 

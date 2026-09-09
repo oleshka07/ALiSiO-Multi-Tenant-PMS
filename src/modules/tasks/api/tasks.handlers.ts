@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireOrganizationId } from '@core/auth/tenant-context';
+import { requestPropertyScope } from '@core/auth/property-scope';
 import * as tasksRepo from '../data/tasks.repo';
 
 type IdParams = { params: Promise<{ id: string }> };
@@ -21,7 +23,10 @@ export async function listTasks(request: NextRequest): Promise<NextResponse> {
       filters.parent_id = parentId === '' ? null : parentId!;
     }
 
-    const rows = await tasksRepo.listTasks(filters);
+    // Який ОБʼЄКТ, а не лише який орендар (INC-029). Спільні задачі рахунку
+    // (без будинку) лишаються видимими з кожного обʼєкта — двері О14.
+    const scope = await requestPropertyScope(request, await requireOrganizationId());
+    const rows = await tasksRepo.listTasks(scope, filters);
     return NextResponse.json(rows);
   } catch (error) {
     console.error('GET /api/tasks error:', error);

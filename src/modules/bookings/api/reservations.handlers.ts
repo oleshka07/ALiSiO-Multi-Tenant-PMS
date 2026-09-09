@@ -7,163 +7,29 @@ import { writeBookingAudit, getBookingActor } from './audit-log.handlers';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
 import { ownedUnit } from '../data/owned.repo';
 import { getSql } from '@core/db/async';
-import { serverError } from '@core/http/errors';
+import { serverError, handleError } from '@core/http/errors';
 import { percentOf } from '@core/money';
-import { CONFLICTING_SQL, CANCELLED_BY_CLIENT_SQL, orderByClause } from '../data/list-filters';
+import { requestPropertyScope } from '@core/auth/property-scope';
+import { listReservationRows } from '../data/lists.repo';
 
 export const listReservations = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
-    const sql = getSql();
+    // Область обʼєкта ТИПОМ (INC-029). Тут уже був `?property_id=`, і він
+    // працював, але: (1) статично не читався — фрагмент, приклеєний за межами
+    // літерала, гейт бачить як «не доведено»; (2) не памʼятав вибір оператора
+    // з куки, тож перехід між екранами губив обʼєкт; (3) чужий id мовчки давав
+    // порожньо замість 404. Двері одні на всі читання.
+    //
+    // Сам запит — `data/lists.repo.ts`: із маршруту його не засвідчити, бо
+    // `withActor` кличе `cookies()`, а поза запитом Next це виняток.
+    const scope = await requestPropertyScope(request, actor.organizationId);
     const { searchParams } = new URL(request.url);
-
-    const status = searchParams.get('status') || '';
-    const category = searchParams.get('category') || '';
-    const search = searchParams.get('search') || '';
-    const excludeChildren = searchParams.get('exclude_children') === '1';
-
-    let query = `
-      SELECT
-        r.id, r.check_in, r.check_out, r.nights, r.adults, r.children,
-        r.status, r.payment_status, r.source, r.total_price, r.currency, r.notes, r.internal_notes, r.created_at, r.guest_page_token,
-        r.parent_id, r.commission_amount,
-        r.city_tax_amount, r.city_tax_included, r.city_tax_paid,
-        r.registration_status, r.hostex_channel_type, r.hostex_reservation_code, r.external_uid,
-        r.is_multi_room, r.multi_room_marker,
-        r.utm_source, r.utm_medium, r.utm_campaign, r.utm_term, r.utm_content,
-        -- Знижка їде списком, а не тільки детальним запитом: модалка бронювання
-        -- відкривається з рядка списку, і без цих двох колонок вона показувала б
-        -- «0 %» на броні, де знижка є, — і перший же blur затер би її.
-        r.lodging_discount_percent, r.lodging_discount_reason,
-        r.breakfast_included,
-        -- Платник (0093): картка відкривається з рядка списку і показує, на
-        -- кого документ, не чекаючи детального запиту.
-        r.company_id, r.invoice_company_name,
-        (SELECT COUNT(*) FROM reservation_sub_bookings WHERE reservation_id = r.id) as sub_booking_count,
-        g.id as guest_id, g.first_name, g.last_name, g.email as guest_email, g.phone as guest_phone, g.nationality,
-        u.id as unit_id, u.name as unit_name, u.code as unit_code, u.is_pool as unit_is_pool,
-        c.id as category_id, c.name as category_name, c.type as category_type,
-        ut.id as unit_type_id, ut.name as unit_type_name,
-        r.property_id, p.name as property_name
-      FROM reservations r
-      JOIN guests g ON r.guest_id = g.id
-      LEFT JOIN units u ON r.unit_id = u.id
-      LEFT JOIN categories c ON u.category_id = c.id
-      -- Тип береться від НОМЕРА, а якщо номера ще немає — від самої броні.
-      --
-      -- Бронь із каналу приходить із власним unit_type_id і без кімнати. Йти
-      -- лише через units означало б показати рецепції «призначити номер», не
-      -- сказавши ЯКОГО типу — тобто попросити зробити вибір і сховати єдине,
-      -- що для нього потрібне.
-      --
-      -- (Без бектиків: увесь запит — шаблонний рядок JS.)
-      LEFT JOIN unit_types ut ON ut.id = COALESCE(u.unit_type_id, r.unit_type_id)
-      JOIN properties p ON r.property_id = p.id
-      WHERE p.organization_id = ?
-    `;
-
-    const params: string[] = [actor.organizationId];
-
-    // Область обʼєкта (BUILD-PLAN, Блок 1): обраний обʼєкт звужує список,
-    // «Усі обʼєкти» показує все з колонкою готелю. Чужий id дає порожньо —
-    // організація вже стоїть у WHERE вище, це не друга перевірка власності.
-    const propertyFilter = searchParams.get('property_id') || '';
-    if (propertyFilter) {
-      query += ' AND r.property_id = ?';
-      params.push(propertyFilter);
-    }
-
-    // Hide child reservations on Bookings list page, but show them on Calendar
-    if (excludeChildren) {
-      query += ' AND r.parent_id IS NULL';
-    }
-
-    // Два незалежні фільтри: «без скасованих» звужує, «статус» звужує далі.
-    // Раніше `else if` мовчки вимикав статус, щойно стояв exclude_cancelled.
-    const excludeCancelled = searchParams.get('exclude_cancelled') === '1';
-    if (excludeCancelled) {
-      query += " AND r.status NOT IN ('cancelled', 'no_show')";
-    }
-    if (status) {
-      query += ' AND r.status = ?';
-      params.push(status);
-    }
-
-    if (category) {
-      query += ' AND c.type = ?';
-      params.push(category);
-    }
-
-    if (search) {
-      // Код броні на боці каналу (BDC-…) — теж ключ пошуку: гість читає
-      // його з листа Booking, а не називає прізвище.
-      query += ` AND (
-        g.first_name LIKE ? OR g.last_name LIKE ? OR
-        (g.first_name || ' ' || g.last_name) LIKE ? OR
-        u.name LIKE ? OR u.code LIKE ? OR r.id LIKE ? OR r.external_uid LIKE ?
-      )`;
-      const like = `%${search}%`;
-      params.push(like, like, like, like, like, like, like);
-    }
-
-    const paymentStatus = searchParams.get('payment_status') || '';
-    if (paymentStatus) {
-      query += ' AND r.payment_status = ?';
-      params.push(paymentStatus);
-    }
-
-    const dateFrom = searchParams.get('date_from') || '';
-    if (dateFrom) {
-      query += ' AND r.check_in >= ?';
-      params.push(dateFrom);
-    }
-
-    const dateTo = searchParams.get('date_to') || '';
-    if (dateTo) {
-      query += ' AND r.check_in <= ?';
-      params.push(dateTo);
-    }
-
-    // Hide bookings already checked out before given date. Use this for
-    // "current + upcoming" lists where stale departures are noise.
-    const checkOutFrom = searchParams.get('check_out_from') || '';
-    if (checkOutFrom) {
-      query += ' AND r.check_out >= ?';
-      params.push(checkOutFrom);
-    }
-
-    const sourceFilter = searchParams.get('source') || '';
-    if (sourceFilter) {
-      if (sourceFilter === 'widget') {
-        query += " AND (r.source = 'widget' OR r.source LIKE 'widget:%')";
-      } else {
-        query += ' AND r.source = ?';
-        params.push(sourceFilter);
-      }
-    }
-
-    // Filter by specific unit (e.g. pool unit for staging strip)
-    const unitIdFilter = searchParams.get('unit_id') || '';
-    if (unitIdFilter) {
-      query += ' AND r.unit_id = ?';
-      params.push(unitIdFilter);
-    }
-
-    // Два фільтри-твердження (Блок 4 §2.5, форма — Hoteliera): «показати
-    // конфліктні» — двом бронням продано одну кімнату на одну ніч;
-    // «скасовані клієнтом» — скасування прийшло не з нашої стійки. Обидва
-    // разом звужують, а не заміняють одне одного: кожен — свій `AND`.
-    // SQL і його сцена — `data/list-filters.ts`.
-    if (searchParams.get('conflicting') === '1') query += ` AND (${CONFLICTING_SQL})`;
-    if (searchParams.get('cancelled_by') === 'client') query += ` AND (${CANCELLED_BY_CLIENT_SQL})`;
-
-    query += orderByClause(searchParams.get('sort'), searchParams.get('dir'));
-
-    const rows = await sql.rows<any>(query, params);
-
-    return NextResponse.json(rows);
+    return NextResponse.json(await listReservationRows(actor.organizationId, scope, searchParams));
   } catch (error) {
-    console.error('GET /api/bookings error:', error);
-    return NextResponse.json({ error: 'Failed to fetch bookings' }, { status: 500 });
+    // Названа відмова їде своїм статусом (інваріант 6, Ц43). Тут це не
+    // дрібниця: чужий `property_id` кидає `PropertyNotFound` — 404, — і
+    // глухий 500 перетворював «не той будинок» на «сервер зламався».
+    return handleError('modules/bookings/api/reservations listReservations', error);
   }
 });
 

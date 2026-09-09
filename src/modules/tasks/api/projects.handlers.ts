@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireOrganizationId } from '@core/auth/tenant-context';
+import { requestPropertyScope } from '@core/auth/property-scope';
 import * as projectsRepo from '../data/projects.repo';
 
 type IdParams = { params: Promise<{ id: string }> };
 
-export async function listProjects(): Promise<NextResponse> {
+export async function listProjects(request: NextRequest): Promise<NextResponse> {
   try {
-    const rows = await projectsRepo.listProjects();
+    const scope = await requestPropertyScope(request, await requireOrganizationId());
+    const rows = await projectsRepo.listProjects(scope);
     return NextResponse.json(rows);
   } catch (error) {
     console.error('GET /api/tasks/projects error:', error);

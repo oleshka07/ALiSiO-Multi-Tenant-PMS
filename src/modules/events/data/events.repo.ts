@@ -12,6 +12,7 @@
  */
 import { getSql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { propertyScopeFilter, type PropertyScope } from '@core/property-scope';
 import { pickRate, type TaxRate } from '@invoicing/kernel';
 import { timesOverlap, minutesBetween, suggestedBlockPrice, type BlockPrices } from '../domain/event-pricing';
 import { openFolio as createFolio, addCharges } from '@invoicing/kernel';
@@ -54,14 +55,25 @@ export function parseBlockPrices(raw: string | null | undefined): BlockPrices {
   } catch { return {}; }
 }
 
-export async function listSpaces(opts?: { all?: boolean }): Promise<EventSpace[]> {
+/**
+ * Зали ОДНОГО обʼєкта, або всіх — сказано типом (INC-029).
+ *
+ * `event_spaces` була серед таблиць із нулем названих читань: фільтр стояв
+ * лише по орендарю, хоч `property_id` тут `NOT NULL`. Готель із двома
+ * будинками бачив у списку зали обох.
+ */
+export async function listSpaces(scope: PropertyScope, opts?: { all?: boolean }): Promise<EventSpace[]> {
   const organizationId = await requireOrganizationId();
   // `all` is the settings screen editing retired halls; everyone else sees
-  // only what can still be sold.
+  // only what can still be sold. Це ІНША вісь, ніж область: вона розширює
+  // вибірку за станом, а не за обʼєктом.
   const active = opts?.all ? '' : 'AND is_active = TRUE';
+  const inScope = propertyScopeFilter(scope, 'event_spaces');
   return await getSql().rows<EventSpace>(
-    `SELECT * FROM event_spaces WHERE organization_id = ? ${active} ORDER BY sort_order, name`,
-    [organizationId]);
+    `SELECT * FROM event_spaces
+      WHERE organization_id = ? AND ${inScope.sql} ${active}
+      ORDER BY sort_order, name`,
+    [organizationId, ...inScope.params]);
 }
 
 export async function saveSpace(input: {
@@ -109,12 +121,16 @@ export async function saveSpace(input: {
   return id;
 }
 
-export async function listAddons(opts?: { all?: boolean }) {
+/** Доповнення ОДНОГО обʼєкта, або всіх — сказано типом (INC-029). */
+export async function listAddons(scope: PropertyScope, opts?: { all?: boolean }) {
   const organizationId = await requireOrganizationId();
   const active = opts?.all ? '' : 'AND is_active = TRUE';
+  const inScope = propertyScopeFilter(scope, 'event_addons');
   return await getSql().rows<any>(
-    `SELECT * FROM event_addons WHERE organization_id = ? ${active} ORDER BY sort_order, name`,
-    [organizationId]);
+    `SELECT * FROM event_addons
+      WHERE organization_id = ? AND ${inScope.sql} ${active}
+      ORDER BY sort_order, name`,
+    [organizationId, ...inScope.params]);
 }
 
 export async function saveAddon(input: {
@@ -156,19 +172,28 @@ export async function saveAddon(input: {
   return id;
 }
 
-export async function listBookings(filter?: {
+/**
+ * Події ОДНОГО обʼєкта, або всіх — сказано типом (INC-029).
+ *
+ * Область стоїть у САМОМУ літералі, а не в масиві `where`, і це не стиль.
+ * Умова, зібрана підстановкою, статично не читається: гейт кладе такий
+ * оператор у кошик «невизначено», тобто «не доведено». Фрагмент від
+ * `propertyScopeFilter` у тілі запиту видно і машині, і очам.
+ */
+export async function listBookings(scope: PropertyScope, filter?: {
   from?: string; to?: string; spaceId?: string;
 }): Promise<EventBooking[]> {
   const organizationId = await requireOrganizationId();
-  const where = ['b.organization_id = ?'];
-  const params: unknown[] = [organizationId];
-  if (filter?.from) { where.push('b.event_date >= ?'); params.push(filter.from); }
-  if (filter?.to) { where.push('b.event_date <= ?'); params.push(filter.to); }
-  if (filter?.spaceId) { where.push('b.space_id = ?'); params.push(filter.spaceId); }
+  const inScope = propertyScopeFilter(scope, 'b');
+  const extra: string[] = [];
+  const params: unknown[] = [organizationId, ...inScope.params];
+  if (filter?.from) { extra.push('AND b.event_date >= ?'); params.push(filter.from); }
+  if (filter?.to) { extra.push('AND b.event_date <= ?'); params.push(filter.to); }
+  if (filter?.spaceId) { extra.push('AND b.space_id = ?'); params.push(filter.spaceId); }
   return await getSql().rows<EventBooking>(
     `SELECT b.*, s.name AS space_name, s.code AS space_code
        FROM event_bookings b JOIN event_spaces s ON s.id = b.space_id
-      WHERE ${where.join(' AND ')}
+      WHERE b.organization_id = ? AND ${inScope.sql} ${extra.join(' ')}
       ORDER BY b.event_date, b.time_from`,
     params);
 }
