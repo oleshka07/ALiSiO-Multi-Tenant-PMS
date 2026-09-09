@@ -3,8 +3,6 @@
 import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/State';
 import { ArrowLeft, RefreshCw, Loader2, ExternalLink, AlertCircle, Clock } from 'lucide-react';
 
@@ -76,7 +74,6 @@ interface Connection { id: string; provider: string; environment: string; isEnab
 
 export default function ChannelsPage() {
   const tUi = useT();
-  const onMenuClick = useMobileMenu();
 
   const [connections, setConnections] = useState<Connection[]>([]);
   const [current, setCurrent] = useState<string | null>(null);
@@ -163,7 +160,6 @@ export default function ChannelsPage() {
 
   return (
     <>
-      <Header title={tUi('Канали (OTA)')} onMenuClick={onMenuClick} />
       <div className="app-content">
         <div className="page-header">
           <div>

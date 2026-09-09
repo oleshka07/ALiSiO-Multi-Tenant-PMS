@@ -95,7 +95,7 @@ async function raw(method, path, body) {
 // Через НАШ клієнт, а не сирим fetch: лише так відповідь лягає зразком у
 // docs/vendor/channex/live/ (інваріант 28). Сирий `raw()` нижче лишається
 // для того, що клієнт робити не вміє й не має — створення й видалення проби.
-const { recordVendorResponses } = await import('@channels');
+const { recordVendorResponses } = await import('@channels/live');
 recordVendorResponses(sampleRecorder());
 // До `--confirm` дивимось сирим: двері модуля ходять до вендора й пишуть
 // дзеркало, а це вже дія — звіт її не робить.
@@ -121,7 +121,7 @@ if (!CONFIRM) {
 
 // ── Наш бік: пари з дзеркала, щоб змапити хоч одну ─────────────────────────
 const { runWithOrganization } = await import('@core/auth/tenant-context');
-const { channelConnection, connectionMirror, refreshConnectionChannelsFor } = await import('@channels');
+const { channelConnection, connectionMirror, refreshConnectionChannelsFor } = await import('@channels/live');
 
 let created = null;
 try {

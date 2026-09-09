@@ -98,7 +98,14 @@ const BASELINE = {
 const WRITE_BASELINE = {
   'src/modules/auth/api/user.handlers.ts': 5,
   'src/lib/db.ts': 5,                                          // міграції: орендаря ще немає
-  'src/modules/channels/data/inbound-bookings.repo.ts': 4,
+  // 4 → 1 (09.09.2026, перебазування block-3): група кімнат із каналу додала
+  // шість писачів по id, і храповик це побачив. Замість підняти стелю —
+  // проскоуплено ВСІ writes цього файла орендарем зʼєднання
+  // (`conn.organizationId`): шлях стрічки не має сесії, орендар приходить
+  // із зʼєднання, і покладатись на самі лише політики тут — це та сама
+  // тиша, від якої храповик і поставлений. Лишився один — журнал
+  // `cm_inbound_bookings` за власним id у межах уже звіреного зʼєднання.
+  'src/modules/channels/data/inbound-bookings.repo.ts': 1,
   'src/modules/widget/api/widget-reserve.handlers.ts': 4,
   'src/modules/finance/api/categories.handlers.ts': 3,
   'src/modules/finance/api/operations.handlers.ts': 3,

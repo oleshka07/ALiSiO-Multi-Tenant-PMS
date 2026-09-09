@@ -217,7 +217,8 @@ const { runWithOrganization } = await import('@core/auth/tenant-context');
 const { getSql } = await import('@core/db/async');
 const { setFeature } = await import('@core/features');
 const { saveIntegrationCredentials } = await import('@core/integration-credentials');
-const { pullConnectionNow, recordVendorResponses } = await import('@channels');
+// Вузькі двері: цей прохід виконують у прод-образі, де next/* вирізано.
+const { pullConnectionNow, recordVendorResponses } = await import('@channels/live');
 recordVendorResponses(sampleRecorder());
 
 const sql = getSql();

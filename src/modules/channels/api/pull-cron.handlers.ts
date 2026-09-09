@@ -6,7 +6,9 @@ import { pullAllConnections, type PullAllReport } from '../data/pull-all';
 import { connectionInTenant } from '../data/connections.repo';
 import { unprocessedEvents, markEventsProcessed } from '../data/events.repo';
 import { channelsSyncedAt } from '../data/channels.repo';
-import { refreshConnectionChannelsFor, channelsMirrorAgeMs } from './channels.handlers';
+// З `channels.ops`, не з `channels.handlers`: крон стрічки виконується в
+// прод-образі, де `next/*` вирізано (`check-entry-imports`).
+import { refreshConnectionChannelsFor, channelsMirrorAgeMs } from './channels.ops';
 import type { PullReport } from '../data/pull-bookings';
 import { pullerFor, adapterFor } from '../providers';
 

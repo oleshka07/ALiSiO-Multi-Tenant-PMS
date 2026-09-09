@@ -7456,6 +7456,7 @@ function runMigrations(database: any) {
         console.log(`[DB] ${tbl}: fin_operation_id повернуто після перебудов`);
       }
     } catch { /* таблиці може не бути */ }
+  }
 
   // --- Migration 0100: рівень OTA — дзеркало каналів зʼєднання (К2) ---
   //

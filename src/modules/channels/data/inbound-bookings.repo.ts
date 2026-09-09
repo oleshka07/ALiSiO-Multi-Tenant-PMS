@@ -221,8 +221,8 @@ export async function applyRevision(
     // за минулий місяць вона має лишитись. Міняється лише статус.
     if (reservationId) {
       await sql.run(
-        "UPDATE reservations SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-        [reservationId],
+        "UPDATE reservations SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND organization_id = ?",
+        [reservationId, conn.organizationId],
       );
     }
   } else if (reservationId) {
@@ -247,7 +247,8 @@ export async function applyRevision(
     // заново. Живе 03.09.2026 (Д9): бронь із Twin переведена на Double
     // лишилась у кімнаті Twin, наявність рахувала Twin, канал отримав Double.
     if (rev.unitTypeId && before?.unit_id && before.unit_type_id && String(before.unit_type_id) !== rev.unitTypeId) {
-      await sql.run('UPDATE reservations SET unit_id = NULL WHERE id = ?', [reservationId]);
+      await sql.run('UPDATE reservations SET unit_id = NULL WHERE id = ? AND organization_id = ?',
+        [reservationId, conn.organizationId]);
     }
     // Ночі — ЗБЕРЕЖЕНА колонка: картка, список і турзбір читають її, а не
     // рахують. Перераховується з того, що тепер у рядку, а не з ревізії:
@@ -255,8 +256,9 @@ export async function applyRevision(
     // каналу 21→24.12 показувала «2 н.» на трьох ночах.
     const dates = await sql.row<any>('SELECT check_in, check_out FROM reservations WHERE id = ?', [reservationId]);
     if (dates) {
-      await sql.run('UPDATE reservations SET nights = ? WHERE id = ?',
-        [nightsBetween(isoDay(dates.check_in), isoDay(dates.check_out)), reservationId]);
+      await sql.run('UPDATE reservations SET nights = ? WHERE id = ? AND organization_id = ?',
+        [nightsBetween(isoDay(dates.check_in), isoDay(dates.check_out)),
+          reservationId, conn.organizationId]);
     }
     // Гість цієї броні — окремий рядок на канальну бронь (див. guestFor), тож
     // перейменування в каналі оновлює САМЕ ЙОГО, а не шукає збігів. Порожнє
@@ -269,8 +271,9 @@ export async function applyRevision(
                 last_name = COALESCE(?, last_name),
                 email = COALESCE(?, email),
                 updated_at = CURRENT_TIMESTAMP
-          WHERE id = (SELECT guest_id FROM reservations WHERE id = ?)`,
-        [rev.guestFirstName ?? null, rev.guestLastName ?? null, rev.guestEmail ?? null, reservationId],
+          WHERE id = (SELECT guest_id FROM reservations WHERE id = ? AND organization_id = ?)`,
+        [rev.guestFirstName ?? null, rev.guestLastName ?? null, rev.guestEmail ?? null,
+         reservationId, conn.organizationId],
       );
     }
   } else {
@@ -343,8 +346,8 @@ export async function applyRevision(
   await sql.run(
     `UPDATE cm_inbound_bookings
         SET reservation_id = ?, applied_at = CURRENT_TIMESTAMP
-      WHERE id = ?`,
-    [reservationId, journalId],
+      WHERE id = ? AND organization_id = ?`,
+    [reservationId, journalId, conn.organizationId],
   );
 
   return { result: 'applied', reservationId, created };
@@ -534,7 +537,8 @@ async function applyGroup(
       // новий не вміщає; майстер перейняв ІНШУ кімнату — номер належав тій,
       // якої вже немає. Бронь повертається у смугу «Без номера».
       if ((typeChanged || rekey) && master.unit_id) {
-        await sql.run('UPDATE reservations SET unit_id = NULL WHERE id = ?', [parentId]);
+        await sql.run('UPDATE reservations SET unit_id = NULL WHERE id = ? AND organization_id = ?',
+          [parentId, conn.organizationId]);
       }
     } else {
       await sql.run(
@@ -544,8 +548,9 @@ async function applyGroup(
     // Ночі — ЗБЕРЕЖЕНА колонка: перераховуються з того, що ТЕПЕР у рядку.
     const dates = await sql.row<any>('SELECT check_in, check_out FROM reservations WHERE id = ?', [parentId]);
     if (dates) {
-      await sql.run('UPDATE reservations SET nights = ? WHERE id = ?',
-        [nightsBetween(isoDay(dates.check_in), isoDay(dates.check_out)), parentId]);
+      await sql.run('UPDATE reservations SET nights = ? WHERE id = ? AND organization_id = ?',
+        [nightsBetween(isoDay(dates.check_in), isoDay(dates.check_out)),
+          parentId, conn.organizationId]);
     }
     if (rev.guestFirstName !== undefined || rev.guestLastName !== undefined || rev.guestEmail !== undefined) {
       await sql.run(
@@ -554,8 +559,9 @@ async function applyGroup(
                 last_name = COALESCE(?, last_name),
                 email = COALESCE(?, email),
                 updated_at = CURRENT_TIMESTAMP
-          WHERE id = (SELECT guest_id FROM reservations WHERE id = ?)`,
-        [rev.guestFirstName ?? null, rev.guestLastName ?? null, rev.guestEmail ?? null, parentId],
+          WHERE id = (SELECT guest_id FROM reservations WHERE id = ? AND organization_id = ?)`,
+        [rev.guestFirstName ?? null, rev.guestLastName ?? null, rev.guestEmail ?? null,
+         parentId, conn.organizationId],
       );
     }
   }
@@ -612,12 +618,14 @@ async function applyGroup(
     // Канал змінив ТИП кімнати, яку рецепція вже поставила в номер (Д9).
     if (room.unitTypeId && wasStay?.unit_id && wasStay.unit_type_id
         && String(wasStay.unit_type_id) !== room.unitTypeId) {
-      await sql.run('UPDATE reservations SET unit_id = NULL WHERE id = ?', [existing.id]);
+      await sql.run('UPDATE reservations SET unit_id = NULL WHERE id = ? AND organization_id = ?',
+        [existing.id, conn.organizationId]);
     }
     const nights = await sql.row<any>('SELECT check_in, check_out FROM reservations WHERE id = ?', [existing.id]);
     if (nights) {
-      await sql.run('UPDATE reservations SET nights = ? WHERE id = ?',
-        [nightsBetween(isoDay(nights.check_in), isoDay(nights.check_out)), existing.id]);
+      await sql.run('UPDATE reservations SET nights = ? WHERE id = ? AND organization_id = ?',
+        [nightsBetween(isoDay(nights.check_in), isoDay(nights.check_out)),
+          existing.id, conn.organizationId]);
     }
     handled.add(String(existing.id));
     live.push({ id: String(existing.id), room });
@@ -632,8 +640,8 @@ async function applyGroup(
     if (String(child.status) === 'cancelled') continue;
     const wasStay = await stayOf(child.id);
     await sql.run(
-      "UPDATE reservations SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-      [child.id]);
+      "UPDATE reservations SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND organization_id = ?",
+      [child.id, conn.organizationId]);
     await noteStay(wasStay);
   }
 
