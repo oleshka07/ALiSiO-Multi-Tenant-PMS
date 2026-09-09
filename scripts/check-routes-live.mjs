@@ -740,19 +740,32 @@ async function main() {
     // 404, але глухий `catch` ловив її разом із поломками бази і віддавав
     // «Внутрішня помилка» (інваріанти 5 і 6). Порожній масив гірший за
     // обидва: оператор бачить «закриттів немає» замість «не той будинок».
-    const AXIS_ROUTES = ['/api/bookings', '/api/booking-sources',
-      '/api/additional-services', '/api/availability-blocks'];
-    for (const route of AXIS_ROUTES) {
+    //
+    // Форма відповіді названа поруч із маршрутом: більшість віддає список, а
+    // бейдж чернеток — обʼєкт `{count}`. Перевіряти всіх «масивом» означало б,
+    // що бейдж або випаде з родини, або дасть хибне червоне.
+    const AXIS_ROUTES = [
+      ['/api/bookings', 'list'], ['/api/booking-sources', 'list'],
+      ['/api/additional-services', 'list'], ['/api/availability-blocks', 'list'],
+      ['/api/fees', 'list'], ['/api/guest-page-config', 'list'],
+      ['/api/booking/drafts-count', 'count'], ['/api/service-orders', 'wrapped'],
+    ];
+    const rightShape = (shape, v) => {
+      if (shape === 'list') return Array.isArray(v);
+      if (!v || typeof v !== 'object') return false;
+      return shape === 'count' ? typeof v.count === 'number' : Array.isArray(v.orders);
+    };
+    for (const [route, shape] of AXIS_ROUTES) {
       const mineRes = await call(cookie, `${route}?property_id=${property.id}`);
       const mine = await body(mineRes);
-      claim('вісь обʼєкта', mineRes.status === 200 && Array.isArray(mine),
-        `${route}: свій обʼєкт — 200 і список (${mineRes.status})`);
+      claim('вісь обʼєкта', mineRes.status === 200 && rightShape(shape, mine),
+        `${route}: свій обʼєкт — 200 і ${{ list: 'список', count: 'число', wrapped: 'обгорнутий список' }[shape]} (${mineRes.status})`);
 
       // Порожнє значення означає «усі обʼєкти» СКАЗАНО — так пишуть екрани
       // (`propertyId ? …id=… : ''`). Воно не має ставати ні відмовою, ні
       // мовчазним «перший-ліпший».
       const allRes = await call(cookie, `${route}?property_id=`);
-      claim('вісь обʼєкта', allRes.status === 200 && Array.isArray(await body(allRes)),
+      claim('вісь обʼєкта', allRes.status === 200 && rightShape(shape, await body(allRes)),
         `${route}: порожнє значення — «усі», а не відмова (${allRes.status})`);
 
       const alienRes = await call(cookie, `${route}?property_id=${TAG}alien`);

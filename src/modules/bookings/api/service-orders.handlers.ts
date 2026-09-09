@@ -4,6 +4,9 @@ import { getSql } from '@core/db/async';
 import { todayFor } from '@core/hotel-day';
 import { withActor, withPermission } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
+import { handleError } from '@core/http/errors';
+import { requestPropertyScope } from '@core/auth/property-scope';
+import { widgetServiceOrdersOf, guestServiceOrdersOf } from '../data/service-orders.repo';
 
 export const listServiceOrders = withActor(async (req: NextRequest, _ctx, actor) => {
   try {
@@ -28,41 +31,14 @@ export const listServiceOrders = withActor(async (req: NextRequest, _ctx, actor)
     dateEnd.setUTCDate(dateEnd.getUTCDate() + 7);
     const dateTo = dateEnd.toISOString().slice(0, 10);
 
-    // Scoped, and not by RLS alone: on SQLite there are no policies, and this
-    // listed every hotel's service orders — guest names included — to anyone
-    // signed in anywhere. Orders reach their tenant two ways, because an order
-    // may have no reservation (a walk-in buying through the widget): through
-    // the booking when there is one, through the service's property always.
-    const orgFilter = `AND ads.property_id IN (SELECT id FROM properties WHERE organization_id = ?)`;
+    // Який ОБʼЄКТ, а не лише який орендар (INC-029): персонал зміни працює в
+    // одному будинку, а список показував замовлення обох — з іменами гостей і
+    // номерами кімнат. Запити й довід про ДВА якорі — `data/service-orders.repo.ts`;
+    // сюди їх не повернути: `withActor` кличе `cookies()`, тож сцени не буває.
+    const scope = await requestPropertyScope(req, actor.organizationId);
+    const window = { period, dateParam, dateTo };
 
-    const dateFilter = period === 'day'
-      ? 'AND bso.service_date = ?'
-      : period === 'week'
-        ? 'AND bso.service_date >= ? AND bso.service_date <= ?'
-        : '';
-    const dateArgs = period === 'day' ? [dateParam] : period === 'week' ? [dateParam, dateTo] : [];
-
-    const widgetOrders = await sql.rows<any>(`
-      SELECT
-        bso.id, bso.reservation_id, bso.service_id, bso.quantity,
-        bso.service_date, bso.options_json, bso.unit_price, bso.total_price,
-        bso.status, bso.payment_status, bso.coupon_code, bso.created_at,
-        bso.completed_at, bso.menu_item_id,
-        ads.name as service_name, ads.name_en, ads.service_type,
-        mi.name_en as menu_item_name,
-        g.first_name, g.last_name,
-        u.name as unit_name
-      FROM booking_service_orders bso
-      JOIN additional_services ads ON bso.service_id = ads.id
-      LEFT JOIN menu_items mi ON bso.menu_item_id = mi.id
-      LEFT JOIN reservations r ON bso.reservation_id = r.id
-      LEFT JOIN guests g ON r.guest_id = g.id
-      LEFT JOIN units u ON r.unit_id = u.id
-      WHERE 1=1 ${dateFilter} ${orgFilter}
-        AND bso.status != 'cancelled'
-        AND bso.payment_status NOT IN ('failed', 'refunded')
-      ORDER BY bso.service_date ASC, bso.created_at DESC
-    `, [...dateArgs, actor.organizationId]) as any[];
+    const widgetOrders = await widgetServiceOrdersOf(actor.organizationId, scope, window) as any[];
 
     const orders = widgetOrders.map(o => {
       let startHour = null, endHour = null;
@@ -96,33 +72,7 @@ export const listServiceOrders = withActor(async (req: NextRequest, _ctx, actor)
       };
     });
 
-    const soDateFilter = period === 'day'
-      ? 'AND COALESCE(so.service_date, r.check_in) = ?'
-      : period === 'week'
-        ? 'AND COALESCE(so.service_date, r.check_in) >= ? AND COALESCE(so.service_date, r.check_in) <= ?'
-        : '';
-
-    const guestOrders = await sql.rows<any>(`
-      SELECT
-        so.id, so.reservation_id, so.service_id, so.quantity,
-        so.total_price, so.status, so.payment_status, so.created_at,
-        so.service_date, so.notes,
-        ads.name as service_name, ads.name_en, ads.service_type,
-        g.first_name, g.last_name,
-        u.name as unit_name,
-        r.check_in
-      FROM service_orders so
-      JOIN additional_services ads ON so.service_id = ads.id
-      JOIN reservations r ON so.reservation_id = r.id
-      JOIN guests g ON r.guest_id = g.id
-      LEFT JOIN units u ON r.unit_id = u.id
-      WHERE 1=1 ${soDateFilter}
-        AND r.organization_id = ?
-        AND so.status != 'cancelled'
-        AND so.payment_status NOT IN ('failed', 'refunded')
-      ORDER BY so.created_at DESC
-      LIMIT 50
-    `, [...dateArgs, actor.organizationId]) as any[];
+    const guestOrders = await guestServiceOrdersOf(actor.organizationId, scope, window) as any[];
 
     const gOrders = guestOrders.map(o => {
       let startHour = null, endHour = null;
@@ -176,8 +126,9 @@ export const listServiceOrders = withActor(async (req: NextRequest, _ctx, actor)
     });
 
   } catch (error: any) {
-    console.error('GET /api/service-orders error:', error?.message);
-    return NextResponse.json({ error: 'Failed to load service orders' }, { status: 500 });
+    // Названа відмова їде своїм статусом (інваріант 6, Ц43): чужий
+    // `property_id` — це 404, а не «сервер зламався».
+    return handleError('modules/bookings/api/service-orders listServiceOrders', error);
   }
 });
 
