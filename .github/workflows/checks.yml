@@ -263,7 +263,7 @@ jobs:
           node scripts/provision-org.mjs \
             --name "CI Hotel" --slug ci-hotel --email owner@ci.test \
             --password 'ci-password-1234' --language de --currency EUR \
-            --country DE | tee /tmp/provision.txt
+            --country DE --lodging-kind camping | tee /tmp/provision.txt
           grep -qE 'organization_id +org_' /tmp/provision.txt \
             || { echo '::error::provisioning printed no organization id'; exit 1; }
           grep -qE 'базова мова +de' /tmp/provision.txt \
@@ -273,6 +273,26 @@ jobs:
           # правильною випадково, тому перевіряється саме Berlin.
           grep -qE 'часовий пояс +Europe/Berlin' /tmp/provision.txt \
             || { echo '::error::the timezone was not derived from the country'; exit 1; }
+          # Рід житла — НЕ `hotel` навмисно (В1, К16). `hotel` тут був би
+          # правильним випадково: саме його підставляв мовчазний дефолт, який
+          # прибрано, тож твердження лишилось би зеленим і після його
+          # повернення. `camping` несумісний з дефолтом арифметично, і він же
+          # з ІНШОЇ групи тарифікації вендора — тобто помилка в цьому полі
+          # коштувала б грошей.
+          grep -qE 'рід житла +camping' /tmp/provision.txt \
+            || { echo '::error::the lodging kind did not reach the property'; exit 1; }
+          # І другий бік того самого твердження: БЕЗ роду житла заведення
+          # мусить відмовити, а не підставити «hotel». Тут це не зайва сцена:
+          # `provision-org.mjs` — єдиний шлях, яким заводять клієнта, і
+          # мовчазний дефолт повернувся б у нього непоміченим.
+          if node scripts/provision-org.mjs \
+               --name "CI No Kind" --slug ci-no-kind --email nokind@ci.test \
+               --password 'ci-password-1234' --language de --currency EUR \
+               --country DE > /tmp/no-kind.txt 2>&1; then
+            echo '::error::provisioning without a lodging kind succeeded'; exit 1
+          fi
+          grep -q 'lodging-kind' /tmp/no-kind.txt \
+            || { echo '::error::the refusal did not name the missing flag'; cat /tmp/no-kind.txt; exit 1; }
 
       - name: start
         env:
