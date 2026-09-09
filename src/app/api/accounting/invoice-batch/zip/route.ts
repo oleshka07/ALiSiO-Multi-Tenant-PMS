@@ -17,6 +17,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql, type Sql } from '@core/db/async';
 import { generateIsdocXml, invoiceSettings } from '@invoicing';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { requestPropertyScope } from '@core/auth/property-scope';
+import { propertyOrSharedFilter, type PropertyScopeFilter } from '@core/property-scope';
 import type { InvoiceSettings } from '@invoicing';
 import { requireFinanceAccess } from '@core/security/route-guard';
 import { generateInvoicePdf } from '@invoicing';
@@ -131,7 +133,30 @@ function buildZip(files: Array<{ name: string; data: Uint8Array }>): Buffer {
 
 // ─── Shared DB query helpers ──────────────────────────────────────────────────
 
-function getInvoiceForIsdoc(sql: Sql, id: string) {
+/**
+ * ── Орендар і обʼєкт у ЦИХ двох запитах (INC-043, INC-029) ──────────────
+ *
+ * `invoice_ids` приходять СПИСКОМ У ТІЛІ запиту, а обидва запити нижче стояли
+ * на голому `WHERE i.id = ?` — без орендаря взагалі. На Postgres чуже ховала
+ * політика; на SQLite не ховало ніщо, а SQLite це кожна машина розробника,
+ * `npm run dev` і будь-який стенд без Postgres. Тобто фінансовий користувач
+ * одного готелю, підставивши чужі ідентифікатори, діставав ZIP із фактурами
+ * іншої КОМПАНІЇ — з іменами гостей, поштою і реквізитами покупців.
+ *
+ * Вісь обʼєкта — та сама, що в списку, з якого оператор ці ідентифікатори й
+ * обирає (`accounting/invoices/list`). Ширший ZIP, ніж список, який його
+ * наповнює, — це та сама вада, тільки з чорного ходу.
+ *
+ * `invoices` не має `property_id`: обʼєкт приходить від броні `LEFT JOIN`-ом,
+ * тож фактура без броні (виписана вручну, сторно) обʼєкта не має. Звичайний
+ * фільтр викинув би її з КОЖНОГО пакета — документ, якого бухгалтер не отримає
+ * ніде. Тому `propertyOrSharedFilter` (Д51), як і у вивантаженні фактур.
+ *
+ * Параметр названо `axis` тим самим словом, що й привʼязку в хендлері: інструмент
+ * виміру впізнає двері за ЗМІННОЮ, ініціалізованою прямо з
+ * `propertyOrSharedFilter` (Д50), і збіг імені тут не випадковий, а умова.
+ */
+function getInvoiceForIsdoc(sql: Sql, id: string, organizationId: string, axis: PropertyScopeFilter) {
   return sql.row<any>(`
     SELECT
       i.id, i.invoice_number, i.issued_at, i.due_date,
@@ -153,12 +178,12 @@ function getInvoiceForIsdoc(sql: Sql, id: string) {
     LEFT JOIN guests g ON r.guest_id = g.id
     LEFT JOIN fin_operations p
       ON p.reservation_id = r.id AND p.op_type = 'income' AND p.status = 'completed'
-    WHERE i.id = ?
+    WHERE i.id = ? AND i.organization_id = ? AND ${axis.sql}
     ORDER BY p.paid_at DESC LIMIT 1
-  `, [id]);
+  `, [id, organizationId, ...axis.params]);
 }
 
-function getInvoiceForPdf(sql: Sql, id: string) {
+function getInvoiceForPdf(sql: Sql, id: string, organizationId: string, axis: PropertyScopeFilter) {
   return sql.row<any>(`
     SELECT
       i.id, i.invoice_number, i.issued_at, i.due_date,
@@ -178,9 +203,9 @@ function getInvoiceForPdf(sql: Sql, id: string) {
     LEFT JOIN guests g ON r.guest_id = g.id
     LEFT JOIN fin_operations p
       ON p.reservation_id = r.id AND p.op_type = 'income' AND p.status = 'completed'
-    WHERE i.id = ?
+    WHERE i.id = ? AND i.organization_id = ? AND ${axis.sql}
     ORDER BY p.paid_at DESC LIMIT 1
-  `, [id]);
+  `, [id, organizationId, ...axis.params]);
 }
 
 // ─── ISDOC generation (reused from /api/invoices/[id]/isdoc) ─────────────────
@@ -296,11 +321,17 @@ async function buildPdfBytes(sql: Sql, row: any, rules: InvoiceSettings): Promis
 
 // ─── Route handler ────────────────────────────────────────────────────────────
 
-export const POST = requireFinanceAccess(_POST);
-async function _POST(request: NextRequest): Promise<NextResponse> {
+export const POST = requireFinanceAccess(invoiceBatchZip);
+// Тіло іменованим експортом — щоб сцена кликала МАРШРУТ. Раніше цей файл був
+// недосяжний для `.check.ts` із зовсім іншої причини: `@invoicing` тягне
+// `domain/invoice-pdf.ts`, а той на верхньому рівні читав `__dirname`, якого в
+// модулі ESM немає, і імпорт падав до першого твердження. Полагоджено там же.
+export async function invoiceBatchZip(request: NextRequest): Promise<NextResponse> {
   // Правила бланка ЦЬОГО готеля — замість колишніх констант із чеського
   // закону. Організація вже на зʼєднанні: маршрут під вартою.
-  const rules = await invoiceSettings(await requireOrganizationId());
+  const organizationId = await requireOrganizationId();
+  const rules = await invoiceSettings(organizationId);
+  const axis = propertyOrSharedFilter(await requestPropertyScope(request, organizationId), 'r');
 
   try {
     const body = await request.json() as {
@@ -331,18 +362,24 @@ async function _POST(request: NextRequest): Promise<NextResponse> {
     for (const id of ids) {
       try {
         if (format === 'isdoc') {
-          const row = await getInvoiceForIsdoc(sql, id) as any;
+          const row = await getInvoiceForIsdoc(sql, id, organizationId, axis) as any;
           if (!row || !row.invoice_number) { errors.push(`${id}: not found`); continue; }
           const data = await buildIsdocBytes(sql, row, rules);
           files.push({ name: `faktura-${row.invoice_number}${ext}`, data });
         } else {
-          const row = await getInvoiceForPdf(sql, id) as any;
+          const row = await getInvoiceForPdf(sql, id, organizationId, axis) as any;
           if (!row || !row.invoice_number) { errors.push(`${id}: not found`); continue; }
           const data = await buildPdfBytes(sql, row, rules);
           files.push({ name: `faktura-${row.invoice_number}${ext}`, data });
         }
       } catch (err: any) {
-        errors.push(`${id}: ${err?.message || 'error'}`);
+        // Текст винятку йде в ЛОГ, а клієнту — самий ідентифікатор (інваріант
+        // 6). `err.message` тут може бути повідомленням бази або pdfkit: список
+        // дозволених значень CHECK, назва колонки, шлях до шрифту. Воно
+        // приїжджало в `details` зі статусом 400, тобто поломка не виглядала
+        // поломкою, а в лозі не було нічого.
+        console.error(`[BatchZip] ${id}:`, err?.message);
+        errors.push(`${id}: not generated`);
       }
     }
 
