@@ -51,6 +51,14 @@ interface World {
   /** Хто зберіг ключ API. */
   withKey: Set<string>;
   feed: Record<string, FeedEntry[]>;
+  /**
+   * Скільки минуло від останнього читання рівня OTA, у мс. `null` — не читали
+   * ніколи. Дзеркало `cm_channels` оновлюється не частіше разу на годину, і
+   * саме прохід стрічки — єдине місце, де це стається без людини.
+   */
+  mirrorAgeMs: Record<string, number | null>;
+  /** Зʼєднання, у яких перечитування рівня OTA падає. */
+  mirrorBroken: Set<string>;
 }
 
 function harness(world: Partial<World> = {}) {
@@ -60,6 +68,8 @@ function harness(world: Partial<World> = {}) {
     connections: { 'org-a': [{ id: 'conn-a', provider: 'probe', isEnabled: true }] },
     withKey: new Set(['org-a']),
     feed: { 'conn-a': [entry('r1')] },
+    mirrorAgeMs: { 'conn-a': null },
+    mirrorBroken: new Set(),
     ...world,
   };
   const log: string[] = [];
@@ -77,6 +87,11 @@ function harness(world: Partial<World> = {}) {
       if (feed.some((e) => !e.ok && e.reason === 'boom')) throw new Error('стрічка не відповіла');
       return { seen: feed.length, applied: feed.length, duplicates: 0, skipped: [], acked: feed.length };
     },
+    mirrorAgeMs: async (connectionId) => w.mirrorAgeMs[connectionId] ?? null,
+    refreshChannels: async (connectionId) => {
+      log.push(`mirror:${connectionId}`);
+      if (w.mirrorBroken.has(connectionId)) throw new Error('вендор не віддав канали');
+    },
   };
   return { log, deps, w };
 }
@@ -85,11 +100,54 @@ function harness(world: Partial<World> = {}) {
 {
   const { log, deps } = harness();
   const report = await pullAllConnections(deps);
-  assert.deepStrictEqual(log, ['org:org-a', 'pull:conn-a'],
+  assert.deepStrictEqual(log, ['org:org-a', 'mirror:conn-a', 'pull:conn-a'],
     'зʼєднання прочитано ПОЗА контекстом організації — на Postgres це нуль рядків без помилки');
   assert.strictEqual(report.applied, 1);
   assert.strictEqual(report.failedOrganizations, 0);
   console.log('  ok  прохід іде всередині контексту організації, а не поруч');
+}
+
+// ─── Дзеркало рівня OTA освіжається проходом, і не частіше разу на годину ───
+//
+// Екран «Канали (OTA)» читає дзеркало `cm_channels`; без цього воно міняється
+// лише тоді, коли хтось натисне «Оновити». Тобто канал, підключений учора в
+// вікні вендора, для нас не існує, доки оператор не здогадається зайти.
+//
+// Друга половина — вік: дзеркало на годину свіже вендора не питає. Прохід
+// стрічки ходить щохвилини, і без цієї межі кожна хвилина коштувала б зайвого
+// запиту до вендора на кожне зʼєднання кожного готелю.
+{
+  const { log, deps } = harness({ mirrorAgeMs: { 'conn-a': null } });
+  const report = await pullAllConnections(deps);
+  assert.deepStrictEqual(log, ['org:org-a', 'mirror:conn-a', 'pull:conn-a'],
+    'дзеркало рівня OTA не перечитали жодного разу — екран «Канали» лишиться таким, яким його бачили востаннє');
+  assert.strictEqual(report.channelsRefreshed, 1);
+  assert.strictEqual(report.failedOrganizations, 0);
+  console.log('  ok  прохід стрічки освіжає дзеркало рівня OTA');
+}
+{
+  const { log, deps } = harness({ mirrorAgeMs: { 'conn-a': 5 * 60 * 1000 } });
+  const report = await pullAllConnections(deps);
+  assert.ok(!log.includes('mirror:conn-a'),
+    'дзеркало віком 5 хвилин перечитали знову — це запит до вендора на кожен прохід крона');
+  assert.strictEqual(report.channelsRefreshed, 0);
+  console.log('  ok  свіже дзеркало вендора не турбує');
+}
+// Дзеркало — зручність екрана, броні — робота крона. Невдале читання рівня
+// OTA не має робити крон червоним: `deploy/run-cron.sh` падає саме на
+// `failedOrganizations`, і оператор прибіг би через косметику, а броні при
+// цьому доїхали.
+{
+  const { log, deps } = harness({ mirrorAgeMs: { 'conn-a': null }, mirrorBroken: new Set(['conn-a']) });
+  const report = await pullAllConnections(deps);
+  assert.ok(log.includes('pull:conn-a'),
+    'невдале дзеркало спинило читання броней — саме навпаки: броні важливіші');
+  assert.strictEqual(report.applied, 1);
+  assert.strictEqual(report.failedOrganizations, 0,
+    'невдале перечитування дзеркала зробило крон червоним — оператора підняли б через екран, а не через броні');
+  assert.strictEqual(report.channelsRefreshFailed, 1,
+    'невдале перечитування дзеркала пройшло беззвучно — його не видно ніде');
+  console.log('  ok  невдале дзеркало не спиняє броней і не червонить крон, але лічиться');
 }
 
 // ─── Готель без модуля каналів — мовчазний пропуск ──────────────────────────

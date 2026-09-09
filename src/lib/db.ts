@@ -4462,6 +4462,10 @@ function runMigrations(database: any) {
       -- Окремо від last_full_sync_at: та про ARI, ця про каталог. NULL —
       -- обʼєкта у вендора ще немає, розходитись нема з чим.
       catalog_synced_at  TEXT,
+      -- Коли востаннє питали перелік каналів (0100, К2). На зʼєднанні, а не
+      -- на рядках cm_channels: «каналів нуль» і «ще не питали» різні стани, а
+      -- рядків у першому немає жодного.
+      channels_synced_at TEXT,
       created_at         TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE(organization_id, property_id, provider, environment)
@@ -7596,6 +7600,19 @@ function runMigrations(database: any) {
     } catch { /* таблиці може не бути */ }
   }
 
+  // Міграція 0100 живе ОКРЕМОЮ функцією, а не тілом тут, і це не стиль.
+  //
+  // Вона стояла впритул до хвоста `runMigrations`, куди дописують ще дві
+  // сесії, і перше зведення гілок уже поклало її ВСЕРЕДИНУ чужого циклу
+  // (`79fc031e`): тоді дужка не зійшлася і `tsc` це побачив. Наступного
+  // разу могла б зійтися — і блок мовчки виконувався б по разу на кожну
+  // ітерацію чужого списку.
+  //
+  // Окрема функція знімає саме цю можливість: злиття, яке занесе виклик не
+  // туди, лишить визначення на місці, а виклик у чужому циклі впаде на
+  // `tsc` або дасть видимий повтор у лозі — замість тиші.
+  migrateOtaMirror(database);
+
   // The last line of runMigrations, and the only reliable signal that the
   // schema has settled. scripts/check-fresh-schema.mjs waits for it: polling
   // the table count said "done" while ALTER TABLE ADD COLUMN was still going,
@@ -7603,6 +7620,56 @@ function runMigrations(database: any) {
   // just a race with itself.
   console.log('[DB] migrations complete');
   }
+
+/**
+ * Міграція 0100 — дзеркало рівня OTA. Винесена з `runMigrations` навмисно:
+ * див. коментар у місці виклику.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function migrateOtaMirror(database: any) {
+// --- Migration 0100: рівень OTA — дзеркало каналів зʼєднання (К2) ---
+//
+// Знімок відповіді вендора, і нічого свого: жодного нашого прапорця, який
+// можна змінити тільки в нас. Прохід перезаписує дзеркало ЦІЛКОМ, тож
+// канал, якого немає у відповіді, зникає й тут — саме це відрізняє дзеркало
+// від накопичувача, і саме через страх «наша копія протухне мовчки» §4.3 ТЗ
+// цю таблицю колись прибрав. Тепер свіжість тримає механізм, а не обіцянка.
+//
+// `ota_code` без CHECK навмисно: перелік каналів належить вендору і росте,
+// а закритий словник означав би, що готель із новим каналом бачить порожньо.
+try {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS cm_channels (
+      id                TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      organization_id   TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      connection_id     TEXT NOT NULL REFERENCES cm_connections(id) ON DELETE CASCADE,
+      remote_channel_id TEXT NOT NULL,
+      ota_code          TEXT NOT NULL DEFAULT '',
+      title             TEXT NOT NULL DEFAULT '',
+      is_active         INTEGER NOT NULL DEFAULT 0,
+      settings_json     TEXT,
+      mapped_json       TEXT,
+      synced_at         TEXT,
+      created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(connection_id, remote_channel_id)
+    )
+  `);
+  database.exec('CREATE INDEX IF NOT EXISTS idx_cm_channels_org ON cm_channels(organization_id)');
+  database.exec('CREATE INDEX IF NOT EXISTS idx_cm_channels_connection ON cm_channels(connection_id)');
+
+  // І ALTER-ом теж (AGENTS §4): колонка, дописана лише в CREATE, є в нового
+  // клієнта й відсутня в мігрованого — тобто екран каналів працює на свіжій
+  // базі й падає там, де вже щось було.
+  const connCols = (database.prepare('PRAGMA table_info(cm_connections)').all() as any[]).map((c: any) => c.name);
+  if (!connCols.includes('channels_synced_at')) {
+    database.exec('ALTER TABLE cm_connections ADD COLUMN channels_synced_at TEXT');
+    console.log('[DB] cm_connections: added channels_synced_at');
+  }
+} catch (e) {
+  console.error('[DB] cm_channels migration:', (e as Error).message);
+}
+}
 
 // Generate a cryptographically secure random token for guest pages
 export function generateGuestToken(): string {

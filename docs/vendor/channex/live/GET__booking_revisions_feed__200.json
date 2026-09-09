@@ -1,11 +1,110 @@
 {
   "endpoint": "GET /booking_revisions/feed",
   "status": 200,
-  "captured_at": "2026-09-02",
+  "captured_at": "2026-09-05",
   "payload": {
-    "data": [],
+    "data": [
+      {
+        "attributes": {
+          "id": "261a4b71-7977-42de-b670-22cd4d45c489",
+          "meta": {},
+          "status": "cancelled",
+          "services": [],
+          "currency": "EUR",
+          "amount": "210.00",
+          "agent": null,
+          "unique_id": "OFL-MR-41221055",
+          "inserted_at": "2026-09-05T20:47:15.431678",
+          "channel_id": null,
+          "ota_reservation_code": "MR-41221055",
+          "system_id": "b04663a0-8287-4615-832d-6b9d46e2b3d6",
+          "ota_name": "Offline",
+          "property_id": "65dea8cf-5e61-4c9a-ae8e-cae9d24857c5",
+          "booking_id": "93e0798a-3c10-4aa4-9c9e-d8679f0d628c",
+          "arrival_date": "2027-08-12",
+          "arrival_hour": null,
+          "customer": {
+            "meta": null,
+            "name": "<redacted>",
+            "state": null,
+            "zip": null,
+            "address": null,
+            "city": null,
+            "country": "<redacted>",
+            "language": null,
+            "mail": "<redacted>",
+            "phone": null,
+            "surname": "<redacted>"
+          },
+          "departure_date": "2027-08-15",
+          "deposits": [],
+          "notes": null,
+          "ota_commission": "0.00",
+          "payment_collect": null,
+          "payment_type": null,
+          "rooms": [
+            {
+              "meta": null,
+              "taxes": [],
+              "services": [],
+              "amount": "210.00",
+              "days": {
+                "2027-08-12": "70.00",
+                "2027-08-13": "70.00",
+                "2027-08-14": "70.00"
+              },
+              "ota_commission": null,
+              "guests": [
+                {
+                  "name": "<redacted>",
+                  "surname": "<redacted>"
+                }
+              ],
+              "occupancy": {
+                "children": 0,
+                "adults": 1,
+                "ages": [],
+                "infants": 0
+              },
+              "rate_plan_id": "388d66d5-91d6-4f3a-afee-66352162fbb8",
+              "room_type_id": "bb2087d3-37e7-4759-8317-f1439d7a20ea",
+              "booking_room_id": "88dab4b9-2c82-4407-af4c-ddb5e2a84f38",
+              "checkout_date": "2027-08-15",
+              "checkin_date": "2027-08-12",
+              "is_cancelled": false,
+              "ota_unique_id": null
+            }
+          ],
+          "occupancy": {
+            "children": 0,
+            "adults": 1,
+            "ages": [],
+            "infants": 0
+          },
+          "guarantee": null,
+          "secondary_ota": null,
+          "acknowledge_status": "pending",
+          "raw_message": "{\"meta\":{},\"status\":\"cancelled\",\"services\":[],\"currency\":\"EUR\",\"amount\":0,\"ota_reservation_code\":\"MR-41221055\",\"ota_name\":\"Offline\",\"property_id\":\"65dea8cf-5e61-4c9a-ae8e-cae9d24857c5\",\"arrival_date\":\"2027-08-12\",\"arrival_hour\":null,\"customer\":{\"meta\":null,\"name\":\"Multi\",\"state\":null,\"zip\":null,\"address\":null,\"city\":null,\"country\":\"CZ\",\"language\":null,\"mail\":\"multiroom@example.test\",\"phone\":null,\"surname\":\"Room\"},\"departure_date\":\"2027-08-15\",\"deposits\":[],\"notes\":null,\"ota_commission\":0,\"payment_collect\":null,\"payment_type\":null,\"rooms\":[{\"meta\":null,\"taxes\":[],\"services\":[],\"amount\":0,\"days\":{\"2027-08-12\":7000,\"2027-08-13\":7000,\"2027-08-14\":7000},\"guests\":[{\"name\":\"Multi\",\"surname\":\"Room\"}],\"occupancy\":{\"children\":0,\"adults\":1,\"ages\":[],\"infants\":0},\"rate_plan_id\":\"388d66d5-91d6-4f3a-afee-66352162fbb8\",\"room_type_id\":\"bb2087d3-37e7-4759-8317-f1439d7a20ea\"}]}",
+          "is_crs_revision": true
+        },
+        "id": "261a4b71-7977-42de-b670-22cd4d45c489",
+        "type": "booking_revision",
+        "relationships": {
+          "data": {
+            "property": {
+              "id": "65dea8cf-5e61-4c9a-ae8e-cae9d24857c5",
+              "type": "property"
+            },
+            "booking": {
+              "id": "93e0798a-3c10-4aa4-9c9e-d8679f0d628c",
+              "type": "booking"
+            }
+          }
+        }
+      }
+    ],
     "meta": {
-      "total": 0,
+      "total": 1,
       "limit": 100,
       "order_by": "inserted_at",
       "page": 1,

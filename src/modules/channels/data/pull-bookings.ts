@@ -2,7 +2,7 @@ import type { Sql } from '@core/db/async';
 import type { ApplyOutcome, Revision } from './inbound-bookings.repo';
 // Розширення в шляху, а не аліас: цей файл читає ще й перевірка, яку
 // запускають голим node, а бандлер із розширенням теж згоден.
-import type { FeedEntry } from '../domain/feed.ts';
+import { groupRoomKeys, type FeedEntry } from '../domain/feed.ts';
 
 /**
  * Прочитати стрічку ревізій і завести з неї броні.
@@ -34,6 +34,13 @@ import type { FeedEntry } from '../domain/feed.ts';
  * гарантований, а дві ревізії одного бронювання, застосовані навпаки,
  * дадуть скасовану бронь як активну. Цикл нижче зберігає порядок, у якому
  * прийшли дані, і НЕ переставляє їх.
+ *
+ * ── Група кімнат — одне застосування ────────────────────────────────────
+ *
+ * Ревізія з кількома кімнатами це батьківська бронь і по дочірній на кімнату
+ * (К1). Цикл не розбиває її на частини: `apply` отримує ревізію цілком і
+ * кладе всю групу в одну транзакцію. Інакше `ack` після першої кімнати
+ * означав би половину групи в базі й ревізію, якої вже ніхто не покаже.
  *
  * ── Помилка на одній ревізії не глушить решту ───────────────────────────
  *
@@ -121,21 +128,17 @@ export async function pullBookings(connectionId: string, deps: PullDeps): Promis
       continue;
     }
 
-    // Кілька кімнат — це кілька наших броней, і ми ще не вміємо їх заводити.
-    // НЕ підтверджуємо: ревізія лишиться в стрічці, і через 30 хвилин про неї
-    // нагадають листом — це правильний тиск. Мовчки взяти першу кімнату
-    // означало б гостя, який приїде в готель, що про нього не знає.
-    if (rev.rooms.length > 1) {
-      report.skipped.push({
-        remoteRevisionId: rev.remoteRevisionId,
-        remoteBookingId: rev.remoteBookingId,
-        reason: 'multi_room_not_supported',
-      });
-      broken.add(rev.remoteBookingId);
-      continue;
-    }
-
+    // Кілька кімнат — це кілька наших броней (`reservations` це рядок на
+    // кімнату), і вони їдуть ОДНИМ застосуванням: група лягає в одну
+    // транзакцію, і `ack` іде після її коміту (К1, И5). Підтвердити після
+    // першої кімнати означало б, що падіння на другій лишає половину групи, а
+    // ревізія вже зникла зі стрічки назавжди.
+    //
+    // Ключі кімнат рахуються тут, бо правило стосується редакції ЦІЛКОМ:
+    // або в усіх кімнат є свій ідентифікатор на боці OTA, або жодна не має і
+    // всі впізнаються позицією (`groupRoomKeys`).
     const room = rev.rooms[0];
+    const keys = groupRoomKeys(rev.rooms);
     const domain: Revision = {
       remoteRevisionId: rev.remoteRevisionId,
       remoteBookingId: rev.remoteBookingId,
@@ -147,13 +150,24 @@ export async function pullBookings(connectionId: string, deps: PullDeps): Promis
       checkIn: room?.checkIn,
       checkOut: room?.checkOut,
       unitTypeId: room?.unitTypeId ?? null,
-      adults: room?.adults,
-      children: room?.children,
+      // Заселеність бронювання, якщо менеджер каналів її назвав; інакше — з
+      // єдиної кімнати. Для групи різницю бачить `applyRevision`.
+      adults: rev.adults ?? room?.adults,
+      children: rev.children ?? room?.children,
       totalPrice: rev.totalAmount,
       currency: rev.currency,
       guestFirstName: rev.guestFirstName,
       guestLastName: rev.guestLastName,
       guestEmail: rev.guestEmail,
+      rooms: rev.rooms.map((r, i) => ({
+        key: keys[i],
+        unitTypeId: r.unitTypeId ?? null,
+        checkIn: r.checkIn,
+        checkOut: r.checkOut,
+        adults: r.adults,
+        children: r.children,
+        amount: r.amount,
+      })),
     };
 
     let outcome: ApplyOutcome;

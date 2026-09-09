@@ -50,21 +50,16 @@ const STRICT = process.argv.includes('--strict');
 // Це НЕ мета: мета нуль. Змінювати вниз — разом із виправленням; угору —
 // ніколи (саме це гейт і тримає).
 const BASELINE = {
-  'src/modules/bookings/api/reservation.handlers.ts': 13,
-  'src/modules/finance/api/operations.handlers.ts': 7,
-  // Свій профіль: id приходить із сесії того, хто питає. Найімовірніші
-  // кандидати на «списати зі стелі» після прочитання очима.
+  'src/app/api/gift-cards/[id]/activate/route.ts': 2,
+  'src/app/api/gift-cards/[id]/route.ts': 1,
   'src/modules/auth/api/user.handlers.ts': 5,
-  'src/modules/finance/api/exchange-rates.handlers.ts': 4,
   'src/modules/bookings/api/reservation-registrations.handlers.ts': 3,
-  // `src/app/api/payments/[id]/route.ts` мав тут 2 — обидва пішли 07.09
-  // (Р8.7): маршрут більше не має власного SQL, він кличе
-  // `deletePaymentOperation`, а там орендар у WHERE обох запитів.
-  'src/modules/bookings/api/sub-bookings.handlers.ts': 2,
+  'src/modules/bookings/api/reservation.handlers.ts': 15,
+  'src/modules/bookings/api/sub-bookings.handlers.ts': 3,
   'src/modules/channels/api/ical-channel.handlers.ts': 2,
   'src/modules/finance/api/attachments.handlers.ts': 2,
-  'src/app/api/gift-cards/[id]/activate/route.ts': 1,
-  'src/app/api/gift-cards/[id]/route.ts': 1,
+  'src/modules/finance/api/exchange-rates.handlers.ts': 4,
+  'src/modules/finance/api/operations.handlers.ts': 7,
   'src/modules/finance/api/recurring.handlers.ts': 1,
   'src/modules/invoicing/api/invoices.handlers.ts': 1,
   'src/modules/widget/api/site-analytics.handlers.ts': 1,
@@ -95,31 +90,36 @@ const BASELINE = {
 // Стеля кожного файла на 2026-09-07, день увімкнення другої осі; 45 → 55 після
 // розширення ключа того ж дня.
 const WRITE_BASELINE = {
-  'src/modules/auth/api/user.handlers.ts': 5,
-  'src/lib/db.ts': 5,                                          // міграції: орендаря ще немає
-  'src/modules/channels/data/inbound-bookings.repo.ts': 4,
-  'src/modules/widget/api/widget-reserve.handlers.ts': 4,
-  'src/modules/finance/api/categories.handlers.ts': 3,
-  'src/modules/finance/api/operations.handlers.ts': 1,
-  'src/modules/finance/data/recurring-engine.ts': 1,
-  'src/modules/auth/api/language.handlers.ts': 2,
-  'src/modules/finance/api/projects.handlers.ts': 2,
-  'src/modules/finance/api/exchange-rates.handlers.ts': 2,
-  'src/modules/finance/api/counterparties.handlers.ts': 2,
-  'src/modules/channels/api/ical-sync.handlers.ts': 2,
-  'src/modules/channels/api/ical-channel.handlers.ts': 2,
-  'src/modules/reports/data/partner-report.repo.ts': 1,
-  'src/modules/bookings/api/reservation-registrations.handlers.ts': 2,
-  'src/modules/bookings/api/reservation.handlers.ts': 2,
-  'src/modules/guests/data/registration.repo.ts': 2,
-  'src/modules/auth/api/login.handlers.ts': 1,
-  'src/modules/finance/api/attachments.handlers.ts': 1,
-  'src/modules/invoicing/data/reservation-invoice.repo.ts': 1,
-  'src/modules/bookings/api/sub-bookings.handlers.ts': 1,
-  'src/modules/pricing/data/rate-plans.repo.ts': 1,
-  'src/modules/pricing/data/seasons.repo.ts': 1,
-  'src/modules/guests/data/guest-portal.repo.ts': 1,
+  'src/app/api/cron/abandoned-carts/route.ts': 1,
+  'src/app/api/gift-cards/[id]/activate/route.ts': 1,
   'src/core/i18n/resolve.ts': 1,
+  'src/core/integration-credentials.ts': 2,
+  'src/lib/db.ts': 5,
+  'src/modules/auth/api/language.handlers.ts': 2,
+  'src/modules/auth/api/login.handlers.ts': 1,
+  'src/modules/auth/api/user.handlers.ts': 5,
+  'src/modules/bookings/api/availability-blocks.handlers.ts': 1,
+  'src/modules/bookings/api/reservation-registrations.handlers.ts': 2,
+  'src/modules/bookings/api/reservation.handlers.ts': 4,
+  'src/modules/bookings/api/sub-bookings.handlers.ts': 2,
+  'src/modules/bookings/data/reservation-write.repo.ts': 1,
+  'src/modules/channels/api/ical-channel.handlers.ts': 2,
+  'src/modules/channels/api/ical-sync.handlers.ts': 2,
+  'src/modules/finance/api/attachments.handlers.ts': 1,
+  'src/modules/finance/api/categories.handlers.ts': 3,
+  'src/modules/finance/api/counterparties.handlers.ts': 2,
+  'src/modules/finance/api/exchange-rates.handlers.ts': 2,
+  'src/modules/finance/api/operations.handlers.ts': 1,
+  'src/modules/finance/api/projects.handlers.ts': 2,
+  'src/modules/finance/data/recurring-engine.ts': 2,
+  'src/modules/guests/data/guest-dedup.repo.ts': 1,
+  'src/modules/guests/data/guest-portal.repo.ts': 1,
+  'src/modules/guests/data/registration.repo.ts': 2,
+  'src/modules/invoicing/data/reservation-invoice.repo.ts': 2,
+  'src/modules/pricing/data/rate-plans.repo.ts': 1,
+  'src/modules/reports/data/partner-report.repo.ts': 1,
+  'src/modules/widget/api/widget-reserve.handlers.ts': 7,
+  'src/modules/widget/data/certificate.repo.ts': 1,
 };
 
 // Таблиці з орендарем — зі згенерованої схеми, а не зі списку в голові.
@@ -153,12 +153,36 @@ for (const file of files) {
   // приклади вже виправленого (AGENTS §4, остання теза).
   const src = raw.replace(/^[ \t]*\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
 
-  for (const m of src.matchAll(/(SELECT[\s\S]{0,400}?FROM|UPDATE|DELETE\s+FROM)\s+"?(\w+)"?\b([\s\S]{0,300}?)(?=`|'|")/g)) {
+  // Хвіст запиту — ДО КІНЦЯ ЛІТЕРАЛА, у якому він живе, а не «300 символів
+  // або перша лапка».
+  //
+  // Стара межа була сліпа рівно там, де вада найдорожча — у довгих
+  // багаторядкових `UPDATE`. Два способи проскочити повз неї, обидва виміряні
+  // на `channels/data/inbound-bookings.repo.ts` (рецензія раунду 21, Б1):
+  //
+  //   `'cancelled'` усередині `SET` — лапка обривала хвіст ДО `WHERE`;
+  //   довгий `SET` на десять колонок — 300 символів закінчувались раніше.
+  //
+  // Обидва рази гейт мовчав, а поруч, у тому самому файлі, короткі `UPDATE`
+  // ловились. Різницю робив не намір автора, а вікно регулярки — і опущена
+  // під це стеля зафіксувала б сліпоту як норму (§3.2.1: гейт стереже
+  // ВЛАСТИВІСТЬ, а не візерунок; випадок 7 — хибний гейт лагодиться в гейті).
+  //
+  // Тому спершу виділяються рядкові літерали (SQL тут завжди в них), а запит
+  // шукається ВСЕРЕДИНІ кожного, з усім літералом як хвостом.
+  for (const lit of literals(src)) {
+    for (const m of lit.text.matchAll(/(SELECT[\s\S]{0,400}?FROM|UPDATE|DELETE\s+FROM)\s+"?(\w+)"?\b([\s\S]*)/g)) {
     const table = m[2];
     if (!scoped.has(table)) continue;
-    const tail = m[3];
+    // Хвіст — до наступного запиту в тому самому літералі, якщо він є:
+    // інакше `WHERE` сусіда порахувався б цьому.
+    const nextStatement = m[3].search(/\b(SELECT|UPDATE|DELETE\s+FROM|INSERT\s+INTO)\b/i);
+    const tail = nextStatement >= 0 ? m[3].slice(0, nextStatement) : m[3];
     if (!/WHERE/i.test(tail)) continue;
-    if (/organization_id/i.test(m[0])) continue;
+    // Орендар шукається в ХВОСТІ ЦЬОГО запиту, а не в усьому літералі.
+    // Інакше сусідній запит із `organization_id` у тому самому шаблоні
+    // покривав би цей — та сама сліпота, тільки з іншого боку.
+    if (/organization_id/i.test(`${m[1]} ${table} ${tail}`)) continue;
     // Дві осі — два ключі, і це навмисно. Перша (id з URL) лишається на
     // `id = ?`: її стеля читається очима вже другий тиждень, і розширювати
     // ключ там означало б перевідкрити 60 місць. Друга (писач) бере будь-який
@@ -168,15 +192,41 @@ for (const file of files) {
     if (!byAnyId) continue;
     const hit = {
       file: rel,
-      line: src.slice(0, m.index).split(/\r?\n/).length,
+      line: src.slice(0, lit.at + m.index).split(/\r?\n/).length,
       table,
-      sql: m[0].replace(/\s+/g, ' ').slice(0, 90),
+      sql: `${m[1]} ${table} ${tail}`.replace(/\s+/g, ' ').slice(0, 90),
     };
     if (fromUrl && byBareId) hits.push(hit);
     // Вісь 2 — ПИСАЧ, звідки б id не прийшов: тіло запиту дає точно такий
     // самий чужий ідентифікатор, а `params` у файлі при цьому немає взагалі.
     if (/^(UPDATE|DELETE)/i.test(m[1])) writeHits.push(hit);
+    }
   }
+}
+
+/**
+ * Рядкові літерали файла — з їхнім зміщенням, щоб номер рядка лишався
+ * справжнім. Екрановані символи пропускаються цілком: `\'` не закриває рядок.
+ */
+function literals(src) {
+  const out = [];
+  let i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === '`' || c === "'" || c === '"') {
+      const start = i + 1;
+      i += 1;
+      while (i < src.length && src[i] !== c) {
+        if (src[i] === '\\') { i += 2; continue; }
+        i += 1;
+      }
+      out.push({ at: start, text: src.slice(start, i) });
+      i += 1;
+      continue;
+    }
+    i += 1;
+  }
+  return out;
 }
 
 if (JSON_OUT) {

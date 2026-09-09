@@ -56,7 +56,27 @@ export interface PullAllDeps<P = unknown> {
   pullerFor(provider: string): P | null;
   /** Прочитати стрічку одного зʼєднання і завести броні. */
   pull(puller: P, connectionId: string, apiKey: string): Promise<PullReport>;
+  /**
+   * Скільки минуло від останнього читання рівня OTA, у мс; `null` — не читали.
+   *
+   * Дзеркало `cm_channels` (К2) інакше міняється лише від кнопки «Оновити»:
+   * канал, підключений учора у вікні вендора, для екрана не існує, доки
+   * оператор не здогадається зайти. Прохід стрічки — єдине місце, де це
+   * стається без людини.
+   */
+  mirrorAgeMs(connectionId: string): Promise<number | null>;
+  /** Перечитати рівень OTA цього зʼєднання у вендора і перезаписати дзеркало. */
+  refreshChannels(connectionId: string, apiKey: string): Promise<unknown>;
 }
+
+/**
+ * Дзеркало віком менше години вендора не питає.
+ *
+ * Прохід стрічки ходить щохвилини; без межі це був би запит на кожне
+ * зʼєднання кожного готелю кожну хвилину — за рівень OTA, який міняється
+ * разів кілька на рік. Те саме число, що й у маршруті екрана.
+ */
+const MIRROR_STALE_AFTER_MS = 60 * 60 * 1000;
 
 export interface PullAllFailure {
   organizationId: string;
@@ -76,6 +96,17 @@ export interface PullAllReport {
   acked: number;
   /** Ревізії, які не застосувались; кожна названа. */
   skipped: number;
+  /** Зʼєднань, чиє дзеркало рівня OTA освіжили цим проходом. */
+  channelsRefreshed: number;
+  /**
+   * Зʼєднань, чиє дзеркало освіжити не вдалося.
+   *
+   * Свій лічильник, а не `failures`: дзеркало — зручність екрана, а робота
+   * крона — броні. `deploy/run-cron.sh` падає на `failedOrganizations`, тож
+   * рахувати сюди косметику означало б підняти оператора вночі через екран,
+   * поки броні спокійно доїхали.
+   */
+  channelsRefreshFailed: number;
   /** Ненульове — крон ЧЕРВОНИЙ. */
   failedOrganizations: number;
   failures: PullAllFailure[];
@@ -91,6 +122,8 @@ export async function pullAllConnections<P>(deps: PullAllDeps<P>): Promise<PullA
     duplicates: 0,
     acked: 0,
     skipped: 0,
+    channelsRefreshed: 0,
+    channelsRefreshFailed: 0,
     failedOrganizations: 0,
     failures: [],
   };
@@ -139,6 +172,26 @@ export async function pullAllConnections<P>(deps: PullAllDeps<P>): Promise<PullA
           if (!puller) {
             fail('unknown_provider', conn.id);
             continue;
+          }
+
+          // Дзеркало рівня OTA — ПЕРЕД стрічкою і поза її try: впасти воно
+          // може лише саме в себе.
+          try {
+            const age = await deps.mirrorAgeMs(conn.id);
+            if (age === null || age >= MIRROR_STALE_AFTER_MS) {
+              await deps.refreshChannels(conn.id, apiKey);
+              report.channelsRefreshed++;
+            }
+          } catch (e) {
+            // Причина ЗАПИСУЄТЬСЯ. Рішення не рахувати це у
+            // `failedOrganizations` правильне — дзеркало рівня OTA не
+            // спиняє стрічку броней, — але лічильник без причини це рядок
+            // «щось не вийшло N разів», за яким нема куди піти. Ключ вендора
+            // протух, канал відповів 500, мережа лягла — три різні дії
+            // оператора, і жодну з них не видно.
+            report.channelsRefreshFailed++;
+            console.error(`[channels] дзеркало рівня OTA не оновилось для зʼєднання ${conn.id}:`,
+              e instanceof Error ? `${e.message}${e.stack ? `\n${e.stack}` : ''}` : String(e));
           }
 
           try {

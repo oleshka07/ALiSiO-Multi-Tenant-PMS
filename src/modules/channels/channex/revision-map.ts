@@ -33,6 +33,18 @@
  *    масив як є і НЕ вибирає з нього першу: мовчки загублена друга кімната
  *    — це гість, який приїде в готель, що про нього не знає.
  *
+ *    `ota_unique_id` кімнати — єдине, чим вона впізнається в наступній
+ *    редакції, і дає його не кожен OTA («right now only Booking.com
+ *    supported»). Мапер віддає його як є; що робити, коли його немає, вирішує
+ *    домен (`groupRoomKeys`), і це правильне місце: правило стосується
+ *    редакції цілком, а не одного поля.
+ *
+ * 5. **Заселеність бронювання і заселеність кімнати — різні числа.** У
+ *    бронювання на дві кімнати `occupancy` зверху каже, скільки людей
+ *    приїде всього, а `rooms[].occupancy` — скільки в кожній. Складати перше
+ *    з другого не можна: три дорослі в двох кімнатах це `2 + 1` усередині і
+ *    `3` зверху, і батьківська бронь групи описує саме бронювання.
+ *
  * Результат — доменні типи з `../domain/feed.ts`, а не власні. Напрямок
  * залежності саме такий: адаптер знає домен, домен про адаптер не чув
  * (інваріант И1).
@@ -127,6 +139,8 @@ export function mapRevision(
     adults: count(r.occupancy?.adults ?? raw.occupancy?.adults) || 1,
     children: count(r.occupancy?.children ?? raw.occupancy?.children),
     amount: money(r.amount),
+    otaUniqueId: typeof r.ota_unique_id === 'string' && r.ota_unique_id.trim() !== ''
+      ? r.ota_unique_id.trim() : undefined,
   }));
 
   return {
@@ -142,6 +156,11 @@ export function mapRevision(
       totalAmount: money(raw.amount),
       unmapped: rooms.some((r) => r.unitTypeId === null),
       rooms,
+      // Заселеність БРОНЮВАННЯ — не сума кімнат (див. п. 5 у шапці). Порожньо,
+      // якщо вендор її не назвав: вигадати суму кімнат тут означало б, що
+      // батьківська бронь групи впевнено показує число, якого ніхто не казав.
+      adults: raw.occupancy?.adults !== undefined ? count(raw.occupancy.adults) : undefined,
+      children: raw.occupancy?.children !== undefined ? count(raw.occupancy.children) : undefined,
       guestFirstName: raw.customer?.name,
       guestLastName: raw.customer?.surname,
       guestEmail: raw.customer?.mail ?? raw.customer?.email,
