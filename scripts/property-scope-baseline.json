@@ -25,7 +25,6 @@
   "src/modules/auth/api/platform.handlers.ts": 2,
   "src/modules/bookings/api/additional-services.handlers.ts": 3,
   "src/modules/bookings/api/availability-blocks.handlers.ts": 3,
-  "src/modules/bookings/api/booking-source-widgets.handlers.ts": 1,
   "src/modules/bookings/api/booking-source.handlers.ts": 5,
   "src/modules/bookings/api/booking-sources.handlers.ts": 1,
   "src/modules/bookings/api/reservation-registrations.handlers.ts": 1,
