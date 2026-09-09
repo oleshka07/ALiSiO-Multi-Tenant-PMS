@@ -182,8 +182,16 @@ export async function pullAllConnections<P>(deps: PullAllDeps<P>): Promise<PullA
               await deps.refreshChannels(conn.id, apiKey);
               report.channelsRefreshed++;
             }
-          } catch {
+          } catch (e) {
+            // Причина ЗАПИСУЄТЬСЯ. Рішення не рахувати це у
+            // `failedOrganizations` правильне — дзеркало рівня OTA не
+            // спиняє стрічку броней, — але лічильник без причини це рядок
+            // «щось не вийшло N разів», за яким нема куди піти. Ключ вендора
+            // протух, канал відповів 500, мережа лягла — три різні дії
+            // оператора, і жодну з них не видно.
             report.channelsRefreshFailed++;
+            console.error(`[channels] дзеркало рівня OTA не оновилось для зʼєднання ${conn.id}:`,
+              e instanceof Error ? `${e.message}${e.stack ? `\n${e.stack}` : ''}` : String(e));
           }
 
           try {

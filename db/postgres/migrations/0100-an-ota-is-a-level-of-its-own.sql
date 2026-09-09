@@ -103,6 +103,17 @@ CREATE INDEX IF NOT EXISTS idx_cm_channels_connection ON cm_channels (connection
 -- з того самого бюджету обʼєкта, з якого їдуть ціни.
 ALTER TABLE cm_connections ADD COLUMN IF NOT EXISTS channels_synced_at TIMESTAMPTZ;
 
+-- Дефолт орендаря на колонці — той самий, що дає `schema.sql` (міграція 0005
+-- ставить його кожній scoped-таблиці, і генератор відтворює).
+--
+-- Без цього рядка нова база і мігрована РОЗХОДЯТЬСЯ в `column_default`, а
+-- саме його порівнює `check-schema-drift` — тобто розбіжність вилізла б на
+-- живій базі, а не тут (рецензія раунду 21). Сам по собі дефолт нічого не
+-- рятує: інваріант 12 вимагає називати `organization_id` явно, бо в SQLite
+-- цього механізму немає взагалі. Він мусить бути однаковий з обох боків.
+ALTER TABLE cm_channels ALTER COLUMN organization_id
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+
 ALTER TABLE cm_channels ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cm_channels FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS cm_channels_tenant ON cm_channels;

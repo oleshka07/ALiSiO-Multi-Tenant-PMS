@@ -125,7 +125,13 @@ export async function screen(connectionId: string, propertyId: string) {
  */
 export async function refreshConnectionChannelsFor(connectionId: string, apiKey: string) {
   const connection = await connectionInTenant(connectionId);
-  if (!connection) throw new Error('channels: connection not found');
+  // `null`, а не виняток: чуже або неіснуюче зʼєднання — це 404, і
+  // розрізняти їх не можна (інваріант 5). Виняток тут ставав 500, тобто
+  // «у нас поломка» замість «такого немає», і по ньому ще й видно, що
+  // ідентифікатор існує десь: 500 на чужому і 404 на вигаданому — це
+  // спосіб перелічити чужі зʼєднання. Обидві функції вже реекспортовані
+  // двома фасадами, тож слово тут — слово на маршрутах.
+  if (!connection) return null;
   const adapter = adapterFor(connection.provider);
   if (!adapter) throw new Error(`channels: unknown provider ${connection.provider}`);
 
@@ -141,7 +147,7 @@ export async function refreshConnectionChannelsFor(connectionId: string, apiKey:
 /** Рівень OTA з дзеркала, без походу до вендора — для скриптів і звітів. */
 export async function connectionChannelsFor(connectionId: string) {
   const connection = await connectionInTenant(connectionId);
-  if (!connection) throw new Error('channels: connection not found');
+  if (!connection) return null;
   return { ...(await screen(connectionId, connection.propertyId)), catalog: [] };
 }
 

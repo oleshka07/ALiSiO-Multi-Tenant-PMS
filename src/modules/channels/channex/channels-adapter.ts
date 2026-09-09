@@ -60,12 +60,31 @@ export function mapChannels(raw: ChannexChannel[]): { rows: ChannelMirrorRow[]; 
     const id = item?.id;
     if (!id || typeof id !== 'string') { skipped.push('missing_id'); continue; }
     const a = item.attributes ?? {};
+
+    // Код каналу і прапорець ЗОБОВʼЯЗАНІ бути, і рядок без них ПРОПУСКАЄТЬСЯ
+    // з причиною — не добудовується порожнім (інваріант 13).
+    //
+    // Порожній код не «трохи гірший рядок», а той самий OTA ДВІЧІ на екрані:
+    // «Підключені» бере рядки дзеркала, «Доступні» рахується відніманням за
+    // кодом (`channels/page.tsx`), і порожній код не збігається з жодним
+    // кодом каталогу. Тобто канал стоїть підключеним — і водночас
+    // пропонується підключити. Помилки при цьому немає ніде.
+    //
+    // `is_active` так само: `=== true` мовчки робить із «поля немає»
+    // «вимкнено», а вимкнений канал не шле нічого. Обидва поля стоять у
+    // живому зразку вендора (`docs/vendor/channex/live/GET__channels__200.json`),
+    // тож їхня відсутність — це зміна на тому боці, яку треба ПОБАЧИТИ, а не
+    // згладити (інваріант 28).
+    const otaCode = typeof a.channel === 'string' ? a.channel.trim() : '';
+    if (!otaCode) { skipped.push('missing_channel_code'); continue; }
+    if (typeof a.is_active !== 'boolean') { skipped.push('missing_is_active'); continue; }
+
     rows.push({
       remoteChannelId: id,
       // Код, а не назва: назву готельєр міняє, код — ні.
-      otaCode: typeof a.channel === 'string' ? a.channel : '',
+      otaCode,
       title: typeof a.title === 'string' ? a.title : '',
-      isActive: a.is_active === true,
+      isActive: a.is_active,
       settings: a.settings && typeof a.settings === 'object' && !Array.isArray(a.settings)
         ? a.settings as Record<string, unknown> : {},
       // `rate_plan_id` мапінг-айтема, не його власний `id`.

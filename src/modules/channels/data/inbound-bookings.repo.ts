@@ -654,7 +654,7 @@ async function applyGroup(
   //
   // Скасування кімнат не несе, тож і склад групи воно не переписує: бронь
   // скасована статусом, а з чого вона складалась — лишається видно.
-  if (!cancelled) await syncGroupRooms(sql, parentId, live);
+  if (!cancelled) await syncGroupRooms(sql, conn.organizationId, parentId, live);
 }
 
 /**
@@ -683,6 +683,7 @@ async function applyGroup(
  */
 async function syncGroupRooms(
   sql: Sql,
+  organizationId: string,
   parentId: string,
   live: Array<{ id: string | null; room: RevisionRoom }>,
 ): Promise<void> {
@@ -695,13 +696,28 @@ async function syncGroupRooms(
   const keep = new Set<string>();
 
   // Назва рядка — тип номера кімнати: у картці інакше два рядки без імен.
+  //
+  // Тип читається В МЕЖАХ ОРЕНДАРЯ, і рядок, якого немає, — це ВІДМОВА, а не
+  // порожня назва (інваріант 13). До правки було два тихі шляхи в один і той
+  // самий стан: `WHERE id = ?` без орендаря взяв би назву чужого типу на
+  // SQLite (на Postgres політика віддала б порожньо), а `?? ''` перетворював
+  // «типу не знайшли» на «тип без назви» — і в картці групи стояв би рядок,
+  // якого рецепція не може ні впізнати, ні пояснити гостю.
+  //
+  // Тип у ревізії — НАШ ідентифікатор: його поклав мапінг каналу. Якщо його
+  // немає в цього орендаря, зламаний мапінг, а не назва.
   const names = new Map<string, string>();
   const nameOf = async (unitTypeId?: string | null): Promise<string> => {
     if (!unitTypeId) return '';
     const known = names.get(unitTypeId);
     if (known !== undefined) return known;
-    const row = await sql.row<any>('SELECT name FROM unit_types WHERE id = ?', [unitTypeId]) as any;
-    const name = String(row?.name ?? '');
+    const row = await sql.row<any>(
+      `SELECT ut.name FROM unit_types ut
+         JOIN properties p ON p.id = ut.property_id
+        WHERE ut.id = ? AND p.organization_id = ?`,
+      [unitTypeId, organizationId]) as any;
+    if (!row) throw new Error(`channels: тип номера ${unitTypeId} не належить цьому орендарю`);
+    const name = String(row.name ?? '');
     names.set(unitTypeId, name);
     return name;
   };

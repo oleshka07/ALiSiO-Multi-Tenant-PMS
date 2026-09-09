@@ -77,7 +77,17 @@ export async function runChannelPullCron(): Promise<PullAllReport> {
     // із ним на форматі SQLite («YYYY-MM-DD HH:MM:SS» без зони), і дзеркало
     // «старіло» б на три години раніше на сервері за Києвом.
     mirrorAgeMs: async (connectionId) => channelsMirrorAgeMs(await channelsSyncedAt(connectionId)),
-    refreshChannels: (connectionId, apiKey) => refreshConnectionChannelsFor(connectionId, apiKey),
+    // `null` — це «зʼєднання не наше або зникло», і для КРОНА це справжня
+    // невдача, а не тиша: він щойно взяв цей id зі свого ж списку. Двері
+    // віддають `null` заради маршрутів (їм потрібен 404, а не 500), тож
+    // гучність повертається тут — інакше зміна форми відповіді зробила б
+    // `channelsRefreshFailed` сліпим, і лічильник показував би нуль там, де
+    // не оновилось нічого.
+    refreshChannels: async (connectionId, apiKey) => {
+      const view = await refreshConnectionChannelsFor(connectionId, apiKey);
+      if (!view) throw new Error(`channels: зʼєднання ${connectionId} не належить цьому орендарю`);
+      return view;
+    },
 
     // Після проходу — зняти з журналу сигнали, які цей прохід і обслужив.
     pull: async (puller, connectionId, apiKey) => {

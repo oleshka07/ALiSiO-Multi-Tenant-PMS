@@ -186,6 +186,13 @@ try {
   // переклад сам, доводить свою збірку, а не ту, яку побачить готельєр.
   await runWithOrganization(ORG, async () => {
     const view = await refreshConnectionChannelsFor(CONN, apiKey);
+    // Двері віддають `null` на чуже або зникле зʼєднання (маршрутам потрібен
+    // 404, не 500). Живий прохід має сказати це словами, а не впасти на
+    // `view.syncedAt` — інакше причина виглядає як поломка коду.
+    if (!view) {
+      console.error(`✗ зʼєднання ${CONN} не належить організації ${ORG} або зникло`);
+      process.exit(1);
+    }
     console.log(`\nЕКРАН (дзеркало оновлено ${view.syncedAt}, каталог ${view.catalog.length} адаптерів):`);
     for (const c of view.channels) {
       console.log(`  ${c.otaCode} «${c.title}» ${c.isActive ? 'активний' : 'вимкнений'}`);
