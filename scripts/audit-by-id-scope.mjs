@@ -109,7 +109,7 @@ const WRITE_BASELINE = {
   'src/modules/finance/api/counterparties.handlers.ts': 2,
   'src/modules/channels/api/ical-sync.handlers.ts': 2,
   'src/modules/channels/api/ical-channel.handlers.ts': 2,
-  'src/modules/reports/data/partner-report.repo.ts': 2,
+  'src/modules/reports/data/partner-report.repo.ts': 1,
   'src/modules/bookings/api/reservation-registrations.handlers.ts': 2,
   'src/modules/bookings/api/reservation.handlers.ts': 2,
   'src/modules/guests/data/registration.repo.ts': 2,
