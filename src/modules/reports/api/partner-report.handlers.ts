@@ -8,6 +8,7 @@
  */
 import { NextResponse } from 'next/server';
 import { withOwner } from '@core/auth/session';
+import { requestPropertyScope } from '@core/auth/property-scope';
 import {
   readPublishedReport, recordView, publishReport, listReports, revokeReport, rotateToken,
 } from '../data/partner-report.repo';
@@ -90,8 +91,9 @@ h1{font-size:1.25rem;margin:0 0 .5rem}p{margin:0;color:#777}</style></head>
 // ── Operator side ───────────────────────────────────────────────────────────
 
 /** Every report this hotel has published, with its link and view count. */
-export const listPartnerReports = withOwner(async () => {
-  const reports = await listReports();
+export const listPartnerReports = withOwner(async (request, _ctx, actor) => {
+  // Область — із запиту: список звітів це список ОБРАНОГО обʼєкта (Д45).
+  const reports = await listReports(await requestPropertyScope(request, actor.organizationId));
   return NextResponse.json({ reports });
 });
 
