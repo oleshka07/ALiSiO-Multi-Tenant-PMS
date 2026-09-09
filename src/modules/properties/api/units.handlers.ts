@@ -3,6 +3,7 @@ import * as unitsRepo from '../data/units.repo';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
 import { hasPermission } from '@core/auth/permissions';
 import { requirePropertyId } from '@core/auth/tenant-context';
+import { actorPropertyScope } from '@core/auth/property-scope';
 import { handleError } from '@core/http/errors';
 
 /**
@@ -25,15 +26,23 @@ export const listUnits = withActor(async (request: NextRequest, _ctx, actor: Act
     // кожного, хто ввійшов. Тому не 403 на весь список, а список без секретів:
     // відмовити цілком означало б зламати чотири робочі екрани заради двох
     // полів, яких вони не показують.
-    const rows = await unitsRepo.listUnits(actor.organizationId, {
+    // Який ОБʼЄКТ, а не лише який орендар. До INC-029 цей виклик не мав
+    // `property_id` навіть параметром: репозиторій обмежував запит віссю
+    // орендаря, і власник із двома готелями бачив номери обох, маючи
+    // вибраним один. Область приходить типом і без значення за
+    // замовчуванням — адреса, потім памʼять оператора (ARCHITECTURE §4.3.1).
+    const scope = await actorPropertyScope(actor.organizationId, searchParams.get('property'));
+
+    const rows = await unitsRepo.listUnits(actor.organizationId, scope, {
       category: searchParams.get('category') || undefined,
       unitType: searchParams.get('unitType') || undefined,
       includePool: searchParams.get('include_pool') === '1',
     }, { secrets: hasPermission(actor.user.permissions, 'manage_properties') });
     return NextResponse.json(rows);
   } catch (error) {
-    console.error('GET /api/units error:', error);
-    return NextResponse.json({ error: 'Failed to fetch units' }, { status: 500 });
+    // Названа відмова (чужий обʼєкт у `?property=` — 404) їде своїм статусом;
+    // помилка драйвера — 500 із логом. @core/http/errors, інваріант 6.
+    return handleError('properties/units', error);
   }
 });
 

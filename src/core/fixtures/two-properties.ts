@@ -234,3 +234,61 @@ export function assertNotDegenerate(fx: TwoProperties): void {
     throw new Error('two-properties: сума номерів збігається з одним із обʼєктів — «забув вісь» не відрізнити від «врахував».');
   }
 }
+
+/**
+ * Сусідня організація з ОДНИМ обʼєктом і 4 номерами.
+ *
+ * Вісь обʼєкта не заміняє осі орендаря, і твердження про першу без другої
+ * порожнє: «читач віддав 5 номерів обʼєкта А» зелене й на коді, який просто
+ * не бачить нікого, крім А. Тому кожна перевірка читача сіє ще й сусіда і
+ * доводить обидва боки — свій бачить своє, чужий не бачить нічого.
+ *
+ * 4 номери, бо це не 5, не 7 і не 12: якщо сусід протече, жодна сума не
+ * збіжиться з очікуваною (5+4=9, 7+4=11, 12+4=16).
+ *
+ * Окремою функцією, а не всередині `seedTwoProperties`: більшість тверджень
+ * потребує лише осі обʼєкта, і зайвий орендар у базі робив би кожне число
+ * трохи іншим без причини.
+ */
+export interface NeighbourOrganization {
+  organizationId: string;
+  propertyId: string;
+  unitTypeId: string;
+  unitIds: string[];
+}
+
+export async function seedNeighbourOrganization(): Promise<NeighbourOrganization> {
+  const sql = getSql();
+  const org = '__two_props__neighbour';
+  const property = `${org}_prop`;
+  const category = `${org}_cat`;
+  const unitType = `${org}_type`;
+
+  await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [org, 'Neighbour', org]);
+  await sql.run(
+    'INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)',
+    [property, org, 'Neighbour', property],
+  );
+  await sql.run(
+    'INSERT INTO categories (id, property_id, name, type) VALUES (?, ?, ?, ?)',
+    [category, property, 'Neighbour rooms', 'room'],
+  );
+  await sql.run(
+    `INSERT INTO unit_types (id, property_id, category_id, name, code, bookable_online)
+     VALUES (?, ?, ?, ?, ?, TRUE)`,
+    [unitType, property, category, 'N1', 'N1'],
+  );
+
+  const unitIds: string[] = [];
+  for (let i = 1; i <= 4; i++) {
+    const id = `${unitType}_u${i}`;
+    unitIds.push(id);
+    await sql.run(
+      `INSERT INTO units (id, property_id, unit_type_id, category_id, name, code, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, property, unitType, category, `N1-${i}`, `N1-${i}`, i],
+    );
+  }
+
+  return { organizationId: org, propertyId: property, unitTypeId: unitType, unitIds };
+}

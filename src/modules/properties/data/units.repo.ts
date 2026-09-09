@@ -1,5 +1,6 @@
 import { noteAvailabilityChanged } from '@channels/outbox';
 import { getSql } from '@core/db/async';
+import { propertyScopeFilter, type PropertyScope } from '@core/property-scope';
 import { ownsProperty, ownsViaProperty, propertyScopeSql } from './tenant-scope';
 
 /**
@@ -45,11 +46,13 @@ export function unitColumnsSql(secrets: boolean): string {
 
 export function listUnits(
   organizationId: string,
+  scope: PropertyScope,
   filters: { category?: string; unitType?: string; includePool?: boolean } = {},
   options: { secrets?: boolean } = {},
 ) {
   const sql = getSql();
   const secrets = options.secrets === true;
+  const inScope = propertyScopeFilter(scope, 'u');
   let query = `
     SELECT
       ${unitColumnsSql(secrets)}
@@ -58,10 +61,10 @@ export function listUnits(
     FROM units u
     JOIN categories c ON u.category_id = c.id
     JOIN unit_types ut ON u.unit_type_id = ut.id
-    WHERE u.is_active = TRUE AND ${propertyScopeSql('u')}
+    WHERE u.is_active = TRUE AND ${propertyScopeSql('u')} AND ${inScope.sql}
   `;
 
-  const params: string[] = [organizationId];
+  const params: string[] = [organizationId, ...inScope.params];
 
   // Pool/staging units never show up as bookable rooms. The room-allocation
   // modal opts in via includePool=true.

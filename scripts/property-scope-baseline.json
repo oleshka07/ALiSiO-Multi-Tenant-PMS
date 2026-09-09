@@ -107,7 +107,7 @@
   "src/modules/properties/data/properties.repo.ts": 1,
   "src/modules/properties/data/unit-search.ts": 1,
   "src/modules/properties/data/unit-types.repo.ts": 4,
-  "src/modules/properties/data/units.repo.ts": 5,
+  "src/modules/properties/data/units.repo.ts": 4,
   "src/modules/reports/api/city-tax.handlers.ts": 1,
   "src/modules/reports/api/reports.handlers.ts": 3,
   "src/modules/reports/data/partner-report.repo.ts": 3,
