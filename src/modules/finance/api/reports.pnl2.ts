@@ -2,10 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
-import { serverError } from '@core/http/errors';
+import { handleError } from '@core/http/errors';
+import { CLS_SQL, refuseUnknownAxis } from '../data/money-metrics';
 import { todayFor } from '@core/hotel-day';
 
-function mapExpense(cnameLower: string, commentLower: string, classifier: string, stdGroup: string): { rowId: string, childName: string } {
+/**
+ * Куди рядок витрати лягає у фінмоделі.
+ *
+ * `stdGroup` більше не параметр (Р14.1). Він тут був ДРУГИМ джерелом осі:
+ * `classifier === 'variable' || stdGroup === 'COGS'` — тобто функція сама
+ * добирала те, чого не добрав запит. Відколи вісь читає `CLS_SQL`, група вже
+ * впала в `classifier` (`COGS → 'cogs'`), і другий доборщик означав би два
+ * різні правила на одну вісь — рівно те, від чого Д37.
+ */
+function mapExpense(cnameLower: string, commentLower: string, classifier: string): { rowId: string, childName: string } {
     const is = (searchStr: string) => cnameLower.includes(searchStr) || commentLower.includes(searchStr);
     
     // Переменные
@@ -54,7 +64,7 @@ function mapExpense(cnameLower: string, commentLower: string, classifier: string
     if (is('управл')) return { rowId: 'mgmt', childName: cnameLower };
     if (is('professional') || is('консалтинг') || is('аудит') || is('юрист')) return { rowId: 'prof', childName: cnameLower };
     if (classifier === 'capex') return { rowId: 'capex', childName: 'Інше капітальне' };
-    if (classifier === 'variable' || stdGroup === 'COGS') return { rowId: 'variable', childName: 'Інші змінні' };
+    if (classifier === 'variable' || classifier === 'cogs') return { rowId: 'variable', childName: 'Інші змінні' };
     
     // Default to Fixed -> "Прочие" 
     return { rowId: 'fixed', childName: 'Прочие' };
@@ -86,15 +96,25 @@ export async function getPnl2(request: NextRequest): Promise<NextResponse> {
     for (const bu of originalBus) virtualBusMap[bu.id] = bu.id;
     const bus = originalBus.map((bu) => ({ id: bu.id, name: bu.name }));
 
-    // Fetch operations
+    // Вісь — ТИМ САМИМ виразом, що й решта звітів (`CLS_SQL`, Д38).
+    //
+    // Тут стояло `COALESCE(ec.classifier, 'other')`, і це був живий екран
+    // «PNL-2 (Фінмодель)»: стаття з порожнім `classifier` і групою `Financing`
+    // поводилась рівно так, як до Р13.4 — внесок інвестора йшов у «Прочие»
+    // серед постійних витрат. Р13.4 закрив `getPnlMatrix` і лишив сусідній
+    // екран із тією самою вадою (Р14.1). Вираз осі копіювати можна, обовʼязок
+    // назвати невідоме — теж: `refuseUnknownAxis` нижче.
     const ops = await sql.rows<any>(`
       SELECT o.amount_company, o.op_type, o.payment_subtype, o.project_id, o.comment,
-             ec.id as cat_id, ec.name as cat_name, COALESCE(ec.classifier, 'other') as classifier, ec.std_group
+             ec.id as cat_id, ec.name as cat_name, ec.code as cat_code,
+             ${CLS_SQL} as classifier, ec.std_group, ec.std_group as cat_std_group
       FROM fin_operations o
       LEFT JOIN expense_categories ec ON o.category_id = ec.id
       WHERE o.status = 'completed' AND o.organization_id = ?
         AND ${sql.dialect.month('o.paid_at')} = ?
     `, [org, month]) as any[];
+
+    refuseUnknownAxis(ops, 'Фінмодель');
 
     // Fetch capex depreciation
     const depRows = await sql.rows<any>(`
@@ -144,6 +164,19 @@ export async function getPnl2(request: NextRequest): Promise<NextResponse> {
     const r_prof = createRow('prof', 'Professional services (Consulting, audit, Lawyer, Photographer)', 'data');
     const r_taxes = createRow('taxes', 'Налоги', 'data');
     const r_invest = createRow('invest', 'Инвест доход', 'data');
+    // Рядок, який `mapExpense` називав, а звіт не мав (Р14.1).
+    //
+    // `mapExpense` віддає `rowId: 'loans'` для витрати з віссю `financing` або
+    // зі словом «кредит» у назві — а в `rowMap` нижче ключа `loans` не було, і
+    // `if (!targetRow) continue` МОВЧКИ викидав таку операцію зі звіту. Тобто
+    // повернення позики не потрапляло ні в «Кредиты», ні в «Прочие», ні в
+    // жоден інший рядок: гроші зникали з фінмоделі без сліду.
+    //
+    // Вада передіснуюча — вона спрацьовувала на кожній статті, явно
+    // класифікованій `financing`. Падіння осі на `std_group` вище робить її
+    // ЧАСТІШОЮ (тепер сюди потрапляє й стаття групи `Financing` із порожнім
+    // `classifier`), тож лишити її означало б полагодити вісь і погіршити звіт.
+    const r_loans = createRow('loans', 'Кредиты', 'data');
     const r_capex = createRow('capex', 'Капитальные затраты', 'data', [
       'Материалы на строительство и ремонты',
       'Инфраструктура и покупки товаров',
@@ -158,7 +191,8 @@ export async function getPnl2(request: NextRequest): Promise<NextResponse> {
       'mgmt': r_mgmt,
       'prof': r_prof,
       'taxes': r_taxes,
-      'capex': r_capex
+      'capex': r_capex,
+      'loans': r_loans
     };
 
     // Pass 1: Calculate revenue ratios per Virtual BU
@@ -249,7 +283,7 @@ export async function getPnl2(request: NextRequest): Promise<NextResponse> {
       }
       // Expenses
       else if (op.op_type === 'expense') {
-        const mapped = mapExpense(cnameLower, commentLower, op.classifier, op.std_group);
+        const mapped = mapExpense(cnameLower, commentLower, op.classifier);
         const targetRow = rowMap[mapped.rowId];
         
         if (!targetRow) continue; // safety check
@@ -314,6 +348,7 @@ export async function getPnl2(request: NextRequest): Promise<NextResponse> {
     rows.push(r_taxes);
     rows.push(r_invest);
     rows.push(r_capex);
+    rows.push(r_loans);
 
     const finalRows = rows.map(r => {
       const childrenArr: any[] = [];
@@ -360,7 +395,7 @@ export async function getPnl2(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json({ month, businessUnits: bus, rows: finalRows });
   } catch (error: any) {
-    return serverError('modules/finance/api/reports.pnl2 getPnl2', error);
+    return handleError('modules/finance/api/reports.pnl2 getPnl2', error);
   }
 }
 

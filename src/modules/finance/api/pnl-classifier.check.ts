@@ -23,12 +23,28 @@
  * різні твердження, і перше мусить бути НАЗВАНЕ (інваріант 13). Готель почує
  * назву статті й полагодить її, а не шукатиме, звідки в «Іншому» шість тисяч.
  *
- * Осі (інваріант 26). Три статті з РІЗНИМИ сумами, які не збігаються ні
- * попарно, ні в сумі з жодною іншою комбінацією: 7000 (фінансування), 500
- * (оренда, OPEX) і 300 (виручка). Одна сума не розрізнила б «потрапило в
- * секцію» і «потрапило в сусідню»; однакові — не розрізнили б, котра з них.
+ * Осі (інваріант 26). Чотири статті з РІЗНИМИ сумами, які не збігаються ні
+ * попарно, ні в сумі з жодною іншою комбінацією: 7000 (фінансування), 1100
+ * (повернення позики), 500 (оренда, OPEX) і 300 (виручка). Одна сума не
+ * розрізнила б «потрапило в секцію» і «потрапило в сусідню»; однакові — не
+ * розрізнили б, котра з них.
+ *
+ * ── Чому тут ЩЕ Й статичне твердження (Р14.1) ───────────────────────────────
+ *
+ * Сцени нижче стверджують про поведінку ОДНОГО читача, і цього виявилось мало:
+ * «один читач на обидва місця» було виконано в одному місці з чотирьох. Гейт
+ * тримав ВИРАЗ (`CLS_SQL`), а не властивість, тому сусідні читачі — живий
+ * екран «PNL-2», кешфлоу, розклад по бізнес-юнітах — і ПИСАЧ дочірньої статті
+ * лишились кожен зі своїм мовчазним дефолтом, і гейт був зелений.
+ *
+ * Тому першим стоїть твердження про весь модуль: дефолту осі поза
+ * `money-metrics.ts` немає жодного. Червоність доводиться поверненням
+ * `'other'` у `pnl2` (SQL-вісь) і `|| 'other'` у писачі (вісь виразу).
  */
 import assert from 'node:assert';
+import fs from 'node:fs';
+import path from 'node:path';
+import ts from 'typescript';
 import '../../../../scripts/lib/module-aliases.mjs';
 
 const { getSql } = await import('@core/db/async');
@@ -87,6 +103,71 @@ async function pnl(organizationId: string): Promise<{
   });
 }
 
+// ── 0. ВЛАСТИВІСТЬ: у модулі немає другого правила осі ──────────────────────
+//
+// Сцени нижче стверджують про ПОВЕДІНКУ одного читача. Цього виявилось мало:
+// Р13.4 просив «один читач на обидва місця», і місць було чотири — `CLS_SQL`
+// полагодив `getPnlMatrix`, а живий екран «PNL-2», кешфлоу, розклад по
+// бізнес-юнітах і ПИСАЧ дочірньої статті лишились кожен зі своїм мовчазним
+// дефолтом. Гейт про вираз їх не бачив за побудовою: він тримав ВИРАЗ, а не
+// властивість (Р14.1, AGENTS §3.2.1).
+//
+// Тому твердження тут інше: **у `src/modules/finance/**` немає жодного
+// дефолту осі поза `data/money-metrics.ts`**. Один дім на правило; нове місце
+// або кличе його, або червоніє.
+//
+// Розбір — AST, не грепом. Причина названа в Р14.2: стрипер коментарів це
+// окремий рід вади (він уже зʼїдав 60 рядків у `check-bare-node`), а тут його
+// просто немає — коментарі JS не є вузлами-рядками й у розбір не потрапляють.
+// Коментар SQL усередині шаблона вирізається окремо: `--` до кінця рядка.
+const FINANCE_ROOT = path.resolve(import.meta.dirname, '..');
+const AXIS_HOME = path.join(FINANCE_ROOT, 'data', 'money-metrics.ts');
+// Регулярка, а не рядок: літерал усередині цього файла сам потрапив би під
+// власне твердження. Регулярний вираз вузлом-рядком не є.
+const SQL_DEFAULT = /COALESCE\s*\([^()]*\bclassifier\b[^()]*,[^()]*'[^']*'\s*\)/i;
+const SQL_COMMENT = /--[^\n]*/g;
+
+function tsFiles(dir: string, out: string[] = []): string[] {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) tsFiles(full, out);
+    else if (/\.tsx?$/.test(e.name)) out.push(full);
+  }
+  return out;
+}
+
+const axisDefaults: string[] = [];
+for (const file of tsFiles(FINANCE_ROOT)) {
+  if (file === AXIS_HOME) continue;
+  const text = fs.readFileSync(file, 'utf8');
+  const src = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+  const at = (n: ts.Node) => src.getLineAndCharacterOfPosition(n.getStart(src)).line + 1;
+  const rel = path.relative(FINANCE_ROOT, file);
+
+  const visit = (node: ts.Node): void => {
+    // 1. SQL: COALESCE(<…classifier…>, '<літерал>')
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)
+      || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) {
+      const body = String((node as { text: string }).text).replace(SQL_COMMENT, ' ');
+      if (SQL_DEFAULT.test(body)) axisDefaults.push(`${rel}:${at(node)} — SQL-дефолт осі`);
+    }
+    // 2. JS: <…>.classifier || '<літерал>' та `?? '<літерал>'`
+    if (ts.isBinaryExpression(node)
+      && (node.operatorToken.kind === ts.SyntaxKind.BarBarToken
+        || node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)
+      && /\bclassifier\b/.test(node.left.getText(src))
+      && ts.isStringLiteral(node.right)) {
+      axisDefaults.push(`${rel}:${at(node)} — дефолт осі у виразі`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(src);
+}
+
+say(axisDefaults.length === 0,
+  `дефолтів осі поза money-metrics.ts: ${axisDefaults.length}`
+  + (axisDefaults.length ? `\n         ${axisDefaults.join('\n         ')}` : ''));
+
 await cleanup();
 try {
   const { organizationId } = await provisionOrganization({
@@ -138,6 +219,38 @@ try {
     `оренда з порожньою віссю впала в «Операційні»: 500 (у звіті ${r.totals.operational})`);
   say(r.totals.ebitda === -200,
     `EBITDA = 300 − 500 = −200, а не 6800 (у звіті ${r.totals.ebitda})`);
+
+  // ── Сцена 1b. Той самий рядок на СУСІДНЬОМУ екрані — «PNL-2» ────────────
+  //
+  // Статична властивість вище каже, що дефолту осі в модулі немає. Вона не
+  // каже, що читач кладе гроші в правильний рядок: файл без дефолту може
+  // мати вісь і не використовувати її. Тому — число у звіті, як і в сцені 1.
+  //
+  // Витрата, а не надходження: у «PNL-2» вісь читає `mapExpense`, і саме там
+  // жила вада — стаття групи `Financing` із порожнім `classifier` падала в
+  // «Постоянные расходы → Прочие» замість «Кредиты».
+  const unit = await runWithOrganization(organizationId, () => sql.row<{ id: string }>(
+    "SELECT id FROM business_units WHERE organization_id = ? AND is_shared = FALSE LIMIT 1",
+    [organizationId]));
+  await put({ op_type: 'expense', amount: 1100, currency: 'EUR', paid_at: `${MONTH}-14`,
+    account_from_id: account?.id, category_id: financing, project_id: unit?.id });
+
+  const pnl2 = await runWithOrganization(organizationId, async () => {
+    const { getPnl2 } = await import('./reports.pnl2');
+    const res = await getPnl2({ url: `http://local/api/finance/pnl-2?month=${MONTH}` } as never);
+    const body = await res.json() as { rows?: { key: string; total: number }[]; error?: string };
+    const byKey: Record<string, number> = {};
+    for (const r of body.rows || []) byKey[r.key] = r.total;
+    return { status: res.status, byKey, error: body.error ?? null };
+  });
+
+  say(pnl2.status === 200, `«PNL-2» будується (${pnl2.status}${pnl2.error ? `: ${pnl2.error}` : ''})`);
+  say(pnl2.byKey.loans === 1100,
+    `повернення позики стоїть у «Кредиты»: 1100 (у звіті ${pnl2.byKey.loans})`);
+  // Не «нуль»: у «Постоянных» законно лежить оренда зі сцени 1. Число
+  // несумісне з альтернативним прочитанням — 500 проти 1600 (інваріант 26).
+  say(pnl2.byKey.fixed === 500,
+    `«Постоянные расходы» лишились орендою 500, а не 1600 (у звіті ${pnl2.byKey.fixed})`);
 
   // ── Сцена 2. std_group, якого немає в жодному WHEN ──────────────────────
   const unknown = await blindCategory('mystery', 'Вигадана група', 'expense');

@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
-import { getMonthMoney, CLS_SQL } from '../data/money-metrics';
+import { getMonthMoney, CLS_SQL, refuseUnknownAxis } from '../data/money-metrics';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { serverError, refuse, handleError } from '@core/http/errors';
 import { todayFor, shiftMonths, daysBetween, dayString } from '@core/hotel-day';
@@ -73,14 +73,28 @@ export async function getFinanceOverview(request: NextRequest): Promise<NextResp
       return { month: m, revenue: rev, expenses: exp, ebitda: rev - exp };
     }));
 
+    // ЧЕТВЕРТЕ місце тієї самої осі, знайдене вже гейтом-властивістю (Р14.1).
+    //
+    // Тут стояло власне падіння: `COALESCE(ec.classifier, ec.std_group)` і
+    // порівняння одразу з двома написаннями — `'financing'` і `'Financing'`,
+    // `'capex'` і `'CAPEX'`. Тобто пʼяте приватне правило осі, яке ЗНАЛО про
+    // групу наполовину: назви груп воно вгадувало регістром, а `'x'` було
+    // вартовим для «немає ні того, ні того».
+    //
+    // Зміна, яку треба сказати вголос: рядок доходу БЕЗ статті. Раніше
+    // `COALESCE(NULL, NULL)` давав NULL, `NULL NOT IN (…)` — не істину, і такий
+    // дохід у виручку обʼєкта НЕ потрапляв. `CLS_SQL` дає йому
+    // `'uncategorized'`, тобто тепер потрапляє — рівно так, як його рахує
+    // канонічний `getMonthMoney` (`gross_income`). Раніше ці два числа
+    // розходились, і розходились мовчки.
     const buBreakdown = await sql.rows<any>(`
       SELECT bu.id, bu.name,
-             COALESCE(SUM(CASE WHEN o.op_type = 'income' AND COALESCE(ec.classifier, ec.std_group) NOT IN ('financing', 'Financing') THEN o.amount_company
+             COALESCE(SUM(CASE WHEN o.op_type = 'income' AND ${CLS_SQL} != 'financing' THEN o.amount_company
                               WHEN o.op_type = 'expense' AND COALESCE(o.payment_subtype,'') = 'refund' THEN -o.amount_company
                               ELSE 0 END), 0) as revenue,
              COALESCE(SUM(CASE WHEN o.op_type = 'expense' AND COALESCE(o.payment_subtype,'') != 'refund'
                                 AND COALESCE(ec.is_capex, FALSE) = FALSE
-                                AND COALESCE(ec.classifier, ec.std_group, 'x') NOT IN ('financing', 'Financing', 'capex', 'CAPEX')
+                                AND ${CLS_SQL} NOT IN ('financing', 'capex')
                                THEN o.amount_company ELSE 0 END), 0) as expenses,
              COALESCE(SUM(CASE WHEN o.op_type = 'expense' AND ec.is_capex = TRUE THEN o.amount_company ELSE 0 END), 0) as capex
       FROM business_units bu
@@ -425,18 +439,10 @@ export async function getPnlMatrix(request: NextRequest): Promise<NextResponse> 
                ec.op_type, ec.parent_id, o.op_type, month
     `, [from, to, org, ...tagIds]) as any[];
 
-    // Вісь, якої читач не знає, НАЗИВАЄТЬСЯ, а не тоне в «Іншому».
-    //
-    // «Не знаю, куди це» і «це інше» — різні твердження (інваріант 13). Мовчазне
-    // «Інше» означає, що готель шукатиме, звідки в рядку взялися гроші; названа
-    // відмова означає, що він побачить статтю і полагодить її за хвилину.
-    const unknown = rows.filter((r: any) => String(r.classifier || '').startsWith('unknown:'));
-    if (unknown.length > 0) {
-      const names = [...new Set(unknown.map((r: any) => `«${r.cat_name}» (${r.cat_code || r.cat_id}, група «${r.cat_std_group}»)`))];
-      refuse(`Звіт не побудовано: у ${names.length === 1 ? 'статті' : 'статей'} ${names.join(', ')} `
-        + 'група обліку не належить до відомих. Виправте групу в Фінанси → Налаштування → Статті обліку — '
-        + 'інакше ці гроші стали б рядком «Інше», і знайти їх було б нічим.');
-    }
+    // Вісь, якої читач не знає, НАЗИВАЄТЬСЯ, а не тоне в «Іншому» (інваріант 13).
+    // Двері спільні: те саме твердження стояло тільки тут, і сусідні звіти —
+    // «PNL-2» та кешфлоу — його не мали (Р14.1).
+    refuseUnknownAxis(rows, 'Звіт');
 
     // Classify
     const byClassifier: Record<string, MatrixRow[]> = {
@@ -476,17 +482,17 @@ export async function getPnlMatrix(request: NextRequest): Promise<NextResponse> 
     const financingIncome: MatrixRow[] = [];
     for (const r of roots) {
       if (r.op_type === 'income') {
-        if ((r.classifier || '') === 'financing') financingIncome.push(r);
+        if (r.classifier === 'financing') financingIncome.push(r);
         else byClassifier.revenue.push(r);
       } else {
         // `|| 'other'` тут більше немає: вираз осі порожнім не буває, а
         // невідома група відмовлена вище поіменно. Лишається `uncategorized`
         // — стаття без групи ВЗАГАЛІ, і вона теж не «Інше»: гроші видно
         // окремим рядком, як і в місячних підсумках.
-        // `?? 'uncategorized'`, не `|| 'other'`: операція взагалі без статті
-        // (`LEFT JOIN` не знайшов рядка) — це «не класифіковано», і воно теж
-        // мусить бути видиме окремо, а не змішане з «Іншим».
-        const cls = r.classifier ?? 'uncategorized';
+        // Без жодного дефолту: вісь приходить із `CLS_SQL`, який порожньою її
+        // не лишає — операція без статті вже названа `uncategorized` там.
+        // Дефолт тут був би шостим приватним правилом осі (Р14.1).
+        const cls = String(r.classifier);
         if (byClassifier[cls]) byClassifier[cls].push(r);
         else byClassifier.other.push(r);
       }
@@ -732,13 +738,21 @@ export async function getProjectProfitability(request: NextRequest): Promise<Nex
 
     // Operating view: refunds net against income; CapEx and financing flows
     // are separated so a build-out year doesn't read as operating loss.
+    //
+    // Вісь — `CLS_SQL`, як у решті звітів (Р14.1). Тут стояло
+    // `COALESCE(ec.classifier, '')` двічі: стаття з порожнім `classifier` не
+    // потрапляла у `financing_in` і не виключалась із `capex_fin`, тобто
+    // внесок інвестора рахувався звичайним доходом проєкту, а капітальна
+    // витрата — операційною. Вираз повторено двічі навмисно: Postgres не дає
+    // послатись на псевдонім свого ж списку колонок, а підзапит заради двох
+    // згадок коштував би більше, ніж важить.
     const rows = await sql.rows<any>(`
       SELECT bu.id AS project_id, bu.name AS project_name, bu.is_shared,
              CASE
-               WHEN o.op_type = 'income' AND COALESCE(ec.classifier, '') = 'financing' THEN 'financing_in'
+               WHEN o.op_type = 'income' AND ${CLS_SQL} = 'financing' THEN 'financing_in'
                WHEN o.op_type = 'income' THEN 'income'
                WHEN COALESCE(o.payment_subtype, '') = 'refund' THEN 'refund'
-               WHEN COALESCE(ec.classifier, '') IN ('capex', 'financing') OR COALESCE(ec.is_capex, FALSE) = TRUE THEN 'capex_fin'
+               WHEN ${CLS_SQL} IN ('capex', 'financing') OR COALESCE(ec.is_capex, FALSE) = TRUE THEN 'capex_fin'
                ELSE 'expense'
              END AS bucket,
              ${monthOf} AS month, SUM(o.amount_company) AS total

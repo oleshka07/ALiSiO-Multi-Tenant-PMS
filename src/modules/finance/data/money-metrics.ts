@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getSql } from '@core/db/async';
 import { AXIS_BY_STD_GROUP } from '@core/chart-of-accounts';
+import { refuse } from '@core/http/errors';
 // ════════════════════════════════════════════════════════════
 // Canonical month money metrics — SINGLE DEFINITION of revenue/expenses
 // for every cash-based report (overview, indicators, P&L, cashflow).
@@ -73,6 +74,33 @@ export const CLS_SQL = `
     'uncategorized'
   ))
 `;
+
+/**
+ * Вісь, якої читач не знає, НАЗИВАЄТЬСЯ — одні двері на всі звіти (Р14.1).
+ *
+ * Це саме твердження стояло всередині `getPnlMatrix` і тільки там, тож
+ * сусідні читачі — «PNL-2» і кешфлоу — тонули в мовчазному дефолті далі.
+ * Виявилось, що «один читач на обидва місця» було виконано в одному місці з
+ * чотирьох: вираз осі можна скопіювати, а разом із ним копіюється й обовʼязок
+ * назвати те, чого він не знає.
+ *
+ * `rows` — те, що повернув запит із `CLS_SQL`; `classifier` у них ніколи не
+ * порожній, але може бути `unknown:<група>`. Порожній список — нічого не
+ * робимо: відмова тут не про відсутність даних, а про невідому вісь.
+ */
+export function refuseUnknownAxis(
+  rows: readonly { classifier?: string | null; cat_name?: string | null;
+    cat_code?: string | null; cat_id?: string | null; cat_std_group?: string | null }[],
+  where: string,
+): void {
+  const unknown = rows.filter((r) => String(r.classifier || '').startsWith('unknown:'));
+  if (unknown.length === 0) return;
+  const names = [...new Set(unknown.map((r) =>
+    `«${r.cat_name ?? '—'}» (${r.cat_code || r.cat_id || '—'}, група «${r.cat_std_group ?? '—'}»)`))];
+  refuse(`${where} не побудовано: у ${names.length === 1 ? 'статті' : 'статей'} ${names.join(', ')} `
+    + 'група обліку не належить до відомих. Виправте групу в Фінанси → Налаштування → Статті обліку — '
+    + 'інакше ці гроші стали б рядком «Інше», і знайти їх було б нічим.');
+}
 
 /**
  * Every number the finance overview shows for a month.
