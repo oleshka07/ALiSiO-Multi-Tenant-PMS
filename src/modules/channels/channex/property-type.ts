@@ -1,4 +1,5 @@
 import { LODGING_KINDS, type LodgingKind } from '@core/lodging-kinds';
+import { billingBasisOf, lodgingKindsBilledBy, type LodgingBillingBasis } from '../ui/billing-group';
 
 /**
  * Рід житла (наш) → `property_type` (вендорський).
@@ -50,6 +51,59 @@ const TO_CHANNEX: Record<LodgingKind, string | null> = {
   tent: 'tent',
   villa: 'villa',
 };
+
+/**
+ * Група тарифікації вендора — те, ЗА ЩО він виставить рахунок.
+ *
+ * ── Таблиця тут НЕ лежить, і це навмисно ────────────────────────────────
+ *
+ * Розбиття родів житла на «за обʼєкт» і «за юніт» живе в
+ * `../ui/billing-group.ts` доменними словами (`per_property`, `per_unit`) —
+ * бо його читає ЕКРАН, на якому оператор обирає рід, і читає в браузері.
+ * Клієнтський компонент не може імпортувати цю теку: разом із нею поїхали б
+ * `client.ts`, ключі й транспорт.
+ *
+ * Тут — переклад у слова вендора, і тільки він. Двох таблиць немає
+ * свідомо: два списки одного факту розходяться мовчки, і розійшлися б саме
+ * тоді, коли вендор перенесе рід із групи в групу.
+ *
+ * ── Чому це взагалі має вагу ────────────────────────────────────────────
+ *
+ * Лист вендора 09.09.2026 (`docs/vendor/channex/billing-2026-09-09.md`,
+ * збережений дослівно): «Billing follows the property_type you set on
+ * create. Hotel-group types bill at $7/property; vacation-rental types at
+ * $0.50/unit.» Тобто рід житла — не «коректність каталогу», а вісь рахунку
+ * готелю, і помилка тут МОВЧИТЬ: неправильний рід дає неправильний рахунок
+ * доти, доки хтось не звірить виписку (інваріант 29).
+ *
+ * Сум у коді немає і не буде: $7 і $0.50 змінюються без нас. Код називає
+ * ГРУПУ; джерело правди для сум — лист і сторінка цін вендора.
+ */
+export type ChannexBillingGroup = 'hotel' | 'vacation_rental';
+
+const GROUP_OF_BASIS: Record<LodgingBillingBasis, ChannexBillingGroup> = {
+  per_property: 'hotel',
+  per_unit: 'vacation_rental',
+};
+
+/**
+ * За що вендор виставить рахунок для цього роду житла.
+ *
+ * `null` — рід поза переліком вендора; тоді питання рахунку не стоїть, бо
+ * обʼєкт із таким родом до вендора не поїде взагалі (`propertyAttributes`
+ * відмовляє).
+ */
+export function channexBillingGroup(kind: string | null | undefined): ChannexBillingGroup | null {
+  const basis = billingBasisOf(kind);
+  return basis === null ? null : GROUP_OF_BASIS[basis];
+}
+
+/** Роди житла однієї групи тарифікації. Для гейта і для екрана. */
+export function lodgingKindsInBillingGroup(group: ChannexBillingGroup): LodgingKind[] {
+  const basis = (Object.keys(GROUP_OF_BASIS) as LodgingBillingBasis[])
+    .find((b) => GROUP_OF_BASIS[b] === group)!;
+  return lodgingKindsBilledBy(basis);
+}
 
 /**
  * Вендорське значення для нашого роду житла, або `null`, якщо вендор такого

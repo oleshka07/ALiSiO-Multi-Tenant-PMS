@@ -6,6 +6,12 @@ import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import PropertyRequired from '@/components/layout/PropertyRequired';
 import { EmptyState, LoadingState } from '@/components/ui/State';
 import { LODGING_KINDS } from '@core/lodging-kinds';
+// Обидва — з модуля каналів, і лише через парадну для React
+// (`modules/channels/ui/`): фасад `@channels` тягне серверний код, якого в
+// 'use client' бути не може. Малюється лише під увімкненим модулем — див.
+// нижче: готель без каналів не має бачити нічого про чужі тарифи.
+import { LodgingBillingHint } from '@/modules/channels/ui/LodgingBillingHint';
+import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import {
   Building2, Edit3, Trash2, Plus, Save, X, Check, Search,
   ChevronRight, ChevronDown, Tent, TreePine, BedDouble,
@@ -138,6 +144,8 @@ function Modal({ open, onClose, title, children, footer, size }: {
 export default function SettingsPropertiesPage() {
   const pluralUi = usePlural();
   const tUi = useT();
+  // Модулі готелю — щоб не показувати тарифи каналів тому, хто їх не купував.
+  const { features } = useCurrentUser();
   // ── Data ──
   const [properties, setProperties] = useState<PropertyRow[]>([]);
   // Який обʼєкт відкрито — область у шапці, не власний стан
@@ -902,6 +910,10 @@ export default function SettingsPropertiesPage() {
                 {LODGING_KINDS.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
               <div className="form-hint">{tUi('Вендор каналу рахує за цим тариф. Поки не вказано — каталог у канал не поїде.')}</div>
+              {/* Наслідок для рахунку — до натискання, і лише тим, хто канали
+                  купував. Рід житла став віссю тарифікації (лист вендора
+                  09.09.2026), а помилка тут мовчить до першого числа. */}
+              {features.channels && <LodgingBillingHint kind={propForm.property_type} />}
             </div>
           </div>
         </Modal>

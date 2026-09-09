@@ -6232,6 +6232,8 @@
   "тарифів не змаплені на жоден канал": "tarifů není namapováno na žádný kanál",
   "Тарифів ще немає": "Zatím žádné sazby",
   "Тарифів ще немає. Створіть перший — наприклад, Best Available Rate з кодом BAR": "Zatím žádné sazby. Vytvořte první — např. Best Available Rate s kódem BAR",
+  "Тарифікація каналу: за обʼєкт — один рахунок незалежно від кількості номерів.": "Účtování kanálu: za objekt — jedna faktura bez ohledu na počet pokojů.",
+  "Тарифікація каналу: за кожен юніт — рахунок зростає з кількістю зданих одиниць.": "Účtování kanálu: za každou jednotku — faktura roste s počtem pronajatých jednotek.",
   "Тварини та паркінг": "Zvířata a parkování",
   "Тварини та фото входу": "Zvířata a fotografie vchodu",
   "Те саме число йде і в дату оподаткованої операції (DUZP).": "Stejné číslo se použije i pro datum uskutečnění zdanitelného plnění (DUZP).",

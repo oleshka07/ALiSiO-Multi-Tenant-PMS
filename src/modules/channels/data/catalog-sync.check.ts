@@ -45,6 +45,9 @@ const { getSql } = await import('@core/db/async');
 const { syncConnectionCatalog } = await import('./catalog-sync.ts');
 const { remoteIdOf } = await import('./mappings.repo.ts');
 const { queuedChanges, OUTBOX_HORIZON_DAYS } = await import('./outbox.repo.ts');
+// Вісь рахунку — ДОМЕННИМИ словами: `check-vendor-isolation` тримає імʼя
+// вендора всередині `channex/`, а цей файл далеко за його межами.
+const { billingBasisOf } = await import('../ui/billing-group.ts');
 
 const sql = getSql();
 const A = '__catsync__a';
@@ -289,6 +292,65 @@ await runWithOrganization(A, async () => {
   );
 });
 console.log('  ok  готель, який не назвав тип житла, отримує названу відмову');
+
+// ── Пояс: дві ОКРЕМІ сцени, бо це дві різні поломки ────────────────────
+//
+// Лист вендора 09.09.2026: «Always set timezone explicitly to an IANA name.
+// Do not omit it — arrival dates follow the property timezone day boundary.»
+// У вендорському доці те саме поле позначене `[optional]`
+// (`hotels-collection.md:430`), і саме ця розбіжність — причина, чому варта
+// потрібна В НАС: вендор дозволяє пропустити, а наслідок лягає на готель.
+//
+// Сцени різні, бо різні механізми відмови, і кожен ламався б окремо:
+//   ПОРОЖНІЙ рядок `NOT NULL` дозволяє, і він мовчки випадав з тіла через
+//   умовний спред — 200, обʼєкт без поясу, жодної помилки;
+//   ВИГАДАНА зона проходить будь-яку перевірку на непорожність і вмирає
+//   422-ю у вендора вже посеред створення каталогу, коли обʼєкт заведено.
+await runWithOrganization(A, async () => {
+  await sql.run('UPDATE properties SET property_type = ? WHERE id = ?', ['hotel', `${A}_prop`]);
+
+  await sql.run('UPDATE organizations SET timezone = ? WHERE id = ?', ['', A]);
+  await assert.rejects(
+    () => syncConnectionCatalog(`${A}_conn`, { target: fakeTarget('tz1') as never }),
+    /has no timezone/,
+    'порожній пояс мовчки випав з тіла замість названої відмови',
+  );
+
+  await sql.run('UPDATE organizations SET timezone = ? WHERE id = ?', ['Europe/Atlantis', A]);
+  await assert.rejects(
+    () => syncConnectionCatalog(`${A}_conn`, { target: fakeTarget('tz2') as never }),
+    /not a known IANA zone/,
+    'вигадана зона поїхала б вендору і повернулась 422 посеред створення каталогу',
+  );
+
+  await sql.run('UPDATE organizations SET timezone = ? WHERE id = ?', ['Europe/Kyiv', A]);
+});
+assert.strictEqual(
+  sentProperties['tz1'], undefined,
+  'обʼєкт із порожнім поясом усе одно поїхав у канал',
+);
+assert.strictEqual(
+  sentProperties['tz2'], undefined,
+  'обʼєкт із вигаданою зоною усе одно поїхав у канал',
+);
+console.log('  ok  порожній пояс і вигадана зона — дві названі відмови, і жоден обʼєкт не поїхав');
+
+// ── Вісь рахунку: два орендарі стоять по різні боки тарифу ─────────────
+//
+// Фікстура невироджена не лише по поясу, а й по ГРУПІ ТАРИФІКАЦІЇ: A —
+// `guest_house` (готельна група, рахунок за обʼєкт), B — `apartment`
+// (оренда, рахунок за юніт). Якби обидва були готелями, твердження про рід
+// житла лишалось би зеленим і в коді, який шле одну константу — а ціна
+// такої помилки тепер не «каталог не поїхав», а неправильний рахунок
+// готелю (лист вендора 09.09.2026).
+assert.notStrictEqual(
+  billingBasisOf(sentProperties['a']?.propertyType),
+  billingBasisOf(sentB?.propertyType),
+  'обидва орендарі на ОДНІЙ основі рахунку — вісь у фікстурі вироджена',
+);
+assert.strictEqual(billingBasisOf(sentProperties['a']?.propertyType), 'per_property');
+assert.strictEqual(billingBasisOf(sentB?.propertyType), 'per_unit');
+console.log('  ok  фікстура невироджена й по осі рахунку: обʼєкт проти юніта');
 
 await cleanup();
 console.log('каталог: зʼєднання знає свій обʼєкт на тому боці');
