@@ -26,9 +26,22 @@ export async function getWidgetReservation(req: NextRequest) {
     // guest's name, email and phone.
     return (await withSite(
       req.nextUrl.searchParams.get('siteId') || req.nextUrl.searchParams.get('siteSlug'),
-      async () => {
+      async (site) => {
 
     const sql = getSql();
+    // Вісь ОБʼЄКТА, а не лише орендаря (INC-029).
+    //
+    // `withSite` тримає орендаря — і на цьому зупинялось. Але сайт заведено
+    // ПІД ОБʼЄКТ (`booking_sites.property_id`, `NOT NULL`), а бронь читалась
+    // за самим лише `id`: готель із двома будинками і двома сайтами віддавав
+    // сайтові А бронь будинку Б — з іменем, поштою і телефоном гостя, якого
+    // цей сайт ніколи не бачив. Гість при цьому нічого не помічає: сторінка
+    // «ваше бронювання» показує чужу.
+    //
+    // Легасі-віджет без ключа сайта лишається як був: там обʼєкта не названо
+    // нічим, і звузити його означало б зламати того першого клієнта, заради
+    // якого гілка `withSite(null)` і існує. Орендаря він тримає.
+    const sitePropertyId = site?.property_id ? String(site.property_id) : null;
     const r = await sql.row<any>(`
       SELECT r.id, r.unit_id, r.check_in, r.check_out, r.nights,
              r.adults, r.children, r.status, r.payment_status, r.total_price,
@@ -37,8 +50,8 @@ export async function getWidgetReservation(req: NextRequest) {
       FROM reservations r
       LEFT JOIN units u ON u.id = r.unit_id
       LEFT JOIN guests g ON g.id = r.guest_id
-      WHERE r.id = ?
-    `, [id]) as any;
+      WHERE r.id = ?${sitePropertyId ? ' AND r.property_id = ?' : ''}
+    `, sitePropertyId ? [id, sitePropertyId] : [id]) as any;
 
     if (!r) {
       return NextResponse.json({ error: 'Not found' }, { status: 404, headers: CORS_HEADERS });

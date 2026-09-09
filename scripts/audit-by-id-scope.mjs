@@ -52,7 +52,6 @@ const STRICT = process.argv.includes('--strict');
 const BASELINE = {
   'src/modules/bookings/api/reservation.handlers.ts': 13,
   'src/modules/finance/api/operations.handlers.ts': 7,
-  'src/modules/widget/api/widget-reserve.handlers.ts': 8,
   // Свій профіль: id приходить із сесії того, хто питає. Найімовірніші
   // кандидати на «списати зі стелі» після прочитання очима.
   'src/modules/auth/api/user.handlers.ts': 5,

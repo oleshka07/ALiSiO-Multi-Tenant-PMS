@@ -921,25 +921,21 @@ export async function createWidgetReservation(request: NextRequest) {
   }
 }
 
-export async function getWidgetReservation(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await params;
-    const sql = getSql();
-    
-    const res = await sql.row<any>(`
-      SELECT r.id as reservationId, r.check_in as checkIn, r.check_out as checkOut, r.nights, r.total_price as totalPrice, r.currency,
-             u.name as unitName
-      FROM reservations r
-      LEFT JOIN units u ON r.unit_id = u.id
-      WHERE r.id = ?
-    `, [id]) as any;
-
-    if (!res) {
-      return NextResponse.json({ error: 'Reservation not found' }, { status: 404, headers: CORS_HEADERS });
-    }
-
-    return NextResponse.json(res, { headers: CORS_HEADERS });
-  } catch (error: any) {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: CORS_HEADERS });
-  }
-}
+/*
+ * Тут лежав ДРУГИЙ `getWidgetReservation` — мертвий, і саме тому небезпечний.
+ *
+ * Живий читач броні один: `widget-reservation.handlers.ts`, і фасад модуля
+ * експортує саме його. Цей не імпортував ніхто. Але він виглядав як робочий
+ * хендлер, лежав у файлі з живим POST — і читав `reservations WHERE r.id = ?`
+ * БЕЗ орендаря, без сайта і без токена, віддаючи дати, ночі, суму, валюту й
+ * назву номера.
+ *
+ * Ідентифікатор броні при цьому вгадуваний: `r_${Date.now()}_${slot}` (див.
+ * створення вище). Тобто варто було комусь підключити цю функцію до
+ * маршруту — і сервер віддавав би броні будь-якого готелю за перебором
+ * міток часу.
+ *
+ * Мертвий код, який виглядає живим, гірший за відсутній: він не працює і
+ * запрошує себе підключити. Прибрано разом із маршрутом
+ * `/api/booking/reserve/[id]`, який його й чекав.
+ */
