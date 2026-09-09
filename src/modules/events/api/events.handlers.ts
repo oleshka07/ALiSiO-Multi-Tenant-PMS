@@ -8,7 +8,8 @@
  * that IS what it eventually becomes.
  */
 import { NextResponse } from 'next/server';
-import { withModule } from '@core/auth/session';
+import { withModule, type Actor } from '@core/auth/session';
+import { requestPropertyScope } from '@core/auth/property-scope';
 import * as events from '../data/events.repo';
 
 /** A refusal the operator should read; anything else is logged and hidden. */
@@ -22,9 +23,11 @@ function refuse(e: unknown) {
   );
 }
 
-export const listSpaces = withModule('events', 'manage_bookings', async (request: Request) => {
+export const listSpaces = withModule('events', 'manage_bookings', async (request: Request, _ctx, actor: Actor) => {
   const all = new URL(request.url).searchParams.get('all') === '1';
-  return NextResponse.json({ spaces: await events.listSpaces({ all }) });
+  // Який ОБʼЄКТ, а не лише який орендар (INC-029): зали належать будинку.
+  const scope = await requestPropertyScope(request, actor.organizationId);
+  return NextResponse.json({ spaces: await events.listSpaces(scope, { all }) });
 });
 
 export const saveSpace = withModule('events', 'manage_bookings', async (request: Request) => {
@@ -48,9 +51,10 @@ export const saveSpace = withModule('events', 'manage_bookings', async (request:
   } catch (e) { return refuse(e); }
 });
 
-export const listAddons = withModule('events', 'manage_bookings', async (request: Request) => {
+export const listAddons = withModule('events', 'manage_bookings', async (request: Request, _ctx, actor: Actor) => {
   const all = new URL(request.url).searchParams.get('all') === '1';
-  return NextResponse.json({ addons: await events.listAddons({ all }) });
+  const scope = await requestPropertyScope(request, actor.organizationId);
+  return NextResponse.json({ addons: await events.listAddons(scope, { all }) });
 });
 
 export const saveAddon = withModule('events', 'manage_bookings', async (request: Request) => {
@@ -79,10 +83,11 @@ export const saveAddon = withModule('events', 'manage_bookings', async (request:
   } catch (e) { return refuse(e); }
 });
 
-export const listBookings = withModule('events', 'manage_bookings', async (request: Request) => {
+export const listBookings = withModule('events', 'manage_bookings', async (request: Request, _ctx, actor: Actor) => {
   const url = new URL(request.url);
+  const scope = await requestPropertyScope(request, actor.organizationId);
   return NextResponse.json({
-    bookings: await events.listBookings({
+    bookings: await events.listBookings(scope, {
       from: url.searchParams.get('from') || undefined,
       to: url.searchParams.get('to') || undefined,
       spaceId: url.searchParams.get('space_id') || undefined,
