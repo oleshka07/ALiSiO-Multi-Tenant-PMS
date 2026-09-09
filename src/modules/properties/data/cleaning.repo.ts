@@ -87,11 +87,15 @@ export interface BoardUnit {
  * станом, блокуванням на сьогодні і тим, хто в номері. Один запит на
  * номери, один на блокування, один на броні — без N+1.
  */
-export async function housekeepingBoard(organizationId: string, propertyId: string | null): Promise<{ today: string; units: BoardUnit[] }> {
+export async function housekeepingBoard(organizationId: string, scope: PropertyScope): Promise<{ today: string; units: BoardUnit[] }> {
   const sql = getSql();
   const today = await todayFor(organizationId);
-  const scope = propertyId ? 'AND u.property_id = ?' : '';
-  const params = propertyId ? [organizationId, propertyId] : [organizationId];
+  // Область типом, а не `propertyId: string | null` (INC-029): `null` тут
+  // означав «усі обʼєкти» мовчки, тобто був значенням, яке забувають, а не
+  // обирають. `ALL_PROPERTIES` каже те саме словом і видно грепом.
+  const onUnit = propertyScopeFilter(scope, 'u');
+  const onStay = propertyScopeFilter(scope, 'r');
+  const params = [organizationId, ...onUnit.params];
 
   const units = await sql.rows<any>(
     `SELECT u.id, u.code, u.name, u.property_id, p.name AS property_name,
@@ -99,7 +103,7 @@ export async function housekeepingBoard(organizationId: string, propertyId: stri
        FROM units u
        JOIN properties p ON p.id = u.property_id
        LEFT JOIN unit_types ut ON ut.id = u.unit_type_id
-      WHERE p.organization_id = ? ${scope} AND u.is_active = TRUE AND u.is_pool = FALSE
+      WHERE p.organization_id = ? AND ${onUnit.sql} AND u.is_active = TRUE AND u.is_pool = FALSE
       ORDER BY p.name, ut.sort_order, ut.name, u.sort_order, u.code`,
     params);
   if (units.length === 0) return { today, units: [] };
@@ -108,7 +112,7 @@ export async function housekeepingBoard(organizationId: string, propertyId: stri
     `SELECT b.unit_id, b.reason FROM availability_blocks b
        JOIN units u ON u.id = b.unit_id
        JOIN properties p ON p.id = u.property_id
-      WHERE p.organization_id = ? ${scope} AND b.date_from <= ? AND b.date_to > ?`,
+      WHERE p.organization_id = ? AND ${onUnit.sql} AND b.date_from <= ? AND b.date_to > ?`,
     [...params, today, today]);
   const blocked = new Map<string, string | null>(blocks.map((b: any) => [String(b.unit_id), b.reason ?? null]));
 
@@ -118,12 +122,12 @@ export async function housekeepingBoard(organizationId: string, propertyId: stri
        FROM reservations r
        JOIN properties p ON p.id = r.property_id
        LEFT JOIN guests g ON g.id = r.guest_id
-      WHERE p.organization_id = ? ${scope.replace('u.property_id', 'r.property_id')}
+      WHERE p.organization_id = ? AND ${onStay.sql}
         AND r.unit_id IS NOT NULL
         AND r.status IN ('confirmed', 'tentative', 'checked_in')
         AND r.check_in <= ? AND r.check_out >= ?
       ORDER BY r.check_in`,
-    [...params, today, today]);
+    [organizationId, ...onStay.params, today, today]);
   const byUnit = new Map<string, any[]>();
   for (const s of stays) {
     const k = String(s.unit_id);
@@ -177,7 +181,7 @@ export interface CleaningLogRow {
 
 /** Історія прибирання з фільтрами дата / номер / хто. */
 export async function cleaningHistory(organizationId: string, filter: {
-  propertyId?: string | null;
+  scope: PropertyScope;
   unitId?: string | null;
   changedBy?: string | null;
   from?: string | null;
@@ -185,9 +189,9 @@ export async function cleaningHistory(organizationId: string, filter: {
   limit?: number;
 }): Promise<CleaningLogRow[]> {
   const sql = getSql();
+  const inScope = propertyScopeFilter(filter.scope, 'u');
   const where: string[] = ['l.organization_id = ?'];
-  const params: unknown[] = [organizationId];
-  if (filter.propertyId) { where.push('u.property_id = ?'); params.push(filter.propertyId); }
+  const params: unknown[] = [organizationId, ...inScope.params];
   if (filter.unitId) { where.push('l.unit_id = ?'); params.push(filter.unitId); }
   if (filter.changedBy) { where.push('l.changed_by = ?'); params.push(filter.changedBy); }
   // Межі — дні включно; changed_at — момент, тож верхня межа це наступний день.
@@ -202,20 +206,20 @@ export async function cleaningHistory(organizationId: string, filter: {
        JOIN units u ON u.id = l.unit_id
        JOIN properties p ON p.id = u.property_id
        LEFT JOIN app_users a ON a.id = l.changed_by
-      WHERE ${where.join(' AND ')}
+      WHERE ${inScope.sql} AND ${where.join(' AND ')}
       ORDER BY l.changed_at DESC, l.id DESC
       LIMIT ${limit}`,
     params);
 }
 
 /** Лічильники для дашборда: усього · брудні · у роботі · чисті · out of order — і останні зміни. */
-export async function housekeepingSummary(organizationId: string, propertyId: string | null): Promise<{
+export async function housekeepingSummary(organizationId: string, scope: PropertyScope): Promise<{
   total: number; dirty: number; in_progress: number; clean: number; out_of_order: number;
   recent: CleaningLogRow[];
 }> {
-  const board = await housekeepingBoard(organizationId, propertyId);
+  const board = await housekeepingBoard(organizationId, scope);
   const count = (s: CleaningStatus) => board.units.filter((u) => u.cleaning_status === s && !u.out_of_order).length;
-  const recent = (await cleaningHistory(organizationId, { propertyId, limit: 5 }))
+  const recent = (await cleaningHistory(organizationId, { scope, limit: 5 }))
     .filter((r) => String(r.changed_at).slice(0, 10) === board.today);
   return {
     total: board.units.length,

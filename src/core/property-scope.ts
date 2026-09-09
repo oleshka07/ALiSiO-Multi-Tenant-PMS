@@ -104,6 +104,33 @@ export function propertyScopeFilter(scope: PropertyScope, alias: string): Proper
     : { sql: 'TRUE', params: [] };
 }
 
+/**
+ * Область для таблиці, де NULL у `property_id` означає «СПІЛЬНЕ для рахунку».
+ *
+ * ── Навіщо другі двері ──────────────────────────────────────────────────
+ *
+ * У девʼяти таблиць `property_id` NULLABLE, і NULL там не завжди «забули».
+ * У `tasks` і `task_projects` він означає рівно те, що написано: задача не
+ * привʼязана до будинку — «оновити прайс на сайті», «продовжити домен». Такі
+ * рядки належать КОЖНОМУ будинку, бо не належать жодному.
+ *
+ * `propertyScopeFilter` для них неправильний: `property_id = ?` тихо ховає
+ * саме ті рядки, які мали б бути в кожному списку, — і зникають вони без
+ * помилки й без сліду в логах (той самий звір, що рядок без орендаря,
+ * інваріант 12). Тому двері окремі, а не прапорець: вибір «спільне видно чи
+ * ні» — властивість ТАБЛИЦІ, і робиться він один раз при переведенні читача,
+ * а не на кожному виклику.
+ *
+ * Куди які двері — вирішує власник таблиці, і рішення пишеться в
+ * `docs/DECISIONS.md` (для `tasks` і `task_projects` — О14).
+ */
+export function propertyOrSharedFilter(scope: PropertyScope, alias: string): PropertyScopeFilter {
+  const column = alias ? `${alias}.property_id` : 'property_id';
+  return scope.kind === 'one'
+    ? { sql: `(${column} = ? OR ${column} IS NULL)`, params: [scope.id] }
+    : { sql: 'TRUE', params: [] };
+}
+
 /** Значення параметра адреси, що означає «усі обʼєкти» — те саме слово, що в шапці. */
 export const ALL_PROPERTIES_PARAM = 'all';
 

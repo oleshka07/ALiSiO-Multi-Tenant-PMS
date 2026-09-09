@@ -86,8 +86,17 @@ import ts from 'typescript';
 const SUB_OPEN = '\u0001';
 const SUB_CLOSE = '\u0002';
 
-/** Двері області: усе, що з них виходить, — це названа область. */
-const SCOPE_DOOR = 'propertyScopeFilter';
+/**
+ * Двері області: усе, що з них виходить, — це названа область.
+ *
+ * Їх двоє, і різниця не косметична. `propertyScopeFilter` дає
+ * `property_id = ?`; `propertyOrSharedFilter` — `(property_id = ? OR
+ * property_id IS NULL)` для таблиць, де NULL означає «спільне для рахунку»
+ * (`tasks`, `task_projects` — О14). Обидва означають «область прийшла типом»,
+ * тож для гейта вони рівні; список, а не підрядок, — щоб треті двері не
+ * зʼявились непоміченими через збіг імені.
+ */
+const SCOPE_DOORS = ['propertyScopeFilter', 'propertyOrSharedFilter'];
 
 /** Таблиці з `property_id` — зі згенерованої схеми, не зі списку в голові. */
 export function propertyScopedTables(root) {
@@ -157,7 +166,7 @@ function scopeFragmentNames(file) {
   const visit = (node) => {
     if (ts.isVariableDeclaration(node) && node.initializer
       && ts.isCallExpression(node.initializer)
-      && node.initializer.expression.getText(file).includes(SCOPE_DOOR)) {
+      && SCOPE_DOORS.some((d) => node.initializer.expression.getText(file).includes(d))) {
       if (ts.isIdentifier(node.name)) names.add(node.name.text);
       else if (ts.isObjectBindingPattern(node.name)) {
         for (const el of node.name.elements) {
@@ -211,7 +220,7 @@ export function scanSource(source, fileName, scopedTables) {
 
     const where = filterPart(text);
     const subs = substitutions(where);
-    const fromDoor = subs.some((s) => s.includes(SCOPE_DOOR)
+    const fromDoor = subs.some((s) => SCOPE_DOORS.some((d) => s.includes(d))
       || [...fragments].some((n) => new RegExp(`\\b${n}\\b`).test(s)));
 
     const bucket = (named) => (named ? 'names' : (subs.length > 0 ? 'unknown' : 'silent'));

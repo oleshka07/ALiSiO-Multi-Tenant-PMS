@@ -5,6 +5,8 @@ import { withActor, type Actor } from '@core/auth/session';
 import { todayFor, shiftDays } from '@core/hotel-day';
 import { occupancyOnDay } from '@core/occupancy-rate';
 import { housekeepingSummary } from '@properties';
+import { requestPropertyScope } from '@core/auth/property-scope';
+import { propertyScopeFilter } from '@core/property-scope';
 
 /**
  * The first screen after logging in — arrivals, departures, occupancy.
@@ -29,18 +31,21 @@ export const getDashboard = withActor(async (request: NextRequest, _ctx, actor: 
     // Область обʼєкта (BUILD-PLAN, Блок 1): обраний обʼєкт звужує дашборд,
     // «Усі обʼєкти» рахує організацію цілком і підписує рядки готелем.
     // Чужий id дає порожньо: організація стоїть у кожному WHERE і без нього.
-    const propertyFilter = new URL(request.url).searchParams.get('property_id') || '';
-    const scope = (alias = '') => (propertyFilter ? `${OWN(alias)} AND ${alias}property_id = ?` : OWN(alias));
-    const scoped = (...rest: unknown[]) => (propertyFilter ? [org, propertyFilter, ...rest] : [org, ...rest]);
+    // Область типом (INC-029): своя рука `propertyFilter ? … : …` робила те
+    // саме, але статично не читалась і не мала ні куки, ні 404 на чужий id.
+    const propertyScope = await requestPropertyScope(request, org);
+    const inScope = propertyScopeFilter(propertyScope, '');
+    const onStay = propertyScopeFilter(propertyScope, 'r');
+    const scoped = (...rest: unknown[]) => [org, ...inScope.params, ...rest];
     // The hotel's day, not the server's. `toISOString()` is UTC, so between
     // midnight and 01:00–03:00 local a Prague or Kyiv hotel saw yesterday's
     // arrivals, yesterday's departures and yesterday's occupancy — every
     // night, at the exact hour a night receptionist starts their shift.
     const today = await todayFor(org);
 
-    const arrivals = await sql.row<any>(`SELECT COUNT(*) as cnt FROM reservations WHERE ${scope()} AND check_in = ? AND status IN ('confirmed', 'tentative')`, scoped(today));
+    const arrivals = await sql.row<any>(`SELECT COUNT(*) as cnt FROM reservations WHERE ${OWN()} AND ${inScope.sql} AND check_in = ? AND status IN ('confirmed', 'tentative')`, scoped(today));
 
-    const departures = await sql.row<any>(`SELECT COUNT(*) as cnt FROM reservations WHERE ${scope()} AND check_out = ? AND status IN ('checked_in')`, scoped(today));
+    const departures = await sql.row<any>(`SELECT COUNT(*) as cnt FROM reservations WHERE ${OWN()} AND ${inScope.sql} AND check_out = ? AND status IN ('checked_in')`, scoped(today));
 
     // Завантаженість рахує `@core/occupancy-rate`, і ці два запити навмисно не
     // фільтрують ані юнітів, ані статусів. Тут стояв власний COUNT з власним
@@ -48,9 +53,9 @@ export const getDashboard = withActor(async (request: NextRequest, _ctx, actor: 
     // бачив за один день два різних відсотки (AUDIT.md §2.9). Щойно фільтр
     // повертається в SQL, повертається й розходження: у чисельнику бракувало
     // `tentative`, тобто номер, який уже не можна продати, показувався вільним.
-    const unitRows = await sql.rows<any>(`SELECT id, is_active, is_pool FROM units WHERE ${scope()}`, scoped());
+    const unitRows = await sql.rows<any>(`SELECT id, is_active, is_pool FROM units WHERE ${OWN()} AND ${inScope.sql}`, scoped());
 
-    const stayRows = await sql.rows<any>(`SELECT unit_id, check_in, check_out, status FROM reservations WHERE ${scope()} AND check_in <= ? AND check_out > ?`, scoped(today, today));
+    const stayRows = await sql.rows<any>(`SELECT unit_id, check_in, check_out, status FROM reservations WHERE ${OWN()} AND ${inScope.sql} AND check_in <= ? AND check_out > ?`, scoped(today, today));
 
     const occ = occupancyOnDay(unitRows, stayRows, today);
 
@@ -65,7 +70,7 @@ export const getDashboard = withActor(async (request: NextRequest, _ctx, actor: 
       JOIN guests g ON r.guest_id = g.id
       LEFT JOIN units u ON r.unit_id = u.id
       JOIN properties p ON p.id = r.property_id
-      WHERE ${scope('r.')} AND r.check_in BETWEEN ? AND ? AND r.status IN ('confirmed', 'tentative')
+      WHERE ${OWN('r.')} AND ${onStay.sql} AND r.check_in BETWEEN ? AND ? AND r.status IN ('confirmed', 'tentative')
       ORDER BY r.check_in
       LIMIT 10
     `, scoped(today, future)));
@@ -79,13 +84,13 @@ export const getDashboard = withActor(async (request: NextRequest, _ctx, actor: 
       JOIN guests g ON r.guest_id = g.id
       LEFT JOIN units u ON r.unit_id = u.id
       JOIN properties p ON p.id = r.property_id
-      WHERE ${scope('r.')} AND r.check_out = ? AND r.status IN ('checked_in', 'confirmed')
+      WHERE ${OWN('r.')} AND ${onStay.sql} AND r.check_out = ? AND r.status IN ('checked_in', 'confirmed')
       ORDER BY u.name
     `, scoped(today)));
 
     // Прибирання (Блок 4 §2.2; у Hoteliera — «All rooms · Dirty rooms · Recent
     // Cleaning Activity»): лічильники і сьогоднішні зміни через фасад обʼєкта.
-    const housekeeping = await housekeepingSummary(org, propertyFilter || null);
+    const housekeeping = await housekeepingSummary(org, propertyScope);
 
     return NextResponse.json({
       arrivalsToday: arrivals?.cnt || 0,

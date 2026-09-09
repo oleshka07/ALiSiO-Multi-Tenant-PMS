@@ -33,8 +33,8 @@ const { getSql } = await import('@core/db/async.ts');
 const { runWithOrganization } = await import('@core/auth/tenant-context.ts');
 const { seedTwoProperties, assertNotDegenerate } = await import('./fixtures/two-properties.ts');
 const {
-  ALL_PROPERTIES, oneProperty, propertyScopeFilter, requirePropertyScope, requestedPropertyParam,
-  scopedPropertyId,
+  ALL_PROPERTIES, oneProperty, propertyOrSharedFilter, propertyScopeFilter, requirePropertyScope,
+  requestedPropertyParam, scopedPropertyId,
 } = await import('./property-scope.ts');
 
 const sql = getSql();
@@ -136,6 +136,41 @@ assert.strictEqual(scopedPropertyId(oneProperty(fx.a.id)), fx.a.id);
 assert.strictEqual(scopedPropertyId(ALL_PROPERTIES), null, '«усі» не мають id — і не мають його вигадувати');
 
 console.log('  ok  {kind:one} віддає 5 і 7, ALL_PROPERTIES — 12');
+
+// ─── 2.1. Другі двері: NULL означає «спільне для рахунку» ──────────────────
+//
+// Для `tasks` і `task_projects` NULL у `property_id` — не «забули», а «задача
+// рахунку»: «оновити прайс на сайті» не належить жодному будинку і тому
+// належить кожному. `propertyScopeFilter` тихо сховав би такі рядки, і саме
+// тому дверей двоє (О14).
+//
+// Тут — ФОРМА фрагмента, без бази. Поведінку («спільний рядок видно з кожного
+// обʼєкта, суворі двері його не показують») стверджує сцена того модуля, чия
+// таблиця це робить: `modules/tasks/data/tasks.scope.check.ts`, числа 4/5/7
+// проти 2. Так навмисно: `INSERT INTO tasks` із ядра зробив би `core` другим
+// писачем таблиці, і `check-boundaries` перестав би вважати її власністю
+// модуля — гейт «покращився» б від зміни, яка нічого не лагодить (INC-018).
+
+const sharedOne = propertyOrSharedFilter(oneProperty('__prop_x'), 't');
+assert.strictEqual(sharedOne.sql, '(t.property_id = ? OR t.property_id IS NULL)',
+  'другі двері мусять пускати рядки без обʼєкта — інакше вони те саме, що суворі');
+assert.deepStrictEqual(sharedOne.params, ['__prop_x'], 'параметр мав бути рівно один — id обʼєкта');
+
+const strictOne = propertyScopeFilter(oneProperty('__prop_x'), 't');
+assert.strictEqual(strictOne.sql, 't.property_id = ?',
+  'суворі двері мусять лишитись суворими — інакше різниці між дверима немає');
+assert.notStrictEqual(sharedOne.sql, strictOne.sql, 'двоє дверей видали однаковий фрагмент');
+
+assert.strictEqual(propertyOrSharedFilter(ALL_PROPERTIES, 't').sql, 'TRUE',
+  '«усі обʼєкти» мали лишитись тим самим TRUE в обох дверях');
+assert.deepStrictEqual(propertyOrSharedFilter(ALL_PROPERTIES, 't').params, [],
+  '«усі» не мають параметрів — зайвий зсунув би решту');
+
+// Без псевдоніма — гола колонка, як і в суворих дверях.
+assert.strictEqual(propertyOrSharedFilter(oneProperty('__prop_x'), '').sql,
+  '(property_id = ? OR property_id IS NULL)', 'без псевдоніма фрагмент не має чіпляти крапку');
+
+console.log('  ok  другі двері (О14): (property_id = ? OR IS NULL), «усі» — те саме TRUE');
 
 // ─── 3. Відсутність області — не «усі» ──────────────────────────────────────
 

@@ -5,6 +5,8 @@ import { getSql } from '@core/db/async';
 import { todayFor, shiftDays } from '@core/hotel-day';
 import type { Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
+import { requestPropertyScope } from '@core/auth/property-scope';
+import { propertyScopeFilter } from '@core/property-scope';
 import type { DashboardAlert } from '../domain/alerts';
 
 /**
@@ -14,10 +16,16 @@ import type { DashboardAlert } from '../domain/alerts';
  */
 const OWN = (alias = '') => `${alias}property_id IN (SELECT id FROM properties WHERE organization_id = ?)`;
 
-export async function getAlerts(_request: Request, _ctx: unknown, actor: Actor) {
+export async function getAlerts(request: Request, _ctx: unknown, actor: Actor) {
   try {
     const sql = getSql();
     const org = actor.organizationId;
+    // Який ОБʼЄКТ, а не лише який орендар (INC-029). Банер тривог висить над
+    // робочим столом зміни, а зміна працює в одному будинку: до правки
+    // рецепція першого готелю бачила незаселені заїзди другого і йшла їх
+    // шукати.
+    const scope = await requestPropertyScope(request, org);
+    const inScope = propertyScopeFilter(scope, 'r');
     // The hotel's day. This one WRITES: the auto-archive below flips
     // confirmed bookings to no_show, and a cutoff computed in UTC moves that
     // decision by up to three hours across a date boundary — archiving a
@@ -27,6 +35,12 @@ export async function getAlerts(_request: Request, _ctx: unknown, actor: Actor) 
 
     // Канали: no_show звільняє ночі, які ще лишились у броні. Кандидати
     // читаються ДО оновлення — після нього їх не відрізнити від давніх.
+    //
+    // Ці два запити свідомо йдуть по ВСЬОМУ рахунку, а не по обраному
+    // обʼєкту. Це не показ, а прибирання: авто-архів чіпляється до читання
+    // тривог, бо іншого регулярного виклику в нього немає. Звузивши його до
+    // області, ми зробили б архівацію другого будинку залежною від того, чи
+    // хтось відкрив дашборд із ним у шапці, — тобто вона просто не сталася б.
     const archived = await sql.rows<any>(`
       SELECT r.property_id, r.check_in, r.check_out, COALESCE(r.unit_type_id, u.unit_type_id) AS unit_type_id
       FROM reservations r LEFT JOIN units u ON u.id = r.unit_id
@@ -57,9 +71,9 @@ export async function getAlerts(_request: Request, _ctx: unknown, actor: Actor) 
       FROM reservations r
       JOIN guests g ON r.guest_id = g.id
       LEFT JOIN units u ON r.unit_id = u.id
-      WHERE ${OWN('r.')} AND r.check_in < ? AND r.check_in >= ? AND r.status = 'confirmed'
+      WHERE ${OWN('r.')} AND ${inScope.sql} AND r.check_in < ? AND r.check_in >= ? AND r.status = 'confirmed'
       ORDER BY r.check_in DESC
-    `, [org, today, archiveCutoff]);
+    `, [org, ...inScope.params, today, archiveCutoff]);
 
     for (const r of overdueArrivals) {
       alerts.push({
@@ -75,8 +89,8 @@ export async function getAlerts(_request: Request, _ctx: unknown, actor: Actor) 
       FROM reservations r
       JOIN guests g ON r.guest_id = g.id
       LEFT JOIN units u ON r.unit_id = u.id
-      WHERE ${OWN('r.')} AND r.check_in = ? AND r.status IN ('confirmed', 'tentative')
-    `, [org, today]);
+      WHERE ${OWN('r.')} AND ${inScope.sql} AND r.check_in = ? AND r.status IN ('confirmed', 'tentative')
+    `, [org, ...inScope.params, today]);
 
     for (const r of todayArrivals) {
       const isFullyPaid = r.payment_status === 'paid' || r.payment_status === 'prepaid';
@@ -112,8 +126,8 @@ export async function getAlerts(_request: Request, _ctx: unknown, actor: Actor) 
       FROM reservations r
       JOIN guests g ON r.guest_id = g.id
       LEFT JOIN units u ON r.unit_id = u.id
-      WHERE ${OWN('r.')} AND r.status = 'checked_in' AND (r.registration_status IS NULL OR r.registration_status = 'not_registered')
-    `, [org]);
+      WHERE ${OWN('r.')} AND ${inScope.sql} AND r.status = 'checked_in' AND (r.registration_status IS NULL OR r.registration_status = 'not_registered')
+    `, [org, ...inScope.params]);
 
     for (const r of noRegCheckedIn) {
       alerts.push({
@@ -129,8 +143,8 @@ export async function getAlerts(_request: Request, _ctx: unknown, actor: Actor) 
       FROM reservations r
       JOIN guests g ON r.guest_id = g.id
       LEFT JOIN units u ON r.unit_id = u.id
-      WHERE ${OWN('r.')} AND r.check_out = ? AND r.status = 'checked_in'
-    `, [org, today]);
+      WHERE ${OWN('r.')} AND ${inScope.sql} AND r.check_out = ? AND r.status = 'checked_in'
+    `, [org, ...inScope.params, today]);
 
     for (const r of todayDepartures) {
       alerts.push({
@@ -149,10 +163,10 @@ export async function getAlerts(_request: Request, _ctx: unknown, actor: Actor) 
       FROM reservations r
       JOIN guests g ON r.guest_id = g.id
       LEFT JOIN units u ON r.unit_id = u.id
-      WHERE ${OWN('r.')} AND r.payment_status = 'payment_requested'
+      WHERE ${OWN('r.')} AND ${inScope.sql} AND r.payment_status = 'payment_requested'
         AND r.status IN ('confirmed', 'tentative', 'checked_in')
       ORDER BY r.check_in
-    `, [org]);
+    `, [org, ...inScope.params]);
 
     for (const r of paymentRequests) {
       alerts.push({
