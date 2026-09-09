@@ -75,6 +75,11 @@ try {
     name: 'Axis repair', slug: SLUG,
     ownerEmail: `${SLUG}@example.test`, ownerPassword: 'check-password-1234',
     currency: 'EUR', language: 'uk',
+    // Шов злиття: заведення вимагає пояса (О10) і роду житла (В1) — обидва
+    // названо явно. `timezone`, а не `country`: країна вирішує ще й юрисдикцію
+    // документа, і підставити її тут означало б змінити те, про що ця сцена
+    // не збиралась стверджувати.
+    timezone: 'Europe/Kyiv', lodgingKind: 'hotel',
   });
 
   // ── Фікстура: база, яку пройшов легасі-бекфіл ───────────────────────────

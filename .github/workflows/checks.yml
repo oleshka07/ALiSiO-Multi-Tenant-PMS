@@ -35,6 +35,17 @@ jobs:
           cache: npm
       - run: npm ci
 
+      - name: no two paths differing only in case
+        # Runs FIRST and on its own step on purpose. This is the one class CI
+        # structurally cannot see in passing: on Linux `README.md` and
+        # `readme.md` are two files and everything is green, while on the
+        # owner's NTFS or APFS working copy they are ONE — git lays the second
+        # over the first, the folder is never clean, and the file that loses
+        # disappears at every checkout. The gate reads `git ls-files`, which
+        # knows both names, rather than the disk, which on those systems does
+        # not. Its own step so the reason is readable from the job list.
+        run: node scripts/check-case-collisions.mjs --strict
+
       - name: types
         run: npx tsc --noEmit
 
@@ -251,11 +262,37 @@ jobs:
         run: |
           node scripts/provision-org.mjs \
             --name "CI Hotel" --slug ci-hotel --email owner@ci.test \
-            --password 'ci-password-1234' --language de --currency EUR | tee /tmp/provision.txt
+            --password 'ci-password-1234' --language de --currency EUR \
+            --country DE --lodging-kind camping | tee /tmp/provision.txt
           grep -qE 'organization_id +org_' /tmp/provision.txt \
             || { echo '::error::provisioning printed no organization id'; exit 1; }
           grep -qE 'базова мова +de' /tmp/provision.txt \
             || { echo '::error::the base language did not reach the organization'; exit 1; }
+          # Пояс не називали — його виводить країна, і скрипт МУСИТЬ показати
+          # висновок оператору. Мовчазна Прага для німецького готелю була б
+          # правильною випадково, тому перевіряється саме Berlin.
+          grep -qE 'часовий пояс +Europe/Berlin' /tmp/provision.txt \
+            || { echo '::error::the timezone was not derived from the country'; exit 1; }
+          # Рід житла — НЕ `hotel` навмисно (В1, К16). `hotel` тут був би
+          # правильним випадково: саме його підставляв мовчазний дефолт, який
+          # прибрано, тож твердження лишилось би зеленим і після його
+          # повернення. `camping` несумісний з дефолтом арифметично, і він же
+          # з ІНШОЇ групи тарифікації вендора — тобто помилка в цьому полі
+          # коштувала б грошей.
+          grep -qE 'рід житла +camping' /tmp/provision.txt \
+            || { echo '::error::the lodging kind did not reach the property'; exit 1; }
+          # І другий бік того самого твердження: БЕЗ роду житла заведення
+          # мусить відмовити, а не підставити «hotel». Тут це не зайва сцена:
+          # `provision-org.mjs` — єдиний шлях, яким заводять клієнта, і
+          # мовчазний дефолт повернувся б у нього непоміченим.
+          if node scripts/provision-org.mjs \
+               --name "CI No Kind" --slug ci-no-kind --email nokind@ci.test \
+               --password 'ci-password-1234' --language de --currency EUR \
+               --country DE > /tmp/no-kind.txt 2>&1; then
+            echo '::error::provisioning without a lodging kind succeeded'; exit 1
+          fi
+          grep -q 'lodging-kind' /tmp/no-kind.txt \
+            || { echo '::error::the refusal did not name the missing flag'; cat /tmp/no-kind.txt; exit 1; }
 
       - name: start
         env:

@@ -60,6 +60,7 @@
  * зеленим при будь-якому з них.
  */
 import type { ChannexClient } from './client';
+import { channexPropertyType } from './property-type';
 import type {
   CatalogProperty,
   CatalogRatePlan,
@@ -138,20 +139,86 @@ function ratePlanAttributes(
  * `key` — зʼєднання: ним ключується пауза й повтори. Не ключ API: один ключ
  * обслуговує всі готелі акаунта, а межа тут — обʼєкт.
  */
+/**
+ * Тіло `POST`/`PUT /properties` — ОДНЕ на створення й оновлення.
+ *
+ * Два тіла розійшлися б: рівно так `timezone` і опинився в адаптері, але не
+ * в жодному тілі, яке насправді летить (Р13.11). Один будівник — і гейт
+ * стверджує про нього, а не про доменний обʼєкт.
+ *
+ * Умовний спред лишається для НЕОБОВʼЯЗКОВИХ полів (адреса, телефон): їх
+ * готель може не назвати, і порожній рядок вендору гірший за відсутність.
+ * `timezone` і `property_type` під нього НЕ підпадають — вони обовʼязкові й
+ * вартуються вище (`catalog-sync`), бо саме мовчазне випадання з тіла було
+ * вихідним багом.
+ */
+export function propertyAttributes(property: CatalogProperty): Record<string, unknown> {
+  const propertyType = channexPropertyType(property.propertyType);
+  if (!propertyType) {
+    // Сюди не дійти: `catalog-sync` вартує рід житла названою відмовою до
+    // виклику. Але мовчазний пропуск тут повернув би рівно той баг, який ця
+    // правка закриває, — вендор поставив би свій дефолт, а він «affects
+    // billing». Тому це кидає, а не спреди.
+    throw new Error(`channex: lodging kind "${property.propertyType}" has no vendor property_type`);
+  }
+  return {
+    title: property.title,
+    currency: property.currency,
+    ...(property.country ? { country: property.country } : {}),
+    ...(property.city ? { city: property.city } : {}),
+    ...(property.address ? { address: property.address } : {}),
+    ...(property.zipCode ? { zip_code: property.zipCode } : {}),
+    ...(property.email ? { email: property.email } : {}),
+    ...(property.phone ? { phone: property.phone } : {}),
+    // Обидва — безумовно. Вендор: «Make sure you set property type and
+    // timezone when you create a property», і `property_type` «affects
+    // billing».
+    timezone: property.timezone,
+    property_type: propertyType,
+  };
+}
+
+/**
+ * Поля обʼєкта, за які відповідає PMS.
+ *
+ * Порівнюються перед оновленням: розійшлося щось із цього — летить `PUT`,
+ * не розійшлося — не летить нічого. Усе, чого тут немає (фото, опис,
+ * зручності, `facilities`), лишається за вендором і нашим оновленням не
+ * чіпається.
+ */
+export const PROPERTY_FIELDS_WE_OWN = [
+  'title', 'currency', 'country', 'city', 'address',
+  'zip_code', 'email', 'phone', 'timezone', 'property_type',
+] as const;
+
 export function channexCatalogTarget(client: ChannexClient, key: string): CatalogTarget {
   return {
     createProperty(property: CatalogProperty): Promise<string> {
-      return client.createProperty(key, {
-        title: property.title,
-        currency: property.currency,
-        ...(property.country ? { country: property.country } : {}),
-        ...(property.city ? { city: property.city } : {}),
-        ...(property.address ? { address: property.address } : {}),
-        ...(property.zipCode ? { zip_code: property.zipCode } : {}),
-        ...(property.email ? { email: property.email } : {}),
-        ...(property.phone ? { phone: property.phone } : {}),
-        ...(property.timezone ? { timezone: property.timezone } : {}),
+      return client.createProperty(key, propertyAttributes(property));
+    },
+
+    /**
+     * Що у вендора розійшлося з нашим — назвами полів, які пішли б у тіло.
+     *
+     * Порожній масив означає «однакове», і тоді оновлення не кличеться.
+     * `null` — обʼєкта у вендора немає (404 на читанні).
+     */
+    async propertyDrift(remotePropertyId: string, property: CatalogProperty): Promise<string[] | null> {
+      const theirs = await client.getProperty(key, remotePropertyId);
+      if (!theirs) return null;
+      const ours = propertyAttributes(property);
+      return PROPERTY_FIELDS_WE_OWN.filter((field) => {
+        // Поля, якого ми не надсилаємо (готель не назвав адреси), не
+        // розходження: інакше кожен синк слав би PUT, щоб нічого не змінити.
+        if (!(field in ours)) return false;
+        const mine = ours[field];
+        const theirsValue = theirs[field];
+        return String(mine ?? '') !== String(theirsValue ?? '');
       });
+    },
+
+    updateProperty(remotePropertyId: string, property: CatalogProperty): Promise<void> {
+      return client.updateProperty(key, remotePropertyId, propertyAttributes(property));
     },
 
     createUnitType(remotePropertyId: string, unitType: CatalogUnitType): Promise<string> {

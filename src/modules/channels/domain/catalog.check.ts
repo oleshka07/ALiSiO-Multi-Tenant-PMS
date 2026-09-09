@@ -58,6 +58,15 @@ function stand() {
       made.push({ path: 'properties', body: property });
       return remoteId;
     },
+    // Стенд каже «у вендора те саме»: порядок дій перевіряється тут, а
+    // розбіжність — на справжньому HTTP у `catalog-target.check.ts`.
+    // Окремі перевірки нижче підмінюють це на свій лад.
+    async propertyDrift() {
+      return [];
+    },
+    async updateProperty(remotePropertyId: string, property: CatalogProperty) {
+      made.push({ path: 'properties:update', body: { remotePropertyId, property } });
+    },
     async createUnitType(remotePropertyId: string, unitType: CatalogUnitType) {
       const remoteId = id('rt');
       made.push({ path: 'room_types', body: { remotePropertyId, unitType } });

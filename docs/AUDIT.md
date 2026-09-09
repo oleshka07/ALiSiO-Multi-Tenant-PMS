@@ -51,7 +51,8 @@
 ```bash
 npm run build:win && npm start &                # прод-збірка: dev на 183 маршрутах вмирає
 node scripts/provision-org.mjs --name "Audit" --slug audit \
-  --email audit@test --password '…' --language uk
+  --email audit@test --password '…' --language uk \
+  --currency UAH --country UA --lodging-kind hotel
 find src/app/app -name page.tsx | sed 's|^src/app||;s|/page.tsx||;s|/(dashboard)||' \
   | grep -v '\[' > /tmp/seeds
 AUDIT_EMAIL=audit@test AUDIT_PASSWORD='…' AUDIT_SEED=/tmp/seeds npm run audit:ui

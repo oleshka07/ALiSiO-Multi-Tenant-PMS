@@ -22,8 +22,21 @@
 export const PRICE_COVERAGE_DAYS = 365;
 
 export interface SetupSnapshot {
-  /** Обʼєкт, чий прогрес рахуємо; `null` — обʼєкта немає взагалі. */
-  property: { country: string | null; checkInTime: string | null; checkOutTime: string | null } | null;
+  /**
+   * Обʼєкт, чий прогрес рахуємо; `null` — обʼєкта немає взагалі.
+   *
+   * `lodgingKind` — рід житла (В1). Він у кроці «Обʼєкт» не як ще одна
+   * галочка: це вісь, за якою менеджер каналів виставляє РАХУНОК (готельна
+   * група — за обʼєкт, оренда — за юніт), і поки він не названий, каталог у
+   * канал не їде взагалі. Крок 8 «Канал або сайт» цього не покриває: він
+   * питає, чи є зʼєднання, а не чи має воно що відправити.
+   */
+  property: {
+    country: string | null;
+    checkInTime: string | null;
+    checkOutTime: string | null;
+    lodgingKind: string | null;
+  } | null;
   /** Типів номерів із дорослою місткістю ≥ 1. */
   unitTypes: number;
   units: number;
@@ -55,6 +68,13 @@ export interface SetupProgress {
   steps: SetupStep[];
   done: number;
   total: 8;
+  /**
+   * Рід житла обʼєкта — щоб чекліст МІГ СКАЗАТИ, чим це обертається в
+   * рахунку каналу, а не лише «зроблено / не зроблено». Значення, не
+   * висновок: підпис малює екран (`LodgingBillingHint`), бо група
+   * тарифікації — факт про канал, і в ядро вона не тягнеться.
+   */
+  lodgingKind: string | null;
 }
 
 export function setupProgress(s: SetupSnapshot): SetupProgress {
@@ -62,7 +82,8 @@ export function setupProgress(s: SetupSnapshot): SetupProgress {
   const steps: SetupStep[] = [
     {
       key: 'property',
-      done: !!s.property && !!s.property.country && !!s.property.checkInTime && !!s.property.checkOutTime,
+      done: !!s.property && !!s.property.country && !!s.property.checkInTime && !!s.property.checkOutTime
+        && !!s.property.lodgingKind,
       href: '/app/settings/properties',
     },
     { key: 'rooms', done: s.unitTypes >= 1 && s.units >= 1, href: '/app/settings/units' },
@@ -77,5 +98,10 @@ export function setupProgress(s: SetupSnapshot): SetupProgress {
     { key: 'firstBooking', done: s.activeReservations >= 1, href: '/app/calendar' },
     { key: 'channelOrSite', done: s.channelEnabled || s.siteActive, href: '/app/settings/channel-manager' },
   ];
-  return { steps, done: steps.filter((x) => x.done).length, total: 8 };
+  return {
+    steps,
+    done: steps.filter((x) => x.done).length,
+    total: 8,
+    lodgingKind: s.property?.lodgingKind ?? null,
+  };
 }

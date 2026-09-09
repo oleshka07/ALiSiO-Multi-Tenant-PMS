@@ -129,10 +129,25 @@ const day = (n) => { const d = new Date(); d.setUTCDate(d.getUTCDate() + n); ret
  * числом, а й валютою. Ціни теж різні й несумісні: 120 × 2 = 240 проти
  * 200 × 2 = 400 — «узяли ціну сусіда» не може дати ту саму відповідь
  * (інваріант 26).
+ *
+ * Часові пояси теж різні, і теж не для симетрії: заведення більше не має
+ * мовчазного `'Europe/Prague'` — пояс або називають, або виводять із країни,
+ * інакше названа відмова (`provisioning-timezone.check`). Тут він названий
+ * явно: країна обʼєкта вирішує ще й ЮРИСДИКЦІЮ документа, і міняти її заради
+ * пояса означало б міняти те, про що прохід не збирався стверджувати.
  */
+// `lodgingKind` — обовʼязковий при заведенні (В1), і два різні НАВМИСНО: це
+// вісь рахунку вендора (готельна група за обʼєкт, оренда за юніт), тож два
+// однакові роди лишили б прохід зеленим і тоді, коли поле не доїжджає до
+// обʼєкта взагалі.
 const HOTELS = [
-  { key: 'A', slug: `${SLUG_TAG}-alpha`, name: 'Onboarding Alpha', currency: 'EUR', price: 120, total: 240, room: '101', rent: 300, tax: 50 },
-  { key: 'B', slug: `${SLUG_TAG}-beta`, name: 'Onboarding Beta', currency: 'CZK', price: 200, total: 400, room: '201', rent: 700, tax: 90 },
+// Зведення двох гілок, і обидва набори полів потрібні цілком: `timezone` і
+// `lodgingKind` — бо без них заведення відмовляє названо (В1, О10), `rent` і
+// `tax` — бо на них стоять твердження про розділи P&L нижче. Втрата будь-якої
+// половини не дала б червоного там, де її прибрали: без пояса прохід упав би
+// на заведенні, а без `rent` — на `undefined` у сумі, тобто далеко від причини.
+  { key: 'A', slug: `${SLUG_TAG}-alpha`, name: 'Onboarding Alpha', currency: 'EUR', timezone: 'Europe/Kyiv', lodgingKind: 'hotel', price: 120, total: 240, room: '101', rent: 300, tax: 50 },
+  { key: 'B', slug: `${SLUG_TAG}-beta`, name: 'Onboarding Beta', currency: 'CZK', timezone: 'Europe/Prague', lodgingKind: 'apartment', price: 200, total: 400, room: '201', rent: 700, tax: 90 },
 ];
 
 async function login(email) {
@@ -276,10 +291,20 @@ async function runHotel(h) {
   const org = await provisionOrganization({
     name: h.name, slug: h.slug,
     ownerEmail: `${h.slug}@probe.test`, ownerPassword: PROBE_PASSWORD,
-    currency: h.currency, language: 'uk',
+    currency: h.currency, language: 'uk', timezone: h.timezone,
+    lodgingKind: h.lodgingKind,
   });
   claim(fam, !!org.organizationId && !!org.propertyId,
     `заведено організацію й обʼєкт (${org.organizationId ? 'є' : 'НЕМАЄ'} / ${org.propertyId ? 'є' : 'НЕМАЄ'})`);
+
+  // Рід житла ліг НА ОБʼЄКТ, а не лишився в аргументі (В1). Звідси його бере
+  // синк каталогу, і він же — основа рахунку вендора; до правки обʼєкт
+  // народжувався з `property_type = NULL` і чекав, поки хтось відкриє форму.
+  const kindRow = await runWithOrganization(org.organizationId, () =>
+    sql.row('SELECT property_type FROM properties WHERE id = ? AND organization_id = ?',
+      [org.propertyId, org.organizationId]));
+  claim(fam, kindRow?.property_type === h.lodgingKind,
+    `рід житла на обʼєкті — названий (у базі: ${kindRow?.property_type ?? 'НЕМАЄ'}, чекали ${h.lodgingKind})`);
 
   // Модулі, вимкнені за замовчуванням (П15): прохід перевіряє ШЛЯХ, а не
   // право на модуль — 403 «не куплено» тут означав би, що ми не спитали.

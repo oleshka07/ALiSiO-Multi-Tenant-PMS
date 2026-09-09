@@ -12,6 +12,7 @@ import { getSessionUser } from '@core/auth';
 import { LANGUAGES, LANGUAGE_CODES, isLanguage } from '@core/i18n/languages';
 import { withActor, withPermission } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
+import { isKnownTimezone } from '@core/hotel-day';
 import { normalizeBoundaries } from '@pricing';
 
 async function currentUser() {
@@ -116,11 +117,19 @@ export const saveGeneralSettings = withPermission('manage_properties', async (re
       );
     }
 
-    const timezone = String(org.timezone ?? 'Europe/Prague').trim();
-    try {
-      new Intl.DateTimeFormat('en', { timeZone: timezone });
-    } catch {
-      return NextResponse.json({ error: `Невідома часова зона: ${timezone}` }, { status: 400 });
+    // Четверта Прага, і найгірша з чотирьох: це ПИСАЧ (Р13.13).
+    //
+    // Тут стояло `org.timezone ?? 'Europe/Prague'` — тобто налаштування,
+    // надіслані без поля пояса, мовчки ЗАПИСУВАЛИ готелю чеський пояс. Не
+    // читання з дефолтом, а запис вигаданого значення поверх названого.
+    // Мова поруч уже відмовляє з тієї ж причини; пояс коштує не менше:
+    // він зсуває межу доби, а канал торгує датами заїзду.
+    const timezone = String(org.timezone ?? '').trim();
+    if (!isKnownTimezone(timezone)) {
+      return NextResponse.json(
+        { error: `Невідома часова зона: ${timezone || '—'}` },
+        { status: 400 },
+      );
     }
 
     for (const [label, value] of [

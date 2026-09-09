@@ -647,12 +647,20 @@ grep -c '^OPENAI_API_KEY=.\+' deploy/env.prod
 ## Новий клієнт
 
 ```bash
-node scripts/provision-org.mjs   --name "Hotel Kyiv" --slug hotel-kyiv --email owner@hotel-kyiv.ua   --city Kyiv --country UA --currency UAH
+node scripts/provision-org.mjs   --name "Hotel Kyiv" --slug hotel-kyiv --email owner@hotel-kyiv.ua   --city Kyiv --country UA --currency UAH --lodging-kind hotel
 ```
 
 Створює організацію, її власника, перший об'єкт і одну категорію — все в
 одній транзакції. Пароль генерується і показується **один раз**, якщо не
 передати `--password`.
+
+`--currency`, `--lodging-kind` і пояс (`--timezone` або `--country` з одним
+поясом) — **обовʼязкові, без мовчазних дефолтів**. Усі три вирішують гроші:
+валюта — що означає кожна сума, пояс — де проходить межа доби для дат, якими
+торгує канал, рід житла — за що менеджер каналів виставляє рахунок (готельна
+група за обʼєкт, оренда за юніт). Вгадане тут значення не падає з помилкою —
+воно просто виявляється неправильним місяцем пізніше. Роди житла скрипт
+друкує списком, якщо його не назвати.
 
 Усі інтеграції стартують **вимкненими**. Нового клієнта не варто зустрічати
 пунктами меню, які відповідають 403; вмикайте кожну в Налаштування → Модулі
@@ -662,7 +670,7 @@ node scripts/provision-org.mjs   --name "Hotel Kyiv" --slug hotel-kyiv --email o
 На сервері — всередині контейнера відповідного середовища:
 
 ```bash
-docker exec -it alisio-beta-app node scripts/provision-org.mjs --name … --slug … --email …
+docker exec -it alisio-beta-app node scripts/provision-org.mjs --name … --slug … --email … --currency … --lodging-kind …
 ```
 
 ### Чи можна взагалі завести й обслужити нового клієнта

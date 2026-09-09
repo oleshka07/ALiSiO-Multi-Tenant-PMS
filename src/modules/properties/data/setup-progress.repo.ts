@@ -22,7 +22,7 @@ import { setupProgress, PRICE_COVERAGE_DAYS, type SetupProgress, type SetupSnaps
 export async function setupProgressFor(organizationId: string, propertyId: string): Promise<SetupProgress | null> {
   const sql = getSql();
   const property = await sql.row<any>(
-    'SELECT id, country, check_in_time, check_out_time FROM properties WHERE id = ? AND organization_id = ?',
+    'SELECT id, country, check_in_time, check_out_time, property_type FROM properties WHERE id = ? AND organization_id = ?',
     [propertyId, organizationId],
   );
   if (!property) return null;
@@ -56,7 +56,14 @@ export async function setupProgressFor(organizationId: string, propertyId: strin
     : { n: 0 };
 
   const snapshot: SetupSnapshot = {
-    property: { country: property.country ?? null, checkInTime: property.check_in_time ?? null, checkOutTime: property.check_out_time ?? null },
+    property: {
+      country: property.country ?? null,
+      checkInTime: property.check_in_time ?? null,
+      checkOutTime: property.check_out_time ?? null,
+      // Порожній рядок — це «ще не названо», а не рід: колонка приймає
+      // `''`, і `!!''` дало б «зроблено» на порожнечі.
+      lodgingKind: String(property.property_type ?? '').trim() || null,
+    },
     unitTypes: unitTypeIds.length,
     units: Number(units?.n ?? 0),
     pricedDaysAhead: pricedDays,

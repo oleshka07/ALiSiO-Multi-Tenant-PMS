@@ -257,7 +257,7 @@ partner_reports     price_los_tiers     price_occupancy     task_projects  tasks
    Записано в ARCHITECTURE §7 (рядок гейта).
 
 2. **Базлайн — окремий файл `scripts/property-scope-baseline.json`, а не мапа
-   всередині гейта** (Ц/О10 у DECISIONS). `audit-by-id-scope` і
+   всередині гейта** (Ц/О15 у DECISIONS — номер змінено з О10 при злитті 09.09). `audit-by-id-scope` і
    `check-boundaries` тримають стелі в тілі гейта — для одного автора це
    правильно. Тут авторів три, і `docs/tasks/README.md` забороняє редагувати
    чужий файл. Дані окремо від коду: сесії 1 і 2 опускають свої рядки в JSON,

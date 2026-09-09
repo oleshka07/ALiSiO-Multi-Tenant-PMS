@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as propertiesRepo from '../data/properties.repo';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
 import { hasPermission } from '@core/auth/permissions';
+import { handleError } from '@core/http/errors';
 
 /**
  * Each handler is wrapped so it cannot run without an identity, and the
@@ -28,23 +29,27 @@ export const listProperties = withActor(async (_req, _ctx, actor: Actor) => {
 export const createProperty = withPermission('manage_properties', async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const body = await request.json();
-    const { name, slug, address, city, country, phone, email, check_in_time, check_out_time } = body;
+    const { name, slug, address, city, country, phone, email, check_in_time, check_out_time, property_type } = body;
 
     if (!name || !slug) {
       return NextResponse.json({ error: 'Name and slug are required' }, { status: 400 });
     }
 
     const created = await propertiesRepo.createProperty(actor.organizationId, {
-      name, slug, address, city, country, phone, email, check_in_time, check_out_time,
+      name, slug, address, city, country, phone, email, check_in_time, check_out_time, property_type,
     });
     return NextResponse.json(created, { status: 201 });
   } catch (error: unknown) {
-    console.error('POST /api/properties error:', error);
-    const msg = error instanceof Error ? error.message : 'Failed to create property';
+    const msg = error instanceof Error ? error.message : '';
     if (msg.includes('UNIQUE')) {
       return NextResponse.json({ error: 'Property with this slug already exists' }, { status: 409 });
     }
-    return NextResponse.json({ error: msg }, { status: 500 });
+    // `handleError`, не `{ error: msg }, 500`: рід житла поза переліком —
+    // названа відмова писача, і вона має доїхати своїм 400 зі своїм текстом
+    // (Р13.10). Усе інше йде в лог, а назовні — загальне речення: тут раніше
+    // текст будь-якого винятку, включно з драйверним, їхав клієнту 500-кою
+    // (інваріант 6).
+    return handleError('modules/properties/api POST /api/properties', error, 'Failed to create property');
   }
 });
 
@@ -78,8 +83,11 @@ export const updateProperty = withPermission('manage_properties', async (request
     if (error instanceof Error && error.message.includes('checkout_balance_policy')) {
       return NextResponse.json({ error: 'invalid_checkout_balance_policy' }, { status: 400 });
     }
-    console.error('PATCH /api/properties/:id error:', error);
-    return NextResponse.json({ error: 'Failed to update property' }, { status: 500 });
+    // Рід житла поза переліком — така сама помилка викликача, і гілки для
+    // неї тут не було: писач кидав, і вся правка про рід житла оберталася
+    // «Failed to update property» без жодного слова про причину (Р13.10).
+    // `handleError` розбирає рід сам: названа відмова — 400 своїм текстом.
+    return handleError('modules/properties/api PATCH /api/properties/:id', error, 'Failed to update property');
   }
 });
 

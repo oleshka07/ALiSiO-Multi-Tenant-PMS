@@ -1,10 +1,12 @@
 import { getSql } from '@core/db/async';
+import { refuse } from '@core/http/refusal';
+import { isKnownTimezone } from '@core/hotel-day';
 import { enqueueChange, OUTBOX_HORIZON_DAYS } from './outbox.repo';
 import { addDays } from './outbox-notes';
 import { catalogProperty, catalogUnitTypes } from '@properties/live';
 // Вузькі двері — див. `@pricing/plans`: повний фасад тягне `next/server`.
 import { propertyRatePlans } from '@pricing/plans';
-import { connectionInTenant, rememberRemoteProperty } from './connections.repo';
+import { connectionInTenant, rememberRemoteProperty, rememberCatalogSync } from './connections.repo';
 import { putMapping, remoteIdOf } from './mappings.repo';
 import {
   syncCatalog as runSyncCatalog,
@@ -88,6 +90,45 @@ export async function syncConnectionCatalog(
 
   const property = await catalogProperty(connection.propertyId);
   if (!property) throw new Error('catalog: property not found');
+  // Названа відмова, а не тихий здогад. Тип житла впливає на рахунок, який
+  // вендор виставить ГОТЕЛЮ; підставити тут 'hotel' означало б заплатити за
+  // нього його ж грошима. Інваріант 13: не знайшли — відмовляємо.
+  //
+  // `refuse`, а не `new Error`: уся мотивація цієї варти — «готель мусить
+  // побачити причину», а голий Error затирався `serverError` до
+  // «Внутрішня помилка сервера» ще на маршруті (Р13.10). Тепер текст їде
+  // своїм 400.
+  // Р15.2: мова відмови — продуктова.
+  //
+  // Тут стояло `catalog: property_type is not set — the hotel must say…`.
+  // Це слова коду, не слова оператора: англійською в українському продукті,
+  // з нашою назвою колонки і з префіксом файлу замість причини. Названа
+  // відмова існує рівно для того, щоб її ПРОЧИТАЛА людина; написана так, вона
+  // виглядає як витік винятку, і перше, що робить оператор, — шукає, кому це
+  // переслати. Тому: що не так, чим це обертається, і що зробити.
+  if (!property.propertyType) {
+    refuse('Каталог не відправлено: не вказано рід житла. Це вісь, за якою менеджер каналів '
+      + 'рахує тариф, тож ми його не вгадуємо — оберіть у налаштуваннях обʼєкта.');
+  }
+  // Пояс — тією ж вартою і з тієї ж причини (Р13.12).
+  //
+  // Він і був «надісланим» лише на вигляд: `catalog-target` клав його
+  // умовним спредом, тож порожній рядок — а `NOT NULL` його дозволяє —
+  // мовчки випадав з тіла, і ми опинялись там, звідки почали, без жодної
+  // помилки. Вигадана ж зона поїхала б вендору і повернулась 422 посеред
+  // створення каталогу, коли обʼєкт уже заведено.
+  //
+  // Перевіряється НЕПОРОЖНІСТЬ і належність до бази IANA — тим самим
+  // `isKnownTimezone`, що й при заведенні готелю (`provisionOrganization`),
+  // щоб два шляхи не розійшлися в тому, який пояс вважають справжнім.
+  if (!property.timezone || !property.timezone.trim()) {
+    refuse('Каталог не відправлено: не вказано часовий пояс обʼєкта. Він вирішує, де проходить '
+      + 'межа доби, а канал торгує датами заїзду — вкажіть у загальних налаштуваннях.');
+  }
+  if (!isKnownTimezone(property.timezone)) {
+    refuse(`Каталог не відправлено: часової зони «${property.timezone}» не існує. `
+      + 'Потрібна назва з бази IANA — наприклад Europe/Kyiv або Europe/Prague.');
+  }
 
   const unitTypes = await catalogUnitTypes(connection.propertyId);
   const ratePlans = await propertyRatePlans(connection.propertyId);
@@ -126,6 +167,11 @@ export async function syncConnectionCatalog(
       address: property.address,
       email: property.email,
       phone: property.phone,
+      // Обидва — вимога вендора перед продакшном, і обидва мовчали: типу не
+      // існувало ніде, а пояс ВИГЛЯДАВ відправленим (умовний спред у
+      // `catalog-target`), бо сюди його ніхто не клав.
+      timezone: property.timezone,
+      propertyType: property.propertyType,
     },
     unitTypes: catalogUnits,
     ratePlans: catalogPlans,
@@ -137,7 +183,8 @@ export async function syncConnectionCatalog(
     // Обʼєкт без жодного тарифу не має чим назвати валюту, а менеджер
     // каналів вимагає її обовʼязково. Відмова тут дешевша за 422 посеред
     // створення, коли обʼєкт уже заведено, а тарифи — ще ні.
-    throw new Error('catalog: property has no rate plan to take the currency from');
+    refuse('Каталог не відправлено: в обʼєкта немає жодного тарифу, і валюту продажу '
+      + 'нізвідки взяти. Створіть тариф — з нього береться валюта каталогу.');
   }
 
   const report = await runSyncCatalog(args);
@@ -148,6 +195,13 @@ export async function syncConnectionCatalog(
   // несправність стрічки, а не як незаписана колонка. Знайдено прогоном
   // проти живого staging; тримає `catalog-sync.check.ts`.
   await rememberRemoteProperty(connectionId, report.remotePropertyId);
+
+  // Каталог щойно поїхав — мітка часу (0130, Р15.1). З неї екран локально
+  // бачить «обʼєкт змінили після останньої відправки» і показує це
+  // оператору: рід житла — вісь рахунку вендора, і мовчазна розбіжність тут
+  // коштує грошей готелю. Ставиться в КІНЦІ: перерваний прохід лишає мітку
+  // старою, тобто «розійшлося», що правда.
+  await rememberCatalogSync(connectionId);
 
   return report;
 }

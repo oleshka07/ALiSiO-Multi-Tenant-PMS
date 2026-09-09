@@ -165,6 +165,15 @@ function buildSchema(database: any) {
       -- додає обмеження через ALTER; писач звіряє значення сам.
       checkout_balance_policy TEXT NOT NULL DEFAULT 'warning'
         CHECK (checkout_balance_policy IN ('none', 'warning', 'blocking')),
+      -- Що це за житло: готель, апартаменти, гостьовий дім, хостел…
+      -- БЕЗ DEFAULT навмисно, і це не забудькуватість. Вендор каналу пише
+      -- прямо: property_type «affects billing», а для готелю на 1-15 номерів
+      -- «hotel» неправдиве частіше, ніж правдиве. Мовчазний дефолт тут — це
+      -- чужий рахунок, виставлений за нашим припущенням; тому колонка
+      -- порожня, поки готель не назве себе сам, а каталог без неї відмовляє
+      -- (інваріант 20: значення належить готелю, не константі в коді).
+      -- І тут, і в ALTER нижче (AGENTS §4).
+      property_type TEXT,
       UNIQUE(organization_id, slug)
     );
 
@@ -4449,6 +4458,10 @@ function runMigrations(database: any) {
       -- сайту живе в сайтовому дереві. Це і є визначення прямо дешевше.
       pricing_modifier_percent REAL NOT NULL DEFAULT 0,
       last_full_sync_at  TEXT,
+      -- Коли каталог цього зʼєднання востаннє їздив до вендора (0130).
+      -- Окремо від last_full_sync_at: та про ARI, ця про каталог. NULL —
+      -- обʼєкта у вендора ще немає, розходитись нема з чим.
+      catalog_synced_at  TEXT,
       created_at         TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE(organization_id, property_id, provider, environment)
@@ -4715,6 +4728,10 @@ function runMigrations(database: any) {
     }
     // П5: мітка завершеного повного синку. У CREATE є від 0052; база, створена
     // до того, її не має — і без цієї варти читалась би як «колонки немає».
+    if (!cmCols.includes('catalog_synced_at')) {
+      database.exec('ALTER TABLE cm_connections ADD COLUMN catalog_synced_at TEXT');
+      console.log('[DB] Added catalog_synced_at to cm_connections');
+    }
     if (!cmCols.includes('last_full_sync_at')) {
       database.exec('ALTER TABLE cm_connections ADD COLUMN last_full_sync_at TEXT');
       console.log('[DB] Added last_full_sync_at to cm_connections');
@@ -6995,6 +7012,12 @@ function runMigrations(database: any) {
       database.exec("ALTER TABLE properties ADD COLUMN checkout_balance_policy TEXT NOT NULL DEFAULT 'warning'");
       console.log('[DB] Added checkout_balance_policy to properties');
     }
+    if (!propCols.includes('property_type')) {
+      // Без DEFAULT: див. коментар у CREATE. Наявні обʼєкти лишаються
+      // порожніми і мусять назватись — це видно на екрані, а не вгадується.
+      database.exec('ALTER TABLE properties ADD COLUMN property_type TEXT');
+      console.log('[DB] Added property_type to properties');
+    }
   } catch (e: any) {
     console.error('[DB] properties checkout_balance_policy:', e.message);
   }
@@ -7617,9 +7640,14 @@ function seedData(database: any) {
 
   database.prepare('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)').run(orgId, 'Demo Hotel', 'demo');
 
+  // Рід житла названо і тут — це ЧЕТВЕРТИЙ шлях, яким народжується обʼєкт, і
+  // єдиний, що йшов повз варту (рецензія раунду 20, П3). Мовчазного «готель»
+  // з нього не виходило — колонка лишалась NULL, — але твердження «рід житла
+  // називають на КОЖНОМУ шляху» без цього рядка неповне, а демо-обʼєкт із
+  // порожнім родом не змогла б відправити в канал жодна демонстрація.
   database
-    .prepare('INSERT INTO properties (id, organization_id, name, slug, city, country) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(propId, orgId, 'Demo Hotel & Spa', 'demo-hotel', 'Praha', 'CZ');
+    .prepare('INSERT INTO properties (id, organization_id, name, slug, city, country, property_type) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(propId, orgId, 'Demo Hotel & Spa', 'demo-hotel', 'Praha', 'CZ', 'hotel');
 
   const insertCat = database.prepare(
     'INSERT INTO categories (id, property_id, name, type, sort_order, icon, color) VALUES (?, ?, ?, ?, ?, ?, ?)'

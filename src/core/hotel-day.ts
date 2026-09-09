@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getSql } from './db/async.ts';
+// З розширенням `.ts`: цей файл виконує ще й голий node у гейтах, а він без
+// нього модуля не знаходить (той самий розклад, що в `db/async.ts` вище).
 
 /**
  * What day it is at the hotel.
@@ -83,17 +85,106 @@ export function shiftMonths(day: string, months: number): string {
 }
 
 /**
- * The organization's timezone, or the schema default.
+ * Часовий пояс країни — там, де він у країни ОДИН.
  *
- * Cached per call site rather than globally: this is one indexed read by
- * primary key, and a stale timezone after an operator changes it would be a
- * worse bug than the read.
+ * Навіщо: `organizations.timezone` вирішує, де проходить межа доби, а канал
+ * торгує саме датами заїзду. Готель, заведений без пояса, отримував
+ * `'Europe/Prague'` — і для українського готелю це не косметика: доба
+ * закінчується на годину раніше, тобто «сьогодні» в списках приїздів і
+ * виїздів, у нічному архіві неявок і в каталозі, який їде вендору, — чуже.
+ *
+ * Чому мапа, а не бібліотека: потрібен один факт про країну, і він рідко
+ * змінюється. Повний реєстр IANA важить мегабайти і тягне своє оновлення.
+ *
+ * Чому не всі країни: у переліку лише ті, де пояс ОДИН. Іспанія (материк і
+ * Канари), Португалія (Азори), Франція, США, Росія, Казахстан, Бразилія,
+ * Австралія, Канада мають по кілька — здогад для них був би тим самим
+ * мовчазним дефолтом, лише з іншим числом. Для них пояс називають явно, і
+ * заведення відмовляє, поки його не назвали.
+ *
+ * Це НЕ порушення інваріанта 22 («юрисдикція — модуль, ядро нейтральне»):
+ * тут немає правил країни — ні податку, ні документа, ні чека. Тут факт
+ * календаря, того самого роду, що код валюти ISO 4217. Правила лишаються в
+ * модулях юрисдикції.
+ */
+const COUNTRY_TIMEZONE: Record<string, string> = {
+  UA: 'Europe/Kyiv', CZ: 'Europe/Prague', SK: 'Europe/Bratislava',
+  PL: 'Europe/Warsaw', DE: 'Europe/Berlin', AT: 'Europe/Vienna',
+  HU: 'Europe/Budapest', SI: 'Europe/Ljubljana', HR: 'Europe/Zagreb',
+  RS: 'Europe/Belgrade', BA: 'Europe/Sarajevo', ME: 'Europe/Podgorica',
+  MK: 'Europe/Skopje', AL: 'Europe/Tirane', RO: 'Europe/Bucharest',
+  BG: 'Europe/Sofia', GR: 'Europe/Athens', IT: 'Europe/Rome',
+  NL: 'Europe/Amsterdam', BE: 'Europe/Brussels', LU: 'Europe/Luxembourg',
+  DK: 'Europe/Copenhagen', SE: 'Europe/Stockholm', NO: 'Europe/Oslo',
+  FI: 'Europe/Helsinki', EE: 'Europe/Tallinn', LV: 'Europe/Riga',
+  LT: 'Europe/Vilnius', IE: 'Europe/Dublin', GB: 'Europe/London',
+  CH: 'Europe/Zurich', TR: 'Europe/Istanbul', CY: 'Asia/Nicosia',
+  MT: 'Europe/Malta', MD: 'Europe/Chisinau', IS: 'Atlantic/Reykjavik',
+  GE: 'Asia/Tbilisi', AM: 'Asia/Yerevan', AZ: 'Asia/Baku',
+};
+
+/** Пояс країни, або `null` — країна невідома чи має кілька поясів. */
+export function timezoneForCountry(country: string | null | undefined): string | null {
+  const code = country?.trim().toUpperCase();
+  if (!code) return null;
+  return COUNTRY_TIMEZONE[code] ?? null;
+}
+
+/** Чи знає система такий пояс. Порожнє й вигадане — ні. */
+export function isKnownTimezone(timezone: string | null | undefined): boolean {
+  if (!timezone) return false;
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: timezone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Пояс організації. Немає — виняток, не Прага.
+ *
+ * Читається щоразу, не кешується глобально: це одне читання за первинним
+ * ключем, а застарілий пояс після того, як оператор його змінив, коштував
+ * би дорожче за цей запит.
+ *
+ * ── Чому тут більше немає `|| 'Europe/Prague'` ──────────────────────────
+ *
+ * Бо для готелю, заведеного до 0113, «Прага» і «пояс, який назвали»
+ * невідрізненні — а пояс вирішує, де проходить МЕЖА ДОБИ: списки приїздів і
+ * виїздів, нічний архів неявок, «сьогодні» на кожному екрані і, головне,
+ * дати, якими торгує канал. Український готель із празьким поясом продає не
+ * ті дні, і жодної помилки при цьому не видно: значення схоже на правду.
+ *
+ * `provisionOrganization` пояс уже вимагає (або виводить із країни й
+ * показує висновок), а колонка `NOT NULL`. Тобто спрацьовує це рівно у двох
+ * випадках, і обидва — справжня поломка, яку краще побачити: організації
+ * немає, або в поясі порожній рядок.
+ *
+ * Інваріант 13: перевірка, яка не знайшла рядка, відмовляє, а не дозволяє.
  */
 export async function organizationTimezone(organizationId: string): Promise<string> {
   const sql = getSql();
   const row = await sql.row<any>(
     'SELECT timezone FROM organizations WHERE id = ?', [organizationId]);
-  return row?.timezone || 'Europe/Prague';
+  const timezone = typeof row?.timezone === 'string' ? row.timezone.trim() : '';
+  if (!timezone) {
+    // Звичайний виняток, а НЕ `refuse(…, 500)`.
+    //
+    // Тут стояла названа відмова зі статусом 500, і це обходило маскування
+    // помилок цілком: `handleError` віддає названу відмову «як є», тобто
+    // текст і статус їдуть клієнту — а текст англійський і містить
+    // ІДЕНТИФІКАТОР ОРЕНДАРЯ. Шапка `core/http/errors.ts` каже про це прямо:
+    // названа відмова існує для 4xx, для решти — `serverError`, який кладе
+    // деталь у лог і віддає одне речення (інваріант 6).
+    //
+    // І по суті це правильно: обидва випадки, у яких сюди можна потрапити —
+    // організації немає, або в `NOT NULL`-колонці порожній рядок — це
+    // поломка сервера, а не те, що оператор може виправити, прочитавши
+    // повідомлення. Йому нема що з ним робити; нам є що знайти в лозі.
+    throw new Error(`organization ${organizationId} has no timezone`);
+  }
+  return timezone;
 }
 
 /** Today at this organization's hotel, in one call. */

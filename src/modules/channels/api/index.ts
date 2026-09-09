@@ -21,7 +21,7 @@ export { noteAvailabilityChanged, noteRatesChanged, lastNight } from './outbox';
 export type { AvailabilityNote, RateNote } from './outbox';
 export { listChannelConnections, retryChannelOutbox, verifyChannelSends } from './outbox-state.handlers';
 export {
-  getChannelSetup, saveChannelKey, createChannelConnection, syncChannelCatalog,
+  getChannelSetup, getChannelCatalogState, saveChannelKey, createChannelConnection, syncChannelCatalog,
   channelFrame, reconcileChannelCatalog, setChannelConnectionEnabled, fullSyncChannelConnection,
 } from './connect.handlers';
 export {
@@ -37,3 +37,13 @@ export {
 } from './webhook-admin.handlers';
 export { recordVendorResponses } from '../providers';
 export type { VendorResponseSample } from '../providers';
+
+/*
+ * Рід житла фасадом НЕ віддається, і це навмисно.
+ *
+ * Перелік родів житла живе в ядрі (`@core/lodging-kinds`) — його читають
+ * форма обʼєкта і писач, яким модуль каналів не потрібен (Р13.15). Мапа в
+ * `property_type` вендора — знання адаптера, і далі `channex/` не виходить:
+ * тримає `check-vendor-isolation --strict`, який на першій редакції цієї
+ * правки і почервонів, коли мапа була виставлена сюди.
+ */

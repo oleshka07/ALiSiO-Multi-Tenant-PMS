@@ -373,6 +373,7 @@ CREATE TABLE "cm_connections" (
   "is_enabled" BOOLEAN DEFAULT false NOT NULL,
   "pricing_modifier_percent" NUMERIC(5,2) DEFAULT 0 NOT NULL,
   "last_full_sync_at" TIMESTAMPTZ,
+  "catalog_synced_at" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
@@ -1572,6 +1573,7 @@ CREATE TABLE "properties" (
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "checkout_balance_policy" TEXT DEFAULT 'warning' NOT NULL,
+  "property_type" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("organization_id", "slug"),
   CHECK (checkout_balance_policy IN ('none', 'warning', 'blocking'))

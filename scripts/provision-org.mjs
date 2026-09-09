@@ -2,7 +2,8 @@
  * Create a customer.
  *
  *   node scripts/provision-org.mjs --name "Hotel Kyiv" --slug hotel-kyiv \
- *        --email owner@hotel-kyiv.ua --currency UAH [--password '…'] \
+ *        --email owner@hotel-kyiv.ua --currency UAH --lodging-kind hotel \
+ *        [--password '…'] \
  *        [--city Kyiv] [--country UA] [--language uk] [--enable widget]
  *
  * --currency is the hotel's base currency, and it is required for the same
@@ -10,6 +11,20 @@
  * It used to default to CZK, so a hotel created without it silently became
  * Czech — prices, invoices, the widget and guest emails all in koruna, with no
  * error anywhere.
+ *
+ * --timezone or --country: одне з двох обовʼязкове, і мовчазного дефолту
+ * більше немає. Пояс вирішує, де проходить межа доби — приїзди, виїзди,
+ * нічний архів неявок і дати, якими торгує канал; `'Europe/Prague'` за
+ * замовчуванням помилявся на годину для кожного українського готелю. Країна з
+ * ОДНИМ поясом (UA, CZ, PL, DE, …) дає його сама, і скрипт друкує висновок на
+ * підтвердження; країна з кількома (US, ES, PT, FR, RU) вимагає --timezone.
+ *
+ * --lodging-kind обовʼязковий, і мовчазного `hotel` більше немає (В1).
+ * Це рід житла, яким готель називається каналу продажу, і він же ОСНОВА
+ * РАХУНКУ вендора: готельна група тарифікується за обʼєкт, оренда — за юніт.
+ * Підставлений `hotel` кемпінгу чи апартаментам означає чужий тариф,
+ * виставлений мовчки, і побачить це не код, а виписка першого числа. Тому
+ * так само, як --currency і пояс: назвали або відмова.
  *
  * --language is the hotel's base language: uk en de cs pl nl fr. It sets the
  * interface for its staff and the source language of its content, so a German
@@ -36,10 +51,16 @@ const email = arg('email');
 // Валюта обовʼязкова: це основа, від якої рахує вся система. Раніше її
 // відсутність тихо давала крони.
 const currency = arg('currency');
+// Рід житла обовʼязковий з тієї ж причини (В1) — див. шапку.
+const lodgingKind = arg('lodging-kind');
 
-if (!name || !slug || !email || !currency) {
-  console.error('Потрібно: --name "Назва" --slug slug --email owner@example.com --currency CZK');
-  console.error('Необовʼязково: --password --city --country --timezone --language --property --enable');
+const { LODGING_KINDS } = await import('../src/core/lodging-kinds.ts');
+
+if (!name || !slug || !email || !currency || !lodgingKind) {
+  console.error('Потрібно: --name "Назва" --slug slug --email owner@example.com --currency CZK --lodging-kind hotel');
+  console.error('І одне з двох: --timezone Europe/Kyiv  або  --country UA (пояс виведеться з країни)');
+  console.error(`Рід житла — один із ${LODGING_KINDS.length}: ${LODGING_KINDS.join(' ')}`);
+  console.error('Необовʼязково: --password --city --language --property --enable');
   process.exit(2);
 }
 
@@ -63,6 +84,7 @@ try {
     country: arg('country'),
     currency,
     timezone: arg('timezone'),
+    lodgingKind,
     language: arg('language'),
     enable: (arg('enable') || '').split(',').map((s) => s.trim()).filter(Boolean),
   });
@@ -79,12 +101,20 @@ console.log(`  organization_id  ${result.organizationId}`);
 console.log(`  property_id      ${result.propertyId}`);
 console.log(`  owner            ${email}`);
 console.log(`  базова мова      ${result.language}`);
+console.log(`  часовий пояс     ${result.timezone}${result.timezoneFrom === 'country' ? '  ← виведено з країни' : ''}`);
+console.log(`  рід житла        ${result.lodgingKind}`);
 if (generated) {
   console.log(`  пароль           ${password}`);
   console.log();
   console.log('  Пароль показано ОДИН раз — збережіть його зараз.');
 }
 console.log();
+if (result.timezoneFrom === 'country') {
+  console.log('  Часовий пояс НЕ називали — його виведено з країни. Він вирішує, де');
+  console.log('  проходить межа доби: приїзди, виїзди і дати, якими торгує канал.');
+  console.log('  Перевірте його з готелем — Налаштування → Загальні.');
+  console.log();
+}
 console.log('  Базова мова діє на весь готель: інтерфейс персоналу, мова, якою');
 console.log('  вводиться контент, і джерело перекладів для гостей. Окрема людина');
 console.log('  може обрати свою — Налаштування → Користувачі та ролі.');
