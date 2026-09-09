@@ -18,6 +18,7 @@ const { setFeature } = await import('@core/features');
 const { createFolio } = await import('./folio.repo.ts');
 const { recordPayment } = await import('./folio-payments.repo.ts');
 const { closeDay, listClosings, tillJournalCsv } = await import('./cash-closings.repo.ts');
+const { oneProperty } = await import('@core/property-scope.ts');
 
 const sql = getSql();
 const ORG = 'org_closech';
@@ -76,7 +77,7 @@ try {
 
     const made = await closeDay({ propertyId: 'closech_p', date: DAY });
     assert.strictEqual(made.closingNumber, 1, 'перше закриття — Z_NR 1');
-    const row = (await listClosings({ propertyId: 'closech_p' }))[0];
+    const row = (await listClosings(oneProperty('closech_p')))[0];
     assert.strictEqual(Number(row.cash_total), 55, `готівка 60−10+5=55, не ${row.cash_total} — переказ не з каси`);
     assert.strictEqual(Number(row.card_total), 40);
     assert.strictEqual(Number(row.payments_count), 4, 'переказ не рахується касовою операцією');

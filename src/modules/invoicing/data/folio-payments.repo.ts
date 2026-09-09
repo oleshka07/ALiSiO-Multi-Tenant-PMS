@@ -21,6 +21,7 @@
  */
 import { getSql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { propertyOrSharedFilter, type PropertyScope } from '@core/property-scope';
 import { hasFeature } from '@core/features';
 import { integrationCredentials } from '@core/integration-credentials';
 import type { FiscalDevice, FiscalSignature, VatAmount } from '../domain/fiscal/fiscal-device';
@@ -169,13 +170,20 @@ export async function recordPayment(input: {
 }
 
 /** The unsigned till operations reception must see — acceptance §6.4 п.3. */
-export async function unsignedPayments(): Promise<FolioPayment[]> {
+export async function unsignedPayments(scope: PropertyScope): Promise<FolioPayment[]> {
   const organizationId = await requireOrganizationId();
+  // Каса стоїть у будинку (INC-029). Рецепція обʼєкта А, дивлячись на
+  // непідписані операції обох, або підписує чуже, або лишає своє
+  // непідписаним — і те, і те видно аж при перевірці.
+  //
+  // `propertyOrSharedFilter`: колонка нульова, і оплата без будинку при
+  // звичайному фільтрі зникла б з обох списків (Д51).
+  const axis = propertyOrSharedFilter(scope, '');
   return await getSql().rows<FolioPayment>(
     `SELECT * FROM fin_folio_payments
-      WHERE organization_id = ? AND tse_status = 'tse_failed'
+      WHERE organization_id = ? AND ${axis.sql} AND tse_status = 'tse_failed'
       ORDER BY paid_at DESC`,
-    [organizationId]);
+    [organizationId, ...axis.params]);
 }
 
 /**

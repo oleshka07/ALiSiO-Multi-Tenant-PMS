@@ -12,6 +12,7 @@
  */
 import { NextResponse } from 'next/server';
 import { withPermission } from '@core/auth/session';
+import { requestPropertyScope } from '@core/auth/property-scope';
 import * as folios from '../data/folio.repo';
 import * as payments from '../data/folio-payments.repo';
 import { reservationFolioSummary } from '../data/folio-summary.repo';
@@ -30,7 +31,7 @@ function refuse(e: unknown) {
   );
 }
 
-export const listFolios = withPermission('manage_documents', async (request: Request) => {
+export const listFolios = withPermission('manage_documents', async (request: Request, _ctx, actor) => {
   const url = new URL(request.url);
   const reservationId = url.searchParams.get('reservation_id') || undefined;
   // The split-bill screen wants each folio with its open charges and its
@@ -43,7 +44,10 @@ export const listFolios = withPermission('manage_documents', async (request: Req
   if (reservationId && url.searchParams.get('summary') === '1') {
     return NextResponse.json(await reservationFolioSummary(reservationId));
   }
-  return NextResponse.json({ folios: await folios.listFolios(reservationId) });
+  // Без броні це список УСІХ рахунків готелю, тож область приходить із запиту
+  // (INC-029). З бронню вісь уже в ній, і область не звужує нічого зайвого.
+  const scope = await requestPropertyScope(request, actor.organizationId);
+  return NextResponse.json({ folios: await folios.listFolios(reservationId, scope) });
 });
 
 /** Move uninvoiced charges onto this folio — the verb behind splitting a bill. */
