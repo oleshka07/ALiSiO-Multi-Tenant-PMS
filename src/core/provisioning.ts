@@ -187,9 +187,12 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
     timezoneFrom = 'country';
   }
   if (!timezone) {
+    // Українською з тієї ж причини, що й рід житла нижче: цей текст друкує
+    // оператору `provision-org.mjs`. Імʼя поля лишається — воно каже, ЩО
+    // назвати.
     throw new Error(
-      'timezone is required: pass it explicitly, or a country whose timezone is unambiguous '
-      + '(UA, CZ, PL, DE, … — countries with several zones, like US or ES, must name the zone)');
+      'Не вказано часовий пояс (timezone). Назвіть його прямо, або країну, у якої пояс ОДИН '
+      + '(UA, CZ, PL, DE, …): країна з кількома поясами, як US чи ES, пояс не визначає');
   }
   // Рід житла — за тим самим правилом, і з тієї ж причини, що валюта й пояс.
   //
@@ -201,20 +204,35 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
   // Перелік — у ядрі (`lodging-kinds.ts`), не в модулі каналів: рід житла це
   // факт про сам обʼєкт, і форма обʼєкта питає його в готелю, який каналів
   // не купував.
+  //
+  // Мова відмови — продуктова, і саме тут це не косметика: `provision-org.mjs`
+  // друкує `e.message` оператору дослівно (`:92`), тобто ЦЕ і є той екран, на
+  // якому людина дізнається про В1. Коміт, що приводив відмови модуля до мови
+  // продукту, ці дві проґавив (рецензія раунду 20, П3).
+  //
+  // Ім'я поля лишається в тексті навмисно, і лише тут: цю відмову читає той,
+  // хто заводить готель командою або файлом, і йому потрібно знати, ЯКЕ поле
+  // назвати. Відмови, які бачить портьє (`properties.repo`), назв колонок не
+  // містять.
   const lodgingKind = input.lodgingKind?.trim();
   if (!lodgingKind) {
     throw new Error(
-      'lodgingKind is required: the hotel says what kind of lodging it is, and it is not guessed '
-      + `(${LODGING_KINDS.slice(0, 4).join(', ')}, … — ${LODGING_KINDS.length} in all)`);
+      'Не вказано рід житла (lodgingKind). Готель називає його сам — ми не вгадуємо: '
+      + 'від цього залежить, за що менеджер каналів бере гроші, за обʼєкт чи за юніт. '
+      + `Один із ${LODGING_KINDS.length}: ${LODGING_KINDS.join(' ')}`);
   }
   if (!isLodgingKind(lodgingKind)) {
-    throw new Error(`lodgingKind "${lodgingKind}" is not one of the ${LODGING_KINDS.length} known kinds`);
+    throw new Error(
+      `Роду житла «${lodgingKind}» немає в переліку. `
+      + `Один із ${LODGING_KINDS.length}: ${LODGING_KINDS.join(' ')}`);
   }
 
   // Вигаданий пояс не записується: `todayIn` з нього мовчки падає на UTC, і
   // готель отримує «сьогодні» за Гринвічем, не помітивши цього.
   if (!isKnownTimezone(timezone)) {
-    throw new Error(`timezone "${timezone}" is not a known IANA zone (Europe/Kyiv, Europe/Prague, …)`);
+    throw new Error(
+      `Часової зони «${timezone}» (timezone) не існує. `
+      + 'Потрібна назва з бази IANA — наприклад Europe/Kyiv або Europe/Prague');
   }
 
   // Checked before the transaction so the caller gets the real reason rather

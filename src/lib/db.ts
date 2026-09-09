@@ -7640,9 +7640,14 @@ function seedData(database: any) {
 
   database.prepare('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)').run(orgId, 'Demo Hotel', 'demo');
 
+  // Рід житла названо і тут — це ЧЕТВЕРТИЙ шлях, яким народжується обʼєкт, і
+  // єдиний, що йшов повз варту (рецензія раунду 20, П3). Мовчазного «готель»
+  // з нього не виходило — колонка лишалась NULL, — але твердження «рід житла
+  // називають на КОЖНОМУ шляху» без цього рядка неповне, а демо-обʼєкт із
+  // порожнім родом не змогла б відправити в канал жодна демонстрація.
   database
-    .prepare('INSERT INTO properties (id, organization_id, name, slug, city, country) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(propId, orgId, 'Demo Hotel & Spa', 'demo-hotel', 'Praha', 'CZ');
+    .prepare('INSERT INTO properties (id, organization_id, name, slug, city, country, property_type) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(propId, orgId, 'Demo Hotel & Spa', 'demo-hotel', 'Praha', 'CZ', 'hotel');
 
   const insertCat = database.prepare(
     'INSERT INTO categories (id, property_id, name, type, sort_order, icon, color) VALUES (?, ?, ?, ?, ?, ?, ?)'

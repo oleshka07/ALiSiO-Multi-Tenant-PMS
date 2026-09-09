@@ -283,10 +283,22 @@ export default function SettingsPropertiesPage() {
     try {
       const slug = propForm.slug || propForm.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
       if (editId) {
-        await fetch(`/api/properties/${editId}`, {
+        // Відповідь ЧИТАЄТЬСЯ. Тут стояв голий `await fetch` без `res.ok`, і
+        // екран показував «Обʼєкт оновлено!» на 400 — тобто на будь-якій
+        // названій відмові писача (рід житла поза переліком, слово поза
+        // словником політики виселення). Оператор бачив підтвердження там, де
+        // не збереглося нічого. Створення поруч робило це правильно з самого
+        // початку; правка — ні (рецензія раунду 20, П1).
+        const res = await fetch(`/api/properties/${editId}`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...propForm, slug }),
         });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          alert(data.error || tUi('Не вдалося зберегти обʼєкт'));
+          setSaving(false);
+          return;
+        }
         showToast(tUi('Об\'єкт оновлено!'));
         setSavedTimes((n) => n + 1);
       } else {

@@ -42,7 +42,16 @@ const { provisionOrganization } = await import('./provisioning.ts');
 const { timezoneForCountry } = await import('./hotel-day.ts');
 
 const sql = getSql();
-const SLUGS = ['probe-tz-ua', 'probe-tz-cz', 'probe-tz-explicit'];
+// Разом із трьома ВІДМОВНИМИ slug'ами, і це не надмірність.
+//
+// На зламаному коді — саме на тому, який ці сцени й мають зловити, —
+// заведення проходить, рядки лишаються, і НАСТУПНИЙ прогін падає на
+// зайнятому slug. Тобто сцена, яка мала показати «варта зникла», показала б
+// «заведення зламане», і причину довелося б шукати заново. Сусідня перевірка
+// (`provisioning-lodging-kind`) цю пастку обійшла з першої редакції
+// (рецензія раунду 20, П3).
+const SLUGS = ['probe-tz-ua', 'probe-tz-cz', 'probe-tz-explicit',
+  'probe-tz-none', 'probe-tz-multi', 'probe-tz-bogus'];
 const PASSWORD = 'probe-timezone-password';
 
 /**

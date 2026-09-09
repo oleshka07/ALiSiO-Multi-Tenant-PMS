@@ -6635,5 +6635,6 @@
   "🩺 Аудит фінансової архітектури": "🩺 Audit der Finanzarchitektur",
   "🪑 Меблі": "🪑 Möbel",
   "Рід житла *": "Unterkunftsart *",
-  "Обирається один раз і закріплюється за готелем: вендор каналу рахує за ним тариф. Поки не вказано — каталог у канал не поїде.": "Wird einmal gewählt und bleibt beim Hotel: Der Kanal-Anbieter berechnet danach seinen Tarif. Solange nichts gewählt ist, geht der Katalog nicht an den Kanal."
+  "Обирається один раз і закріплюється за готелем: вендор каналу рахує за ним тариф. Поки не вказано — каталог у канал не поїде.": "Wird einmal gewählt und bleibt beim Hotel: Der Kanal-Anbieter berechnet danach seinen Tarif. Solange nichts gewählt ist, geht der Katalog nicht an den Kanal.",
+  "Не вдалося зберегти обʼєкт": "Objekt konnte nicht gespeichert werden"
 }

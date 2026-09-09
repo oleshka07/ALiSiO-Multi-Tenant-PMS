@@ -121,7 +121,12 @@ await assert.rejects(
     ownerEmail: 'probe-kind-none@probe.test', ownerPassword: PASSWORD,
     currency: 'EUR', language: 'uk', country: 'UA',
   }),
-  /lodgingKind/,
+  // Предмет, не ідентифікатор поля. Перша редакція вимагала `/lodgingKind/` —
+  // тобто стерегла ВІЗЕРУНОК (англійську назву аргументу), і почервоніла на
+  // правці, яка нічого не зламала: відмову переклали мовою продукту (§3.2.1).
+  // Твердження ж про інше — що відмова НАЗИВАЄ РІД ЖИТЛА, а не мовчить і не
+  // підставляє «hotel».
+  /рід житла|роду житла/i,
   'роду житла не назвали — названа відмова, а не «hotel»',
 );
 
@@ -131,7 +136,9 @@ await assert.rejects(
     ownerEmail: 'probe-kind-bogus@probe.test', ownerPassword: PASSWORD,
     currency: 'EUR', language: 'uk', country: 'UA', lodgingKind: 'banana_resort',
   }),
-  /lodgingKind/,
+  // І тут — саме ЗНАЧЕННЯ: «рід невідомий» без нього лишає того, хто заводить
+  // готель, з питанням «а що я ввів», а вводив він його у файлі чи в команді.
+  /banana_resort/,
   'роду, якого немає в переліку, не записуємо: вендор відмовив би вже посеред створення каталогу',
 );
 

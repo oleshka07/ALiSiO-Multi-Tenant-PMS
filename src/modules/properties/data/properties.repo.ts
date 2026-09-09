@@ -150,21 +150,28 @@ export async function createProperty(organizationId: string, input: CreateProper
  *
  * ── Порожнє значення (В1) ───────────────────────────────────────────────
  *
- * `required` — при СТВОРЕННІ: рід житла обирає готель, один раз, і без
- * нього обʼєкта не існує. При правці порожнє поле означає «форма про це
- * мовчить» і лишає збережене як є: інакше екран, який не надіслав поля,
- * стирав би вибір, зроблений раніше.
+ * При СТВОРЕННІ порожнє — відмова: рід житла обирає готель, один раз, і без
+ * нього обʼєкта не існує.
+ *
+ * При ПРАВЦІ порожнє означає «форма про це мовчить», і поле НЕ пишеться
+ * взагалі — див. `updateProperty`. Тут ця гілка не повертає `null`, бо
+ * `null` пішов би в `UPDATE` і стер би вибір; повертається `undefined`, а
+ * писач за ним і впізнає «не чіпати».
+ *
+ * Перша редакція цієї функції повертала `null` і на правці — і саме це
+ * ламало В1 на єдиному шляху, яким рід міняють: форма шле `{...propForm}`
+ * ЗАВЖДИ, тобто `property_type: ''` приїжджає в кожному PATCH, ставало
+ * `null`, а `null !== undefined` — і цикл писав `property_type = NULL`
+ * ПОВЕРХ названого роду. Сусідня сцена цього не бачила, бо перевіряла
+ * правку БЕЗ поля, а не з порожнім (рецензія раунду 20, П1).
  */
-function validPropertyType(value: unknown, required: boolean): string | null {
+function validPropertyType(value: unknown, required: boolean): string | undefined {
   if (value === undefined || value === null || value === '') {
     if (required) {
       refuse('Оберіть рід житла: від нього залежить, за що менеджер каналів бере гроші — '
         + 'за обʼєкт чи за кожен юніт. Ми його не вгадуємо.');
     }
-    // Порожній рядок означає «ще не названо» і стає NULL — інакше в колонці
-    // лежало б `''`, і каталог вважав би рід названим (`catalog-sync`
-    // перевіряє саме порожнечу).
-    return null;
+    return undefined;
   }
   if (!isLodgingKind(value)) {
     // `refuse` (400), не голий Error: рід житла поза переліком — помилка
@@ -180,8 +187,21 @@ export async function updateProperty(organizationId: string, id: string, fields:
   if (!await owns(organizationId, id)) return null;
 
   const allowed = ['name', 'slug', 'address', 'city', 'country', 'phone', 'email', 'check_in_time', 'check_out_time', 'city_tax_per_night', 'is_active', 'checkout_balance_policy', 'property_type'];
+  // Рід житла: назване значення звіряється, порожнє ЗНІМАЄТЬСЯ з патча.
+  //
+  // Саме зняття, а не запис `null`: форма обʼєкта шле `{...propForm}` цілком,
+  // тож `property_type: ''` приїжджає в КОЖНОМУ PATCH — і `null` у патчі
+  // означав би, що будь-яке збереження екрана стирає рід житла, який готель
+  // обрав. В1 каже протилежне: «обирається один раз і закріплюється».
+  //
+  // Зняти вибір можна лише свідомо — назвавши інший рід. Способу «стерти в
+  // порожнечу» немає навмисно: обʼєкт без роду не їде в канал, тобто це не
+  // стан, у який готель має вміти впасти випадковим збереженням форми.
   if (fields.property_type !== undefined) {
-    fields = { ...fields, property_type: validPropertyType(fields.property_type, false) };
+    const kind = validPropertyType(fields.property_type, false);
+    fields = { ...fields };
+    if (kind === undefined) delete fields.property_type;
+    else fields.property_type = kind;
   }
   // Політика виселення з боргом (0091) — одне з трьох слів. Звіряє писач, а
   // не лише CHECK бази: на SQLite обмеження до наявної таблиці не додати.
