@@ -618,6 +618,59 @@ try {
           assert.ok(item, 'позицію фоліо стерто каскадом — саме цього рішення власник ще не ухвалював');
         }
 
+        // ── Рецепція це БАЧИТЬ, і бачить як рішення (К18) ───────────────
+        //
+        // Тихий стан тут гірший за помилку: кімнати в бронюванні немає, а
+        // вписані на неї позиції лишились, і хтось має вирішити — перенести,
+        // виставити окремо чи списати. `console.warn` цього не робить: рядок
+        // у лозі контейнера не бачить ніхто, крім того, хто його шукає, а
+        // рецепція дізнається про розбіжність від гостя на виїзді.
+        {
+          const seen = await sql.rows<any>(
+            `SELECT action, details, user_name FROM booking_activity_log
+              WHERE reservation_id = ? AND action = 'channel_room_removed_with_charges'`,
+            [groupId]) as any[];
+          assert.strictEqual(seen.length, 1,
+            'рецепція НЕ побачить, що канал прибрав кімнату з вписаними позиціями — '
+            + 'це рівно той тихий стан, який К18 забороняє');
+          const text = String(seen[0].details);
+          // Не переказ формулювання, а три речі, без яких рішення ухвалити
+          // не можна: ЩО прибрали, СКІЛЬКИ лишилось і НА ЯКУ СУМУ.
+          assert.ok(/кімнат/i.test(text), `у записі не названо, що саме прибрали: ${text}`);
+          assert.ok(/\b1\b/.test(text), `у записі не названо число позицій: ${text}`);
+          assert.ok(/210/.test(text), `у записі не названо суму — «одна позиція» і «одна на 210» це різні рішення: ${text}`);
+          assert.strictEqual(String(seen[0].user_name), 'Канал',
+            'дію не підписано каналом — рецепція шукатиме, хто з її людей це натиснув');
+        }
+
+        // ── І головне: правило тримає БАЗА, а не мій код (К18) ──────────
+        //
+        // Усе вище доводить, що `releaseGroupRoom` рядок із позиціями не
+        // чіпає. Але це доводить лише поведінку ОДНОГО писача — наступний,
+        // хто напише `DELETE FROM reservation_sub_bookings` в іншому місці,
+        // стер би позиції каскадом і не дізнався про це. Тому обмеження
+        // перевернуте з `ON DELETE CASCADE` на заборону: канал володіє тим,
+        // що ЗАБРОНЮВАЛИ, готель — тим, що НАРАХУВАЛИ і що вписала людина
+        // (рішення власника В10, реєстр К18).
+        //
+        // Твердження саме про базу: прямий `DELETE` по рядку, на якому висить
+        // вписана позиція, мусить ВІДМОВИТИ. До правки він проходив і мовчки
+        // забирав позицію з собою.
+        let refused = '';
+        try {
+          await sql.run('DELETE FROM reservation_sub_bookings WHERE id = ?', [String(charged.id)]);
+        } catch (e) {
+          refused = e instanceof Error ? e.message : String(e);
+        }
+        assert.ok(refused,
+          'прямий DELETE по рядку з вписаною позицією ПРОЙШОВ — отже правило тримає лише код писача, '
+          + 'а наступний DELETE в іншому місці знову стер би позицію каскадом (К18)');
+        {
+          const item = await sql.row<any>(
+            'SELECT id FROM reservation_line_items WHERE id = ?', ['__cm_check__li1']) as any;
+          assert.ok(item, `позицію стерто попри відмову: ${refused}`);
+        }
+
         // Прибрати за собою: наступний крок рахує рядки групи.
         await sql.run('DELETE FROM reservation_line_items WHERE id = ?', ['__cm_check__li1']);
         await sql.run('DELETE FROM reservation_guests WHERE id = ?', ['__cm_check__g1']);
@@ -701,13 +754,17 @@ try {
           `SELECT action, details FROM booking_activity_log
             WHERE organization_id = ? AND reservation_id = ? ORDER BY created_at ASC, id ASC`,
           [ORG, groupId]) as any[];
-        // Одинадцять ревізій: сім початкових плюс чотири зі сцени 2e (гість,
-        // повернення кімнати, позиції фоліо, повернення для наступного кроку).
-        // Число тут не окраса: воно й стверджує, що КОЖНА ревізія лишає рядок
-        // історії, тож нова сцена мусить його зрушити, а не проскочити повз.
+        // Одинадцять ревізій — стільки ж рядків історії, ПЛЮС один рядок
+        // іншого роду: рішення для рецепції про кімнату з вписаними
+        // позиціями (К18). Він стоїть саме там, де сталася подія, і саме
+        // тому тут перелічено ДІЇ, а не їхню кількість: «дванадцять рядків»
+        // було б зелене й тоді, коли ревізія лишила два записи замість
+        // одного.
         assert.deepStrictEqual(rows.map((r) => r.action),
-          ['channel_created', ...Array(9).fill('channel_modified'), 'channel_cancelled'],
-          `одинадцять ревізій групи — стільки ж записів історії на майстрі, а є: ${JSON.stringify(rows.map((r) => r.action))}`);
+          ['channel_created', ...Array(6).fill('channel_modified'),
+            'channel_room_removed_with_charges',
+            ...Array(3).fill('channel_modified'), 'channel_cancelled'],
+          `одинадцять ревізій плюс одне рішення рецепції, а є: ${JSON.stringify(rows.map((r) => r.action))}`);
         assert.ok(String(rows[0].details).includes('555'),
           'сума бронювання цілком (555) не названа ніде: у рядку її нема за задумом, отже вона мусить бути в історії');
         assert.ok(/2\s*кімнат/i.test(String(rows[0].details)),
