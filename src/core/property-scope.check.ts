@@ -33,7 +33,8 @@ const { getSql } = await import('@core/db/async.ts');
 const { runWithOrganization } = await import('@core/auth/tenant-context.ts');
 const { seedTwoProperties, assertNotDegenerate } = await import('./fixtures/two-properties.ts');
 const {
-  ALL_PROPERTIES, oneProperty, propertyScopeFilter, requirePropertyScope, scopedPropertyId,
+  ALL_PROPERTIES, oneProperty, propertyScopeFilter, requirePropertyScope, requestedPropertyParam,
+  scopedPropertyId,
 } = await import('./property-scope.ts');
 
 const sql = getSql();
@@ -178,6 +179,33 @@ await runWithOrganization(SOLO, async () => {
 });
 
 console.log('  ok  немає області: один обʼєкт — він; кілька — 400; чужий — 404');
+
+// ─── 3.1. Дві назви параметра, і жодна не помилка ──────────────────────────
+//
+// `?property=` пише провайдер в адресу вкладки, `?property_id=` шлють fetch-и
+// чотирнадцяти екранів. Найважливіше тут — розрізнити ТРИ стани, які легко
+// зливаються в один: сказано id, сказано «усі», не сказано нічого. Саме
+// злиття другого з третім і було вадою: порожнє поле форми означало б
+// «памʼятай, що я обрав минулого разу» замість «покажи всі».
+
+const p = (query: string) => requestedPropertyParam(`https://alisio.test/api/units${query}`);
+
+assert.strictEqual(p('?property_id=abc'), 'abc', 'fetch-параметр не прочитано');
+assert.strictEqual(p('?property=abc'), 'abc', 'параметр адреси не прочитано');
+assert.strictEqual(p('?property_id=abc&property=zzz'), 'abc', 'при обох мав перемогти той, що шлють fetch-и');
+assert.strictEqual(p('?property_id='), '', 'порожній параметр — це сказане «усі», а не мовчання');
+assert.strictEqual(p('?property=all'), 'all', '«all» словом мало доїхати як є');
+assert.strictEqual(p(''), null, 'без параметра мало бути мовчання, а не «усі»');
+assert.strictEqual(p('?category=room'), null, 'чужий параметр прочитано як область');
+
+await runWithOrganization(fx.organizationId, async () => {
+  assert.deepStrictEqual(
+    await requirePropertyScope(p('?property_id=') ?? undefined), ALL_PROPERTIES,
+    'порожній параметр мав дати «усі обʼєкти»',
+  );
+});
+
+console.log('  ok  дві назви параметра: property_id перемагає, порожній = «усі», відсутній = мовчання');
 
 // ─── 4. Сторож виродження сам уміє червоніти ────────────────────────────────
 //

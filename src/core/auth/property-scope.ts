@@ -22,14 +22,12 @@
 import { cookies } from 'next/headers';
 import { getSql } from '../db/async.ts';
 import {
-  ALL_PROPERTIES, ALL_PROPERTIES_PARAM, oneProperty, type PropertyScope,
+  ALL_PROPERTIES, ALL_PROPERTIES_PARAM, oneProperty, requestedPropertyParam,
+  type PropertyScope,
 } from '../property-scope.ts';
 import { PropertyNotFound } from './tenant-context.ts';
 
 export const PROPERTY_SCOPE_COOKIE = 'property_scope';
-
-/** Імʼя параметра адреси — те саме, що читає провайдер у шапці. */
-export const PROPERTY_PARAM = 'property';
 
 /** Рік: вибір готелю не протухає сам — його змінює людина. */
 export const PROPERTY_SCOPE_MAX_AGE = 365 * 24 * 60 * 60;
@@ -47,35 +45,44 @@ export async function rememberedPropertyId(ownedIds: readonly string[]): Promise
 }
 
 /**
- * Область обʼєкта ДЛЯ ЗАПИТУ — з адреси, а як її там немає, з памʼяті.
+ * Область обʼєкта ДЛЯ ЗАПИТУ — те, що сказав виклик, а як не сказав, то памʼять.
  *
- * ── Чому не просто `?property=` ─────────────────────────────────────────
+ * ── Дві назви одного, і обидві справжні ─────────────────────────────────
  *
- * Бо його сьогодні ніхто не шле. Вісім екранів кличуть `/api/units` без
- * жодного параметра (`settings/units`, `calendar`, `bookings`,
- * `channel-manager`, `sites/[siteId]`, `BookingViewModal`, `MobileBookings`,
- * `MobileCalendar`) — вибір оператора живе в АДРЕСІ ВКЛАДКИ і в куці, і до
- * `fetch` не доходить. Вимагати параметр негайно означало б 400 на восьми
- * робочих екранах у рахунках із двома обʼєктами, тобто рівно в тих, заради
- * яких блок і робиться.
+ * У коді вже живуть ДВА імені цієї осі, і жодне не помилка:
  *
- * Тому старшинство тут те саме, що в провайдері
- * (`src/ui/PropertyScopeContext.tsx`), і це не збіг, а вимога: два різні
- * порядки означали б, що шапка показує один обʼєкт, а список — інший.
+ *   `?property=<id|all>`  — АДРЕСА ВКЛАДКИ. Її пише провайдер у шапці
+ *                           (`src/ui/PropertyScopeContext.tsx`), і саме її
+ *                           пересилають колезі;
+ *   `?property_id=<id>`   — FETCH. Так уже питають чотирнадцять екранів
+ *                           (`/api/reports`, `/api/dashboard`,
+ *                           `/api/pricing/*`, `/api/settings/*`), беручи
+ *                           значення з того самого `usePropertyScope()`.
  *
- *   1. `?property=<id|all>` — головне. Дві вкладки на два готелі не бʼються.
- *   2. кука `property_scope` — памʼятає останній вибір оператора.
- *   3. обʼєкт один — він і є область.
+ * Тому читаються обидва, `property_id` першим — це те, що шлють; звести їх до
+ * одного імені означало б переписати чотирнадцять чужих екранів заради
+ * охайності. Розбіжність названа в NAMING §8.
+ *
+ * ── Старшинство ─────────────────────────────────────────────────────────
+ *
+ * Те саме, що в провайдері, і це вимога, а не збіг: два різні порядки
+ * означали б, що шапка показує один обʼєкт, а список — інший.
+ *
+ *   1. параметр запиту — `all` або порожній рядок означають «усі обʼєкти»
+ *      СКАЗАНО (саме так екрани пишуть «Усі»: `propertyId ? …id=… : ''`);
+ *      id — один обʼєкт, і він звіряється на власність;
+ *   2. кука `property_scope` — памʼятає останній вибір оператора;
+ *   3. обʼєкт один — він і є область, обирати нема з чого;
  *   4. інакше — «усі обʼєкти», і це те саме слово, яке в цю мить стоїть у
- *      шапці. Не «перший» і не мовчання: значення назване, його видно
- *      оператору, і воно потрапляє в запит типом.
+ *      шапці. Не «перший» і не мовчання.
  *
- * Обмеження, яке лишається і яке лікується не тут: доки `fetch` не несе
- * `?property=`, дві вкладки на два обʼєкти читають одну куку і покажуть той
- * самий обʼєкт. Це половина в теці інтерфейсу (`src/app`, `src/components`) —
- * по рядку на виклик.
+ * Обмеження, яке лишається і яке лікується не тут: виклик, який не несе
+ * параметра взагалі (вісім читачів `/api/units`), спирається на куку, а кука
+ * одна на всі вкладки — саме той випадок, заради якого провайдер зробив
+ * адресу головнішою за куку. По рядку на виклик, і всі вони в теці
+ * інтерфейсу.
  *
- * Чужий або видалений id у параметрі — 404, не «отже, всі» (інваріанти 5, 13).
+ * Чужий або видалений id — 404, не «отже, всі» (інваріанти 5, 13).
  */
 export async function actorPropertyScope(
   organizationId: string,
@@ -87,7 +94,8 @@ export async function actorPropertyScope(
     [organizationId],
   )).map((r) => r.id);
 
-  if (requested === ALL_PROPERTIES_PARAM) return ALL_PROPERTIES;
+  // `null` — параметра не було взагалі; `''` і `all` — «усі» сказано словом.
+  if (requested === ALL_PROPERTIES_PARAM || requested === '') return ALL_PROPERTIES;
   if (requested) {
     if (!owned.includes(requested)) throw new PropertyNotFound();
     return oneProperty(requested);
@@ -99,7 +107,10 @@ export async function actorPropertyScope(
   return ALL_PROPERTIES;
 }
 
-/** Те саме, але прямо з адреси запиту — щоб кожен хендлер не писав цих трьох рядків. */
-export function requestedProperty(request: { url: string }): string | null {
-  return new URL(request.url).searchParams.get(PROPERTY_PARAM);
+/** Область прямо із запиту — те, що потрібно майже кожному читачу. */
+export async function requestPropertyScope(
+  request: { url: string },
+  organizationId: string,
+): Promise<PropertyScope> {
+  return actorPropertyScope(organizationId, requestedPropertyParam(request.url));
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as unitTypesRepo from '../data/unit-types.repo';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
 import { requirePropertyId } from '@core/auth/tenant-context';
+import { requestPropertyScope } from '@core/auth/property-scope';
 import { handleError } from '@core/http/errors';
 
 /**
@@ -15,13 +16,15 @@ type IdParams = { params: Promise<{ id: string }> };
 export const listUnitTypes = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const { searchParams } = new URL(request.url);
-    const rows = await unitTypesRepo.listUnitTypes(actor.organizationId, {
+    // Який ОБʼЄКТ, а не лише який орендар (INC-029, ARCHITECTURE §4.3.1).
+    const scope = await requestPropertyScope(request, actor.organizationId);
+    const rows = await unitTypesRepo.listUnitTypes(actor.organizationId, scope, {
       category: searchParams.get('category') || undefined,
     });
     return NextResponse.json(rows);
   } catch (error) {
-    console.error('GET /api/unit-types error:', error);
-    return NextResponse.json({ error: 'Failed to fetch unit types' }, { status: 500 });
+    // Чужий обʼєкт у параметрі — названа відмова 404; решта — 500 із логом.
+    return handleError('properties/unit-types', error);
   }
 });
 

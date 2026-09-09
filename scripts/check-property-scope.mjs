@@ -57,6 +57,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { propertyScopedTables, scanSource, sourceFiles } from './lib/property-scope-scan.mjs';
 
 const strict = process.argv.includes('--strict');
 const list = process.argv.includes('--list');
@@ -184,165 +185,49 @@ if (problems.length) {
   console.log(`check-property-scope: інтерфейс чистий — ${files.length} файлів, область лише в ${PROVIDER}`);
 }
 
+
 // ════════════════════════════════════════════════════════════════════════════
 // ВІСЬ «ЧИТАННЯ»: чи вибір оператора доходить до SQL (INC-029)
 // ════════════════════════════════════════════════════════════════════════════
 //
 // ── Що саме стверджується ──────────────────────────────────────────────────
 //
-// «Читання таблиці, яка має `property_id`, ОБМЕЖЕНЕ названим обʼєктом — або
-// область прийшла типом `PropertyScope`, і тоді «усі» сказано словом.»
+// «Читання таблиці, яка має `property_id`, ДОВЕДЕНО обмежене названим
+// обʼєктом — або область прийшла типом `PropertyScope`, і тоді «усі» сказано
+// словом.»
 //
 // Це властивість, а не візерунок (AGENTS §3.2.1): гейт не перелічує форми, у
 // яких помилку вже бачили, — він перелічує ЛІКИ і рахує все інше. Тому та сама
 // помилка, записана інакше, не проходить: щоб пройти, треба справді обмежити
 // запит.
 //
-// Ліків рівно три, і всі три перевіряються в тексті самого твердження:
+// ── Вимір — спільний інструмент, а не власна регулярка ─────────────────────
 //
-//   1. `property_id` порівняно з параметром — `= ?`, `= $1`, `IN (?, ?)`;
-//   2. `property_id` зчеплено з `property_id` іншої таблиці того ж запиту —
-//      обмеження одного джойн переносить на друге;
-//   3. у запит вставлено фрагмент від `propertyScopeFilter()` з
-//      `@core/property-scope` — тоді область прийшла типом, і `{ kind: 'all' }`
-//      написано словами вище за течією.
+// `scripts/lib/property-scope-scan.mjs`, розбір AST. Перша редакція цього гейта
+// різала файли регуляркою по літералах і мала три вади, кожну з яких незалежно
+// вимірила сесія 1:
 //
-// ЩО НЕ Є ЛІКАМИ, і це найважливіший рядок цього гейта:
-// `property_id IN (SELECT id FROM properties WHERE organization_id = ?)` — те,
-// що видає `propertyScopeSql()` з `properties/data/tenant-scope.ts`. Це вісь
-// ОРЕНДАРЯ («усі обʼєкти цього рахунку»), і саме вона робить `listUnits`
-// схожим на проскоуплений запит. Дві осі, дві різні відповіді; ця не рахується.
+//   * шматувала запит на уламки навколо `${…}` — одиниця обліку розходилась
+//     між сесіями, тобто стелю опускали б на різні числа за ту саму роботу;
+//   * не мала третього кошика — запит, чия умова приїздить підстановкою,
+//     потрапляв у «мовчить», і базлайн спадав САМ СОБОЮ, щойно динамічний
+//     запит переписували на статичний;
+//   * зараховувала `property_id` у СПИСКУ КОЛОНОК як «названий» — саме через
+//     це `fin_folios` виглядав як 4 названі читання, маючи НУЛЬ.
 //
-// ── Чому храповик, а не «має бути нуль» ────────────────────────────────────
+// Рішення контролера 09.09.2026: інструмент один на три сесії, живе в
+// `scripts/lib/`, кошиків три, храповик рахує **«не доведено» = мовчить +
+// невизначений**. Запит, що переїхав із «невизначеного» в «називає», опускає
+// стелю законно; той, що переїхав у «мовчить», не міняє нічого.
 //
-// Бо мовчазних читань 335 у 98 файлах, і це НЕ 335 дірок — так само, як 59
-// місць `audit-by-id-scope` не були 59 дірками. Частина законно охоплює весь
-// рахунок, частина отримує обʼєкт із параметра маршруту окремо від запиту,
-// частина йде за первинним ключем після доведеної власності вище. Вимагати
-// нуля сьогодні означало б червону збірку, яку ніхто не полагодить за вечір, —
-// а таку збірку всі вчаться ігнорувати (те саме міркування, через яке в CI
-// немає `npm run lint`). Тому стеля кожного файла зафіксована на день
-// увімкнення: більше — збірка падає і називає файл; менше — теж падає і
-// просить опустити стелю; файла немає в списку — стеля нуль, тобто новий
-// читач народжується з віссю.
-//
-// ── Одне обмеження, яке треба знати ────────────────────────────────────────
-//
-// Гейт дивиться на ОДИН рядковий літерал. Читач, який приклеює свій фільтр
-// окремим рядком (`query += ' AND u.property_id = ?'`), лишається порахованим
-// як мовчазний — і це навмисно, а не недогляд: фрагмент, приклеєний за межами
-// запиту, неможливо звірити з тим, до чого його приклеїли, а обидва способи
-// сходяться до одного правильного — вставити `${filter.sql}` у сам літерал.
-
-/** Таблиці з `property_id` — зі згенерованої схеми, не зі списку в голові. */
-const SCHEMA = path.join(ROOT, 'db/postgres/schema.sql');
-const propertyScoped = new Set();
-// `\r?\n` і зріз '\r': на Windows-копії схема лежить із CRLF, і якір `$` без
-// цього не збігається жодного разу (INC-009 ч.2 — гейт, який мовчить).
-for (const m of fs.readFileSync(SCHEMA, 'utf8').matchAll(/CREATE TABLE "(\w+)" \(([\s\S]*?)\r?\n\);/g)) {
-  if (/"property_id"/.test(m[2])) propertyScoped.add(m[1]);
-}
-
-/** Рядкові літерали файла — усі три лапки, з позицією початку. */
-function literals(text) {
-  const out = [];
-  let i = 0;
-  const n = text.length;
-  while (i < n) {
-    const c = text[i];
-    const d = text[i + 1];
-    if (c === '/' && d === '/') { while (i < n && text[i] !== '\n') i++; continue; }
-    if (c === '/' && d === '*') { while (i < n && !(text[i] === '*' && text[i + 1] === '/')) i++; i += 2; continue; }
-    if (c === '"' || c === "'" || c === '`') {
-      const start = i;
-      let body = '';
-      i++;
-      while (i < n && text[i] !== c) {
-        if (text[i] === '\\') { body += text[i]; i++; if (i < n) { body += text[i]; i++; } continue; }
-        body += text[i]; i++;
-      }
-      i++;
-      out.push({ body, start });
-      continue;
-    }
-    i++;
-  }
-  return out;
-}
-
-/** Обмеження ОДНИМ обʼєктом, названим у самому запиті. */
-const NAMED_IN_SQL = [
-  /property_id\s*(?:=|<>|!=)\s*(?:\?|\$\d+|:\w+)/i,
-  /property_id\s*(?:=|<>|!=)\s*\w+\.property_id\b/i,
-  /property_id\s+(?:NOT\s+)?IN\s*\(\s*(?!SELECT\b)/i,
-];
-
-/** Імена змінних, у яких лежить фрагмент від `propertyScopeFilter()`. */
-function scopeFragments(source) {
-  const names = new Set();
-  for (const m of source.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*propertyScopeFilter\s*\(/g)) names.add(m[1]);
-  for (const m of source.matchAll(/(?:const|let|var)\s*\{[^}]*\bsql\s*:\s*([A-Za-z_$][\w$]*)[^}]*\}\s*=\s*propertyScopeFilter\s*\(/g)) names.add(m[1]);
-  return names;
-}
-
-/** Мовчазні читання одного файла: [{ line, tables }]. */
-function scanReads(source) {
-  const fragments = scopeFragments(source);
-  const found = [];
-  for (const lit of literals(source)) {
-    if (!/\bSELECT\b/i.test(lit.body)) continue;
-    const tables = [...new Set(
-      [...lit.body.matchAll(/\b(?:FROM|JOIN)\s+"?(\w+)"?\b/gi)].map((m) => m[1]).filter((t) => propertyScoped.has(t)),
-    )];
-    if (tables.length === 0) continue;
-    if (NAMED_IN_SQL.some((re) => re.test(lit.body))) continue;
-    if ([...fragments].some((n) => lit.body.includes(`\${${n}.sql}`) || lit.body.includes(`\${${n}}`))) continue;
-    found.push({ line: source.slice(0, lit.start).split(/\r?\n/).length, tables });
-  }
-  return found;
-}
-
-// ── Самоперевірка: правило, яке не червоніє на зразку, не правило ───────────
-//
-// §3.2: зелень нового гейта — підозра, доки його не показали червоним. Тут це
-// зроблено на зразках обох родів, і серед зелених навмисно стоїть форма, якою
-// та сама помилка записується інакше (SQL замість JS, `IN` замість `=`,
-// фрагмент замість літерала) — §3.2.1: зелений на другій формі тієї самої
-// помилки це вирок гейту, а не коду.
-const READ_RED = [
-  "await sql.rows('SELECT id FROM units WHERE is_active = TRUE')",
-  "await sql.rows('SELECT u.id FROM units u JOIN unit_types ut ON ut.id = u.unit_type_id WHERE u.is_active = TRUE')",
-  // Вісь орендаря, вдягнена як вісь обʼєкта: саме так виглядає `listUnits`.
-  "await sql.rows('SELECT id FROM units WHERE property_id IN (SELECT id FROM properties WHERE organization_id = ?)')",
-  "await sql.rows('SELECT SUM(total_price) AS t FROM reservations WHERE check_in >= ?')",
-];
-const READ_GREEN = [
-  "await sql.rows('SELECT id FROM units WHERE property_id = ?', [propertyId])",
-  "await sql.rows('SELECT id FROM units WHERE property_id IN (?, ?)', ids)",
-  "await sql.rows('SELECT u.id FROM units u JOIN unit_types ut ON ut.property_id = u.property_id')",
-  "const filter = propertyScopeFilter(scope, 'u');\nawait sql.rows(`SELECT u.id FROM units u WHERE ${filter.sql}`, filter.params)",
-  "const { sql: scopeSql } = propertyScopeFilter(scope, 'r');\nawait sql.rows(`SELECT r.id FROM reservations r WHERE ${scopeSql}`, params)",
-  // Таблиця без осі обʼєкта взагалі — гейт про неї мовчить.
-  "await sql.rows('SELECT id FROM organizations WHERE id = ?', [orgId])",
-  // Запис — не читання: писачі тримає `requirePropertyId`, не цей гейт.
-  "await sql.run('UPDATE units SET name = ? WHERE id = ?', [name, id])",
-];
-for (const sample of READ_RED) {
-  if (scanReads(sample).length === 0) {
-    console.error(`check-property-scope: самоперевірка осі «читання» — зразок порушення не спіймано:\n  ${sample}`);
-    process.exit(2);
-  }
-}
-for (const sample of READ_GREEN) {
-  const hits = scanReads(sample);
-  if (hits.length) {
-    console.error(`check-property-scope: самоперевірка осі «читання» — хибне спрацювання:\n  ${sample}\n  → [${hits[0].tables.join(', ')}]`);
-    process.exit(2);
-  }
-}
+// **Одиниця — ПАРА «оператор × scoped-таблиця»**, і це не тлумачення, а
+// звірене число: на `05af394` цей розбір дає 597 пар, сесія 1 доповіла 596, і
+// «не доведено» збігається точно — 372 і 372. Одиниця «оператор» дала б на
+// тому самому дереві 297, тобто інший базлайн за ту саму роботу.
 
 /**
- * Стеля кожного файла на 2026-09-09 — день, коли вісь почала блокувати.
+ * Стеля кожного файла — «не доведено» (мовчить + невизначений) на день
+ * увімкнення.
  *
  * Це НЕ мета: мета нуль. Змінювати вниз — разом із виправленням; угору —
  * ніколи (саме це гейт і тримає).
@@ -352,10 +237,10 @@ for (const sample of READ_GREEN) {
  * `audit-by-id-scope` і `check-boundaries` тримають базлайн усередині гейта, і
  * для одного автора це правильно. Тут авторів три: блок INC-029 роблять три
  * сесії паралельно, кожна опускає стелю СВОЇХ файлів, а логіка гейта належить
- * одній із них. Спільна мапа всередині чужого файла означала б або три
- * редагування одного файла правилами `docs/tasks/README.md` заборонені, або
- * три копії гейта. Дані окремо від коду розводять це: сесія опускає рядок у
- * JSON, гейт лишається за своїм господарем, git зливає рядки сам.
+ * одній із них. Спільна мапа всередині чужого файла означала б редагування
+ * файла, названого чужим (`docs/tasks/README.md` це забороняє), або три копії
+ * гейта. Дані окремо від коду: сесія опускає рядок у JSON, гейт лишається за
+ * своїм господарем, git зливає рядки сам.
  *
  * `src/lib/db.ts` у списку з тієї ж причини, що й у `audit-by-id-scope`: це
  * міграції, вони виконуються до будь-якого орендаря й будь-якого обʼєкта і
@@ -364,36 +249,85 @@ for (const sample of READ_GREEN) {
 const BASELINE_FILE = 'scripts/property-scope-baseline.json';
 const READ_BASELINE = JSON.parse(fs.readFileSync(path.join(ROOT, BASELINE_FILE), 'utf8'));
 
-const codeFiles = [];
-(function walk(dir) {
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
-    const p = path.join(dir, e.name);
-    if (e.isDirectory()) { walk(p); continue; }
-    if (/\.tsx?$/.test(e.name) && !/\.check\.tsx?$/.test(e.name)) codeFiles.push(p);
-  }
-})(path.join(ROOT, 'src'));
+const scopedTables = propertyScopedTables(ROOT);
 
+// ── Самоперевірка: правило, яке не червоніє на зразку, не правило ───────────
+//
+// §3.2: зелень нового гейта — підозра, доки його не показали червоним. Зразки
+// підібрані так, щоб кожен перевіряв ОКРЕМЕ рішення виміру, а не повторював
+// сусідній: список колонок проти фільтра, підстановка проти статики, двері
+// області проти голого `${…}`, вісь орендаря проти осі обʼєкта, `JOIN` проти
+// `FROM`, конкатенація проти шаблона (§3.2.1 — та сама помилка іншою формою).
+const SELF_CHECK = [
+  // [кошиків, зразок, {спільне означення}, {суворе означення}]
+  [1, "const q = `SELECT u.id, u.property_id FROM units u WHERE u.is_active = TRUE`;", 'silent', 'silent'],
+  [1, "const q = `SELECT g.id FROM guests g JOIN reservations r ON r.guest_id = g.id WHERE g.email = ?`;", 'silent', 'silent'],
+  [1, "const q = `SELECT u.id FROM units u WHERE u.property_id = ?`;", 'names', 'names'],
+  [1, "const q = `SELECT ${cols} FROM units u WHERE u.property_id = ?`;", 'names', 'names'],
+  [1, "const q = 'SELECT a FROM units ' + 'WHERE property_id = ?';", 'names', 'names'],
+  [1, "const f = propertyScopeFilter(scope, 'u');\nconst q = `SELECT u.id FROM units u WHERE ${f.sql}`;", 'names', 'names'],
+  [1, "const { sql: s } = propertyScopeFilter(scope, 'r');\nconst q = `SELECT r.id FROM reservations r WHERE ${s}`;", 'names', 'names'],
+  [1, "const q = `SELECT u.id FROM units u WHERE ${where}`;", 'unknown', 'unknown'],
+  // Пара «оператор × таблиця»: два scoped-джойни — дві одиниці, не одна.
+  [2, "const q = `SELECT r.id FROM reservations r JOIN units u ON u.id = r.unit_id WHERE r.property_id = ?`;", 'names', 'names'],
+  // Сліпа пляма спільного означення, названа числом: вісь ОРЕНДАРЯ виглядає
+  // названою, суворе означення її не приймає.
+  [1, "const q = 'SELECT id FROM units WHERE property_id IN (SELECT id FROM properties WHERE organization_id = ?)';", 'names', 'silent'],
+  [1, "const q = `SELECT u.id FROM units u JOIN properties p ON p.id = u.property_id WHERE p.organization_id = ?`;", 'names', 'silent'],
+];
+for (const [count, sample, expected, expectedStrict] of SELF_CHECK) {
+  const hits = scanSource(sample, 'self-check.ts', scopedTables);
+  const bad = hits.length !== count
+    || hits.some((h) => h.verdict !== expected || h.strict !== expectedStrict);
+  if (bad) {
+    console.error(`check-property-scope: самоперевірка осі «читання» — очікували ${count}×`
+      + `«${expected}»/«${expectedStrict}», отримали `
+      + `«${hits.map((h) => `${h.verdict}/${h.strict}`).join(', ') || 'нічого'}» на зразку:\n`
+      + `  ${sample.replace(/\n/g, '\n  ')}`);
+    process.exit(2);
+  }
+}
+// І одне твердження про сам вимір: запит без scoped-таблиці не рахується
+// взагалі, інакше гейт лічив би половину застосунку.
+if (scanSource("const q = 'SELECT id FROM organizations WHERE id = ?';", 'self-check.ts', scopedTables).length) {
+  console.error('check-property-scope: самоперевірка — таблиця без осі обʼєкта потрапила в облік');
+  process.exit(2);
+}
+
+// ── Вимір ──────────────────────────────────────────────────────────────────
+const codeFiles = sourceFiles(ROOT);
 const reads = new Map();
-let silentTotal = 0;
+const totals = { names: 0, silent: 0, unknown: 0 };
+let strictUnproven = 0;
 for (const file of codeFiles) {
   const rel = path.relative(ROOT, file).split(path.sep).join('/');
-  const hits = scanReads(fs.readFileSync(file, 'utf8'));
-  if (hits.length) { reads.set(rel, hits); silentTotal += hits.length; }
+  const hits = scanSource(fs.readFileSync(file, 'utf8'), rel, scopedTables);
+  if (hits.length === 0) continue;
+  for (const h of hits) {
+    totals[h.verdict]++;
+    if (h.strict !== 'names') strictUnproven++;
+  }
+  const unproven = hits.filter((h) => h.verdict !== 'names');
+  if (unproven.length) reads.set(rel, unproven);
 }
+const unprovenTotal = totals.silent + totals.unknown;
+
+const summary = () => `називає ${totals.names}, мовчить ${totals.silent}, `
+  + `невизначено ${totals.unknown} → не доведено ${unprovenTotal} у ${reads.size} файлах`
+  + ` (за суворим означенням було б ${strictUnproven})`;
 
 if (list) {
   console.log('');
   console.log('═'.repeat(78));
-  console.log('ЧИТАННЯ БЕЗ ОСІ ОБʼЄКТА — читати очима, не тривога сама по собі');
+  console.log('ЧИТАННЯ БЕЗ ДОВЕДЕНОЇ ОСІ ОБʼЄКТА — читати очима, не тривога сама по собі');
   console.log('═'.repeat(78));
   console.log('');
-  console.log(`  ${propertyScoped.size} таблиць з property_id, ${codeFiles.length} файлів у src/`);
-  console.log(`  мовчать: ${silentTotal} у ${reads.size} файлах`);
+  console.log(`  ${scopedTables.size} таблиць з property_id, ${codeFiles.length} файлів у src/`);
+  console.log(`  ${summary()}`);
   console.log('');
   for (const [file, hits] of [...reads].sort((a, b) => b[1].length - a[1].length)) {
     console.log(`  ${file}  (${hits.length}, стеля ${READ_BASELINE[file] ?? 0})`);
-    for (const h of hits) console.log(`    :${h.line}  [${h.tables.join(', ')}]`);
+    for (const h of hits) console.log(`    :${h.line}  ${h.verdict === 'unknown' ? 'невизначено' : 'мовчить    '}  ${h.table}`);
   }
   console.log('');
 }
@@ -412,29 +346,29 @@ if (strict) {
 
   if (grown.length || shrunk.length) {
     console.log('');
-    console.log('ЧИТАННЯ БЕЗ ОСІ ОБʼЄКТА — храповик зрушився');
+    console.log('ЧИТАННЯ БЕЗ ДОВЕДЕНОЇ ОСІ ОБʼЄКТА — храповик зрушився');
     console.log('');
     for (const g of grown) {
       console.log(`  ${g.file}: ${g.now}, стеля ${g.ceiling} — НОВЕ ПОРУШЕННЯ`);
       console.log('    Читач приймає PropertyScope і вставляє ${filter.sql} у сам запит');
       console.log('    (propertyScopeFilter із @core/property-scope). «Усі обʼєкти» —');
       console.log('    законно, але пишеться ALL_PROPERTIES і з причиною поруч.');
-      for (const h of g.hits) console.log(`      :${h.line}  [${h.tables.join(', ')}]`);
+      for (const h of g.hits) console.log(`      :${h.line}  ${h.verdict === 'unknown' ? 'невизначено' : 'мовчить'}  ${h.table}`);
     }
     for (const s of shrunk) {
       console.log(`  ${s.file}: було ${s.ceiling}, стало ${s.now} — ОПУСТІТЬ СТЕЛЮ`);
       console.log(`    у ${BASELINE_FILE}: ${s.now === 0 ? 'приберіть рядок' : `"${s.file}": ${s.now},`}`);
     }
     console.log('');
-    console.log('  Зразок правильного: src/core/property-scope.check.ts — той самий запит');
-    console.log('  на фікстурі «одна організація, два обʼєкти»: 5 і 7, а не 12.');
-    console.log(`  Повний список мовчазних читань — node ${path.relative(ROOT, fileURLToPath(import.meta.url)).split(path.sep).join('/')} --list`);
+    console.log('  Зразок правильного: src/modules/properties/data/units.repo.ts (listUnits)');
+    console.log('  і його сцена units.repo.check.ts — 5 і 7 номерів, а не 12.');
+    console.log('  Повний список — node scripts/check-property-scope.mjs --list');
     failed = true;
   } else {
-    console.log(`check-property-scope: читання — ${silentTotal} мовчазних у ${reads.size} файлах, усі в межах стелі`);
+    console.log(`check-property-scope: читання — ${summary()}, усі в межах стелі`);
   }
 } else if (!list) {
-  console.log(`check-property-scope: читання — ${silentTotal} мовчазних у ${reads.size} файлах (--list покаже які)`);
+  console.log(`check-property-scope: читання — ${summary()} (--list покаже які)`);
 }
 
 process.exit(failed ? 1 : 0);

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as categoriesRepo from '../data/categories.repo';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
 import { requirePropertyId } from '@core/auth/tenant-context';
+import { requestPropertyScope } from '@core/auth/property-scope';
 import { handleError } from '@core/http/errors';
 
 /**
@@ -12,12 +13,14 @@ import { handleError } from '@core/http/errors';
 
 type IdParams = { params: Promise<{ id: string }> };
 
-export const listCategories = withActor(async (_req, _ctx, actor: Actor) => {
+export const listCategories = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
-    return NextResponse.json(await categoriesRepo.listCategories(actor.organizationId));
+    // Який ОБʼЄКТ, а не лише який орендар (INC-029, ARCHITECTURE §4.3.1).
+    const scope = await requestPropertyScope(request, actor.organizationId);
+    return NextResponse.json(await categoriesRepo.listCategories(actor.organizationId, scope));
   } catch (error) {
-    console.error('GET /api/categories error:', error);
-    return NextResponse.json({ error: 'Failed to fetch categories' }, { status: 500 });
+    // Чужий обʼєкт у параметрі — названа відмова 404; решта — 500 із логом.
+    return handleError('properties/categories', error);
   }
 });
 

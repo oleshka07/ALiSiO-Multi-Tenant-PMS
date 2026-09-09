@@ -107,11 +107,48 @@ export function propertyScopeFilter(scope: PropertyScope, alias: string): Proper
 /** Значення параметра адреси, що означає «усі обʼєкти» — те саме слово, що в шапці. */
 export const ALL_PROPERTIES_PARAM = 'all';
 
+/** Імʼя параметра АДРЕСИ ВКЛАДКИ — те, що пише провайдер у шапці. */
+export const PROPERTY_PARAM = 'property';
+
+/** Імʼя параметра FETCH — те, що вже шлють чотирнадцять екранів. */
+export const PROPERTY_ID_PARAM = 'property_id';
+
+/**
+ * Що сказав виклик про обʼєкт: id, `''`/`all` — «усі», `null` — не сказав.
+ *
+ * ── Чому імен два ───────────────────────────────────────────────────────
+ *
+ * Бо в коді їх уже два, і жодне не помилка. `?property=<id|all>` пише
+ * провайдер в АДРЕСУ ВКЛАДКИ (`src/ui/PropertyScopeContext.tsx`) — її
+ * пересилають колезі. `?property_id=<id>` шлють FETCH-и чотирнадцяти екранів
+ * (`/api/reports`, `/api/dashboard`, `/api/pricing/*`, `/api/settings/*`),
+ * беручи значення з того самого `usePropertyScope()`. Звести до одного імені
+ * означало б переписати чотирнадцять чужих екранів заради охайності.
+ *
+ * Тому читаються обидва, `property_id` першим — це те, що шлють. Одні двері,
+ * щоб кожен хендлер не вирішував заново, і щоб третя назва не зʼявилась
+ * непоміченою. Розбіжність названа в NAMING §8.
+ *
+ * Порожній рядок — це ВІДПОВІДЬ «усі», а не мовчання: саме так екрани пишуть
+ * «Усі обʼєкти» (`propertyId ? `&property_id=${id}` : ''` лишає параметр
+ * відсутнім, а форма, яка шле поле завжди, — порожнім). Мовчання — це `null`,
+ * і воно означає «виклик про обʼєкт нічого не сказав», а не «усі».
+ */
+export function requestedPropertyParam(url: string): string | null {
+  const q = new URL(url).searchParams;
+  for (const name of [PROPERTY_ID_PARAM, PROPERTY_PARAM]) {
+    if (q.has(name)) return q.get(name) ?? '';
+  }
+  return null;
+}
+
 /**
  * Область із запиту — симетрично до `requirePropertyId()` для писачів.
  *
  * Порядок такий:
- *   - `all` — усі обʼєкти рахунку, сказано словом;
+ *   - `all` або порожній рядок — усі обʼєкти рахунку, сказано словом (порожнє
+ *     значення параметра — це ВІДПОВІДЬ «усі», а `null`/`undefined` —
+ *     мовчання; два різні стани, і саме їх злиття було вадою);
  *   - id — перевіряється на власність; чужий чи видалений → 404, не 403
  *     (інваріант 5), і не «отже, всі» (інваріант 13);
  *   - нічого, а обʼєкт у рахунку один — він і є область. Обирати нема з чого,
@@ -123,7 +160,7 @@ export const ALL_PROPERTIES_PARAM = 'all';
 export async function requirePropertyScope(raw?: string | null): Promise<PropertyScope> {
   const organizationId = await requireOrganizationId();
 
-  if (raw === ALL_PROPERTIES_PARAM) return ALL_PROPERTIES;
+  if (raw === ALL_PROPERTIES_PARAM || raw === '') return ALL_PROPERTIES;
 
   const sql = getSql();
   if (raw) {
