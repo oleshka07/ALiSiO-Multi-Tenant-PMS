@@ -12,6 +12,7 @@ import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { serverError } from '@core/http/errors';
+import { propertyScopeFilter, ALL_PROPERTIES } from '@core/property-scope';
 
 interface SectionResult {
   key: string;
@@ -27,6 +28,22 @@ interface SectionResult {
 async function safeRun<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
   try { return await fn(); } catch { return fallback; }
 }
+
+/**
+ * Аудит — зведення КОМПАНІЇ, і це сказано (Д52); але орендар тут був відсутній
+ * узагалі (INC-039).
+ *
+ * Два запити нижче не мали `organization_id`: розділ «Фантомні paid» і рядок
+ * `COUNT(*) FROM reservations` у підсумку. На Postgres чуже ховала політика,
+ * на SQLite — ніщо, а SQLite це вся розробка і майже весь гейт-парк. Екран,
+ * який власник відкриває ПЕРЕВІРИТИ книги, показував чужі броні з іменами
+ * гостей.
+ *
+ * Вісь обʼєкта тут навмисно `ALL_PROPERTIES`: аудит перевіряє рахунок цілком,
+ * і звужений до одного будинку він перестав би відповідати на своє питання.
+ * Але сказано це дверима, а не мовчанням.
+ */
+const ACROSS_PROPERTIES = propertyScopeFilter(ALL_PROPERTIES, 'r');
 
 export async function getFinanceAudit(_request: NextRequest): Promise<NextResponse> {
   try {
@@ -78,7 +95,8 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
                             AND payment_subtype='refund' AND status='completed'), 0) AS real_refund
         FROM reservations r
         LEFT JOIN guests g ON g.id = r.guest_id
-        WHERE r.payment_status = 'paid'
+        WHERE r.organization_id = ? AND ${ACROSS_PROPERTIES.sql}
+          AND r.payment_status = 'paid'
           AND r.is_prepaid = FALSE
           AND r.status IN ('confirmed','checked_in','checked_out')
           AND NOT EXISTS (
@@ -87,7 +105,7 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
           )
         ORDER BY r.check_in DESC
         LIMIT 50
-      `), [] as any[]);
+      `, [org]), [] as any[]);
 
       const totalMissing = rows.reduce((s: number, r: any) => s + (r.total_price || 0), 0);
 
@@ -312,8 +330,9 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
         (SELECT COUNT(*) FROM fin_operations WHERE status='completed' AND organization_id = ?) AS completed_ops,
         (SELECT COUNT(*) FROM finance_accounts WHERE organization_id = ? AND is_active=TRUE) AS active_accounts,
         (SELECT COUNT(*) FROM fin_channel_receivables WHERE organization_id = ?) AS receivables,
-        (SELECT COUNT(*) FROM reservations) AS reservations
-    `, [org, org, org, org]) as any, {});
+        (SELECT COUNT(*) FROM reservations r
+          WHERE r.organization_id = ? AND ${ACROSS_PROPERTIES.sql}) AS reservations
+    `, [org, org, org, org, org]) as any, {});
 
     return NextResponse.json({
       generated_at: new Date().toISOString(),

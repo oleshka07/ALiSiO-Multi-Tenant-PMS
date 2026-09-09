@@ -58,7 +58,6 @@
   "src/modules/dashboard/api/alerts.handlers.ts": 2,
   "src/modules/day-sheets/data/day-sheets.repo.ts": 1,
   "src/modules/events/data/events.repo.ts": 8,
-  "src/modules/finance/api/audit.handlers.ts": 2,
   "src/modules/finance/api/log.handlers.ts": 2,
   "src/modules/finance/api/payment-bridge.ts": 2,
   "src/modules/finance/api/reports.handlers.ts": 2,
