@@ -6,6 +6,8 @@ import { getMonthMoney, CLS_SQL, refuseUnknownAxis } from '../data/money-metrics
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { serverError, refuse, handleError } from '@core/http/errors';
 import { todayFor, shiftMonths, daysBetween, dayString } from '@core/hotel-day';
+import { requestPropertyScope } from '@core/auth/property-scope';
+import { propertyScopeFilter } from '@core/property-scope';
 
 // Helpers: SQL fragments that filter fin_operations by semantic slice.
 // A "payment" operation = income or refund tied to a reservation (source IN ('booking_widget','teia','hostex','manual') with reservation_id).
@@ -1005,6 +1007,12 @@ export async function getExpectedPayments(request: NextRequest): Promise<NextRes
     const today = await todayFor(org);
     const fromDate = searchParams.get('from') || today;
     const toDate = searchParams.get('to') || shiftMonths(today, 3);
+    // Гроші — по ОБʼЄКТУ (Д52, В11). Цей читач віддає не зведення, а
+    // ПОРЯДКОВІ рядки з `guest_name` і `unit_name`: оператор, обравши обʼєкт
+    // А, читав імена гостей і номерів обʼєкта Б і не мав як зрозуміти, що це
+    // не його. Межа проходить по ДАНИХ, не по екрану (AGENTS §29).
+    const scope = await requestPropertyScope(request, org);
+    const axis = propertyScopeFilter(scope, 'r');
 
     const bookings = await sql.rows<any>(`
       SELECT r.id, r.check_in, r.check_out, r.nights, r.adults, r.children,
@@ -1020,11 +1028,11 @@ export async function getExpectedPayments(request: NextRequest): Promise<NextRes
       JOIN properties p ON p.id = r.property_id
       JOIN guests g ON r.guest_id = g.id LEFT JOIN units u ON r.unit_id = u.id LEFT JOIN categories c ON u.category_id = c.id
       LEFT JOIN booking_sources bs ON r.source = bs.code
-      WHERE p.organization_id = ?
+      WHERE p.organization_id = ? AND ${axis.sql}
         AND r.status IN ('confirmed', 'checked_in', 'tentative') AND r.payment_status != 'paid'
         AND r.check_in >= ? AND r.check_in <= ?
       ORDER BY r.check_in ASC
-    `, [org, fromDate, toDate]) as any[];
+    `, [org, ...axis.params, fromDate, toDate]) as any[];
 
     const items = bookings.map(b => {
       const netPaid = b.paid_amount - b.refunded_amount;
@@ -1082,6 +1090,8 @@ export async function getExpectedPayments(request: NextRequest): Promise<NextRes
 
     return NextResponse.json({ items, summary, timeline, byCategory: Object.values(byCategory) });
   } catch (error: any) {
-    return serverError('modules/finance/api/reports getExpectedPayments', error);
+    // `handleError`: чужий обʼєкт у параметрі — названа 404 (`PropertyNotFound`),
+    // а не 500. «Даних немає» і «такого обʼєкта немає» — різні відповіді.
+    return handleError('modules/finance/api/reports getExpectedPayments', error);
   }
 }

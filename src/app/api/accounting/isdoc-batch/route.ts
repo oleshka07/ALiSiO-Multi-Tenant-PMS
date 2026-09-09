@@ -20,6 +20,8 @@ import type { InvoiceData } from '@invoicing';
 import { convertToCzkAuto, foreignNote } from '@invoicing';
 import { showBuyerName, dueDateFor } from '@invoicing';
 import JSZip from 'jszip';
+import { requestPropertyScope } from '@core/auth/property-scope';
+import { propertyOrSharedFilter } from '@core/property-scope';
 
 // `currency` у цих рядках — NOT NULL (invoices, fin_operations, reservations:
 // усі три `TEXT NOT NULL`), тож `|| 'CZK'` тут не спрацьовував ніколи. Він не
@@ -48,8 +50,17 @@ function buildDescription(data: {
 
 // ─── Route handler ────────────────────────────────────────────────────────────
 
-export const GET = requireFinanceAccess(_GET);
-async function _GET(request: NextRequest): Promise<NextResponse> {
+export const GET = requireFinanceAccess(isdocBatch);
+
+/**
+ * Тіло маршруту, названо і експортовано — щоб перевірка могла його покликати.
+ *
+ * `requireFinanceAccess` читає сесію через `next/headers`, а `cookies()` поза
+ * запитом Next кидає; отже загорнутий маршрут недосяжний для `.check.ts` під
+ * голим node. Той самий рух і той самий довід, що в
+ * `data/reservation-invoice.repo.ts` і в двох вивантаженнях поруч.
+ */
+export async function isdocBatch(request: NextRequest): Promise<NextResponse> {
   try {
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month') || new Date().toISOString().slice(0, 7);
@@ -64,6 +75,17 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
 
     const sql = getSql();
     const orgId = await requireOrganizationId();
+    // Вісь обʼєкта у пакеті документів (INC-029, Д52). Коментар нижче вже
+    // фіксує половину того самого класу — «on SQLite an unscoped month took
+    // every hotel's documents with it»; ту половину (орендар) полагоджено, а
+    // вісь ОБʼЄКТА лишалась відкритою, і бухгалтер обʼєкта А діставав у ZIP
+    // документи обʼєкта Б.
+    //
+    // `propertyOrSharedFilter`: `invoices` не має `property_id`, обʼєкт
+    // приходить від броні `LEFT JOIN`-ом, а фактура без броні (вручну, сторно)
+    // обʼєкта не має — звичайний фільтр викинув би її з КОЖНОГО пакета (Д51).
+    const scope = await requestPropertyScope(request, orgId);
+    const axis = propertyOrSharedFilter(scope, 'r');
     // Правила бланка ЦЬОГО готеля — замість колишніх констант із чеського закону.
     const rules = await invoiceSettings(orgId);
     const zip = new JSZip();
@@ -104,11 +126,11 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
       WHERE i.status = 'issued'
         -- Named, not left to the policy: this packs invoices into a ZIP, and
         -- on SQLite an unscoped month took every hotel's documents with it.
-        AND i.organization_id = ?
+        AND i.organization_id = ? AND ${axis.sql}
         AND ${sql.dialect.month('i.issued_at')} = ?
         ${confirmedFilter}
       ORDER BY i.invoice_number ASC
-    `, [orgId, month]);
+    `, [orgId, ...axis.params, month]);
 
     for (const inv of invoices) {
       if (!inv.invoice_number) continue;
