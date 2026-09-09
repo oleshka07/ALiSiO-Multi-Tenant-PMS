@@ -1,8 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { requestPropertyScope } from '@core/auth/property-scope';
 import { getSql } from '@core/db/async';
 import { withActor, withPermission } from '@core/auth/session';
 import { requirePropertyId } from '@core/auth/tenant-context';
+import { listServicesOf } from '../data/lists.repo';
+import { handleError } from '@core/http/errors';
 
 /**
  * `additional_services` has no organization column — it reaches the tenant
@@ -13,17 +16,18 @@ import { requirePropertyId } from '@core/auth/tenant-context';
  */
 const OWNED = 'property_id IN (SELECT id FROM properties WHERE organization_id = ?)';
 
-export const listAdditionalServices = withActor(async (_request, _ctx, actor) => {
+export const listAdditionalServices = withActor(async (request, _ctx, actor) => {
   try {
-    const sql = getSql();
-    const services = await sql.rows<any>(
-      `SELECT * FROM additional_services WHERE ${OWNED} ORDER BY sort_order, name`,
-      [actor.organizationId],
-    );
-    return NextResponse.json(services);
+    // Який ОБʼЄКТ, а не лише який орендар (INC-029): послуга продається в
+    // конкретному будинку і має там свою ціну. Запит — у `data/lists.repo.ts`,
+    // щоб на нього можна було написати сцену: `withActor` кличе `cookies()`.
+    const scope = await requestPropertyScope(request, actor.organizationId);
+    return NextResponse.json(await listServicesOf(actor.organizationId, scope));
   } catch (error: any) {
-    console.error('GET /api/additional-services error:', error?.message);
-    return NextResponse.json({ error: 'Failed to fetch' }, { status: 500 });
+    // Названа відмова їде своїм статусом (інваріант 6, Ц43). Тут це не
+    // дрібниця: чужий `property_id` кидає `PropertyNotFound` — 404, — і
+    // глухий 500 перетворював «не той будинок» на «сервер зламався».
+    return handleError('modules/bookings/api/additional-services listAdditionalServices', error);
   }
 });
 

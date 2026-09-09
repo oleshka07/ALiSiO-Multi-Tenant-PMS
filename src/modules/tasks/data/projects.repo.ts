@@ -2,6 +2,7 @@ import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import type { TaskProject } from '../domain/types';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { propertyOrSharedFilter, type PropertyScope } from '@core/property-scope';
 
 // ─── Helpers ───────────────────────────────────────────────
 
@@ -11,9 +12,16 @@ async function getOrgId(): Promise<string> {
 
 // ─── List projects ────────────────────────────────────────
 
-export async function listProjects(): Promise<TaskProject[]> {
+/**
+ * Проєкти ОДНОГО обʼєкта плюс спільні — сказано типом (INC-029, двері О14).
+ *
+ * `task_projects.property_id` теж NULLABLE, і з тієї самої причини: проєкт
+ * «Ремонт даху» належить будинку, проєкт «Річна звітність» — рахунку.
+ */
+export async function listProjects(scope: PropertyScope): Promise<TaskProject[]> {
   const sql = getSql();
   const org = await getOrgId();
+  const inScope = propertyOrSharedFilter(scope, 'tp');
   return await sql.rows<TaskProject>(`
     SELECT
       tp.*,
@@ -21,9 +29,9 @@ export async function listProjects(): Promise<TaskProject[]> {
       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = tp.id) AS task_count
     FROM task_projects tp
     LEFT JOIN properties p ON p.id = tp.property_id
-    WHERE tp.organization_id = ?
+    WHERE tp.organization_id = ? AND ${inScope.sql}
     ORDER BY tp.sort_order, tp.created_at
-  `, [org]);
+  `, [org, ...inScope.params]);
 }
 
 // ─── Get single project ──────────────────────────────────

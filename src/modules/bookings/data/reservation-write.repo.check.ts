@@ -20,6 +20,7 @@ const { getSql } = await import('@core/db/async');
 const { writeReservationChange } = await import('./reservation-write.repo.ts');
 // Стан номера і журнал — таблиці обʼєкта: читаємо через його двері, не SQL.
 const { housekeepingBoard, cleaningHistory } = await import('@properties/kernel');
+const { oneProperty, ALL_PROPERTIES } = await import('@core/property-scope');
 
 const sql = getSql();
 const ORG = '__codirty__org';
@@ -61,9 +62,9 @@ try {
     await stay(ids.noUnit, null, null);
     await stay(ids.rollback, ids.u3, null);
 
-    const cleaning = async (u: string) => (await housekeepingBoard(ORG, PROP)).units.find((x) => x.id === u)?.cleaning_status;
+    const cleaning = async (u: string) => (await housekeepingBoard(ORG, oneProperty(PROP))).units.find((x) => x.id === u)?.cleaning_status;
     const status = async (r: string) => (await sql.row<any>('SELECT status FROM reservations WHERE id = ?', [r]))?.status;
-    const logRows = async (u: string) => (await cleaningHistory(ORG, { unitId: u }))
+    const logRows = async (u: string) => (await cleaningHistory(ORG, { scope: ALL_PROPERTIES, unitId: u }))
       .map((r) => ({ from_status: r.from_status, to_status: r.to_status, source: r.source, changed_by: r.changed_by }));
 
     // ── 1. виселення головної броні: її номер і номер дочірньої — брудні ───
