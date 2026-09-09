@@ -3,8 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { paymentStatusLabel } from '@/modules/bookings/ui/payment-status';
 import { getSql } from '@core/db/async';
 import { withPermission, type Actor } from '@core/auth/session';
+import { requestPropertyScope } from '@core/auth/property-scope';
+import { propertyScopeFilter } from '@core/property-scope';
 import ExcelJS from 'exceljs';
-import { serverError } from '@core/http/errors';
+import { handleError } from '@core/http/errors';
 
 // Колонка `currency` тут NOT NULL, тож `|| 'CZK'` не спрацьовував ніколи —
 // це не захист, а вигляд рішення: читач вірив, що порожня валюта буває.
@@ -16,7 +18,14 @@ import { serverError } from '@core/http/errors';
  * Filters by check-in OR check-out overlap with the range.
  * Excludes cancelled, no_show, child sub-bookings.
  */
-export const GET = await withPermission('view_reports', async (request: NextRequest, _ctx, actor) => {
+export const GET = await withPermission('view_reports', exportBookings);
+
+/**
+ * Тіло маршруту, названо і експортовано — з тієї ж причини, що в
+ * `invoices/export`: `withPermission` читає куку через `next/headers`, тож
+ * загорнутий маршрут недосяжний для `.check.ts` під голим node.
+ */
+export async function exportBookings(request: NextRequest, _ctx: unknown, actor: Actor): Promise<NextResponse> {
   try {
     const sql = getSql();
     const { searchParams } = new URL(request.url);
@@ -24,6 +33,13 @@ export const GET = await withPermission('view_reports', async (request: NextRequ
     const to = searchParams.get('to') || '';
     const category = searchParams.get('category') || '';
     const format = searchParams.get('format') || 'xlsx';
+    // Вісь обʼєкта у вивантаженні (INC-029). У шапці запиту нижче вже стоїть
+    // слід минулої вади того самого роду — «one hotel's report downloaded
+    // every hotel's guests in one file»; ту половину (орендар) полагоджено,
+    // вісь ОБʼЄКТА лишалась відкритою. `reservations.property_id` — NOT NULL,
+    // тож двері звичайні.
+    const scope = await requestPropertyScope(request, actor.organizationId);
+    const axis = propertyScopeFilter(scope, 'r');
 
     if (!from || !to) {
       return NextResponse.json({ error: 'Параметри from і to обовʼязкові' }, { status: 400 });
@@ -71,7 +87,7 @@ export const GET = await withPermission('view_reports', async (request: NextRequ
       -- This export carries guest names, emails, phones, citizenship and
       -- money. The actor was taken and never used, so on SQLite one hotel's
       -- report downloaded every hotel's guests in one file.
-      WHERE r.organization_id = ?
+      WHERE r.organization_id = ? AND ${axis.sql}
         AND r.parent_id IS NULL
         AND r.status NOT IN ('cancelled', 'no_show')
         AND (
@@ -80,7 +96,7 @@ export const GET = await withPermission('view_reports', async (request: NextRequ
           OR (r.check_in <= ? AND r.check_out >= ?)
         )
     `;
-    const params: string[] = [actor.organizationId, from, to, from, to, from, to];
+    const params: string[] = [actor.organizationId, ...axis.params, from, to, from, to, from, to];
 
     if (category) {
       query += ' AND c.type = ?';
@@ -263,7 +279,7 @@ export const GET = await withPermission('view_reports', async (request: NextRequ
       },
     });
   } catch (err: any) {
-    console.error('[export-csv] Error:', err);
-    return serverError('app/api/bookings/export-csv GET', err);
+    // `handleError`: чужий обʼєкт у параметрі — названа 404, а не 500.
+    return handleError('app/api/bookings/export-csv GET', err);
   }
-})
+}
