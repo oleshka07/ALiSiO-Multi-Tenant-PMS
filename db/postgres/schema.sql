@@ -373,6 +373,7 @@ CREATE TABLE "cm_connections" (
   "is_enabled" BOOLEAN DEFAULT false NOT NULL,
   "pricing_modifier_percent" NUMERIC(5,2) DEFAULT 0 NOT NULL,
   "last_full_sync_at" TIMESTAMPTZ,
+  "catalog_synced_at" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),

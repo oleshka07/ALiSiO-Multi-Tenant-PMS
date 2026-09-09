@@ -6,7 +6,7 @@ import { addDays } from './outbox-notes';
 import { catalogProperty, catalogUnitTypes } from '@properties/live';
 // Вузькі двері — див. `@pricing/plans`: повний фасад тягне `next/server`.
 import { propertyRatePlans } from '@pricing/plans';
-import { connectionInTenant, rememberRemoteProperty } from './connections.repo';
+import { connectionInTenant, rememberRemoteProperty, rememberCatalogSync } from './connections.repo';
 import { putMapping, remoteIdOf } from './mappings.repo';
 import {
   syncCatalog as runSyncCatalog,
@@ -183,6 +183,13 @@ export async function syncConnectionCatalog(
   // несправність стрічки, а не як незаписана колонка. Знайдено прогоном
   // проти живого staging; тримає `catalog-sync.check.ts`.
   await rememberRemoteProperty(connectionId, report.remotePropertyId);
+
+  // Каталог щойно поїхав — мітка часу (0130, Р15.1). З неї екран локально
+  // бачить «обʼєкт змінили після останньої відправки» і показує це
+  // оператору: рід житла — вісь рахунку вендора, і мовчазна розбіжність тут
+  // коштує грошей готелю. Ставиться в КІНЦІ: перерваний прохід лишає мітку
+  // старою, тобто «розійшлося», що правда.
+  await rememberCatalogSync(connectionId);
 
   return report;
 }

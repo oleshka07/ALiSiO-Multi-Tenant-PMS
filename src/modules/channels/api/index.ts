@@ -21,7 +21,7 @@ export { noteAvailabilityChanged, noteRatesChanged, lastNight } from './outbox';
 export type { AvailabilityNote, RateNote } from './outbox';
 export { listChannelConnections, retryChannelOutbox, verifyChannelSends } from './outbox-state.handlers';
 export {
-  getChannelSetup, saveChannelKey, createChannelConnection, syncChannelCatalog,
+  getChannelSetup, getChannelCatalogState, saveChannelKey, createChannelConnection, syncChannelCatalog,
   channelFrame, reconcileChannelCatalog, setChannelConnectionEnabled, fullSyncChannelConnection,
 } from './connect.handlers';
 export {

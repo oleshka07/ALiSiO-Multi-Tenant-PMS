@@ -4432,6 +4432,10 @@ function runMigrations(database: any) {
       -- сайту живе в сайтовому дереві. Це і є визначення прямо дешевше.
       pricing_modifier_percent REAL NOT NULL DEFAULT 0,
       last_full_sync_at  TEXT,
+      -- Коли каталог цього зʼєднання востаннє їздив до вендора (0130).
+      -- Окремо від last_full_sync_at: та про ARI, ця про каталог. NULL —
+      -- обʼєкта у вендора ще немає, розходитись нема з чим.
+      catalog_synced_at  TEXT,
       created_at         TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE(organization_id, property_id, provider, environment)
@@ -4698,6 +4702,10 @@ function runMigrations(database: any) {
     }
     // П5: мітка завершеного повного синку. У CREATE є від 0052; база, створена
     // до того, її не має — і без цієї варти читалась би як «колонки немає».
+    if (!cmCols.includes('catalog_synced_at')) {
+      database.exec('ALTER TABLE cm_connections ADD COLUMN catalog_synced_at TEXT');
+      console.log('[DB] Added catalog_synced_at to cm_connections');
+    }
     if (!cmCols.includes('last_full_sync_at')) {
       database.exec('ALTER TABLE cm_connections ADD COLUMN last_full_sync_at TEXT');
       console.log('[DB] Added last_full_sync_at to cm_connections');

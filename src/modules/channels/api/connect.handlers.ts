@@ -8,7 +8,7 @@ import { catalogUnitTypes } from '@properties';
 import { propertyRatePlans } from '@pricing';
 import { adapterFor, knownProviders } from '../providers';
 import { apiKeyOf, registerWebhookSoftly } from './connect.ops';
-import { connectionInTenant } from '../data/connections.repo';
+import { connectionInTenant, connectionsForProperty, propertyCatalogStale } from '../data/connections.repo';
 import { ensureConnection, propertiesInTenant, setConnectionEnabled, setupState } from '../data/connect';
 import { syncConnectionCatalogFor } from './catalog.handlers';
 import { fullSyncConnectionFor } from './ari.handlers';
@@ -51,6 +51,57 @@ export const getChannelSetup = withPermission('manage_properties', async (reques
     return NextResponse.json({ properties, providers: knownProviders(), state });
   } catch (error: unknown) {
     return serverError('modules/channels/api/connect getChannelSetup', error);
+  }
+});
+
+/**
+ * GET /api/channels/catalog-state?property_id=… — чи каталог розійшовся.
+ *
+ * ── Навіщо окремий маршрут, а не поле у відповіді збереження обʼєкта ────
+ *
+ * Бо форму обʼєкта зберігає `PATCH /api/properties/:id`, а він у БАЗОВОМУ
+ * модулі. Дати йому знання про канали означало б завести залежність
+ * `properties → channels` ще в одному файлі — рівно те, що храповик
+ * `check-boundaries --strict` (друга вісь) тримає на трьох місцях, і рівно
+ * те, від чого Р13.15 щойно позбавлялись. Готель без модуля каналів не має
+ * ні платити за це знання, ні бачити його.
+ *
+ * Тому питає ЕКРАН — після того, як збереження пройшло. Шар застосунку
+ * ходить у парадну модуля законно; ядро — ні.
+ *
+ * ── Чому мітка, а не звірка з вендором ─────────────────────────────────
+ *
+ * `propertyCatalogStale` рахує локально: «обʼєкт змінили після того, як ми
+ * востаннє відправили каталог». Справжня звірка (`propertyDrift` — `GET`
+ * обʼєкта у вендора) лишається всередині синку: екран не має права ходити в
+ * чужий API, щоб намалювати рядок тексту.
+ *
+ * Модуль вимкнено — 409, як і решта маршрутів каналів: не 404, бо обʼєкт
+ * існує, і не 200 з `false`, бо це була б неправда про стан.
+ */
+export const getChannelCatalogState = withPermission('manage_properties', async (request: NextRequest, _ctx: unknown, actor: Actor) => {
+  try {
+    const off = await moduleOff(actor);
+    if (off) return off;
+    const propertyId = new URL(request.url).searchParams.get('property_id');
+    // Публічного дефолту тут немає (інваріант 8): не назвали обʼєкт — 400,
+    // а не «візьмемо перший».
+    if (!propertyId) return NextResponse.json({ error: 'property_id_required' }, { status: 400 });
+
+    const connections = await connectionsForProperty(propertyId);
+    // Чужий або неіснуючий обʼєкт: `connectionsForProperty` обмежений
+    // орендарем, тож порожньо означає і «немає зʼєднань», і «не наш».
+    // Обидва читаються однаково — каналу тут нема чого розходитись.
+    // Ідентифікатори зʼєднань — щоб кнопка «синхронізувати зараз» мала куди
+    // слати, не питаючи вдруге. Більше нічого зі зʼєднання не віддається:
+    // токен вебхука і ключ у браузер не потрапляють.
+    return NextResponse.json({
+      connections: connections.map((c) => c.id),
+      connected: connections.length > 0,
+      stale: connections.length > 0 && await propertyCatalogStale(propertyId),
+    });
+  } catch (error: unknown) {
+    return handleError('modules/channels/api/connect getChannelCatalogState', error);
   }
 });
 

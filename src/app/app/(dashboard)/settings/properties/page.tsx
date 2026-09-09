@@ -11,6 +11,7 @@ import { LODGING_KINDS } from '@core/lodging-kinds';
 // 'use client' бути не може. Малюється лише під увімкненим модулем — див.
 // нижче: готель без каналів не має бачити нічого про чужі тарифи.
 import { LodgingBillingHint } from '@/modules/channels/ui/LodgingBillingHint';
+import { CatalogStaleNotice } from '@/modules/channels/ui/CatalogStaleNotice';
 import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import {
   Building2, Edit3, Trash2, Plus, Save, X, Check, Search,
@@ -146,6 +147,9 @@ export default function SettingsPropertiesPage() {
   const tUi = useT();
   // Модулі готелю — щоб не показувати тарифи каналів тому, хто їх не купував.
   const { features } = useCurrentUser();
+  // Скільки разів зберігали обʼєкт: підказка про каталог перечитує стан
+  // саме після збереження, а не на кожен рендер.
+  const [savedTimes, setSavedTimes] = useState(0);
   // ── Data ──
   const [properties, setProperties] = useState<PropertyRow[]>([]);
   // Який обʼєкт відкрито — область у шапці, не власний стан
@@ -284,6 +288,7 @@ export default function SettingsPropertiesPage() {
           body: JSON.stringify({ ...propForm, slug }),
         });
         showToast(tUi('Об\'єкт оновлено!'));
+        setSavedTimes((n) => n + 1);
       } else {
         const res = await fetch('/api/properties', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -914,6 +919,11 @@ export default function SettingsPropertiesPage() {
                   купував. Рід житла став віссю тарифікації (лист вендора
                   09.09.2026), а помилка тут мовчить до першого числа. */}
               {features.channels && <LodgingBillingHint kind={propForm.property_type} />}
+              {/* Рід житла — вісь рахунку вендора, а до каналу він доїжджає
+                  лише синком каталогу (Р15.1). Кажемо це і даємо дію; лише
+                  для збереженого обʼєкта і лише з модулем каналів. */}
+              {features.channels && editId
+                && <CatalogStaleNotice propertyId={editId} reloadKey={savedTimes} />}
             </div>
           </div>
         </Modal>
