@@ -1,0 +1,10 @@
+{
+  "endpoint": "POST /booking_revisions/:id/ack",
+  "status": 200,
+  "captured_at": "2026-09-05",
+  "payload": {
+    "meta": {
+      "message": "Success"
+    }
+  }
+}

@@ -277,6 +277,36 @@ export class ChannexClient {
   }
 
   /**
+   * Канали обʼєкта СИРИМИ — для дзеркала рівня OTA (К2).
+   *
+   * `listChannels` вище віддає зведення для звірки Ц8 і навмисно відкидає все
+   * зайве: назву коду адаптера, налаштування підключення, ідентифікатори
+   * мапінг-айтемів. Дзеркалу потрібне саме воно — на екрані стоїть «який це
+   * OTA» і «що там продається», — тож тут відповідь віддається як є, а
+   * тлумачить її `channels-adapter.ts` (И1: чужі імена не виходять звідси).
+   *
+   * `filter[property_id]` обовʼязковий: без нього список іде по ВСЬОМУ
+   * акаунту, тобто по всіх наших готелях разом (межа И11).
+   */
+  async listChannelsRaw(apiKey: string, remotePropertyId: string): Promise<Record<string, unknown>[]> {
+    const payload = await this.requestAs(apiKey, 'GET',
+      `/channels?filter[property_id]=${encodeURIComponent(remotePropertyId)}`);
+    return Array.isArray(payload.data) ? payload.data as Record<string, unknown>[] : [];
+  }
+
+  /**
+   * Каталог адаптерів каналів — «доступні OTA» на екрані.
+   *
+   * Належить вендору, не обʼєкту: фільтра тут немає й бути не може. Не
+   * зберігається — копія переліку, який росте, протухла б так само, як
+   * протухла б копія налаштувань каналу (§4.3).
+   */
+  async listChannelAdapters(apiKey: string): Promise<Record<string, unknown>[]> {
+    const payload = await this.requestAs(apiKey, 'GET', '/channels/list');
+    return Array.isArray(payload.data) ? payload.data as Record<string, unknown>[] : [];
+  }
+
+  /**
    * Календар обʼєкта назад — для звірки (П6, ari.md «Get Availability Or
    * Restrictions Per Rate Plan»).
    *

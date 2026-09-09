@@ -390,6 +390,8 @@ export default function ChannelManagerPage() {
                         {verifying === c.id ? <Loader2 size={14} className="animate-pulse" /> : <RefreshCw size={14} />} {tUi('Звірити з каналом')}
                       </button>
                     )}
+                    {/* Рівень OTA (К2) — окремий екран: «куди саме продається кожна пара». */}
+                    <Link href="/app/settings/channel-manager/channels" className="btn btn-sm">{tUi('Канали (OTA)')}</Link>
                   </div>
                 </div>
                 {c.stuck.length > 0 && (

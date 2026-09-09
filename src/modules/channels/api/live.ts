@@ -44,3 +44,6 @@ export {
 export { recordVendorResponses } from '../providers';
 export type { VendorResponseSample } from '../providers';
 export type { FlushReport, FullSyncReport, FullSyncPlan, SendsVerification, SendMismatch, ChannelChange } from './ari.handlers';
+// Рівень OTA (К2). З `channels.ops`, не з `channels.handlers`: варта на
+// маршруті лишається там, а сюди їде лише те, що вміє працювати без сесії.
+export { refreshConnectionChannelsFor, connectionChannelsFor, channelsMirrorAgeMs } from './channels.ops';

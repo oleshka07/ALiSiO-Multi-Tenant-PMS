@@ -47,3 +47,8 @@ export type { VendorResponseSample } from '../providers';
  * тримає `check-vendor-isolation --strict`, який на першій редакції цієї
  * правки і почервонів, коли мапа була виставлена сюди.
  */
+// Рівень OTA (К2) — лише читання; запис мапінгу це ЧЕКПОІНТ рецензента.
+export { listConnectionChannels, refreshConnectionChannels } from './channels.handlers';
+// Ці дві — з `channels.ops`: вони без `next/*`, і саме їх кличуть крон і живі
+// скрипти. Через `channels.handlers` фасад тягнув би `next/server`.
+export { refreshConnectionChannelsFor, connectionChannelsFor } from './channels.ops';

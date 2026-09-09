@@ -197,22 +197,95 @@ function harness(feed: FeedEntry[], over: Partial<PullDeps> = {}) {
   console.log('  ok  падіння тримається в межах свого бронювання');
 }
 
-// ─── Кілька кімнат: не застосовуємо і НЕ підтверджуємо ──────────────────────
+// ─── Кілька кімнат: одна транзакція на всю групу, ack після її коміту (К1) ──
 //
-// Одне бронювання каналу з двома кімнатами — це дві наші броні, і ми ще не
-// вміємо їх заводити. Мовчки взяти першу означало б гостя, який приїде в
-// готель, що про нього не знає. Не підтверджуємо навмисно: ревізія лишиться
-// в стрічці, і через 30 хвилин про неї нагадають листом — це правильний тиск.
+// Одне бронювання каналу з двома кімнатами — це батьківська бронь і дві
+// дочірні (К1). Небезпека та сама, що й в одиничної броні, тільки дорожча:
+// підтвердити після ПЕРШОЇ кімнати означає, що падіння на другій лишає
+// половину групи, а ревізія вже зникла зі стрічки назавжди. Тому вся група —
+// один виклик `apply` усередині однієї транзакції, і `ack` після її коміту.
+//
+// До К1 ця сцена була червоною двічі: цикл узагалі не застосовував таку
+// ревізію (`multi_room_not_supported`) і не передавав кімнати далі.
+{
+  const seen: unknown[] = [];
+  const { log, deps } = harness([entry({
+    rooms: [room(), room({ unitTypeId: 'ut_twin', adults: 1, amount: 150 })],
+  })], {
+    apply: async (_t, _c, r) => {
+      log.push(`apply:${r.remoteRevisionId}`);
+      seen.push(r.rooms);
+      return { result: 'applied', reservationId: 'res-1', created: true };
+    },
+  });
+  const report = await pullBookings('conn-1', deps);
+  assert.deepStrictEqual(log, ['tx:begin', 'apply:sys-1', 'tx:commit', 'ack:ack-1'],
+    'група мала поїхати одним `apply` в одній транзакції, і ack — після її коміту');
+  assert.strictEqual(report.applied, 1);
+  assert.strictEqual(report.acked, 1);
+  assert.strictEqual(report.skipped.length, 0,
+    `бронь на дві кімнати відкинуто: ${JSON.stringify(report.skipped)}`);
+  // Обидві кімнати доїхали, і кожна зі СВОЇМ типом: узяти першу означало б
+  // гостя, який приїде в готель, що про нього не знає.
+  const rooms = seen[0] as { unitTypeId?: string | null; adults?: number }[] | undefined;
+  assert.strictEqual(rooms?.length, 2, `до застосування доїхало кімнат: ${rooms?.length ?? 0}`);
+  assert.deepStrictEqual(rooms?.map((r) => r.unitTypeId), ['ut_deluxe', 'ut_twin'],
+    'друга кімната втратила свій тип — вона зникла б із наявності свого типу');
+  console.log('  ok  група кімнат їде одним apply, ack — після коміту всієї групи (К1)');
+}
+
+// ─── Падіння посеред групи: ревізія НЕ підтверджена ─────────────────────────
+//
+// Транзакція відкочується цілком — разом із рядком журналу, — тож повторна
+// доставка застосує групу заново, а не добудує половину. Це і є та ціна, яку
+// И5 називає прийнятною: зайвий прохід замість половини броні.
 {
   const { log, deps } = harness([entry({
-    rooms: [room(), room({ adults: 1, amount: 150 })],
-  })]);
+    rooms: [room(), room({ unitTypeId: 'ut_twin' })],
+  })], {
+    tx: async () => { throw new Error('друга кімната не лягла'); },
+  });
   const report = await pullBookings('conn-1', deps);
-  assert.ok(!log.some(l => l.startsWith('apply:')), 'бронь на дві кімнати застосовано наполовину');
   assert.ok(!log.some(l => l.startsWith('ack:')),
-    'бронь на дві кімнати підтверджено — вона зникла б зі стрічки нерозібраною');
-  assert.strictEqual(report.skipped[0].reason, 'multi_room_not_supported');
-  console.log('  ok  бронь на кілька кімнат не застосовується й не підтверджується');
+    'групу підтверджено попри падіння — половина броні зникла б зі стрічки назавжди');
+  assert.strictEqual(report.applied, 0);
+  assert.ok(report.skipped[0].reason.startsWith('apply_failed:'));
+  console.log('  ok  падіння посеред групи не підтверджується');
+}
+
+// ─── Ключ кімнати: або всі іменовані, або всі позиційні ─────────────────────
+//
+// Кімната бронювання не має власного id у менеджера каналів — є лише
+// `ota_unique_id`, і його дає не кожен OTA. Ключ виводиться з редакції
+// ЦІЛКОМ: мішанина `[u:49, i:1]` означала б, що додана посередині кімната
+// зсуває позиційний ключ, і дві кімнати обміняються рядками.
+//
+// Фікстура не вироджена по осі, про яку сцена стверджує (інваріант 26): у
+// першій редакції ідентифікатор є в ОБОХ кімнат, у другій — лише в однієї.
+{
+  const named = harness([entry({
+    rooms: [room({ otaUniqueId: '49' }), room({ unitTypeId: 'ut_twin', otaUniqueId: '50' })],
+  })]);
+  let keys: string[] = [];
+  named.deps.apply = async (_t, _c, r) => {
+    keys = (r.rooms ?? []).map((x) => x.key);
+    return { result: 'applied', reservationId: 'res-1', created: true };
+  };
+  await pullBookings('conn-1', named.deps);
+  assert.deepStrictEqual(keys, ['u:49', 'u:50'],
+    'ідентифікатор кімнати з OTA мав стати ключем — інакше видалення першої кімнати скасує не ту');
+
+  const mixed = harness([entry({
+    rooms: [room({ otaUniqueId: '49' }), room({ unitTypeId: 'ut_twin' })],
+  })]);
+  mixed.deps.apply = async (_t, _c, r) => {
+    keys = (r.rooms ?? []).map((x) => x.key);
+    return { result: 'applied', reservationId: 'res-1', created: true };
+  };
+  await pullBookings('conn-1', mixed.deps);
+  assert.deepStrictEqual(keys, ['i:0', 'i:1'],
+    'один ідентифікатор із двох дав мішані ключі — додана посередині кімната обміняла б рядки');
+  console.log('  ok  ключі кімнат: або всі з OTA, або всі позиційні (К1)');
 }
 
 // ─── Зіпсована ревізія не глушить стрічку ───────────────────────────────────
