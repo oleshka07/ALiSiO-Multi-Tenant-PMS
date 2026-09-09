@@ -454,6 +454,41 @@ const AXES = [
     axis: 'рівні мережі гостя (обʼєкт ≠ тип ≠ номер)',
     distinct: /'(HOUSE|TYPE|ROOM)-NET'/g, min: 3,
   },
+  // INC-029, вісь ОБʼЄКТА. Кожна фікстура в проєкті мала один обʼєкт, тож
+  // «читач забув вісь» і «читач урахував вісь» давали те саме число всюди.
+  // Спільна фікстура тримає по два значення на кожній осі, яку несе, і жодне
+  // з них не є 2 і 2: сума мусить не дорівнювати жодному доданку, інакше
+  // «12 замість 5» не відрізнити від «5».
+  {
+    file: 'src/core/fixtures/two-properties.ts',
+    axis: 'номерів у типі (3 ≠ 2 ≠ 7 — сума 12 не дорівнює жодному обʼєкту)',
+    distinct: /units: (\d+)/g, min: 3,
+  },
+  {
+    file: 'src/core/fixtures/two-properties.ts',
+    axis: 'надбавка за особу на типі обʼєкта (чуже число їде в котирування)',
+    distinct: /extraPersonCharge: (\d+)/g, min: 2,
+  },
+  {
+    file: 'src/core/fixtures/two-properties.ts',
+    axis: 'сума броні на обʼєкті (звіт по обʼєкту не має брати сусідову)',
+    distinct: /stayTotal: (\d+)/g, min: 2,
+  },
+  {
+    file: 'src/core/fixtures/two-properties.ts',
+    axis: 'курортний збір обʼєкта',
+    distinct: /cityTaxPerNight: (\d+)/g, min: 2,
+  },
+  {
+    file: 'src/core/fixtures/two-properties.ts',
+    axis: 'броней на обʼєкті',
+    distinct: /reservations: (\d+)/g, min: 2,
+  },
+  {
+    file: 'src/core/property-scope.check.ts',
+    axis: 'очікуваних номерів в області (свій обʼєкт ≠ сусід ≠ «усі»)',
+    distinct: /assert\.strictEqual\(in(?:A|B|All), (\d+),/g, min: 3,
+  },
 ];
 
 /** Коментарі геть — блокові й рядкові; `://` у рядках лишається. */
