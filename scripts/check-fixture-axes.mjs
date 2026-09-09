@@ -48,7 +48,12 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
  * Одна вісь одного файла.
  *
  *   distinct — регулярка з ОДНІЄЮ групою захоплення; гейт лічить різні
- *              значення групи, поріг `min` (типово 2);
+ *              значення групи, поріг `min` (типово 2). Якщо розрізняльна
+ *              частина не перша — `group: N`. Доти цей параметр приймався і
+ *              МОВЧКИ ігнорувався: `values()` уміла групу, цикл її не
+ *              передавав, і рядок реєстру з `group: 2` лічив групу 1. Такий
+ *              рядок не вміє почервоніти, тобто нічого не тримає (§3.2);
+ *              знайдено 09.09.2026 спробою завалити власну щойно додану вісь;
  *   some     — серед захоплених має бути хоч одне, що проходить `test`
  *              (ненульовий модифікатор, більше однієї ночі, дитина > 0);
  *   pairs    — регулярка з ДВОМА групами; гейт вимагає хоч одну пару, у якій
@@ -454,6 +459,69 @@ const AXES = [
     axis: 'рівні мережі гостя (обʼєкт ≠ тип ≠ номер)',
     distinct: /'(HOUSE|TYPE|ROOM)-NET'/g, min: 3,
   },
+  // Мітка: дві осі, і обидві потрібні. Однакове імʼя з різними id тримає
+  // вісь ІДЕНТИФІКАТОРА (інакше «чужа мітка» відрізнялась би ще й назвою, і
+  // твердження проходило б на порівнянні рядків); різні імена тримають вісь
+  // ІМЕНІ (інакше витік читача був би невидимий: два «spa» не відрізниш).
+  // INC-033: з одним обʼєктом «переписало чужий звіт» невідрізненне від
+  // «переписало свій»; з однаковими числами «токен А відкрив числа А»
+  // істинне й на зламаному коді.
+  {
+    file: 'src/modules/reports/data/partner-report.repo.check.ts',
+    axis: 'обʼєкти в ОДНІЙ організації (без другого «чужий» ні від чого не відрізняється)',
+    distinct: /publish\((String\(propertyId\)|propertyB),/g, min: 2,
+  },
+  {
+    file: 'src/modules/reports/data/partner-report.repo.check.ts',
+    axis: 'числа у звітах двох обʼєктів (однакові не розрізнили б, чий токен що відкрив)',
+    distinct: /'(ЧИСЛА-[^']+)'/g, min: 3,
+  },
+  // Лікування осей: з одним станом «лікує неправильні» і «лікує порожні»
+  // невідрізненні — саме на цьому вада й прожила.
+  {
+    file: 'src/modules/finance/data/axis-repair.check.ts',
+    axis: 'стани осі у фікстурі (порожня ≠ непорожня неправильна ≠ правильна)',
+    distinct: /SET op_type = '(\w*)', classifier = '(?:\w*)' "/g, min: 3,
+  },
+  {
+    file: 'src/modules/finance/data/axis-repair.check.ts',
+    axis: 'коди статей у сценах (лікування за кодом ≠ за групою)',
+    distinct: /code = \?', \[organizationId, '(\w+)'\]/g, min: 3,
+  },
+  {
+    file: 'src/modules/finance/data/operation-tags.check.ts',
+    axis: 'імена міток: спільне «spa» ≠ власне «тільки-…» (витік читача видно лише за назвою)',
+    distinct: /INSERT INTO finance_tags[\s\S]*?\[\w+, organizationId, ([^\]]+)\]/g, min: 2,
+  },
+  // Шаблони: з однією відмовою «не гасне з першої» і «не гасне ніколи»
+  // невідрізненні; з одним готелем «чужа стаття» ні від чого не відрізняється.
+  {
+    file: 'src/modules/finance/api/recurring-scope.check.ts',
+    axis: 'станів шаблону після відмов (перша ≠ друга ≠ третя)',
+    distinct: /const after(\d) = await state\(\)/g, min: 3,
+  },
+  {
+    file: 'src/modules/finance/api/recurring-scope.check.ts',
+    axis: 'два готелі з різними довідниками (mine ≠ alien)',
+    distinct: /category_id: (mine|alien)\.category/g, min: 2,
+  },
+  // П&L: з однією сумою «потрапило в свою секцію» і «потрапило в сусідню»
+  // дають однакове число; з рівними сумами не видно, котра з них де.
+  {
+    file: 'src/modules/finance/api/pnl-classifier.check.ts',
+    axis: 'суми трьох статей у звіті (фінансування ≠ оренда ≠ виручка)',
+    distinct: /amount: (\d+),/g, min: 3,
+  },
+  {
+    file: 'src/modules/finance/api/pnl-classifier.check.ts',
+    axis: 'групи обліку в сценах (Financing ≠ OPEX ≠ Revenue ≠ невідома)',
+    distinct: /blindCategory\('\w+', '([^']+)'/g, min: 4,
+  },
+  {
+    file: 'src/modules/finance/data/operation-tags.check.ts',
+    axis: 'ідентифікатори міток двох готелів (спільне імʼя, різні рядки)',
+    distinct: /= `tg_(\w+)_\$\{tag\}`/g, min: 2,
+  },
 ];
 
 /** Коментарі геть — блокові й рядкові; `://` у рядках лишається. */
@@ -492,7 +560,7 @@ for (const a of AXES) {
   checked++;
 
   if (a.distinct) {
-    const seen = new Set(values(src, a.distinct));
+    const seen = new Set(values(src, a.distinct, a.group ?? 1));
     const min = a.min ?? 2;
     if (seen.size < min) {
       problems.push(`${a.file}: вісь «${a.axis}» — ${seen.size} різних значень (${[...seen].join(', ') || 'жодного'}), треба ≥ ${min}: `

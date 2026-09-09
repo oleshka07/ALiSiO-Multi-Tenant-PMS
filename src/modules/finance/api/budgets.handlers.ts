@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
-import { serverError } from '@core/http/errors';
+import { serverError, handleError } from '@core/http/errors';
+import { requireOwnedReferences } from '../data/owned.repo';
 
 export async function listBudgets(request: NextRequest): Promise<NextResponse> {
   try {
@@ -44,6 +45,9 @@ export async function upsertBudget(request: NextRequest): Promise<NextResponse> 
     }
 
     const orgId = await requireOrganizationId();
+    // Та сама варта, що на операції і на шаблоні (Д34): бюджетний рядок теж
+    // указує в довідник, і теж брав id просто з тіла запиту.
+    await requireOwnedReferences(orgId, body);
     // IS NOT DISTINCT FROM, not `IS ?`.
     //
     // A budget line may have no category and no project — those are NULL, and
@@ -75,7 +79,7 @@ export async function upsertBudget(request: NextRequest): Promise<NextResponse> 
     const created = await sql.row<any>("SELECT * FROM fin_budgets WHERE id = ? AND organization_id = ?", [id, orgId]);
     return NextResponse.json(created, { status: 201 });
   } catch (error: any) {
-    return serverError('modules/finance/api/budgets upsertBudget', error);
+    return handleError('modules/finance/api/budgets upsertBudget', error);
   }
 }
 

@@ -27,6 +27,7 @@
  * Знаки навмисно однозначні. `$` рахується лише перед цифрою (`$100`), бо
  * інакше кожен `${…}` у шаблонному рядку був би «валютою».
  */
+import ts from 'typescript';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -50,10 +51,76 @@ const SIGNS = [
 // де її нема. Знайдене при написанні цього проходу — 14 місць у фінансових
 // екранах, серед них `${…toLocaleString('cs-CZ')} CZK` — передано у звіті.
 
-/** Коментарі забілюються, а не вирізаються: номери рядків мають лишитись. */
-const withoutComments = (src) => src
-  .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-  .replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + ' '.repeat(m.length - p1.length));
+/**
+ * Коментарі забілюються, а не вирізаються: номери рядків мають лишитись.
+ *
+ * Забілюються ТРИ роди, і третій — причина, чому тут розбір, а не регекс.
+ *
+ *  1. `/* … *\/` і `// …` — коментарі JS;
+ *  2. `-- …` УСЕРЕДИНІ ШАБЛОННОГО РЯДКА — коментар SQL. Запити тут пишуться
+ *     у backtick-рядках, і пояснення до запиту живе коментарем SQL поруч із
+ *     ним. Гейт цього не знав і бачив у поясненні код валюти;
+ *  3. `--` поза шаблонним рядком НЕ чіпається: у JS це декремент (`i--`), і
+ *     забілити його означало б зʼїсти код.
+ *
+ * ── Чому саме так, а не «ще один регекс» ────────────────────────────────
+ *
+ * 08.09.2026 цей гейт спрацював на КОМЕНТАРІ в `modules/bookings`, і
+ * найдешевшим здалося переписати коментар так, щоб гейт його не бачив. Це
+ * неправильна відповідь двічі: гейт і далі не вміє того, чого не вміє, а в
+ * чужому файлі лишається слід, який наступний читач прийме за норму
+ * (AGENTS §3.2.1, сьомий випадок: **хибно-червоний гейт лагодиться в гейті**).
+ *
+ * Розбір бере `ts.createSourceFile` — той самий `typescript`, яким уже
+ * користуються `check-bare-node`, `check-i18n-leak` і `check-unwrapped`.
+ * Межі коментарів і шаблонних рядків він знає точно, тож питання «це код чи
+ * пояснення» більше не вгадується візерунком. Саме на вгадуванні візерунка
+ * вмер стрипер `check-bare-node`, який відкрив «блоковий коментар» на рядку
+ * `'/*'` і зʼїв 60 рядків.
+ */
+const withoutComments = (src) => {
+  const out = src.split('');
+  const blank = (from, to) => {
+    for (let i = from; i < to && i < out.length; i += 1) {
+      if (out[i] !== '\n') out[i] = ' ';
+    }
+  };
+
+  // Один розбір на обидва проходи. Саме РОЗБІР, не сканер: сканер сам по собі
+  // не знає, чи `/` — це ділення, чи початок регулярного виразу, тож на
+  // першому ж діленні він читає решту файла як один літерал і мовчки
+  // зупиняється. Так і сталося при написанні: у `payment-bridge.ts` він
+  // знаходив 10 коментарів із 256 і не бачив саме того, через який усе
+  // затівалось.
+  const file = ts.createSourceFile('x.tsx', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+
+  const isTemplate = (node) =>
+    node.kind === ts.SyntaxKind.NoSubstitutionTemplateLiteral
+    || node.kind === ts.SyntaxKind.TemplateHead
+    || node.kind === ts.SyntaxKind.TemplateMiddle
+    || node.kind === ts.SyntaxKind.TemplateTail;
+
+  const visit = (node) => {
+    // 1–2. Коментарі JS — це trivia перед вузлом і після нього; розбір знає
+    // їхні межі точно, і питання «код це чи пояснення» не вгадується.
+    for (const r of ts.getLeadingCommentRanges(src, node.getFullStart()) || []) blank(r.pos, r.end);
+    for (const r of ts.getTrailingCommentRanges(src, node.getEnd()) || []) blank(r.pos, r.end);
+
+    // 3. Коментар SQL — лише всередині шаблонного рядка.
+    if (isTemplate(node)) {
+      const start = node.getStart(file);
+      const text = src.slice(start, node.getEnd());
+      for (const m of text.matchAll(/--[^\n]*/g)) {
+        blank(start + m.index, start + m.index + m[0].length);
+      }
+    }
+
+    for (const child of node.getChildren(file)) visit(child);
+  };
+  visit(file);
+
+  return out.join('');
+};
 
 function* walk(dir) {
   if (!fs.existsSync(dir)) return;
@@ -104,11 +171,31 @@ for (const root of ROOTS) {
 //     не розрізняє (інваріант 26);
 //   - `core/currency.ts` — це САМ довідник валют, там коди й мусять бути.
 //     Він поза `modules/finance`, тож під вісь не потрапляє й так.
-const CODE_ROOTS = ['src/modules/finance'];
+const CODE_ROOTS = [
+  'src/modules/finance',
+  // Р12.5: гроші рахує не лише модуль фінансів. Фактура, котирування і
+  // рахунок гостя називають валюту так само часто — і корінь із одного модуля
+  // означав, що вісь стереже чверть поверхні, звучачи як «не буває взагалі».
+  'src/modules/invoicing',
+  'src/modules/pricing',
+  'src/modules/bookings',
+];
 // Коди — ISO 4217 тих валют, які продукт бачить сьогодні або побачить у
 // Європі й Україні. Список не повний і не мусить бути: гейт ловить НАЗВУ
 // валюти як явище, а не всі 180 можливих.
-const CURRENCY_CODE = /'(?:CZK|EUR|UAH|USD|PLN|GBP|CHF|HUF|RON|SEK|NOK|DKK|BGN|RSD|TRY|JPY|CAD|AUD)'/g;
+//
+// Лапки БУДЬ-ЯКІ (Р12.5). Перша редакція цієї осі знала лише одинарні — і
+// мовчала на `"CZK"` та на зворотних лапках, тобто мала припущення про ФОРМУ
+// всередині твердження про ВЛАСТИВІСТЬ. Виміряно: дописаний у модуль фінансів
+// рядок `{ a: "CZK", b: \`EUR\` }` гейт не побачив і доповів «чисто».
+//
+// Чого вісь НЕ покриває, і це названо прямо, а не мається на увазі:
+//   - код усередині ДОВШОГО рядка — `'CZK,EUR'`, `'Ціна в CZK'`,
+//     `\`${n} CZK\``: збіг вимагає, щоб лапки обіймали рівно три літери коду;
+//   - код, зібраний із частин (`'CZ' + 'K'`) або взятий із мапи за ключем;
+//   - усе поза чотирма коренями вище — `src/app`, `src/core`, `src/modules/*`
+//     решта. Перша вісь (знак валюти) дивиться на екрани й має свої корені.
+const CURRENCY_CODE = /(['"`])(?:CZK|EUR|UAH|USD|PLN|GBP|CHF|HUF|RON|SEK|NOK|DKK|BGN|RSD|TRY|JPY|CAD|AUD)\1/g;
 
 const codeFound = new Map();
 for (const root of CODE_ROOTS) {

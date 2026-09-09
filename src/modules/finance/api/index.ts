@@ -304,3 +304,12 @@ export type { CnbFixing, CnbSyncResult } from '@core/fx/cnb';
 //
 // Курс ČNB поїхав у `@core/fx/cnb`: це джерело курсу, а не бухгалтерія, і
 // його читає `core/currency.ts`, який не має права залежати від модуля.
+
+// ─── Лікування осей плану рахунків ───────────────────────────────────────
+//
+// Фасадом, а не з `data/` напряму: `scripts/seed-chart-of-accounts.mjs` — це
+// разова дія АДМІНІСТРАТОРА (AGENTS §5), тобто код поза модулем, і прямий
+// імпорт нутрощів валив би храповик меж. Правило лікування при цьому мусить
+// лишатись одне на всіх (Р13.6), тож двері відчиняються, а не копіюються.
+export { wrongAxisRows, unknownGroupRows, repairAxes } from '../data/axis-repair';
+export type { AxisRow } from '../data/axis-repair';

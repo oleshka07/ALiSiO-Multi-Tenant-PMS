@@ -51,7 +51,7 @@ const STRICT = process.argv.includes('--strict');
 // ніколи (саме це гейт і тримає).
 const BASELINE = {
   'src/modules/bookings/api/reservation.handlers.ts': 13,
-  'src/modules/finance/api/operations.handlers.ts': 10,
+  'src/modules/finance/api/operations.handlers.ts': 7,
   'src/modules/widget/api/widget-reserve.handlers.ts': 8,
   // Свій профіль: id приходить із сесії того, хто питає. Найімовірніші
   // кандидати на «списати зі стелі» після прочитання очима.
@@ -101,15 +101,15 @@ const WRITE_BASELINE = {
   'src/modules/channels/data/inbound-bookings.repo.ts': 4,
   'src/modules/widget/api/widget-reserve.handlers.ts': 4,
   'src/modules/finance/api/categories.handlers.ts': 3,
-  'src/modules/finance/api/operations.handlers.ts': 3,
-  'src/modules/finance/data/recurring-engine.ts': 3,
+  'src/modules/finance/api/operations.handlers.ts': 1,
+  'src/modules/finance/data/recurring-engine.ts': 1,
   'src/modules/auth/api/language.handlers.ts': 2,
   'src/modules/finance/api/projects.handlers.ts': 2,
   'src/modules/finance/api/exchange-rates.handlers.ts': 2,
   'src/modules/finance/api/counterparties.handlers.ts': 2,
   'src/modules/channels/api/ical-sync.handlers.ts': 2,
   'src/modules/channels/api/ical-channel.handlers.ts': 2,
-  'src/modules/reports/data/partner-report.repo.ts': 2,
+  'src/modules/reports/data/partner-report.repo.ts': 1,
   'src/modules/bookings/api/reservation-registrations.handlers.ts': 2,
   'src/modules/bookings/api/reservation.handlers.ts': 2,
   'src/modules/guests/data/registration.repo.ts': 2,

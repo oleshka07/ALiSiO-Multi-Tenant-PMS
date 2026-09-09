@@ -2,6 +2,7 @@
 import { createOperationInTx } from '../api/operations.handlers.ts';
 import { getSql } from '@core/db/async';
 import { todayFor } from '@core/hotel-day';
+import { runWithOrganization } from '@core/auth/tenant-context';
 
 export type Schedule = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
@@ -25,6 +26,10 @@ export interface Template {
   last_run_at: string | null;
   runs_created: number;
   is_active: number;
+  /** Скільки прогонів поспіль відмовили і чим — видно в списку шаблонів (Р13.7). */
+  failed_runs?: number;
+  last_error?: string | null;
+  last_error_at?: string | null;
 }
 
 function pad2(n: number): string { return n < 10 ? `0${n}` : String(n); }
@@ -102,15 +107,63 @@ export async function materializeTemplate(template: Template, asOfDate: string):
 
   const nextDate = advanceSchedule(runDate, template.schedule, template.schedule_day);
   const stopRun = template.end_at && nextDate > template.end_at;
+  // `FALSE`, не `0`: колонка BOOLEAN, і `CASE WHEN ? THEN 0 ELSE is_active END`
+  // на Postgres падає з «CASE types boolean and integer cannot be matched»
+  // (інваріант 12). Ця гілка не спрацьовувала НІКОЛИ: до Р13.7 обхід не бачив
+  // на Postgres жодного шаблону взагалі, тож один мовчазний дефект ховав
+  // другий. Пояснення тут, а не коментарем SQL у шаблоні: зворотна лапка в
+  // такому коментарі рве сам шаблон.
   await sql.run(`
     UPDATE fin_recurring_templates
     SET last_run_at = ?, next_run_at = ?, runs_created = runs_created + 1,
-        is_active = CASE WHEN ? THEN 0 ELSE is_active END,
+        is_active = CASE WHEN ? THEN FALSE ELSE is_active END,
+        -- Успішний прогін скидає лічильник: рахуються відмови ПОСПІЛЬ, а не
+        -- за все життя шаблону. Інакше три збої за півроку погасили б шаблон,
+        -- який щомісяця працює.
+        failed_runs = 0, last_error = NULL, last_error_at = NULL,
         updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
-  `, [runDate, nextDate, stopRun ? 1 : 0, template.id]);
+  `, [runDate, nextDate, Boolean(stopRun), template.id]);
 
   return operationId;
+}
+
+/**
+ * Скільки відмов поспіль шаблон переживає, перш ніж його вимкнути.
+ *
+ * Не одна (Р13.7). Доти рушій гасив шаблон із ПЕРШОГО винятку, і це було
+ * подвійно погано: помилка конфігурації тихо вимикала готелю регулярний
+ * платіж, а сама відмова лишалась у логу контейнера, який не читає ніхто.
+ * Оренда просто переставала нараховуватись.
+ *
+ * Три, бо найчастіша відмова тут ТИМЧАСОВА: курс валюти на сьогодні ще не
+ * заведено (`computeAmountCompany` відмовляє названо), і завтра той самий
+ * шаблон пройде. Погашений шаблон сам не вмикається — його вмикають руками,
+ * а щоб увімкнути, треба спершу помітити.
+ */
+const FAILURES_BEFORE_PAUSE = 3;
+
+/**
+ * Записати відмову так, щоб її побачив ГОТЕЛЬ, а не лог.
+ *
+ * `next_run_at` зсувається на наступний строк у будь-якому разі: без цього
+ * шаблон лишається «до виконання», і цикл нижче вибирає його знову й знову до
+ * стелі в 1000 обертів. Тобто пропущене нарахування — свідома ціна за те, щоб
+ * рушій не зупинився на одному зламаному шаблоні; видно її в `failed_runs`.
+ */
+async function recordTemplateFailure(template: Template, error: any): Promise<void> {
+  const sql = getSql();
+  const failed = Number(template.failed_runs || 0) + 1;
+  const nextDate = advanceSchedule(template.next_run_at, template.schedule, template.schedule_day);
+  await sql.run(`
+    UPDATE fin_recurring_templates
+       SET failed_runs = ?, last_error = ?, last_error_at = CURRENT_TIMESTAMP,
+           next_run_at = ?,
+           is_active = CASE WHEN ? THEN FALSE ELSE is_active END,
+           updated_at = CURRENT_TIMESTAMP
+     WHERE id = ? AND organization_id = ?
+  `, [failed, String(error?.message || error).slice(0, 500), nextDate,
+    failed >= FAILURES_BEFORE_PAUSE, template.id, template.organization_id]);
 }
 
 /**
@@ -129,33 +182,59 @@ export async function runRecurringTick(lookaheadDays = 30): Promise<{ created: n
   let created = 0;
   let templatesTouched = 0;
 
-  // Keep looping until no due templates remain (safety cap 1000 iterations)
-  for (let i = 0; i < 1000; i++) {
-    const due = await sql.rows<any>(`
-      SELECT * FROM fin_recurring_templates
-      WHERE is_active = TRUE AND next_run_at <= ?
-        AND (end_at IS NULL OR next_run_at <= end_at)
-      ORDER BY next_run_at ASC
-      LIMIT 50
-    `, [lookaheadIso]) as Template[];
+  // Обхід ПО ГОТЕЛЯХ, у контексті кожного (INC-014).
+  //
+  // Тут стояв один запит без орендаря. На SQLite він бачив усі шаблони, і все
+  // працювало; на Postgres політика звіряє `organization_id` з налаштуванням,
+  // якого ніхто не робив, — і запит не знаходив НІЧОГО. Прод на Postgres.
+  // Тобто регулярні платежі не нараховувались узагалі, а «створено 0» виглядає
+  // рівно так само, як спокійний день. Той самий клас, що вже описаний у
+  // `cron/guest-reminders` — і та сама форма ліків.
+  //
+  // Знайдено 09.09.2026 прогоном `check:pg` роллю `alisio_app`: на SQLite цей
+  // же гейт був зелений.
+  const organizations = await sql.rows<{ id: string }>('SELECT id FROM organizations');
 
-    if (due.length === 0) break;
+  for (const org of organizations) {
+    // Відмова одного готелю не спиняє решти.
+    try {
+      const outcome = await runWithOrganization(org.id, async () => {
+        let orgCreated = 0;
+        let orgTouched = 0;
+        // Keep looping until no due templates remain (safety cap 1000 iterations)
+        for (let i = 0; i < 1000; i++) {
+          const due = await sql.rows<any>(`
+            SELECT * FROM fin_recurring_templates
+            WHERE organization_id = ? AND is_active = TRUE AND next_run_at <= ?
+              AND (end_at IS NULL OR next_run_at <= end_at)
+            ORDER BY next_run_at ASC
+            LIMIT 50
+          `, [org.id, lookaheadIso]) as Template[];
 
-    for (const t of due) {
-      try {
-        // Each template belongs to a hotel, and «is this date in the future»
-        // is a question about that hotel's calendar, not the server's: a
-        // template due today would be written as `pending` for the first hours
-        // of the local day if we asked UTC.
-        await materializeTemplate(t, await todayFor(t.organization_id));
-        created++;
-      } catch (e: any) {
-        errors.push(`${t.id} (${t.name}): ${e.message}`);
-        // Deactivate failing template to avoid infinite loop
-        await sql.run("UPDATE fin_recurring_templates SET is_active = FALSE WHERE id = ?", [t.id]);
-      }
+          if (due.length === 0) break;
+
+          for (const t of due) {
+            try {
+              // Each template belongs to a hotel, and «is this date in the future»
+              // is a question about that hotel's calendar, not the server's: a
+              // template due today would be written as `pending` for the first hours
+              // of the local day if we asked UTC.
+              await materializeTemplate(t, await todayFor(t.organization_id));
+              orgCreated++;
+            } catch (e: any) {
+              errors.push(`${t.id} (${t.name}): ${e.message}`);
+              await recordTemplateFailure(t, e);
+            }
+          }
+          orgTouched += due.length;
+        }
+        return { orgCreated, orgTouched };
+      });
+      created += outcome.orgCreated;
+      templatesTouched += outcome.orgTouched;
+    } catch (e: any) {
+      errors.push(`${org.id}: ${e.message}`);
     }
-    templatesTouched += due.length;
   }
 
   return { created, templates: templatesTouched, errors };

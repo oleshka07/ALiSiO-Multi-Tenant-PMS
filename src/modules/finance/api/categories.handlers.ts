@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
-import { serverError } from '@core/http/errors';
+import { serverError, refuse, handleError } from '@core/http/errors';
+import { expectedAxis } from '@core/chart-of-accounts';
 
 const OP_TYPES = ['income', 'expense', 'transfer', 'other'] as const;
 type OpType = typeof OP_TYPES[number];
@@ -22,6 +23,8 @@ interface CategoryRow {
   parent_id: string | null;
   op_type: OpType | null;
   classifier: Classifier | null;
+  /** Сталий код рядка плану рахунків; у статті, яку завів сам готель, — null. */
+  code: string | null;
   std_group: string;
   pnl_line: string;
   alloc_method: string;
@@ -131,8 +134,26 @@ export async function createCategory(request: NextRequest): Promise<NextResponse
       if (parent.parent_id !== null) {
         return NextResponse.json({ error: 'Підкатегорію не можна створити всередині іншої підкатегорії. Дозволено максимум 2 рівні.' }, { status: 400 });
       }
-      finalOpType = (parent.op_type as OpType) || 'other';
-      finalClassifier = (parent.classifier as Classifier) || 'other';
+      // Вісь дочірньої статті — від осі БАТЬКА, а якщо в нього її немає, то
+      // за його групою обліку. Тут стояло `|| 'other'` на обох рядках, і це
+      // був ПИСАЧ (Р14.1): батько з порожньою віссю родив дитину, яка вже
+      // народжувалась «Іншим» — тобто вада не лише лишалась у читачі, а й
+      // відтворювалась на кожному новому рядку, проти Д31.
+      //
+      // Групи, якої не знає правило, не вгадуємо: `expectedAxis` віддає
+      // `null`, і це названа відмова, а не тихий дефолт (інваріант 13).
+      const parentAxis = expectedAxis(parent.code, parent.std_group);
+      const inherited = {
+        opType: parent.op_type ? String(parent.op_type) : parentAxis?.opType,
+        classifier: parent.classifier ? String(parent.classifier) : parentAxis?.classifier,
+      };
+      if (!inherited.opType || !inherited.classifier) {
+        refuse(`Стаття «${parent.name}» не має осі обліку, а її група «${parent.std_group ?? '—'}» `
+          + 'не належить до відомих — підкатегорія успадкувала б «Інше» і загубилась би у звіті. '
+          + 'Виправте групу батьківської статті в Фінанси → Налаштування → Статті обліку.', 409);
+      }
+      finalOpType = inherited.opType as OpType;
+      finalClassifier = inherited.classifier as Classifier;
     } else {
       if (!OP_TYPES.includes(op_type)) {
         return NextResponse.json({ error: `op_type must be one of ${OP_TYPES.join(', ')}` }, { status: 400 });
@@ -176,7 +197,7 @@ export async function createCategory(request: NextRequest): Promise<NextResponse
     const created = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ? AND organization_id = ?", [id, orgId]);
     return NextResponse.json(created, { status: 201 });
   } catch (error: any) {
-    return serverError('modules/finance/api/categories createCategory', error);
+    return handleError('modules/finance/api/categories createCategory', error);
   }
 }
 

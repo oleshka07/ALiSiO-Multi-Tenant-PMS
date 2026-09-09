@@ -19,6 +19,8 @@ export interface AutoRule {
     set_comment?: string;
   };
   is_active: number;
+  /** Поля, чиє посилання веде в чужий довідник — правило не спрацьовує (Р13.1). */
+  broken_fields?: string[];
   stop_on_match: number;
   sort_order: number;
   match_count: number;
@@ -158,6 +160,14 @@ export default function AutoRulesTab() {
                   <td style={{ ...td, fontWeight: 500 }}>
                     {r.name}
                     {r.stop_on_match ? <span style={badgeSmall} title={t('Зупиняє подальші правила')}>stop</span> : null}
+                    {/* Правило, яке рушій ПРОПУСКАЄ, бо його посилання веде в
+                        довідник іншого готелю (Р13.1). Доти воно виглядало тут
+                        робочим, а причина лишалась у логу контейнера. */}
+                    {r.broken_fields?.length ? (
+                      <span style={badgeBroken} title={`${t('Правило не спрацьовує: посилання веде в чужий довідник')} — ${r.broken_fields.join(', ')}`}>
+                        {t('зламане')}
+                      </span>
+                    ) : null}
                   </td>
                   <td style={td}>{t(OP_TYPE_LABEL[r.op_type])}</td>
                   <td style={{ ...td, textAlign: 'right' }}>{r.conditions.length}</td>
@@ -211,6 +221,13 @@ const iconBtn: React.CSSProperties = {
   background: 'transparent', border: 'none', padding: 6, margin: '0 2px',
   cursor: 'pointer', color: 'var(--text-secondary)', borderRadius: 6,
 };
+// Кольори — токенами з globals.css, не літералами: у темній темі літерал
+// лишається світлим (`ui-tokens`, храповик).
+const badgeBroken: React.CSSProperties = {
+  marginLeft: 6, fontSize: 10, padding: '1px 6px', borderRadius: 4,
+  background: 'var(--accent-warning-light)', color: 'var(--accent-warning)', fontWeight: 600,
+};
+
 const badgeSmall: React.CSSProperties = {
   marginLeft: 6, fontSize: 10, padding: '1px 6px', borderRadius: 4,
   background: '#fee2e2', color: '#dc2626',

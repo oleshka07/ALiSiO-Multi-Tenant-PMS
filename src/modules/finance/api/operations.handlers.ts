@@ -9,7 +9,11 @@ import { getSessionUser } from '@core/auth';
 
 import { loadActiveRules, isRuleApplicable } from '../data/auto-rules-engine';
 import { requireOrganizationId } from '@core/auth/tenant-context';
-import { ownedFinanceRow } from '../data/owned.repo';
+import { ownedFinanceRow, requireOwnedReferences } from '../data/owned.repo';
+import {
+  requireOwnedTags, setOperationTags, tagNamesFor, tagNamesForBatch, tagIdsFor,
+  taggedOperationsSubquery,
+} from '../data/operation-tags.repo';
 // Зняття грошей із книги гостя після видалення рядка — одні двері на всіх
 // (Р8.7). Файл листковий навмисно: інакше тут був би цикл із `payment-bridge`.
 import { reverseOperationInFolio } from './folio-reversal';
@@ -121,42 +125,13 @@ async function computeAmountCompany(
   return amount * rate.rate;
 }
 
-async function getTagsFor(operationId: string): Promise<string[]> {
-  const sql = getSql();
-  const rows = await sql.rows<any>(`
-    SELECT t.name FROM fin_operation_tags ot
-    JOIN finance_tags t ON t.id = ot.tag_id
-    WHERE ot.operation_id = ?
-    ORDER BY t.sort_order, t.name
-  `, [operationId]) as { name: string }[];
-  return rows.map((r) => r.name);
-}
-
-/** Batch-fetch tags for multiple operations in one query. */
-async function getBatchTags(operationIds: string[]): Promise<Record<string, string[]>> {
-  const sql = getSql();
-  if (operationIds.length === 0) return {};
-  const map: Record<string, string[]> = {};
-  for (let i = 0; i < operationIds.length; i += 500) {
-    const chunk = operationIds.slice(i, i + 500);
-    const ph = chunk.map(() => '?').join(',');
-    const rows = await sql.rows<any>(`
-      SELECT ot.operation_id, t.name FROM fin_operation_tags ot
-      JOIN finance_tags t ON t.id = ot.tag_id
-      WHERE ot.operation_id IN (${ph})
-      ORDER BY t.sort_order, t.name
-    `, [...chunk]) as { operation_id: string; name: string }[];
-    for (const r of rows) {
-      if (!map[r.operation_id]) map[r.operation_id] = [];
-      map[r.operation_id].push(r.name);
-    }
-  }
-  return map;
-}
-
-async function enrichOperation(row: any): Promise<any> {
+// Мітки читаються й пишуться ОДНИМИ дверима (`operation-tags.repo`). Тут
+// стояли три власні читачі, і всі три джойнили `finance_tags` без орендаря —
+// на SQLite чуже імʼя мітки поверталось у відповідь API (Р13.2).
+async function enrichOperation(row: any, organizationId?: string): Promise<any> {
   if (!row) return row;
-  return { ...row, tags: await getTagsFor(row.id) };
+  const orgId = organizationId ?? await requireOrganizationId();
+  return { ...row, tags: await tagNamesFor(orgId, row.id) };
 }
 
 export async function listOperations(request: NextRequest): Promise<NextResponse> {
@@ -231,9 +206,12 @@ export async function listOperations(request: NextRequest): Promise<NextResponse
     if (reservationId) { where.push('o.reservation_id = ?'); params.push(reservationId); }
     if (source) { where.push('o.source = ?'); params.push(source); }
     if (tagIds.length > 0) {
-      const ph = tagIds.map(() => '?').join(',');
-      where.push(`o.id IN (SELECT operation_id FROM fin_operation_tags WHERE tag_id IN (${ph}))`);
-      params.push(...tagIds);
+      // Звʼязка міток згадується тільки через свої двері (Р14.4): тут стояв
+      // `SELECT operation_id FROM fin_operation_tags WHERE tag_id IN (…)` без
+      // орендаря — останнє місце старого шва.
+      const tagged = taggedOperationsSubquery(orgId, tagIds);
+      where.push(`o.id IN (${tagged.sql})`);
+      params.push(...tagged.params);
     }
     if (search) {
       const searchNum = parseFloat(search.replace(/\s/g, '').replace(',', '.'));
@@ -295,7 +273,7 @@ export async function listOperations(request: NextRequest): Promise<NextResponse
       LIMIT ? OFFSET ?
     `, [...params, pageSize, (page - 1) * pageSize]) as any[];
 
-    const tagMap = await getBatchTags(rows.map((r: any) => r.id));
+    const tagMap = await tagNamesForBatch(orgId, rows.map((r: any) => r.id));
     const items = rows.map((r: any) => ({ ...r, tags: tagMap[r.id] || [] }));
 
     // Running balance per account: for every visible operation, show the
@@ -477,6 +455,26 @@ export async function autoResolveCategory(
   return null;
 }
 
+/**
+ * Кожне поле операції, яке вказує в довідник, — рядок ЦЬОГО готелю (Р12.3).
+ *
+ * Тут стояв власний список полів і власний цикл. Він переїхав у
+ * `data/owned.repo.ts` (`CATALOGUE_REFERENCES` + `requireOwnedReferences`), бо
+ * за добу після Р12.3 знайшлося ще три двері в те саме поле — авто-правило,
+ * шаблон регулярного платежу і бюджетний рядок (Р13.1, Р13.7), — і кожні
+ * писали б свою копію цієї перевірки. Одна варта на всі шляхи: список полів
+ * і таблиць існує в одному місці, і нове поле потрапляє в нього один раз.
+ *
+ * Чого тут НЕ перевіряється: `reservation_id`. Він указує в `reservations`,
+ * тобто в чужий модуль, і питати про нього звідси означало б пробити межу
+ * (`check-boundaries`). Названо в docs/LATER.md — двері мають зʼявитись у
+ * `@bookings/kernel`.
+ *
+ * `tag_ids` — шосте поле того самого тіла, і воно теж має свою варту, просто
+ * в інших дверях: `operation-tags.repo` (Р13.2). Не тут, бо мітка живе у
+ * звʼязці без `organization_id`, і запис у неї це окремий рядок таблиці, а не
+ * колонка операції.
+ */
 export async function createOperationInTx(
   orgId: string,
   input: CreateOperationInput,
@@ -503,6 +501,12 @@ export async function createOperationInTx(
   if (op_type === 'transfer' && input.account_from_id === input.account_to_id) {
     refuse('account_from_id and account_to_id must differ');
   }
+
+  await requireOwnedReferences(orgId, input);
+  // Мітки — ДО `INSERT`, не після. Відмова після запису лишила б операцію в
+  // книзі, а відповідь сказала б «не збережено»: рівно та розбіжність, від
+  // якої тут і починають (Р13.2).
+  if (input.tag_ids && input.tag_ids.length > 0) await requireOwnedTags(orgId, input.tag_ids);
 
   // Валюта готелю, а не крони. `orgId` тут уже є — питати нема кого іншого.
   const companyCurrency = await organizationCurrency(orgId);
@@ -551,9 +555,7 @@ export async function createOperationInTx(
     input.needs_review ? 1 : 0]);
 
   if (input.tag_ids && input.tag_ids.length > 0) {
-    for (const tagId of input.tag_ids) {
-      await sql.run('INSERT INTO fin_operation_tags (operation_id, tag_id) VALUES (?, ?) ON CONFLICT DO NOTHING', [id, tagId]);
-    }
+    await setOperationTags(orgId, id, input.tag_ids);
   }
 
   if (createdBy) {
@@ -618,6 +620,14 @@ export async function updateOperation(
       return NextResponse.json({ error: `op_type must be one of ${OP_TYPES.join(', ')}` }, { status: 400 });
     }
 
+    // Та сама перевірка, що на створенні (Р12.3): редагування бере ті самі
+    // пʼять полів із тіла запиту й кладе їх у `UPDATE` через білий список
+    // імен — тобто закрити лише створення означало б лишити двері поруч.
+    await requireOwnedReferences(orgId, body);
+    // Те саме на редагуванні: варта стоїть ПЕРЕД записом колонок, інакше
+    // відмова через чужу мітку лишала б уже переписаний коментар і суму.
+    if (Array.isArray(body.tag_ids)) await requireOwnedTags(orgId, body.tag_ids);
+
     const fields: string[] = [];
     const params: any[] = [];
     for (const k of allowed) {
@@ -658,15 +668,23 @@ export async function updateOperation(
     }
     fields.push("updated_at = CURRENT_TIMESTAMP");
 
-    if (fields.length === 1) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
+    // Мітки — теж зміна. `tag_ids` не входить у білий список `allowed` (він
+    // не колонка операції, а окрема таблиця), тож запит, у якому міняли ЛИШЕ
+    // мітки, не додавав жодного поля — `fields.length === 1` віддавав 400
+    // «Nothing to update» і повертався ДО рядка, що пише мітки. Тобто зняти
+    // всі мітки або поставити їх без інших правок було неможливо, і форма
+    // мовчки не зберігала. Знайдено гейтом `operation-tags.check`: сцена
+    // «варта на редагуванні» спершу дала 400 замість 404 — двері, на яких
+    // варта, не відчинялись узагалі.
+    const tagsChanged = Array.isArray(body.tag_ids);
+    if (fields.length === 1 && !tagsChanged) {
+      return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
+    }
     params.push(id, orgId);
     await sql.run(`UPDATE fin_operations SET ${fields.join(', ')} WHERE id = ? AND organization_id = ?`, [...params]);
 
-    if (Array.isArray(body.tag_ids)) {
-      await sql.run('DELETE FROM fin_operation_tags WHERE operation_id = ?', [id]);
-      for (const tagId of body.tag_ids) {
-        await sql.run('INSERT INTO fin_operation_tags (operation_id, tag_id) VALUES (?, ?) ON CONFLICT DO NOTHING', [id, tagId]);
-      }
+    if (tagsChanged) {
+      await setOperationTags(orgId, id, body.tag_ids);
     }
 
     const updated = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [id]);
@@ -838,7 +856,7 @@ export async function duplicateOperation(
       comment: src.comment,
       source: 'manual',
       status: 'completed',
-      tag_ids: await getTagIds(id),
+      tag_ids: await tagIdsFor(orgId, id),
     }, actor);
     const created = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [newId]);
     return NextResponse.json(await enrichOperation(created), { status: 201 });
@@ -873,14 +891,19 @@ export async function applyRecurringSuggestion(
 
     if (!confirm) {
       // Just dismiss
-      await sql.run("UPDATE fin_operations SET suggested_recurring_id = NULL WHERE id = ?", [id]);
+      await sql.run("UPDATE fin_operations SET suggested_recurring_id = NULL WHERE id = ? AND organization_id = ?", [id, orgId]);
       return NextResponse.json({ ok: true, action: 'dismissed' });
     }
 
-    const tpl = await sql.row<any>("SELECT category_id, project_id, counterparty_id, comment FROM fin_recurring_templates WHERE id = ?", [op.suggested_recurring_id]) as any;
+    // Орендар названий (Р13.8). Без нього шаблон читався по самому лише id, а
+    // нижче його `category_id`/`project_id`/`counterparty_id` лягали в
+    // `UPDATE fin_operations` — тобто чужий довідник заїжджав у власну книгу
+    // тими самими дверима, які закрив Р12.3, тільки збоку. `ownedFinanceRow`,
+    // а не свій `WHERE`: варта одна на всіх (Д34).
+    const tpl = await ownedFinanceRow('fin_recurring_templates', op.suggested_recurring_id, orgId) as any;
     if (!tpl) {
       // Template was deleted — just dismiss
-      await sql.run("UPDATE fin_operations SET suggested_recurring_id = NULL WHERE id = ?", [id]);
+      await sql.run("UPDATE fin_operations SET suggested_recurring_id = NULL WHERE id = ? AND organization_id = ?", [id, orgId]);
       return NextResponse.json({ ok: true, action: 'dismissed_orphan' });
     }
 
@@ -892,20 +915,14 @@ export async function applyRecurringSuggestion(
           comment = CASE WHEN comment IS NULL OR comment = '' THEN ? ELSE comment END,
           suggested_recurring_id = NULL,
           updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `, [tpl.category_id, tpl.project_id, tpl.counterparty_id, tpl.comment, id]);
+      WHERE id = ? AND organization_id = ?
+    `, [tpl.category_id, tpl.project_id, tpl.counterparty_id, tpl.comment, id, orgId]);
 
     const updated = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [id]);
-    return NextResponse.json({ ok: true, action: 'applied', operation: enrichOperation(updated) });
+    return NextResponse.json({ ok: true, action: 'applied', operation: await enrichOperation(updated, orgId) });
   } catch (error: any) {
     return handleError('modules/finance/api/operations applyRecurringSuggestion', error);
   }
-}
-
-async function getTagIds(operationId: string): Promise<string[]> {
-  const sql = getSql();
-  const rows = await sql.rows<any>('SELECT tag_id FROM fin_operation_tags WHERE operation_id = ?', [operationId]) as { tag_id: string }[];
-  return rows.map((r) => r.tag_id);
 }
 
 // Public helpers reused across modules ───────────────────────────────
