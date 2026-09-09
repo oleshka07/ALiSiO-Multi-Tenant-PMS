@@ -12,7 +12,7 @@
   "src/app/api/gift-cards/route.ts": 2,
   "src/app/api/gift-cards/workflow/route.ts": 3,
   "src/app/api/guest/[token]/ocr/route.ts": 1,
-  "src/app/api/package-offers/[id]/route.ts": 2,
+  "src/app/api/package-offers/[id]/route.ts": 1,
   "src/app/api/package-offers/route.ts": 3,
   "src/app/api/payments/route.ts": 4,
   "src/core/i18n/resolve.ts": 1,
