@@ -12,6 +12,7 @@ export { updateBookingSource, deleteBookingSource } from './booking-source.handl
 export { listWidgetSiteSources } from './booking-source-widgets.handlers';
 export { listAdditionalServices, createAdditionalService, updateAdditionalService, deleteAdditionalService } from './additional-services.handlers';
 export { listAvailabilityBlocks, createAvailabilityBlock, deleteAvailabilityBlock } from './availability-blocks.handlers';
+export { draftsCount } from './drafts-count.handlers';
 export { listServiceOrders, updateServiceOrder } from './service-orders.handlers';
 // Вкладення до броні — вкладка «Файли» картки (Блок 4, 0090).
 export { listReservationFiles, uploadReservationFile, deleteReservationFile } from './reservation-files.handlers';
