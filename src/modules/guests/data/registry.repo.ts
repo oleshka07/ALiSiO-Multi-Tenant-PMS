@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getSql } from '@core/db/async';
 import { money } from '@core/money';
+import { propertyScopeFilter, type PropertyScope } from '@core/property-scope';
 
 /**
  * The guest registry (evidenční kniha): names, dates of birth, nationality,
@@ -14,7 +15,12 @@ import { money } from '@core/money';
  * no-op unless the row belongs to it.
  */
 
-/** Constrain reservation_guests rg / reservations r to one organization. */
+/**
+ * Constrain reservation_guests rg / reservations r to one organization.
+ *
+ * Це вісь ОРЕНДАРЯ — «усі обʼєкти цього рахунку», — і сама по собі вона книгу
+ * не звужує. Вісь ОБʼЄКТА йде окремо, `propertyScopeFilter` нижче (INC-037).
+ */
 const ORG_SCOPE = 'r.property_id IN (SELECT id FROM properties WHERE organization_id = ?)';
 
 // ─── Types ────────────────────────────────────────────
@@ -24,7 +30,12 @@ export interface RegistryFilters {
   foreignersOnly?: boolean;
   unregisteredOnly?: boolean;
   search?: string;
-  propertyId?: string;
+  /**
+   * Обʼєкт, чию книгу читаємо. «Усі обʼєкти» — це `ALL_PROPERTIES`, тобто
+   * СКАЗАНЕ значення, а не пропущене поле: подання робиться по закладу, і
+   * зведена книга має бути вибором, а не тим, що вийшло (INC-037).
+   */
+  scope: PropertyScope;
 }
 
 export interface RegistryEntry {
@@ -122,10 +133,9 @@ export async function getRegistryEntries(organizationId: string, filters: Regist
   `;
   const params: (string | number)[] = [organizationId, monthStart, monthEnd];
 
-  if (filters.propertyId) {
-    query += ' AND r.property_id = ?';
-    params.push(filters.propertyId);
-  }
+  const scope = propertyScopeFilter(filters.scope, 'r');
+  query += ` AND ${scope.sql}`;
+  params.push(...scope.params);
 
   if (filters.foreignersOnly) {
     query += " AND UPPER(rg.nationality) NOT IN ('CZ', 'CZE') AND rg.nationality IS NOT NULL";
@@ -147,7 +157,10 @@ export async function getRegistryEntries(organizationId: string, filters: Regist
   return await sql.rows<RegistryEntry>(query, params);
 }
 
-export async function getRegistrySummary(organizationId: string, filters: { month: string; propertyId?: string }): Promise<RegistrySummary> {
+export async function getRegistrySummary(
+  organizationId: string,
+  filters: { month: string; scope: PropertyScope },
+): Promise<RegistrySummary> {
   const sql = getSql();
   const monthStart = `${filters.month}-01`;
   const monthEnd = nextMonth(filters.month);
@@ -167,10 +180,9 @@ export async function getRegistrySummary(organizationId: string, filters: { mont
   `;
   const params: (string | number)[] = [organizationId, monthStart, monthEnd];
 
-  if (filters.propertyId) {
-    query += ' AND r.property_id = ?';
-    params.push(filters.propertyId);
-  }
+  const scope = propertyScopeFilter(filters.scope, 'r');
+  query += ` AND ${scope.sql}`;
+  params.push(...scope.params);
 
   query += ' AND COALESCE(rg.is_hidden, FALSE) = FALSE';
 

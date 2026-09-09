@@ -8,13 +8,18 @@ import { withOwnedSite } from '../../_owned-site';
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    return await withOwnedSite(req.headers.get('cookie'), id, async ({ organizationId }) => {
+    return await withOwnedSite(req.headers.get('cookie'), id, async ({ organizationId, site }) => {
     const sql = getSql();
 
     // The service catalogue is scoped too. `additional_services` belongs to a
     // property, and without the join this listed every service on the server —
     // so one hotel's site-services screen offered the neighbour's spa
     // treatments, at the neighbour's prices, ready to be enabled.
+    //
+    // Рахунку мало (INC-035): сайт належить ОБʼЄКТУ
+    // (`booking_sites.property_id NOT NULL`), тож каталог для нього — послуги
+    // ЦЬОГО обʼєкта. Інакше екран сайта обʼєкта А пропонував увімкнути послуги
+    // обʼєкта Б, а `POST` нижче їх приймав.
     const services = await sql.rows<any>(`
       SELECT
         s.id, s.name, s.name_en, s.name_cs, s.icon,
@@ -28,9 +33,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       FROM additional_services s
       JOIN properties p ON s.property_id = p.id
       LEFT JOIN site_services ss ON ss.service_id = s.id AND ss.site_id = ?
-      WHERE s.is_active = TRUE AND p.organization_id = ?
+      WHERE s.is_active = TRUE AND p.organization_id = ? AND s.property_id = ?
       ORDER BY COALESCE(ss.sort_order, s.sort_order), s.sort_order
-    `, [id, organizationId]);
+    `, [id, organizationId, site.property_id]);
 
     return NextResponse.json({ services });
     });
@@ -50,16 +55,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'service_id обовʼязковий' }, { status: 400 });
     }
 
-    return await withOwnedSite(request.headers.get('cookie'), id, async ({ organizationId }) => {
+    return await withOwnedSite(request.headers.get('cookie'), id, async ({ organizationId, site }) => {
     const sql = getSql();
 
     // service_id comes from the request body, so it is checked against this
-    // organization: owning the site does not make the service yours.
+    // organization AND against the object the site belongs to: owning the site
+    // makes neither the neighbour's service nor the neighbour OBJECT's service
+    // yours (INC-035).
     const service = await sql.row<any>(`
       SELECT s.id FROM additional_services s
       JOIN properties p ON s.property_id = p.id
-      WHERE s.id = ? AND s.is_active = TRUE AND p.organization_id = ?`,
-      [service_id, organizationId]);
+      WHERE s.id = ? AND s.is_active = TRUE AND p.organization_id = ? AND s.property_id = ?`,
+      [service_id, organizationId, site.property_id]);
     if (!service) return NextResponse.json({ error: 'Service not found' }, { status: 404 });
 
     await sql.run(`

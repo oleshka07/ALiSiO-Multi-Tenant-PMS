@@ -53,7 +53,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { id } = await params;
     const body = await request.json();
 
-    return await withOwnedSite(request.headers.get('cookie'), id, async ({ organizationId }) => {
+    return await withOwnedSite(request.headers.get('cookie'), id, async ({ organizationId, site }) => {
       const sql = getSql();
       const items: any[] = Array.isArray(body) ? body : [body];
       const created: any[] = [];
@@ -68,22 +68,34 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           return NextResponse.json({ error: 'Вкажіть лише unit_id або unit_type_id, не обидва' }, { status: 400 });
         }
 
-        // The unit ids come from the request body, so they are checked against
-        // this organization before being written. Owning the SITE does not make
-        // a room yours: without this, a listing could point a hotel's own site
-        // at somebody else's room and sell it.
+        // The unit ids come from the request body, so they are checked before
+        // being written — against this organization AND against the object the
+        // site belongs to.
+        //
+        // Тут стояла лише половина (INC-034). Коментар казав «Owning the SITE
+        // does not make a room yours», і про сусідній РАХУНОК це правда — а
+        // сусідній ОБʼЄКТ проходив повністю: `booking_sites.property_id` —
+        // `NOT NULL`, тобто сайт заведено ПІД ОБʼЄКТ, і готель із двома
+        // обʼєктами клав у сайт обʼєкта А номер обʼєкта Б, а сайт його
+        // продавав. Наслідок не «видно зайве», а «гість купив номер, якого за
+        // цією адресою немає».
+        //
+        // Нового запиту не треба: `withOwnedSite` уже повернув увесь рядок
+        // сайта, тож обʼєкт відомий і звірка коштує одну умову.
         if (unit_id) {
           const owned = await sql.row<any>(`
             SELECT u.id FROM units u
             JOIN properties p ON u.property_id = p.id
-            WHERE u.id = ? AND p.organization_id = ?`, [unit_id, organizationId]);
+            WHERE u.id = ? AND p.organization_id = ? AND u.property_id = ?`,
+            [unit_id, organizationId, site.property_id]);
           if (!owned) return NextResponse.json({ error: 'Unit not found' }, { status: 404 });
         }
         if (unit_type_id) {
           const owned = await sql.row<any>(`
             SELECT ut.id FROM unit_types ut
             JOIN properties p ON ut.property_id = p.id
-            WHERE ut.id = ? AND p.organization_id = ?`, [unit_type_id, organizationId]);
+            WHERE ut.id = ? AND p.organization_id = ? AND ut.property_id = ?`,
+            [unit_type_id, organizationId, site.property_id]);
           if (!owned) return NextResponse.json({ error: 'Unit type not found' }, { status: 404 });
         }
 
