@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as feesRepo from '../data/fees.repo';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
+import { requestPropertyScope } from '@core/auth/property-scope';
 import { requirePropertyId } from '@core/auth/tenant-context';
 import { handleError } from '@core/http/errors';
 
@@ -30,12 +31,17 @@ function refusalMessage(r: feesRepo.FeeRefusal): string {
   }
 }
 
-export const listFees = withActor(async (_req, _ctx, actor: Actor) => {
+export const listFees = withActor(async (request: Request, _ctx, actor: Actor) => {
   try {
-    return NextResponse.json(await feesRepo.listFees(actor.organizationId));
+    // Який ОБʼЄКТ, а не лише який орендар (INC-029): ставка збору різна в
+    // різних містах, і спільний список двох будинків запрошує правку не в
+    // тому рядку (інваріант 29 — межа проходить по даних).
+    const scope = await requestPropertyScope(request, actor.organizationId);
+    return NextResponse.json(await feesRepo.listFees(actor.organizationId, scope));
   } catch (error) {
-    console.error('GET /api/fees error:', error);
-    return NextResponse.json({ error: 'Failed to fetch fees' }, { status: 500 });
+    // Названа відмова їде своїм статусом (інваріант 6, Ц43): чужий
+    // `property_id` — це 404, а не «сервер зламався».
+    return handleError('modules/properties/api/fees listFees', error);
   }
 });
 

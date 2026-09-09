@@ -15,6 +15,14 @@ import { unitColumnsSql } from './units.repo';
  * never confirm that someone else's row exists.
  */
 
+/**
+ * Список обʼєктів рахунку — свідомо БЕЗ осі обʼєкта (INC-029).
+ *
+ * Це сам перемикач: із нього шапка й будує «А / Б / усі». Звузити його
+ * областю означало б, що обрати другий будинок неможливо, бо його не видно.
+ * Лічильники в підзапитах уже прив'язані до `p.id`, тобто рахують кожен рядок
+ * по своєму будинку.
+ */
 export async function listProperties(organizationId: string) {
   const sql = getSql();
   return await sql.rows<any>(`

@@ -19,6 +19,7 @@ import '../../../../scripts/lib/module-aliases.mjs';
 const { runWithOrganization } = await import('@core/auth/tenant-context');
 const { getSql } = await import('@core/db/async');
 const repo = await import('./fees.repo.ts');
+const { ALL_PROPERTIES } = await import('@core/property-scope.ts');
 
 // ── Частина без бази: словники не мають розійтися з CHECK у схемі ────────
 //
@@ -75,12 +76,13 @@ try {
       await repo.createFee(A, { property_id: 'feeprop_b', name: 'Чуже', type: 'per_stay', amount: 1 }),
       null, 'збір на ЧУЖИЙ обʼєкт не створюється');
 
-    assert.strictEqual((await repo.listFees(A)).length, 1);
+    // Ця сцена про вісь ОРЕНДАРЯ, тож область — «усі обʼєкти», і сказана словом.
+    assert.strictEqual((await repo.listFees(A, ALL_PROPERTIES)).length, 1);
   });
 
   await runWithOrganization(B, async () => {
     // Головне твердження. Порожній список у B доводить, що A не протікає.
-    assert.deepStrictEqual(await repo.listFees(B), [],
+    assert.deepStrictEqual(await repo.listFees(B, ALL_PROPERTIES), [],
       'у сусіда своїх зборів немає — і чужих він не бачить');
     assert.strictEqual(await repo.getFee(B, feeOfA), null, 'чужий id → нічого');
     assert.strictEqual(await repo.updateFee(B, feeOfA, { amount: 1 }), null,

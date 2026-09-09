@@ -1,5 +1,6 @@
 import { getSql } from '@core/db/async';
 import { ownsProperty, ownsViaProperty, propertyScopeSql } from './tenant-scope';
+import { propertyScopeFilter, type PropertyScope } from '@core/property-scope';
 
 /**
  * Збори поверх ціни за ніч: чим готель їх заводить.
@@ -119,15 +120,24 @@ export async function cityTaxRateOf(propertyId: string): Promise<number> {
   return Number(row?.city_tax_per_night) || 0;
 }
 
-export async function listFees(organizationId: string): Promise<FeeRow[]> {
+/**
+ * Збори і податки — список для екрана налаштувань ОДНОГО будинку.
+ *
+ * Вісь обʼєкта тут не косметика: ставка збору «для громади» різна в різних
+ * містах, і спільний список двох будинків запрошує правку не в тому рядку.
+ * Інваріант 29 — межа проходить по ДАНИХ: сама форма це звичайна акуратність,
+ * а рядок ставки їде у квоту і на рахунок гостя.
+ */
+export async function listFees(organizationId: string, scope: PropertyScope): Promise<FeeRow[]> {
   const sql = getSql();
+  const inScope = propertyScopeFilter(scope, 'f');
   return await sql.rows<FeeRow>(`
     SELECT f.id, f.property_id, f.name, f.type, f.amount,
            f.applies_to, f.collected_for, f.is_included_in_price, f.is_active
       FROM fees_taxes f
-     WHERE ${propertyScopeSql('f')}
+     WHERE ${propertyScopeSql('f')} AND ${inScope.sql}
      ORDER BY f.name
-  `, [organizationId]);
+  `, [organizationId, ...inScope.params]);
 }
 
 export async function createFee(
