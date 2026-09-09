@@ -368,7 +368,9 @@ async function main() {
     // стоять усі родини нижче. Якщо він мовчки віддасть не той статус, решта
     // впаде далеко від причини — тому статус названо тут.
     const propRes = await call(cookie, '/api/properties', {
-      method: 'POST', body: JSON.stringify({ name: 'Routes probe hotel', slug: `${TAG}hotel` }),
+      // `property_type` обовʼязковий у писачі (В1) — без нього це 400, і
+      // родини нижче впали б далеко від причини.
+      method: 'POST', body: JSON.stringify({ name: 'Routes probe hotel', slug: `${TAG}hotel`, property_type: 'hotel' }),
     });
     const property = await body(propRes);
     if (!claim('обʼєкт', propRes.status === 201 && property.id, `обʼєкт створено (${propRes.status})`)) {
