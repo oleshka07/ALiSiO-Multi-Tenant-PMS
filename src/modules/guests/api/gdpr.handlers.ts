@@ -3,6 +3,7 @@ import { getSql } from '@core/db/async';
 import { NextResponse } from 'next/server';
 import { withPermission, type Actor } from '@core/auth/session';
 import { getOrgIdentity } from '@core/org-identity';
+import { propertyScopeFilter, ALL_PROPERTIES } from '@core/property-scope';
 
 /**
  * Subject access and erasure under GDPR.
@@ -22,6 +23,16 @@ import { getOrgIdentity } from '@core/org-identity';
 type IdParams = { params: Promise<{ id: string }> };
 
 /** The guest row, but only if this organization holds it. */
+/**
+ * Вивантаження і знеособлення — по РАХУНКУ, і це сказано (Д52; GDPR за законом).
+ *
+ * Стаття 15 — вивантаження даних ОДНІЄЇ людини, стаття 17 — знеособлення по
+ * всіх її бронях рахунку. Звуження до обʼєкта зробило б вивантаження неповним,
+ * а відповідь «Erasure complete» — неправдою: особа лишалась би живою в
+ * сусідньому будинку. Тут вісь не «поки що всі», а «всі за законом».
+ */
+const ACROSS_PROPERTIES = propertyScopeFilter(ALL_PROPERTIES, 'r');
+
 async function ownGuest(organizationId: string, id: string) {
   const sql = getSql();
   return await sql.row<any>('SELECT * FROM guests WHERE id = ? AND organization_id = ?', [id, organizationId]) as any;
@@ -40,21 +51,21 @@ export const exportGuestData = withPermission('manage_guests', async (_request, 
     const bookings = await sql.rows<any>(`
       SELECT r.* FROM reservations r
       JOIN properties p ON p.id = r.property_id
-      WHERE r.guest_id = ? AND p.organization_id = ?
+      WHERE r.guest_id = ? AND p.organization_id = ? AND ${ACROSS_PROPERTIES.sql}
     `, [id, actor.organizationId]) as any[];
 
     const registrations = await sql.rows<any>(`
       SELECT rg.* FROM reservation_guests rg
       JOIN reservations r ON r.id = rg.reservation_id
       JOIN properties p ON p.id = r.property_id
-      WHERE rg.guest_id = ? AND p.organization_id = ?
+      WHERE rg.guest_id = ? AND p.organization_id = ? AND ${ACROSS_PROPERTIES.sql}
     `, [id, actor.organizationId]) as any[];
 
     const consentLogs = await sql.rows<any>(`
       SELECT gr.* FROM guest_registrations gr
       JOIN reservations r ON r.id = gr.reservation_id
       JOIN properties p ON p.id = r.property_id
-      WHERE gr.guest_id = ? AND p.organization_id = ?
+      WHERE gr.guest_id = ? AND p.organization_id = ? AND ${ACROSS_PROPERTIES.sql}
     `, [id, actor.organizationId]) as any[];
 
     // The controller named in the export is the tenant. It used to be one
@@ -111,7 +122,7 @@ export const eraseGuestData = withPermission('manage_guests', async (_request, {
         SELECT 1 FROM reservation_guests rg
         JOIN reservations r ON r.id = rg.reservation_id
         JOIN properties p ON p.id = r.property_id
-        WHERE rg.guest_id = ? AND r.check_out >= ? AND p.organization_id = ?
+        WHERE rg.guest_id = ? AND r.check_out >= ? AND p.organization_id = ? AND ${ACROSS_PROPERTIES.sql}
         LIMIT 1
       `, [id, cutoffStr, actor.organizationId]);
 
@@ -155,7 +166,7 @@ export const eraseGuestData = withPermission('manage_guests', async (_request, {
           WHERE guest_id = ? AND reservation_id IN (
             SELECT r.id FROM reservations r
             JOIN properties p ON p.id = r.property_id
-            WHERE p.organization_id = ?
+            WHERE p.organization_id = ? AND ${ACROSS_PROPERTIES.sql}
           )
         `, [id, actor.organizationId]);
 

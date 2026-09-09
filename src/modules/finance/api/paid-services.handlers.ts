@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { type Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
+import { requestPropertyScope } from '@core/auth/property-scope';
+import { propertyScopeFilter } from '@core/property-scope';
 
 /**
  * Оплачені послуги і чи дійшли вони до книг.
@@ -48,6 +50,13 @@ export async function getPaidServices(request: NextRequest, _ctx: unknown, actor
     const from = searchParams.get('from') || '1970-01-01';
     const to = searchParams.get('to') || '2999-12-31';
     const onlyOrphans = searchParams.get('only_orphans') === '1';
+    // Гроші — по ОБʼЄКТУ (Д52, В11): цей звіт віддає замовлення за
+    // замовленням, з `guest_name` і `unit_name`. Обидві половини `UNION ALL`
+    // беруть вісь від ПОСЛУГИ (`additional_services.property_id`), а не від
+    // броні: віджетне замовлення може не мати броні — заходень купує сауну
+    // без проживання, — і якір від броні тихо викинув би саме його.
+    const scope = await requestPropertyScope(request, actor.organizationId);
+    const axis = propertyScopeFilter(scope, 's');
 
     // `sql.dialect.day(...)`, а не `date(...)`: created_at — момент, from/to —
     // календарні дні, і без зрізу останній день діапазону не потрапляв би у
@@ -82,7 +91,7 @@ export async function getPaidServices(request: NextRequest, _ctx: unknown, actor
       LEFT JOIN reservations r   ON r.id = o.reservation_id
       LEFT JOIN guests g         ON g.id = r.guest_id
       LEFT JOIN units u          ON u.id = r.unit_id
-      WHERE p.organization_id = ?
+      WHERE p.organization_id = ? AND ${axis.sql}
         AND o.payment_status IN ${PAID}
         AND ${day} BETWEEN ? AND ?
 
@@ -116,14 +125,14 @@ export async function getPaidServices(request: NextRequest, _ctx: unknown, actor
       LEFT JOIN reservations r   ON r.id = o.reservation_id
       LEFT JOIN guests g         ON g.id = r.guest_id
       LEFT JOIN units u          ON u.id = r.unit_id
-      WHERE p.organization_id = ?
+      WHERE p.organization_id = ? AND ${axis.sql}
         AND o.payment_status IN ${PAID}
         AND ${day} BETWEEN ? AND ?
 
       ORDER BY created_at DESC
     `, [
-      actor.organizationId, actor.organizationId, from, to,
-      actor.organizationId, actor.organizationId, from, to,
+      actor.organizationId, actor.organizationId, ...axis.params, from, to,
+      actor.organizationId, actor.organizationId, ...axis.params, from, to,
     ]);
 
     const orphans = rows.filter((r) => !r.fin_operation_id);
