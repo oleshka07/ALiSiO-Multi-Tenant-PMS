@@ -278,6 +278,32 @@ assert.notEqual(sentProperties['a']?.timezone, sentB?.timezone,
   'обидва орендарі поїхали ОДНИМ поясом — вісь вироджена, твердження нічого не варте');
 console.log('  ok  сусід їде своїм поясом і типом, і вони інші');
 
+/**
+ * «Названа відмова» — це три речі одночасно, і збіг тексту не доводить
+ * жодної з них (§3.2.1: гейт стереже ВЛАСТИВІСТЬ, а не візерунок).
+ *
+ *   1) це відмова, а не виняток — тобто вона доїде до оператора своїм 400,
+ *      а не перетвориться на «Внутрішня помилка сервера» (Р13.10);
+ *   2) вона мовою продукту — інакше німецький портьє бачить рядок коду
+ *      (Р15.2: тут стояло `catalog: property_type is not set — …`);
+ *   3) вона називає ПРЕДМЕТ, а не нашу колонку: людина мусить зрозуміти,
+ *      що саме піти й полагодити.
+ *
+ * Тому перевіряються всі три, і третя — по суті, а не дослівно: змінити
+ * формулювання можна, перестати називати предмет — ні.
+ */
+function namedRefusal(subject: RegExp) {
+  return (e: unknown) => {
+    const err = e as { isRefusal?: boolean; status?: number; message?: string };
+    const text = err?.message ?? String(e);
+    assert.ok(err?.isRefusal, `очікували названу відмову, а прилетів голий виняток: ${text}`);
+    assert.strictEqual(err.status, 400, `названа відмова їде своїм 400, а не ${err.status}`);
+    assert.ok(/[а-яіїєґ]/i.test(text), `відмова не мовою продукту: ${text}`);
+    assert.ok(subject.test(text), `відмова не називає предмет (${subject}): ${text}`);
+    return true;
+  };
+}
+
 // ── Готель, який не назвався, не їде взагалі ────────────────────────────
 //
 // Тип впливає на рахунок ВЕНДОРА готелю. Підставити 'hotel' означало б
@@ -287,7 +313,7 @@ await runWithOrganization(A, async () => {
   await sql.run('UPDATE cm_connections SET remote_property_id = NULL WHERE id = ?', [`${A}_conn`]);
   await assert.rejects(
     () => syncConnectionCatalog(`${A}_conn`, { target: fakeTarget('n') as never }),
-    /property_type is not set/,
+    namedRefusal(/рід житла/i),
     'обʼєкт без типу мусить відмовити НАЗВАНО, а не поїхати з нашим здогадом',
   );
 });
@@ -312,14 +338,16 @@ await runWithOrganization(A, async () => {
   await sql.run('UPDATE organizations SET timezone = ? WHERE id = ?', ['', A]);
   await assert.rejects(
     () => syncConnectionCatalog(`${A}_conn`, { target: fakeTarget('tz1') as never }),
-    /has no timezone/,
+    namedRefusal(/пояс/i),
     'порожній пояс мовчки випав з тіла замість названої відмови',
   );
 
   await sql.run('UPDATE organizations SET timezone = ? WHERE id = ?', ['Europe/Atlantis', A]);
   await assert.rejects(
     () => syncConnectionCatalog(`${A}_conn`, { target: fakeTarget('tz2') as never }),
-    /not a known IANA zone/,
+    // Названа зона В ТЕКСТІ: «зона невідома» без імені лишає оператора з
+    // питанням «яка саме», а він міг ввести її три екрани тому.
+    namedRefusal(/Europe\/Atlantis/),
     'вигадана зона поїхала б вендору і повернулась 422 посеред створення каталогу',
   );
 

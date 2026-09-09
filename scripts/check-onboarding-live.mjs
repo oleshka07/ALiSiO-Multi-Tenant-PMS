@@ -136,9 +136,13 @@ const day = (n) => { const d = new Date(); d.setUTCDate(d.getUTCDate() + n); ret
  * явно: країна обʼєкта вирішує ще й ЮРИСДИКЦІЮ документа, і міняти її заради
  * пояса означало б міняти те, про що прохід не збирався стверджувати.
  */
+// `lodgingKind` — обовʼязковий при заведенні (В1), і два різні НАВМИСНО: це
+// вісь рахунку вендора (готельна група за обʼєкт, оренда за юніт), тож два
+// однакові роди лишили б прохід зеленим і тоді, коли поле не доїжджає до
+// обʼєкта взагалі.
 const HOTELS = [
-  { key: 'A', slug: `${SLUG_TAG}-alpha`, name: 'Onboarding Alpha', currency: 'EUR', timezone: 'Europe/Kyiv', price: 120, total: 240, room: '101' },
-  { key: 'B', slug: `${SLUG_TAG}-beta`, name: 'Onboarding Beta', currency: 'CZK', timezone: 'Europe/Prague', price: 200, total: 400, room: '201' },
+  { key: 'A', slug: `${SLUG_TAG}-alpha`, name: 'Onboarding Alpha', currency: 'EUR', timezone: 'Europe/Kyiv', lodgingKind: 'hotel', price: 120, total: 240, room: '101' },
+  { key: 'B', slug: `${SLUG_TAG}-beta`, name: 'Onboarding Beta', currency: 'CZK', timezone: 'Europe/Prague', lodgingKind: 'apartment', price: 200, total: 400, room: '201' },
 ];
 
 async function login(email) {
@@ -203,9 +207,19 @@ async function runHotel(h) {
     name: h.name, slug: h.slug,
     ownerEmail: `${h.slug}@probe.test`, ownerPassword: PROBE_PASSWORD,
     currency: h.currency, language: 'uk', timezone: h.timezone,
+    lodgingKind: h.lodgingKind,
   });
   claim(fam, !!org.organizationId && !!org.propertyId,
     `заведено організацію й обʼєкт (${org.organizationId ? 'є' : 'НЕМАЄ'} / ${org.propertyId ? 'є' : 'НЕМАЄ'})`);
+
+  // Рід житла ліг НА ОБʼЄКТ, а не лишився в аргументі (В1). Звідси його бере
+  // синк каталогу, і він же — основа рахунку вендора; до правки обʼєкт
+  // народжувався з `property_type = NULL` і чекав, поки хтось відкриє форму.
+  const kindRow = await runWithOrganization(org.organizationId, () =>
+    sql.row('SELECT property_type FROM properties WHERE id = ? AND organization_id = ?',
+      [org.propertyId, org.organizationId]));
+  claim(fam, kindRow?.property_type === h.lodgingKind,
+    `рід житла на обʼєкті — названий (у базі: ${kindRow?.property_type ?? 'НЕМАЄ'}, чекали ${h.lodgingKind})`);
 
   // Модулі, вимкнені за замовчуванням (П15): прохід перевіряє ШЛЯХ, а не
   // право на модуль — 403 «не куплено» тут означав би, що ми не спитали.

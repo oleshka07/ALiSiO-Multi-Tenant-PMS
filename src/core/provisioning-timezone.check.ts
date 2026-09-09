@@ -93,7 +93,7 @@ assert.equal(timezoneForCountry('ZZ'), null, 'невідома країна — 
 const ua = await provisionOrganization({
   name: 'Probe TZ UA', slug: 'probe-tz-ua',
   ownerEmail: 'probe-tz-ua@probe.test', ownerPassword: PASSWORD,
-  currency: 'UAH', language: 'uk', country: 'UA',
+  currency: 'UAH', language: 'uk', country: 'UA', lodgingKind: 'hotel',
 });
 const uaZone = await storedTimezone(ua.organizationId);
 assert.equal(uaZone, 'Europe/Kyiv',
@@ -106,7 +106,7 @@ assert.equal(ua.timezoneFrom, 'country',
 const cz = await provisionOrganization({
   name: 'Probe TZ CZ', slug: 'probe-tz-cz',
   ownerEmail: 'probe-tz-cz@probe.test', ownerPassword: PASSWORD,
-  currency: 'CZK', language: 'cs', country: 'CZ',
+  currency: 'CZK', language: 'cs', country: 'CZ', lodgingKind: 'hotel',
 });
 const czZone = await storedTimezone(cz.organizationId);
 assert.equal(czZone, 'Europe/Prague', `сусід поїхав своїм поясом (${czZone})`);
@@ -118,17 +118,25 @@ const explicit = await provisionOrganization({
   name: 'Probe TZ explicit', slug: 'probe-tz-explicit',
   ownerEmail: 'probe-tz-explicit@probe.test', ownerPassword: PASSWORD,
   currency: 'UAH', language: 'uk', country: 'UA', timezone: 'Europe/Warsaw',
+  lodgingKind: 'hotel',
 });
 assert.equal(await storedTimezone(explicit.organizationId), 'Europe/Warsaw',
   'названий пояс перебиває виведений із країни');
 assert.equal(explicit.timezoneFrom, 'input', 'і це не видається за висновок');
 
 // ── Три відмови: мовчазного дефолту більше немає ─────────────────────────
+//
+// Рід житла тут названий у КОЖНОМУ виклику, і це не формальність. Після В1
+// заведення відмовляє і без нього (`provisioning-lodging-kind.check.ts`), а
+// його варта стоїть вище за поясову. Не назвавши рід, ці три твердження
+// ловили б відмову ПРО РІД і були б зелені при будь-якому стані поясової
+// варти — рівно те, від чого стереже §3.2.1: зелене твердження, яке більше
+// не про свою вісь.
 await assert.rejects(
   () => provisionOrganization({
     name: 'Probe TZ none', slug: 'probe-tz-none',
     ownerEmail: 'probe-tz-none@probe.test', ownerPassword: PASSWORD,
-    currency: 'EUR', language: 'uk',
+    currency: 'EUR', language: 'uk', lodgingKind: 'hotel',
   }),
   /timezone/,
   'ні пояса, ні країни — названа відмова, а не Прага',
@@ -138,7 +146,7 @@ await assert.rejects(
   () => provisionOrganization({
     name: 'Probe TZ multi', slug: 'probe-tz-multi',
     ownerEmail: 'probe-tz-multi@probe.test', ownerPassword: PASSWORD,
-    currency: 'USD', language: 'en', country: 'US',
+    currency: 'USD', language: 'en', country: 'US', lodgingKind: 'hotel',
   }),
   /timezone/,
   'країна з кількома поясами — відмова, а не перший-ліпший із них',
@@ -149,6 +157,7 @@ await assert.rejects(
     name: 'Probe TZ bogus', slug: 'probe-tz-bogus',
     ownerEmail: 'probe-tz-bogus@probe.test', ownerPassword: PASSWORD,
     currency: 'EUR', language: 'uk', timezone: 'Europe/Atlantis',
+    lodgingKind: 'hotel',
   }),
   /timezone/,
   'вигаданий пояс не записується: `todayIn` мовчки падає з нього на UTC',

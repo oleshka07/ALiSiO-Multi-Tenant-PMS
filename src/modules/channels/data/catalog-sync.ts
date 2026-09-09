@@ -98,8 +98,17 @@ export async function syncConnectionCatalog(
   // побачити причину», а голий Error затирався `serverError` до
   // «Внутрішня помилка сервера» ще на маршруті (Р13.10). Тепер текст їде
   // своїм 400.
+  // Р15.2: мова відмови — продуктова.
+  //
+  // Тут стояло `catalog: property_type is not set — the hotel must say…`.
+  // Це слова коду, не слова оператора: англійською в українському продукті,
+  // з нашою назвою колонки і з префіксом файлу замість причини. Названа
+  // відмова існує рівно для того, щоб її ПРОЧИТАЛА людина; написана так, вона
+  // виглядає як витік винятку, і перше, що робить оператор, — шукає, кому це
+  // переслати. Тому: що не так, чим це обертається, і що зробити.
   if (!property.propertyType) {
-    refuse('catalog: property_type is not set — the hotel must say what kind of lodging it is');
+    refuse('Каталог не відправлено: не вказано рід житла. Це вісь, за якою менеджер каналів '
+      + 'рахує тариф, тож ми його не вгадуємо — оберіть у налаштуваннях обʼєкта.');
   }
   // Пояс — тією ж вартою і з тієї ж причини (Р13.12).
   //
@@ -113,10 +122,12 @@ export async function syncConnectionCatalog(
   // `isKnownTimezone`, що й при заведенні готелю (`provisionOrganization`),
   // щоб два шляхи не розійшлися в тому, який пояс вважають справжнім.
   if (!property.timezone || !property.timezone.trim()) {
-    refuse('catalog: the property has no timezone — the hotel must say which one it is in');
+    refuse('Каталог не відправлено: не вказано часовий пояс обʼєкта. Він вирішує, де проходить '
+      + 'межа доби, а канал торгує датами заїзду — вкажіть у загальних налаштуваннях.');
   }
   if (!isKnownTimezone(property.timezone)) {
-    refuse(`catalog: timezone "${property.timezone}" is not a known IANA zone (Europe/Kyiv, Europe/Prague, …)`);
+    refuse(`Каталог не відправлено: часової зони «${property.timezone}» не існує. `
+      + 'Потрібна назва з бази IANA — наприклад Europe/Kyiv або Europe/Prague.');
   }
 
   const unitTypes = await catalogUnitTypes(connection.propertyId);
@@ -172,7 +183,8 @@ export async function syncConnectionCatalog(
     // Обʼєкт без жодного тарифу не має чим назвати валюту, а менеджер
     // каналів вимагає її обовʼязково. Відмова тут дешевша за 422 посеред
     // створення, коли обʼєкт уже заведено, а тарифи — ще ні.
-    refuse('catalog: property has no rate plan to take the currency from');
+    refuse('Каталог не відправлено: в обʼєкта немає жодного тарифу, і валюту продажу '
+      + 'нізвідки взяти. Створіть тариф — з нього береться валюта каталогу.');
   }
 
   const report = await runSyncCatalog(args);

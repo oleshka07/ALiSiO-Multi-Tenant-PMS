@@ -3,7 +3,7 @@ import { getSql } from '@core/db/async';
 // не має відмовляти за списком вендора каналів готелю, який каналів не
 // купував; вендорські значення мапить сам модуль каналів у себе
 // (`channels/channex/property-type.ts`).
-import { LODGING_KINDS, isLodgingKind } from '@core/lodging-kinds';
+import { isLodgingKind } from '@core/lodging-kinds';
 import { refuse } from '@core/http/refusal';
 import { unitColumnsSql } from './units.repo';
 
@@ -114,7 +114,11 @@ export async function createProperty(organizationId: string, input: CreateProper
   // Той самий перелік, що й у `updateProperty`, і з тієї ж причини: форма
   // обʼєкта одна на створення й на правку, тож тип, набраний при створенні,
   // мовчки губився б, якби писач його не приймав.
-  const propertyType = validPropertyType(input.property_type);
+  //
+  // ОБОВʼЯЗКОВИЙ саме тут (В1): новий обʼєкт без роду житла — це обʼєкт, чий
+  // каталог не поїде в канал і чий рахунок вендор порахує не за тим. Той
+  // самий розклад, що з поясом у `provisionOrganization`.
+  const propertyType = validPropertyType(input.property_type, true);
   const result = await sql.row<any>(
     `
     INSERT INTO properties (organization_id, name, slug, address, city, country, phone, email, check_in_time, check_out_time, property_type)
@@ -130,20 +134,43 @@ export async function createProperty(organizationId: string, input: CreateProper
 }
 
 /**
- * Тип житла з переліку вендора — або названа відмова.
+ * Рід житла з переліку — або названа відмова.
  *
  * Звіряє писач, а не CHECK бази: перелік чужий і може зрости
- * (`@core/lodging-kinds`). Порожній рядок означає «ще не названо» і
- * стає NULL — інакше в колонці лежало б `''`, і каталог вважав би рід
- * названим (`catalog-sync` перевіряє саме порожнечу).
+ * (`@core/lodging-kinds`).
+ *
+ * ── Мова відмови (Р15.2) ────────────────────────────────────────────────
+ *
+ * Тут стояло `property_type must be one of: <22 машинні значення>` —
+ * англійською, назвою колонки і всім переліком нараз. Це три різні вади в
+ * одному рядку: продукт відмовляє українською скрізь, окрім цього місця;
+ * «property_type» — це наша колонка, а не слово оператора; а 22 значення
+ * в один рядок — не допомога, а стіна, у якій потрібного не видно. Перелік
+ * оператор бачить списком у формі обʼєкта, і саме туди його відсилаємо.
+ *
+ * ── Порожнє значення (В1) ───────────────────────────────────────────────
+ *
+ * `required` — при СТВОРЕННІ: рід житла обирає готель, один раз, і без
+ * нього обʼєкта не існує. При правці порожнє поле означає «форма про це
+ * мовчить» і лишає збережене як є: інакше екран, який не надіслав поля,
+ * стирав би вибір, зроблений раніше.
  */
-function validPropertyType(value: unknown): string | null {
-  if (value === undefined || value === null || value === '') return null;
+function validPropertyType(value: unknown, required: boolean): string | null {
+  if (value === undefined || value === null || value === '') {
+    if (required) {
+      refuse('Оберіть рід житла: від нього залежить, за що менеджер каналів бере гроші — '
+        + 'за обʼєкт чи за кожен юніт. Ми його не вгадуємо.');
+    }
+    // Порожній рядок означає «ще не названо» і стає NULL — інакше в колонці
+    // лежало б `''`, і каталог вважав би рід названим (`catalog-sync`
+    // перевіряє саме порожнечу).
+    return null;
+  }
   if (!isLodgingKind(value)) {
     // `refuse` (400), не голий Error: рід житла поза переліком — помилка
     // ВИКЛИКАЧА, і маршрут віддавав її 500 із текстом назовні (Р13.10,
     // інваріант 6). Тепер 400 своїм текстом, а 500 не переказує нічого.
-    refuse(`property_type must be one of: ${LODGING_KINDS.join(', ')}`);
+    refuse(`Рід житла «${String(value)}» нам невідомий — оберіть зі списку у формі обʼєкта.`);
   }
   return value;
 }
@@ -154,7 +181,7 @@ export async function updateProperty(organizationId: string, id: string, fields:
 
   const allowed = ['name', 'slug', 'address', 'city', 'country', 'phone', 'email', 'check_in_time', 'check_out_time', 'city_tax_per_night', 'is_active', 'checkout_balance_policy', 'property_type'];
   if (fields.property_type !== undefined) {
-    fields = { ...fields, property_type: validPropertyType(fields.property_type) };
+    fields = { ...fields, property_type: validPropertyType(fields.property_type, false) };
   }
   // Політика виселення з боргом (0091) — одне з трьох слів. Звіряє писач, а
   // не лише CHECK бази: на SQLite обмеження до наявної таблиці не додати.

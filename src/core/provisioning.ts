@@ -8,6 +8,7 @@ import { DEFAULT_LANGUAGE, LANGUAGE_CODES, isLanguage } from './i18n/languages.t
 import { defaultBookingSources } from './booking-sources.ts';
 import { CHART_OF_ACCOUNTS, BUSINESS_UNITS } from './chart-of-accounts.ts';
 import { timezoneForCountry, isKnownTimezone } from './hotel-day.ts';
+import { LODGING_KINDS, isLodgingKind } from './lodging-kinds.ts';
 
 /**
  * Creating a customer.
@@ -51,6 +52,16 @@ export interface NewOrganization {
   currency?: string;
   timezone?: string;
   /**
+   * Рід житла, яким готель називається каналу продажу. ОБОВʼЯЗКОВИЙ.
+   *
+   * Рішення власника В1 (09.09.2026): «має бути чіткий вибір, один раз
+   * обирається і закріплюється за готелем». Не дефолт: вендор каналу бере це
+   * поле за ОСНОВУ РАХУНКУ — готельна група тарифікується за обʼєкт, оренда
+   * за юніт, — тож підставлений `hotel` це чужий рахунок, виставлений
+   * мовчки. Той самий розклад, що з валютою і поясом.
+   */
+  lodgingKind?: string;
+  /**
    * The hotel's base language. Its staff get the interface in it, and it is
    * the language its people type content in — so it is also the source the
    * guest-facing translations are made from. Defaults to Ukrainian, which is
@@ -74,6 +85,8 @@ export interface ProvisionedOrganization {
    * на підтвердження, а не видати його за введене.
    */
   timezoneFrom: 'input' | 'country';
+  /** Рід житла, який ліг на обʼєкт. Названий — іншого шляху немає (В1). */
+  lodgingKind: string;
 }
 
 /**
@@ -178,6 +191,26 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
       'timezone is required: pass it explicitly, or a country whose timezone is unambiguous '
       + '(UA, CZ, PL, DE, … — countries with several zones, like US or ES, must name the zone)');
   }
+  // Рід житла — за тим самим правилом, і з тієї ж причини, що валюта й пояс.
+  //
+  // Рішення власника В1: вибір, а не дефолт. Вендор каналу бере це поле за
+  // основу рахунку (готельна група — за обʼєкт, оренда — за юніт), тож
+  // мовчазний `hotel` означає чужий тариф, виставлений готелю без його
+  // відома, і помітить це не код, а виписка першого числа.
+  //
+  // Перелік — у ядрі (`lodging-kinds.ts`), не в модулі каналів: рід житла це
+  // факт про сам обʼєкт, і форма обʼєкта питає його в готелю, який каналів
+  // не купував.
+  const lodgingKind = input.lodgingKind?.trim();
+  if (!lodgingKind) {
+    throw new Error(
+      'lodgingKind is required: the hotel says what kind of lodging it is, and it is not guessed '
+      + `(${LODGING_KINDS.slice(0, 4).join(', ')}, … — ${LODGING_KINDS.length} in all)`);
+  }
+  if (!isLodgingKind(lodgingKind)) {
+    throw new Error(`lodgingKind "${lodgingKind}" is not one of the ${LODGING_KINDS.length} known kinds`);
+  }
+
   // Вигаданий пояс не записується: `todayIn` з нього мовчки падає на UTC, і
   // готель отримує «сьогодні» за Гринвічем, не помітивши цього.
   if (!isKnownTimezone(timezone)) {
@@ -217,8 +250,8 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
     // Currency lives on the organization; a property carries location and
     // times. (getOrgIdentity and the ARI push both read it from there.)
     await t.run(`
-      INSERT INTO properties (id, organization_id, name, slug, city, country)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO properties (id, organization_id, name, slug, city, country, property_type)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `, [propertyId, organizationId,
       input.propertyName || name,
       `${slug}-1`,
@@ -233,7 +266,9 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
       //
       // Тому мовчазного вгадування тут більше немає: не названо — NULL, і
       // юрисдикцію вирішує мова готелю, поки країну не введуть явно.
-      input.country || null]);
+      input.country || null,
+      // Рід житла — названий, звірений вище. Мовчазного дефолту немає (В1).
+      lodgingKind]);
 
     // One category so the calendar has a group to draw. Its name is generic on
     // purpose — the hotel renames it, and the type is now free text.
@@ -354,5 +389,5 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
     // шлях, яким його отримують готелі, заведені до 0111.
   }));
 
-  return { organizationId, propertyId, ownerId, language, timezone, timezoneFrom };
+  return { organizationId, propertyId, ownerId, language, timezone, timezoneFrom, lodgingKind };
 }

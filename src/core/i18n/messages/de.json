@@ -1,5 +1,4 @@
 {
-  "— не вказано —": "— nicht angegeben —",
   "% в минулому": "% in der Vergangenheit",
   "% від ціни ночі": "% vom Nachtpreis",
   "% оплачено": "% bezahlt",
@@ -60,8 +59,6 @@
   "50 записів": "50 Einträge",
   "6 місяців": "6 Monate",
   "= Чистий потік": "= Nettocashflow",
-  "Вендор каналу рахує за цим тариф. Поки не вказано — каталог у канал не поїде.": "Der Kanal-Anbieter rechnet danach ab. Ohne Angabe geht der Katalog nicht in den Kanal.",
-  "Рід житла (для каналів)": "Unterkunftsart (für Kanäle)",
   "AI Асистент (Ctrl+K)": "KI-Assistent (Strg+K)",
   "AI База знань": "KI-Wissensdatenbank",
   "API Інтеграції": "API-Integrationen",
@@ -1677,7 +1674,7 @@
   "Об'єкти розміщення": "Unterkunftsobjekte",
   "Обʼєкт": "Objekt",
   "Обʼєкт, ціни, продаж і модулі — усе, що готель налаштовує сам": "Objekt, Preise, Verkauf und Module — alles, was das Hotel selbst einstellt",
-  "Обʼєкт: адреса, країна, час заїзду та виїзду": "Objekt: Adresse, Land, Check-in-/Check-out-Zeit",
+  "Обʼєкт: адреса, країна, час заїзду та виїзду, рід житла": "Objekt: Adresse, Land, Check-in-/Check-out-Zeit, Unterkunftsart",
   "Обʼєкти": "Objekte",
   "Обʼєктів": "Objekte",
   "Обʼєктів ще немає": "Noch keine Objekte",
@@ -5363,7 +5360,7 @@
   "обʼєкт і номер": "Haus und Zimmer",
   "обʼєкт не в Німеччині — діють правила своєї країни": "Betrieb nicht in Deutschland — es gelten die Regeln des jeweiligen Landes",
   "Обʼєкт, ціни, продаж і модулі — усе, що готель налаштовує сам": "Objekt, Preise, Verkauf und Module — alles, was das Hotel selbst einstellt",
-  "Обʼєкт: адреса, країна, час заїзду та виїзду": "Objekt: Adresse, Land, Check-in-/Check-out-Zeit",
+  "Обʼєкт: адреса, країна, час заїзду та виїзду, рід житла": "Objekt: Adresse, Land, Check-in-/Check-out-Zeit, Unterkunftsart",
   "Обʼєкти": "Objekte",
   "Обʼєктів": "Objekte",
   "Обʼєктів ще немає": "Noch keine Objekte",
@@ -6636,5 +6633,7 @@
   "🧹 Прибирання (": "🧹 Reinigung (",
   "🧾 Рахунки по платниках": "🧾 Rechnungen nach Zahlern",
   "🩺 Аудит фінансової архітектури": "🩺 Audit der Finanzarchitektur",
-  "🪑 Меблі": "🪑 Möbel"
+  "🪑 Меблі": "🪑 Möbel",
+  "Рід житла *": "Unterkunftsart *",
+  "Обирається один раз і закріплюється за готелем: вендор каналу рахує за ним тариф. Поки не вказано — каталог у канал не поїде.": "Wird einmal gewählt und bleibt beim Hotel: Der Kanal-Anbieter berechnet danach seinen Tarif. Solange nichts gewählt ist, geht der Katalog nicht an den Kanal."
 }

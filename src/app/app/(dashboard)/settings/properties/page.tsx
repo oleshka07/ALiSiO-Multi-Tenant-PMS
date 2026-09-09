@@ -908,13 +908,15 @@ export default function SettingsPropertiesPage() {
               (той самий підхід, що в підказках типу категорії вище). */}
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">{tUi('Рід житла (для каналів)')}</label>
+              {/* Обовʼязковий при створенні (В1): писач відмовляє названими
+                  словами, і форма каже про це до натискання, а не після. */}
+              <label className="form-label">{tUi('Рід житла *')}</label>
               <select className="form-select" value={propForm.property_type}
                 onChange={e => setPropForm(p => ({ ...p, property_type: e.target.value }))}>
-                <option value="">{tUi('— не вказано —')}</option>
+                <option value="">{tUi('— оберіть —')}</option>
                 {LODGING_KINDS.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
-              <div className="form-hint">{tUi('Вендор каналу рахує за цим тариф. Поки не вказано — каталог у канал не поїде.')}</div>
+              <div className="form-hint">{tUi('Обирається один раз і закріплюється за готелем: вендор каналу рахує за ним тариф. Поки не вказано — каталог у канал не поїде.')}</div>
               {/* Наслідок для рахунку — до натискання, і лише тим, хто канали
                   купував. Рід житла став віссю тарифікації (лист вендора
                   09.09.2026), а помилка тут мовчить до першого числа. */}

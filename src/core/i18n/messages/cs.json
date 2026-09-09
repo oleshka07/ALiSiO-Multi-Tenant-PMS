@@ -1,5 +1,4 @@
 {
-  "— не вказано —": "— neuvedeno —",
   "% в минулому": "% v minulosti",
   "% від ціни ночі": "% z ceny noci",
   "% оплачено": "% zaplaceno",
@@ -60,8 +59,6 @@
   "50 записів": "50 záznamů",
   "6 місяців": "6 měsíců",
   "= Чистий потік": "= Čistý tok",
-  "Вендор каналу рахує за цим тариф. Поки не вказано — каталог у канал не поїде.": "Poskytovatel kanálu podle toho účtuje. Dokud není uvedeno, katalog do kanálu nepůjde.",
-  "Рід житла (для каналів)": "Druh ubytování (pro kanály)",
   "AI Асистент (Ctrl+K)": "AI asistent (Ctrl+K)",
   "AI База знань": "AI znalostní báze",
   "API Інтеграції": "API integrace",
@@ -1677,7 +1674,7 @@
   "Об'єкти розміщення": "Ubytovací objekty",
   "Обʼєкт": "Objekt",
   "Обʼєкт, ціни, продаж і модулі — усе, що готель налаштовує сам": "Objekt, ceny, prodej a moduly — vše, co si hotel nastavuje sám",
-  "Обʼєкт: адреса, країна, час заїзду та виїзду": "Objekt: adresa, země, čas příjezdu a odjezdu",
+  "Обʼєкт: адреса, країна, час заїзду та виїзду, рід житла": "Objekt: adresa, země, čas příjezdu a odjezdu, druh ubytování",
   "Обʼєкти": "Objekty",
   "Обʼєктів": "Objektů",
   "Обʼєктів ще немає": "Zatím žádné objekty",
@@ -5417,7 +5414,7 @@
   "обʼєкт і номер": "objekt i pokoj",
   "обʼєкт не в Німеччині — діють правила своєї країни": "objekt není v Německu — platí pravidla vlastní země",
   "Обʼєкт, ціни, продаж і модулі — усе, що готель налаштовує сам": "Objekt, ceny, prodej a moduly — vše, co si hotel nastavuje sám",
-  "Обʼєкт: адреса, країна, час заїзду та виїзду": "Objekt: adresa, země, čas příjezdu a odjezdu",
+  "Обʼєкт: адреса, країна, час заїзду та виїзду, рід житла": "Objekt: adresa, země, čas příjezdu a odjezdu, druh ubytování",
   "Обʼєкти": "Objekty",
   "Обʼєктів": "Objektů",
   "Обʼєктів ще немає": "Zatím žádné objekty",
@@ -6700,5 +6697,7 @@
   "🧹 Прибирання (": "🧹 Úklid (",
   "🧾 Рахунки по платниках": "🧾 Faktury podle plátců",
   "🩺 Аудит фінансової архітектури": "🩺 Audit finanční architektury",
-  "🪑 Меблі": "🪑 Nábytek"
+  "🪑 Меблі": "🪑 Nábytek",
+  "Рід житла *": "Druh ubytování *",
+  "Обирається один раз і закріплюється за готелем: вендор каналу рахує за ним тариф. Поки не вказано — каталог у канал не поїде.": "Volí se jednou a zůstává hotelu: poskytovatel kanálu podle toho účtuje svůj tarif. Dokud není zvoleno, katalog do kanálu nepůjde."
 }

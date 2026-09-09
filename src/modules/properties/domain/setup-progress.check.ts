@@ -28,7 +28,7 @@ const EMPTY: SetupSnapshot = {
 };
 
 const FULL: SetupSnapshot = {
-  property: { country: 'CZ', checkInTime: '15:00', checkOutTime: '10:00' },
+  property: { country: 'CZ', checkInTime: '15:00', checkOutTime: '10:00', lodgingKind: 'hotel' },
   unitTypes: 3, units: 8,
   pricedDaysAhead: 365,
   ratePlans: 2,
@@ -50,9 +50,20 @@ console.log('  ok  0/8 і 8/8 на двох крайніх зрізах');
 const only = (patch: Partial<SetupSnapshot>) => setupProgress({ ...EMPTY, ...patch });
 const doneKeys = (s: ReturnType<typeof setupProgress>) => s.steps.filter((x) => x.done).map((x) => x.key);
 
-// 1. Обʼєкт: країна і часи заїзду/виїзду — саме те, що дає provision-org.
-assert.deepStrictEqual(doneKeys(only({ property: { country: 'UA', checkInTime: '14:00', checkOutTime: '12:00' } })), ['property']);
-assert.deepStrictEqual(doneKeys(only({ property: { country: null, checkInTime: '14:00', checkOutTime: '12:00' } })), [], 'обʼєкт без країни — не зроблено');
+// 1. Обʼєкт: країна, часи заїзду/виїзду і РІД ЖИТЛА — саме те, що дає
+//    provision-org. Рід тут не четверта галочка: поки він не названий,
+//    каталог у канал не їде взагалі, а рахунок вендора рахується не за тим.
+assert.deepStrictEqual(doneKeys(only({ property: { country: 'UA', checkInTime: '14:00', checkOutTime: '12:00', lodgingKind: 'camping' } })), ['property']);
+assert.deepStrictEqual(doneKeys(only({ property: { country: null, checkInTime: '14:00', checkOutTime: '12:00', lodgingKind: 'camping' } })), [], 'обʼєкт без країни — не зроблено');
+assert.deepStrictEqual(doneKeys(only({ property: { country: 'UA', checkInTime: '14:00', checkOutTime: '12:00', lodgingKind: null } })), [], 'обʼєкт без роду житла — не зроблено (В1)');
+// Вісь роду житла існує окремо від решти трьох полів: сцена вище і сцена
+// нижче різняться РІВНО одним полем, і різними значеннями (§26). Порожній
+// рядок — не рід: колонка його приймає, а `!!''` дало б «зроблено».
+assert.deepStrictEqual(doneKeys(only({ property: { country: 'UA', checkInTime: '14:00', checkOutTime: '12:00', lodgingKind: '' } })), [], 'порожній рядок — не рід житла');
+// І значення доїжджає до екрана, а не лише до галочки: підпис про рахунок
+// каналу малює `LodgingBillingHint`, і малювати йому нічого без цього поля.
+assert.strictEqual(setupProgress({ ...EMPTY, property: { country: 'UA', checkInTime: '14:00', checkOutTime: '12:00', lodgingKind: 'camping' } }).lodgingKind, 'camping');
+assert.strictEqual(setupProgress(EMPTY).lodgingKind, null, 'обʼєкта немає — і роду немає');
 // 2. Типи й номери — обидва.
 assert.deepStrictEqual(doneKeys(only({ unitTypes: 1, units: 0 })), [], 'тип без номера — не зроблено');
 assert.deepStrictEqual(doneKeys(only({ unitTypes: 0, units: 3 })), [], 'номери без типу — не зроблено');

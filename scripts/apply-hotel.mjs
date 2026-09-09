@@ -219,6 +219,19 @@ async function applyOne(plan) {
     const password = crypto.randomBytes(18).toString('base64url').slice(0, 24);
     const email = both(org, 'ownerEmail');
     if (!email) throw new Error(`organization.ownerEmail потрібен, щоб створити ${slug}`);
+    // Рід житла — при СТВОРЕННІ, не патчем після нього (В1).
+    //
+    // Досі він доїжджав лише нижче, в `applyStructure`: обʼєкт народжувався з
+    // `property_type = NULL` і жив так рівно до першого патча. Тепер заведення
+    // само відмовляє без роду, тож файл готелю мусить його назвати — і це
+    // саме те, чого хотіло рішення: вибір робить готель, один раз, а не
+    // скрипт мовчки за нього.
+    const lodgingKind = f(plan.property || {}, 'propertyType', 'property_type', 'lodgingKind', 'lodging_kind');
+    if (!lodgingKind) {
+      throw new Error(
+        `property.propertyType потрібен, щоб створити ${slug}: рід житла — основа рахунку каналу `
+        + '(готельна група тарифікується за обʼєкт, оренда за юніт), і мовчазного `hotel` тут немає');
+    }
     if (DRY) {
       console.log(`  [суха] створити організацію ${slug}`);
       return;
@@ -234,6 +247,7 @@ async function applyOne(plan) {
       country: both(org, 'country'),
       currency: both(org, 'currency'),
       timezone: both(org, 'timezone'),
+      lodgingKind,
       language: both(org, 'language'),
       enable: org.enable,
     });
