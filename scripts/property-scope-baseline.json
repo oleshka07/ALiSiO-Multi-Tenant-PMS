@@ -14,7 +14,6 @@
   "src/app/api/guest/[token]/ocr/route.ts": 1,
   "src/app/api/invoices/[id]/email/route.ts": 2,
   "src/app/api/invoices/[id]/isdoc/route.ts": 2,
-  "src/app/api/invoices/[id]/pdf/route.ts": 4,
   "src/app/api/package-offers/[id]/route.ts": 2,
   "src/app/api/package-offers/route.ts": 3,
   "src/app/api/payments/route.ts": 4,

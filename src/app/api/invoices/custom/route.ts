@@ -31,6 +31,7 @@ import { sendEmail }           from '@core/mail/email';
 import { renderInvoiceHtml } from '@invoicing';
 import { allocateInvoiceNumber } from '@invoicing';
 import type { Actor } from '@core/auth/session';
+import { serverError } from '@core/http/errors';
 
 /**
  * The number comes from the shared allocator, not from a second copy of the
@@ -203,8 +204,6 @@ async function _POST(req: NextRequest, _ctx: unknown, actor: Actor): Promise<Nex
     });
 
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error('[CustomInvoice] Error:', msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return serverError('app/api/invoices/custom', e, 'Failed to create the invoice');
   }
 }

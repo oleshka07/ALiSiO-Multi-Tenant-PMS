@@ -6,6 +6,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { generateInvoicePdf, invoiceSettings } from '@invoicing';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { ALL_PROPERTIES, propertyOrSharedFilter } from '@core/property-scope';
+import { handleError } from '@core/http/errors';
 import { requirePermission } from '@core/security/route-guard';
 import { convertToCzkAuto, foreignNote } from '@invoicing';
 import { showBuyerName, dueDateFor } from '@invoicing';
@@ -19,14 +21,39 @@ import { documentLanguage } from '@core/i18n/resolve';
 // це крони» і вірив, що такий випадок буває. Прибрано, щоб у коді лишилось
 // рівно одне джерело валюти документа — сам рядок.
 
-export const GET = requirePermission('manage_documents', _GET);
-async function _GET(
+export const GET = requirePermission('manage_documents', invoicePdf);
+// Тіло іменованим експортом — щоб сцена кликала МАРШРУТ. Досяжність зʼявилась
+// разом із правкою `__dirname` в `invoice-pdf.ts`: доти імпорт цього файлу
+// падав `ReferenceError` до першого твердження.
+export async function invoicePdf(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   // Правила бланка ЦЬОГО готеля — замість колишніх констант із чеського
   // закону. Організація вже на зʼєднанні: маршрут під вартою.
-  const rules = await invoiceSettings(await requireOrganizationId());
+  const organizationId = await requireOrganizationId();
+  const rules = await invoiceSettings(organizationId);
+
+  /**
+   * ── Орендар у ЦИХ двох запитах, і чому його там не було (INC-043) ──────
+   *
+   * `loadInvoiceDocument` нижче орендаря НАЗИВАЄ (`i.organization_id = ?`), а
+   * обидва запити чеського шляху стояли на голому `WHERE i.id = ?`. Тобто в
+   * одному файлі одна гілка захищена, дві — ні, і саме дві незахищені
+   * рендерять PDF: на SQLite будь-хто з правом `manage_documents` діставав
+   * фактуру ЧУЖОЇ компанії за ідентифікатором. Той самий рід і той самий
+   * тиждень, що INC-043 у пакетному ZIP.
+   *
+   * Вісь обʼєкта тут `ALL_PROPERTIES` і це СКАЗАНО: документ читається за
+   * первинним ключем, належність доведено орендарем, а посилання на нього
+   * стоїть у картці броні — звузивши, ми віддали б 404 на документ, який
+   * оператор щойно відкрив у себе. Пакетне вивантаження — інша річ: там
+   * ідентифікатори приходять зі СПИСКУ, і список по обʼєкту.
+   *
+   * `propertyOrSharedFilter`, а не звичайний: `invoices` не має `property_id`,
+   * і фактура без броні обʼєкта не має взагалі (Д51).
+   */
+  const axis = propertyOrSharedFilter(ALL_PROPERTIES, 'r');
 
   try {
     const { id } = await params;
@@ -74,7 +101,8 @@ async function _GET(
          LEFT JOIN fin_folios f ON f.id = i.folio_id
          LEFT JOIN reservations r ON r.id = i.reservation_id
          LEFT JOIN organizations o ON o.id = i.organization_id
-        WHERE i.id = ?`, [id]);
+        WHERE i.id = ? AND i.organization_id = ? AND ${axis.sql}`,
+      [id, organizationId, ...axis.params]);
     const language = juris?.property_id
       ? await documentLanguage(juris.property_id)
       : (juris?.org_language ?? null);
@@ -107,9 +135,9 @@ async function _GET(
       LEFT JOIN guests g        ON r.guest_id = g.id
       LEFT JOIN fin_operations p
         ON p.reservation_id = r.id AND p.op_type = 'income' AND p.status = 'completed'
-      WHERE i.id = ?
+      WHERE i.id = ? AND i.organization_id = ? AND ${axis.sql}
       ORDER BY p.paid_at DESC LIMIT 1
-    `, [id]);
+    `, [id, organizationId, ...axis.params]);
 
     if (!row) {
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
@@ -172,7 +200,9 @@ async function _GET(
       },
     });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    // Текст винятку клієнту не їде (інваріант 6, Ц43): тут раніше зі статусом
+    // 500 приїжджало повідомлення бази або pdfkit — назва колонки, список
+    // значень CHECK, шлях до шрифту, — а в лозі не було нічого.
+    return handleError('app/api/invoices/[id]/pdf', e, 'Failed to render the invoice');
   }
 }
