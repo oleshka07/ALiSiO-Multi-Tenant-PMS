@@ -31,6 +31,25 @@ import { currentOrganizationId, runWithOrganization } from './auth/tenant-contex
 const OFF = false;
 const ON = true;
 
+/**
+ * Ким є ключ — Блок «Застосунки», 09.09.2026 (docs/tasks/2026-09-09-block-apps.md §3.1).
+ *
+ *   core    — є в кожного, вимикає лише сам готель (усі ON);
+ *   module  — розділ PMS зі своїми екранами: ховається з меню, закривається
+ *             заслінкою; перемикач на екрані «Модулі»;
+ *   app     — розмова з ЧУЖОЮ системою: ключі вендора, стан звʼязку; картка на
+ *             екрані «Застосунки» (`core/apps.ts`), розділу в меню не має.
+ *
+ * Це позначка, яку читають екрани й гейт `apps.check.ts`. Вона НЕ змінює ні
+ * дефолту, ні варти, ні рядка в `organization_features`. Менеджер каналів —
+ * `module`, не `app`: рішення власника З4 — через нього піде листування і
+ * підключатиметься більшість готелів, це частина ядра.
+ */
+export type FeatureKind = 'core' | 'module' | 'app';
+const CORE: FeatureKind = 'core';
+const MODULE: FeatureKind = 'module';
+const APP: FeatureKind = 'app';
+
 export const FEATURE_SPEC = {
   // Розкол `widget` на два, 31.08.2026. Один ключ називався «Віджет
   // бронювання І САЙТИ» і продавав дві різні речі однією ціною: форму
@@ -60,17 +79,17 @@ export const FEATURE_SPEC = {
   // `widget-site` — це шлях даних движка (номери, ціни, налаштування оплати),
   // без нього форма не працює на ЖОДНОМУ типі сайту. Закрити його платним
   // ключем означало б віддати готелю движок, до якого гість не дійде.
-  booking_engine: { label: 'Форма бронювання і сайти', on: ON },
+  booking_engine: { label: 'Форма бронювання і сайти', on: ON, kind: CORE },
   // Німецька фіскалізація (KassenSichV/TSE). Поки вимкнена, DE-готель НЕ
   // може записати готівку чи карту-на-рецепції — інакше PMS тихо стала б
   // незареєстрованою касою (docs/TSE-KASSENSICHV.md §6.4, блок A). Дефолт ON
   // тут був би не зручністю, а незареєстрованою касою в кожного клієнта.
-  fiscal_de: { label: 'Фіскалізація Німеччини (TSE)', on: OFF },
+  fiscal_de: { label: 'Фіскалізація Німеччини (TSE)', on: OFF, kind: APP },
   // Приймання оплат онлайн. Вимкнено — і поки жоден шлюз не написаний,
   // увімкнення лише відкриває екран, де готель обирає провайдера й зберігає
   // свої ключі. Списати картку продукт сьогодні не вміє: див. `live` у
   // src/core/payments.ts.
-  online_payments: { label: 'Онлайн-оплата', on: OFF },
+  online_payments: { label: 'Онлайн-оплата', on: OFF, kind: APP },
 
   // ── Модулі PMS ────────────────────────────────────────────────────────
   // Кожен — свій каталог під src/modules/. З 05.09.2026 (П15, MASTER-PLAN §3)
@@ -82,7 +101,7 @@ export const FEATURE_SPEC = {
    * Задачі персоналу: хаускіпінг, технічна служба, чек-листи.
    * OFF з 05.09.2026 (П15) — платний модуль; наявні готелі — рядок 0065.
    */
-  tasks: { label: 'Задачі персоналу', on: OFF },
+  tasks: { label: 'Задачі персоналу', on: OFF, kind: MODULE },
   // Зали й заходи: погодинна оренда, розсадка, кейтеринг. Дефолт знято в OFF
   // 31.08.2026: цільовий сегмент — обʼєкти на 1–15 номерів, і для садиби на
   // пʼять кімнат це зайвий розділ меню. Кому треба — вмикає.
@@ -91,19 +110,19 @@ export const FEATURE_SPEC = {
   // `enabled = 1` перед тим, як дефолт змінився. Саме про цей випадок
   // попереджає коментар про дві родини вище — зміна дефолту без рядків
   // забрала б розділ меню мовчки в кожного, хто вже працює.
-  events: { label: 'Зали та заходи', on: OFF },
+  events: { label: 'Зали та заходи', on: OFF, kind: MODULE },
   /**
    * Аналітика продажів: заповненість, ADR, RevPAR, канали.
    * OFF з 05.09.2026 (П15) — платний модуль; наявні готелі — рядок 0065.
    */
-  reports: { label: 'Аналітика продажів', on: OFF },
+  reports: { label: 'Аналітика продажів', on: OFF, kind: MODULE },
   /** Дашборд — ядро (П15): є в кожного, вимикається лише самим готелем. */
-  dashboard: { label: 'Дашборди', on: ON },
+  dashboard: { label: 'Дашборди', on: ON, kind: CORE },
   /**
    * Аркуші дня: чотири друковані списки, які рецепція друкує щоранку.
    * OFF з 05.09.2026 (П15) — платний модуль; наявні готелі — рядок 0065.
    */
-  day_sheets: { label: 'Аркуші дня', on: OFF },
+  day_sheets: { label: 'Аркуші дня', on: OFF, kind: MODULE },
   /**
    * Фактурування: фоліо, рахунки, серії нумерації, ставки ПДВ, каса,
    * фіскалізація.
@@ -118,7 +137,7 @@ export const FEATURE_SPEC = {
    * `withModule('invoicing', …)` відмовляє на сервері, а не лише ховає
    * пункт меню.
    */
-  invoicing: { label: 'Фактурування і каса', on: ON },
+  invoicing: { label: 'Фактурування і каса', on: ON, kind: CORE },
   /**
    * Облік: подвійний запис, P&L, cashflow, бюджети, CAPEX, банк, звіти.
    *
@@ -140,7 +159,7 @@ export const FEATURE_SPEC = {
    * фактури й не вести тут книг. Це те саме розділення, заради якого
    * `@invoicing` став окремим модулем.
    */
-  accounting: { label: 'Облік і фінанси', on: OFF },
+  accounting: { label: 'Облік і фінанси', on: OFF, kind: MODULE },
   /**
    * Канали продажу: OTA через менеджера каналів.
    *
@@ -158,7 +177,7 @@ export const FEATURE_SPEC = {
    * Чого ключ поки НЕ стереже — розсилки ARI: її ще немає. Зʼявиться —
    * піде крізь ту саму варту.
    */
-  channels: { label: 'Канали продажу (OTA)', on: OFF },
+  channels: { label: 'Канали продажу (OTA)', on: OFF, kind: MODULE },
   /**
    * Гостьова сторінка: портал гостя за токеном (`/guest/<token>`),
    * самореєстрація, послуги гостя, і екран її налаштування.
@@ -170,7 +189,7 @@ export const FEATURE_SPEC = {
    * налаштування — `withModule('guest_page', …)`. Наявні готелі отримали
    * явний рядок міграцією 0065.
    */
-  guest_page: { label: 'Гостьова сторінка', on: OFF },
+  guest_page: { label: 'Гостьова сторінка', on: OFF, kind: MODULE },
   /**
    * Сайти-вітрини: `/app/sites` і керування сайтами (`/api/booking-sites/**`
    * через `withOwnedSite`, створення, аналітика).
@@ -181,7 +200,7 @@ export const FEATURE_SPEC = {
    * екран коду віджета. Конструктор сторінок (П20, LATER) прийде під цей
    * самий ключ, коли зʼявиться в коді. Наявні готелі — рядок 0065.
    */
-  sites: { label: 'Сайти-вітрини', on: OFF },
+  sites: { label: 'Сайти-вітрини', on: OFF, kind: MODULE },
 } as const;
 
 export type FeatureKey = keyof typeof FEATURE_SPEC;
@@ -196,6 +215,18 @@ export type FeatureKey = keyof typeof FEATURE_SPEC;
 export const FEATURES = Object.fromEntries(
   Object.entries(FEATURE_SPEC).map(([k, v]) => [k, v.label]),
 ) as Record<FeatureKey, string>;
+
+/**
+ * Ключ → ким він є. Екран «Модулі» показує `core` і `module`, екран
+ * «Застосунки» — картки за `app`; обидва читають цю мапу, а не свої списки.
+ */
+export const FEATURE_KIND = Object.fromEntries(
+  Object.entries(FEATURE_SPEC).map(([k, v]) => [k, v.kind]),
+) as Record<FeatureKey, FeatureKind>;
+
+export function featureKind(feature: FeatureKey): FeatureKind {
+  return FEATURE_SPEC[feature].kind;
+}
 
 /** Чи модуль стоїть у клієнта, поки він явно не сказав інакше. */
 export function featureDefault(feature: FeatureKey): boolean {

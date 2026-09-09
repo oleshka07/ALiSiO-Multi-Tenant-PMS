@@ -7613,6 +7613,9 @@ function runMigrations(database: any) {
   // `tsc` або дасть видимий повтор у лозі — замість тиші.
   migrateOtaMirror(database);
 
+  // 0140 — так само окремою функцією, з тієї самої причини.
+  migrateApps(database);
+
   // The last line of runMigrations, and the only reliable signal that the
   // schema has settled. scripts/check-fresh-schema.mjs waits for it: polling
   // the table count said "done" while ALTER TABLE ADD COLUMN was still going,
@@ -7620,6 +7623,49 @@ function runMigrations(database: any) {
   // just a race with itself.
   console.log('[DB] migrations complete');
   }
+
+/**
+ * Міграція 0140 — стан звʼязку застосунків і попит «хочу» (Блок «Застосунки»,
+ * docs/tasks/2026-09-09-block-apps.md §3.3–3.4). Дзеркало
+ * `db/postgres/migrations/0140-*.sql`; політики — лише на Postgres.
+ *
+ * `app_connections`: один рядок на (організація, обʼєкт-або-NULL, застосунок)
+ * — статус, час останнього успіху, час і текст останньої помилки. Унікальність
+ * по `COALESCE(property_id, '')`: два NULL в UNIQUE не рівні. `app_wishes`:
+ * один рядок на (організація, застосунок).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function migrateApps(database: any) {
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS app_connections (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        property_id     TEXT REFERENCES properties(id) ON DELETE CASCADE,
+        app             TEXT NOT NULL,
+        status          TEXT NOT NULL CHECK (status IN ('connected', 'degraded', 'error', 'disabled')),
+        last_ok_at      TEXT,
+        last_error_at   TEXT,
+        last_error      TEXT,
+        updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_app_connections_org ON app_connections(organization_id)');
+    database.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_app_connections_row ON app_connections(organization_id, COALESCE(property_id, ''), app)");
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS app_wishes (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        app             TEXT NOT NULL,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(organization_id, app)
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_app_wishes_org ON app_wishes(organization_id)');
+  } catch (e) {
+    console.error('[DB] 0140 app_connections/app_wishes:', (e as Error).message);
+  }
+}
 
 /**
  * Міграція 0100 — дзеркало рівня OTA. Винесена з `runMigrations` навмисно:

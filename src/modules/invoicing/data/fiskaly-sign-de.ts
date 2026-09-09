@@ -21,6 +21,9 @@ import {
   type FiscalDevice, type FiscalReceipt, type FiscalSignature,
   dsfinvkVatField, dsfinvkPaymentType, fiscalAmount,
 } from '../domain/fiscal/fiscal-device';
+import { getSql } from '../../../core/db/async.ts';
+import { currentOrganizationId } from '../../../core/auth/tenant-context.ts';
+import { reportError, reportOk } from '../../../core/app-connections.ts';
 
 const BASE = process.env.FISKALY_BASE_URL || 'https://kassensichv.fiskaly.com/api/v2';
 
@@ -46,68 +49,101 @@ async function call(path: string, init: RequestInit & { token?: string }): Promi
   return res.json();
 }
 
+/**
+ * Стан звʼязку з fiskaly — у `app_connections` (Блок «Застосунки», 3.4).
+ *
+ * Єдине місце в цьому модулі, яке про нього звітує: успіх після повного
+ * підпису, відмова з ТЕКСТОМ вендора. Підключення TSE належить ОБʼЄКТУ, а
+ * конфіг знає лише `tssId` — обʼєкт знаходиться за ним у
+ * `fin_fiscal_settings` тієї самої організації. Не знайшли обʼєкт або
+ * організацію — звіту немає, але підпис від цього не змінюється: стан звʼязку
+ * ніколи не ламає операцію, яку описує (`reportOk`/`reportError` не кидають).
+ */
+async function reported<T>(config: FiskalyConfig, work: () => Promise<T>): Promise<T> {
+  const organizationId = currentOrganizationId();
+  let propertyId: string | null = null;
+  if (organizationId) {
+    try {
+      const row = await getSql().row<{ property_id: string }>(
+        'SELECT property_id FROM fin_fiscal_settings WHERE tss_id = ? AND organization_id = ?',
+        [config.tssId, organizationId]);
+      propertyId = row?.property_id ?? null;
+    } catch { /* без обʼєкта — без звіту, підпис іде далі */ }
+  }
+  try {
+    const out = await work();
+    if (organizationId) await reportOk('fiskaly', organizationId, propertyId);
+    return out;
+  } catch (e) {
+    if (organizationId) await reportError('fiskaly', organizationId, e, propertyId);
+    throw e;
+  }
+}
+
 export function fiskalyDevice(config: FiskalyConfig): FiscalDevice {
   return {
-    async signReceipt(receipt: FiscalReceipt): Promise<FiscalSignature> {
-      const auth = await call('/auth', {
-        method: 'POST',
-        body: JSON.stringify({ api_key: config.apiKey, api_secret: config.apiSecret }),
-      });
-      const token = auth.access_token;
+    signReceipt: (receipt) => reported(config, () => signReceipt(config, receipt)),
+  };
+}
 
-      const txId = crypto.randomUUID();
-      await call(`/tss/${config.tssId}/tx/${txId}?tx_revision=1`, {
-        method: 'PUT', token,
-        body: JSON.stringify({ state: 'ACTIVE', client_id: config.clientId }),
-      });
+async function signReceipt(config: FiskalyConfig, receipt: FiscalReceipt): Promise<FiscalSignature> {
+  const auth = await call('/auth', {
+    method: 'POST',
+    body: JSON.stringify({ api_key: config.apiKey, api_secret: config.apiSecret }),
+  });
+  const token = auth.access_token;
 
-      // The receipt schema: every VAT bucket the invoice carries, and one
-      // payment line. Amounts are gross, dot-decimal strings.
-      const amounts = receipt.vatAmounts.length
-        ? receipt.vatAmounts.map((v) => ({
-            vat_rate: dsfinvkVatField(v.rate),
-            amount: fiscalAmount(v.amount),
-          }))
-        // No split known — the whole sum in the zero bucket would claim "no
-        // VAT", which is a tax statement. Refuse instead: the caller must
-        // hand us the invoice's split.
-        : (() => { throw new Error('Receipt has no VAT split — sign the invoice, not a bare number'); })();
+  const txId = crypto.randomUUID();
+  await call(`/tss/${config.tssId}/tx/${txId}?tx_revision=1`, {
+    method: 'PUT', token,
+    body: JSON.stringify({ state: 'ACTIVE', client_id: config.clientId }),
+  });
 
-      const finished = await call(`/tss/${config.tssId}/tx/${txId}?tx_revision=2`, {
-        method: 'PUT', token,
-        body: JSON.stringify({
-          state: 'FINISHED',
-          client_id: config.clientId,
-          schema: {
-            standard_v1: {
-              receipt: {
-                receipt_type: 'RECEIPT',
-                amounts_per_vat_rate: amounts,
-                amounts_per_payment_type: [{
-                  payment_type: dsfinvkPaymentType(receipt.method),
-                  amount: fiscalAmount(receipt.amount),
-                }],
-              },
-            },
+  // The receipt schema: every VAT bucket the invoice carries, and one
+  // payment line. Amounts are gross, dot-decimal strings.
+  const amounts = receipt.vatAmounts.length
+    ? receipt.vatAmounts.map((v) => ({
+        vat_rate: dsfinvkVatField(v.rate),
+        amount: fiscalAmount(v.amount),
+      }))
+    // No split known — the whole sum in the zero bucket would claim "no
+    // VAT", which is a tax statement. Refuse instead: the caller must
+    // hand us the invoice's split.
+    : (() => { throw new Error('Receipt has no VAT split — sign the invoice, not a bare number'); })();
+
+  const finished = await call(`/tss/${config.tssId}/tx/${txId}?tx_revision=2`, {
+    method: 'PUT', token,
+    body: JSON.stringify({
+      state: 'FINISHED',
+      client_id: config.clientId,
+      schema: {
+        standard_v1: {
+          receipt: {
+            receipt_type: 'RECEIPT',
+            amounts_per_vat_rate: amounts,
+            amounts_per_payment_type: [{
+              payment_type: dsfinvkPaymentType(receipt.method),
+              amount: fiscalAmount(receipt.amount),
+            }],
           },
-        }),
-      });
+        },
+      },
+    }),
+  });
 
-      // The TSS serial is on the TSS resource, not the transaction.
-      const tss = await call(`/tss/${config.tssId}`, { method: 'GET', token });
+  // The TSS serial is on the TSS resource, not the transaction.
+  const tss = await call(`/tss/${config.tssId}`, { method: 'GET', token });
 
-      return {
-        tseSerial: String(tss.serial_number ?? config.tssId),
-        txNumber: String(finished.number),
-        signatureCounter: String(finished.signature?.counter ?? ''),
-        signature: String(finished.signature?.value ?? ''),
-        startTime: String(finished.time_start ?? ''),
-        endTime: String(finished.time_end ?? ''),
-        qrPayload: String(finished.qr_code_data ?? ''),
-        clientId: config.clientId,
-        processType: 'Kassenbeleg-V1',
-        processData: String(finished.schema?.standard_v1 ? JSON.stringify(finished.schema.standard_v1) : ''),
-      };
-    },
+  return {
+    tseSerial: String(tss.serial_number ?? config.tssId),
+    txNumber: String(finished.number),
+    signatureCounter: String(finished.signature?.counter ?? ''),
+    signature: String(finished.signature?.value ?? ''),
+    startTime: String(finished.time_start ?? ''),
+    endTime: String(finished.time_end ?? ''),
+    qrPayload: String(finished.qr_code_data ?? ''),
+    clientId: config.clientId,
+    processType: 'Kassenbeleg-V1',
+    processData: String(finished.schema?.standard_v1 ? JSON.stringify(finished.schema.standard_v1) : ''),
   };
 }
