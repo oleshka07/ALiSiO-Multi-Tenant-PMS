@@ -1,4 +1,5 @@
 import { getSql } from '@core/db/async';
+import { propertyScopeFilter, type PropertyScope } from '@core/property-scope';
 import { ownsProperty, ownsViaProperty, propertyScopeSql } from './tenant-scope';
 
 /**
@@ -26,8 +27,9 @@ export type CategoryTypeValue = string;
  * carried.
  */
 
-export async function listCategories(organizationId: string) {
+export async function listCategories(organizationId: string, scope: PropertyScope) {
   const sql = getSql();
+  const inScope = propertyScopeFilter(scope, 'c');
   return await sql.rows<any>(`
     SELECT
       c.id, c.property_id, c.name, c.type, c.icon, c.color, c.sort_order, c.description,
@@ -35,10 +37,10 @@ export async function listCategories(organizationId: string) {
       COUNT(u.id) as unit_count
     FROM categories c
     LEFT JOIN units u ON u.category_id = c.id AND u.is_active = TRUE
-    WHERE ${propertyScopeSql('c')}
+    WHERE ${propertyScopeSql('c')} AND ${inScope.sql}
     GROUP BY c.id
     ORDER BY c.sort_order
-  `, [organizationId]);
+  `, [organizationId, ...inScope.params]);
 }
 
 export interface CreateCategoryInput {

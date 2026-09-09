@@ -4,6 +4,7 @@ import type { Task, TaskTag } from '../domain/types';
 import path from 'path';
 import fs from 'fs';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { propertyOrSharedFilter, type PropertyScope } from '@core/property-scope';
 
 // ─── Helpers ───────────────────────────────────────────────
 
@@ -43,10 +44,19 @@ export interface ListTasksFilters {
   parent_id?: string | null;
 }
 
-export async function listTasks(filters: ListTasksFilters = {}): Promise<Task[]> {
+/**
+ * Задачі ОДНОГО обʼєкта плюс спільні — сказано типом (INC-029).
+ *
+ * Двері тут «або спільне» (О14), а не суворі: NULL у `tasks.property_id`
+ * означає задачу рахунку («оновити прайс на сайті»), і суворий фільтр тихо
+ * сховав би саме її. Писач це підтверджує: `createTask` кладе
+ * `input.property_id ?? null`, тобто без будинку — звичайний випадок.
+ */
+export async function listTasks(scope: PropertyScope, filters: ListTasksFilters = {}): Promise<Task[]> {
   const sql = getSql();
+  const inScope = propertyOrSharedFilter(scope, 't');
   const conditions: string[] = ['t.organization_id = ?'];
-  const params: unknown[] = [await getOrgId()];
+  const params: unknown[] = [await getOrgId(), ...inScope.params];
 
   if (filters.project_id) {
     conditions.push('t.project_id = ?');
@@ -64,6 +74,9 @@ export async function listTasks(filters: ListTasksFilters = {}): Promise<Task[]>
     conditions.push('t.priority = ?');
     params.push(filters.priority);
   }
+  // Фільтр екрана лишається: він звужує ВСЕРЕДИНІ області, а не заміняє її.
+  // Область каже, який будинок на екрані; цей фільтр — «покажи лише задачі
+  // цього будинку», тобто без спільних.
   if (filters.property_id) {
     conditions.push('t.property_id = ?');
     params.push(filters.property_id);
@@ -108,7 +121,7 @@ export async function listTasks(filters: ListTasksFilters = {}): Promise<Task[]>
     -- properties(id); joining the other table meant the Object column could
     -- only ever show a name for a value the foreign key would have refused.
     LEFT JOIN properties p ON p.id = t.property_id
-    WHERE ${conditions.join(' AND ')}
+    WHERE ${conditions.join(' AND ')} AND ${inScope.sql}
     ORDER BY t.sort_order, t.created_at DESC
   `, params);
 

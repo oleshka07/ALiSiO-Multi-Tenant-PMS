@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { withPermission, type Actor } from '@core/auth/session';
-import { requirePropertyId, PropertyNotFound } from '@core/auth/tenant-context';
+import { PropertyNotFound } from '@core/auth/tenant-context';
 import { getSql } from '@core/db/async';
 import { serverError } from '@core/http/errors';
+import { requestPropertyScope } from '@core/auth/property-scope';
 import {
   housekeepingBoard, cleaningHistory, setCleaningStatus, CLEANING_STATUSES,
 } from '@properties';
@@ -24,17 +25,19 @@ import {
  */
 type IdParams = { params: Promise<{ id: string }> };
 
-/** Область обʼєкта з адреси: свій id — звужує, `all`/порожньо — вся організація, чужий — 404. */
-async function scopedProperty(request: NextRequest): Promise<string | null> {
-  const raw = new URL(request.url).searchParams.get('property_id') || '';
-  if (!raw || raw === 'all') return null;
-  return await requirePropertyId(raw);
-}
+/**
+ * Область обʼєкта з адреси — тепер ТИПОМ (INC-029).
+ *
+ * Було `string | null`, де `null` мовчки означав «уся організація». Тепер
+ * `requestPropertyScope` дає `{ kind: 'all' }` словом, памʼятає вибір
+ * оператора з куки, коли параметра немає, і віддає 404 на чужий обʼєкт —
+ * тим самим порядком, що провайдер у шапці.
+ */
 
 export const getHousekeepingBoard = withPermission('manage_housekeeping', async (request: NextRequest, _ctx, actor: Actor) => {
   try {
-    const propertyId = await scopedProperty(request);
-    return NextResponse.json(await housekeepingBoard(actor.organizationId, propertyId));
+    const scope = await requestPropertyScope(request, actor.organizationId);
+    return NextResponse.json(await housekeepingBoard(actor.organizationId, scope));
   } catch (e) {
     if (e instanceof PropertyNotFound) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return serverError('modules/housekeeping/api getHousekeepingBoard', e, 'Failed to load board');
@@ -43,11 +46,11 @@ export const getHousekeepingBoard = withPermission('manage_housekeeping', async 
 
 export const getCleaningHistory = withPermission('manage_housekeeping', async (request: NextRequest, _ctx, actor: Actor) => {
   try {
-    const propertyId = await scopedProperty(request);
+    const scope = await requestPropertyScope(request, actor.organizationId);
     const q = new URL(request.url).searchParams;
     const day = (v: string | null) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
     const rows = await cleaningHistory(actor.organizationId, {
-      propertyId,
+      scope,
       unitId: q.get('unit_id') || null,
       changedBy: q.get('changed_by') || null,
       from: day(q.get('from')),

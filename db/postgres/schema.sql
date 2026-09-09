@@ -669,6 +669,7 @@ CREATE TABLE "fin_auto_rules" (
   "sort_order" BIGINT DEFAULT 0 NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "broken_fields" TEXT,
   PRIMARY KEY ("id"),
   CHECK (op_type IN ('income','expense','any'))
 );
@@ -951,6 +952,9 @@ CREATE TABLE "fin_recurring_templates" (
   "is_active" BOOLEAN DEFAULT true NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "failed_runs" BIGINT DEFAULT 0 NOT NULL,
+  "last_error" TEXT,
+  "last_error_at" TIMESTAMPTZ,
   PRIMARY KEY ("id"),
   CHECK (op_type IN ('income','expense','transfer')),
   CHECK (schedule IN ('daily','weekly','monthly','yearly'))

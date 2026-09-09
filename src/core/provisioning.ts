@@ -358,13 +358,25 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
     // include_in_pnl / include_in_cash — числові (BIGINT на Postgres), тож 1/0;
     // is_capex — BOOLEAN, тож true/false. Postgres відхиляє true в число і 1 у
     // булеве, а на SQLite цього не видно взагалі.
+    //
+    // `op_type` і `classifier` НАЗИВАЮТЬСЯ ТУТ (Р12.1). Перша редакція їх не
+    // писала — і стаття виходила такою, що існує, показується в довіднику і
+    // приймає операції, а грошей по ній не видно: P&L бере
+    // `COALESCE(classifier,'other')` і кладе оренду з зарплатою в «Інше»,
+    // нижче EBITDA (виміряно: EBITDA свіжого готелю дорівнювала виручці), а
+    // форма витрати питає `?op_type=expense` і отримує порожній список.
+    // На SQLite це маскується перезапуском — міграція `db.ts` підписує осі за
+    // `std_group` на наступному завантаженні, тобто ТОЙ САМИЙ готель до і
+    // після рестарту рахує по-різному. На Postgres тієї міграції немає взагалі.
     for (const a of CHART_OF_ACCOUNTS) {
       await t.run(`
         INSERT INTO expense_categories (id, organization_id, code, name, std_group, pnl_line,
+          op_type, classifier,
           include_in_pnl, include_in_cash, alloc_method, is_capex, icon, color, sort_order)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [`ec_${crypto.randomBytes(8).toString('hex')}`, organizationId, a.code, a.name,
-        a.stdGroup, a.pnlLine, a.includeInPnl ? 1 : 0, a.includeInCash ? 1 : 0,
+        a.stdGroup, a.pnlLine, a.opType, a.classifier,
+        a.includeInPnl ? 1 : 0, a.includeInCash ? 1 : 0,
         a.allocMethod, a.isCapex, a.icon, a.color, a.sortOrder]);
     }
     for (const u of BUSINESS_UNITS) {

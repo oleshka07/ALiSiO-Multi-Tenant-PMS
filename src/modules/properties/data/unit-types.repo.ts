@@ -1,5 +1,6 @@
 import { noteAvailabilityChanged, noteRatesChanged } from '@channels/outbox';
 import { getSql } from '@core/db/async';
+import { propertyScopeFilter, type PropertyScope } from '@core/property-scope';
 import { ownsProperty, ownsViaProperty, propertyScopeSql } from './tenant-scope';
 
 /**
@@ -21,8 +22,13 @@ import { ownsProperty, ownsViaProperty, propertyScopeSql } from './tenant-scope'
  * the first and priced its nights from the first hotel's matrix.
  */
 
-export function listUnitTypes(organizationId: string, filters: { category?: string } = {}) {
+export function listUnitTypes(
+  organizationId: string,
+  scope: PropertyScope,
+  filters: { category?: string } = {},
+) {
   const sql = getSql();
+  const inScope = propertyScopeFilter(scope, 'ut');
   let query = `
     SELECT
       ut.id, ut.property_id, ut.name, ut.code, ut.max_adults, ut.max_children, ut.max_occupancy, ut.base_occupancy,
@@ -32,10 +38,10 @@ export function listUnitTypes(organizationId: string, filters: { category?: stri
     FROM unit_types ut
     JOIN categories c ON ut.category_id = c.id
     LEFT JOIN units u ON u.unit_type_id = ut.id AND u.is_active = TRUE
-    WHERE ut.is_active = TRUE AND ${propertyScopeSql('ut')}
+    WHERE ut.is_active = TRUE AND ${propertyScopeSql('ut')} AND ${inScope.sql}
   `;
 
-  const params: string[] = [organizationId];
+  const params: string[] = [organizationId, ...inScope.params];
 
   if (filters.category) {
     query += ' AND c.type = ?';

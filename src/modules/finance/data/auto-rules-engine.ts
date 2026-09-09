@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getSql } from '@core/db/async';
+import { ownedFinanceRow, RULE_ACTION_REFERENCES } from './owned.repo';
 
 export type ConditionField =
   | 'comment' | 'amount' | 'amount_company'
@@ -41,6 +42,8 @@ export interface AutoRuleRow {
 export interface ParsedRule extends Omit<AutoRuleRow, 'conditions_json' | 'actions_json'> {
   conditions: Condition[];
   actions: Actions;
+  /** JSON правила не розбирається — правило зламане, а не порожнє. */
+  unreadable?: boolean;
 }
 
 export interface Operation {
@@ -57,13 +60,45 @@ export interface Operation {
   project_id: string | null;
 }
 
+/**
+ * Колонка з JSON — і на SQLite, і на Postgres.
+ *
+ * Тут стояло `JSON.parse(actions_json)` під глухим `catch`, який мовчки
+ * ковтав виняток, і
+ * це вбивало ВСІ авто-правила на Postgres мовчки. `conditions_json` і
+ * `actions_json` — `JSONB` (`schema.sql`), а драйвер віддає JSONB уже
+ * РОЗІБРАНИМ обʼєктом. `JSON.parse(обʼєкт)` розбирає рядок `[object Object]`,
+ * кидає — і глухий рукав повертав `{}` та `[]`. Далі `matchesAllConditions`
+ * на порожньому списку умов повертає `false`, тобто жодне правило не
+ * застосовувалось НІКОЛИ: ані категоризація, ані автопідбір контрагента.
+ * Помилки не було ніде — була тиша.
+ *
+ * На SQLite та сама колонка це TEXT, і там усе працювало. Класичний
+ * INC-014-подібний розрив: зелено там, де розробка, мертво там, де клієнт.
+ *
+ * Знайдено 09.09.2026 прогоном `check:pg` роллю `alisio_app` — саме тим, що
+ * AGENTS §7 і вимагає: «SQL — це рядок, політика — це поведінка бази; обидва
+ * мовчать».
+ *
+ * `null` у розборі означає «зіпсовано»: рядок не вгадується мовчки, а
+ * позначається зламаним нарівні з чужим посиланням (Д40).
+ */
+function parseJsonColumn<T>(value: unknown, empty: T): T | null {
+  if (value === null || value === undefined || value === '') return empty;
+  if (typeof value === 'object') return value as T;          // Postgres JSONB
+  try { return JSON.parse(String(value)) as T; } catch { return null; }  // SQLite TEXT
+}
+
 export function parseRule(row: AutoRuleRow): ParsedRule {
   const { conditions_json, actions_json, ...rest } = row;
-  let conditions: Condition[] = [];
-  let actions: Actions = {};
-  try { conditions = JSON.parse(conditions_json || '[]'); } catch { /* ignore */ }
-  try { actions = JSON.parse(actions_json || '{}'); } catch { /* ignore */ }
-  return { ...rest, conditions, actions };
+  const conditions = parseJsonColumn<Condition[]>(conditions_json, []);
+  const actions = parseJsonColumn<Actions>(actions_json, {});
+  return {
+    ...rest,
+    conditions: conditions ?? [],
+    actions: actions ?? {},
+    unreadable: conditions === null || actions === null,
+  };
 }
 
 export function evaluateCondition(op: Operation, cond: Condition): boolean {
@@ -117,6 +152,8 @@ export interface ApplyResult {
   changes: Record<string, any>;
   rulesFired: string[];
   tagsAdded: string[];
+  /** Правила, які не спрацювали, бо посилаються в чужий довідник (Р13.1). */
+  skipped?: { ruleId: string; fields: string[] }[];
 }
 
 function parseAliases(json: string | null): string[] {
@@ -154,14 +191,70 @@ async function findCounterpartyByText(orgId: string, text: string): Promise<stri
  * Writes changes to fin_operations and logs matches.
  * Returns the delta (what changed).
  */
+/**
+ * Поля правила, чиє посилання веде в довідник ЧУЖОГО готелю.
+ *
+ * Варта стоїть на збереженні (`validateActions`, Д35), і для всього, що
+ * зберігається після неї, цей список завжди порожній. Він потрібен для
+ * правил, які лягли в базу РАНІШЕ за варту — і для них питання не «як
+ * заборонити», а «що робить спрацювання». Відповідь: нічого не змінює і
+ * каже про це видимо.
+ *
+ * `add_tag_ids` тут же: мітка — те саме поле, просто в іншому тілі (Д36).
+ */
+async function brokenRuleFields(rule: ParsedRule, orgId: string): Promise<string[]> {
+  const broken: string[] = [];
+  for (const [field, table] of RULE_ACTION_REFERENCES) {
+    const value = (rule.actions as Record<string, unknown>)[field];
+    if (value === undefined || value === null || value === '') continue;
+    if (!await ownedFinanceRow(table, String(value), orgId)) broken.push(field);
+  }
+  for (const tagId of rule.actions.add_tag_ids || []) {
+    if (!await ownedFinanceRow('finance_tags', String(tagId), orgId)) {
+      if (!broken.includes('add_tag_ids')) broken.push('add_tag_ids');
+    }
+  }
+  return broken;
+}
+
+/**
+ * Позначити правило зламаним — У САМІЙ ТАБЛИЦІ, щоб побачив готель.
+ *
+ * Не `console.error`: лог контейнера не читає ніхто, і саме цей клас тиші
+ * коштував проєкту найдорожче. Ознака їде в список правил
+ * (`listAutoRules` → `enrichRule`), де оператор її і побачить поруч із
+ * назвою правила.
+ */
+async function markRuleBroken(rule: ParsedRule, fields: string[], orgId: string): Promise<void> {
+  const sql = getSql();
+  if (rule.id.startsWith('synthetic_')) return;
+  await sql.run(
+    'UPDATE fin_auto_rules SET broken_fields = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND organization_id = ?',
+    [JSON.stringify(fields), rule.id, orgId]);
+}
+
 export async function applyRulesToOperation(op: Operation, rules: ParsedRule[], orgId: string): Promise<ApplyResult> {
   const sql = getSql();
   const changes: Record<string, any> = {};
   const rulesFired: string[] = [];
   const tagsAdded = new Set<string>();
+  const skipped: { ruleId: string; fields: string[] }[] = [];
 
   for (const rule of rules) {
     if (!isRuleApplicable(rule, op)) continue;
+
+    // Правило, чиє посилання веде в чужий довідник, не застосовується
+    // ЦІЛКОМ — не «крім поганого поля». Половина правила це не правило:
+    // операція дістала б комбінацію, якої готель ніколи не описував.
+    const broken = rule.unreadable
+      ? ['conditions_json/actions_json']
+      : await brokenRuleFields(rule, orgId);
+    if (broken.length > 0) {
+      await markRuleBroken(rule, broken, orgId);
+      skipped.push({ ruleId: rule.id, fields: broken });
+      continue;
+    }
+
     rulesFired.push(rule.id);
     const a = rule.actions;
 
@@ -213,7 +306,7 @@ export async function applyRulesToOperation(op: Operation, rules: ParsedRule[], 
     }
   }
 
-  return { operationId: op.id, changes, rulesFired, tagsAdded: [...tagsAdded] };
+  return { operationId: op.id, changes, rulesFired, tagsAdded: [...tagsAdded], skipped };
 }
 
 export async function loadActiveRules(orgId: string): Promise<ParsedRule[]> {

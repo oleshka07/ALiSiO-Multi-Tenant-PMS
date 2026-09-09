@@ -726,6 +726,39 @@ async function main() {
     claim('звіти', ctRes.status === 200, `турзбір відповідає 200 (${ctRes.status})`);
     claim('звіти', Array.isArray(ct?.rows) || Array.isArray(ct?.nights) || typeof ct === 'object',
       `турзбір віддав структуру, а не порожнечу (${JSON.stringify(ct)?.slice(0, 40)})`);
+
+    // ── Вісь обʼєкта (INC-029) ───────────────────────────────────────────
+    //
+    // СКІЛЬКИ рядків віддає кожен список, доводить сцена з двома будинками
+    // (`modules/bookings/data/lists.scope.check.ts`) — там числа. Тут
+    // доводиться те, чого сцена не бачить за означенням: що виходить із
+    // маршруту, коли двері області ВІДМОВЛЯЮТЬ.
+    //
+    // Знайдено саме так, і не інакше: гейт був зелений, сцена зелена, а
+    // `?property_id=<чужий>` віддавав 500 на трьох маршрутах і порожній
+    // масив на четвертому. `PropertyNotFound` — названа відмова зі статусом
+    // 404, але глухий `catch` ловив її разом із поломками бази і віддавав
+    // «Внутрішня помилка» (інваріанти 5 і 6). Порожній масив гірший за
+    // обидва: оператор бачить «закриттів немає» замість «не той будинок».
+    const AXIS_ROUTES = ['/api/bookings', '/api/booking-sources',
+      '/api/additional-services', '/api/availability-blocks'];
+    for (const route of AXIS_ROUTES) {
+      const mineRes = await call(cookie, `${route}?property_id=${property.id}`);
+      const mine = await body(mineRes);
+      claim('вісь обʼєкта', mineRes.status === 200 && Array.isArray(mine),
+        `${route}: свій обʼєкт — 200 і список (${mineRes.status})`);
+
+      // Порожнє значення означає «усі обʼєкти» СКАЗАНО — так пишуть екрани
+      // (`propertyId ? …id=… : ''`). Воно не має ставати ні відмовою, ні
+      // мовчазним «перший-ліпший».
+      const allRes = await call(cookie, `${route}?property_id=`);
+      claim('вісь обʼєкта', allRes.status === 200 && Array.isArray(await body(allRes)),
+        `${route}: порожнє значення — «усі», а не відмова (${allRes.status})`);
+
+      const alienRes = await call(cookie, `${route}?property_id=${TAG}alien`);
+      claim('вісь обʼєкта', alienRes.status === 404,
+        `${route}: чужий обʼєкт — 404, не 500 і не порожній список (${alienRes.status})`);
+    }
   } finally {
     await cleanup();
   }

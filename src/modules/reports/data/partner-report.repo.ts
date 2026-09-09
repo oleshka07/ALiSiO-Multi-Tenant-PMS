@@ -107,22 +107,41 @@ export async function publishReport(input: PublishInput): Promise<PartnerReportS
   const sql = getSql();
   const replace = input.replace !== false;
 
+  // Звіт ідентифікується парою «період × ОБʼЄКТ» (INC-033).
+  //
+  // Тут стояв пошук за самим періодом, а `UPDATE` нижче переписував і
+  // `property_id`. Наслідок: готель із двома обʼєктами, публікуючи вересневий
+  // звіт обʼєкта Б, знаходив вересневий звіт обʼєкта А і переписував його В
+  // ТОМУ Ж РЯДКУ — той самий `id`, той самий ТОКЕН, нова належність. Посилання,
+  // яке партнер А вже мав у пошті, починало показувати числа Б. Це не «оператор
+  // бачить зайве», а «стороння людина бачить чуже»: `/report/[token]` відкриває
+  // партнер.
+  //
+  // `IS NOT DISTINCT FROM`, не `= ?`: звіт по всьому рахунку має
+  // `property_id IS NULL`, а `= ?` з NULL не збігається ніколи — тобто такий
+  // звіт при кожній публікації додавав би новий рядок і новий токен замість
+  // заміни. Postgres не приймає параметра після `IS`, SQLite пише це як `IS ?`;
+  // спільна форма — ця (той самий випадок, що у `fin_budgets`).
   const existing = replace && input.period
     ? await sql.row<PartnerReportSummary>(
         `SELECT ${COLUMNS_WITHOUT_HTML} FROM partner_reports
           WHERE organization_id = ? AND period = ? AND revoked_at IS NULL
+            AND property_id IS NOT DISTINCT FROM ?
           ORDER BY published_at DESC LIMIT 1`,
-        [organizationId, input.period],
+        [organizationId, input.period, input.propertyId ?? null],
       )
     : null;
 
   if (existing) {
+    // `property_id` НЕ оновлюється: рядок знайдено за належністю, вона в нього
+    // вже така. Рядок з іншою належністю — це інший звіт, і він публікується
+    // новим рядком із новим токеном (гілка нижче).
     await sql.run(
       `UPDATE partner_reports
-          SET title = ?, html = ?, slug = ?, property_id = ?, published_at = ?
-        WHERE id = ?`,
-      [input.title, input.html, input.slug ?? existing.slug, input.propertyId ?? existing.property_id,
-       new Date().toISOString(), existing.id],
+          SET title = ?, html = ?, slug = ?, published_at = ?
+        WHERE id = ? AND organization_id = ?`,
+      [input.title, input.html, input.slug ?? existing.slug,
+       new Date().toISOString(), existing.id, organizationId],
     );
     return { ...existing, title: input.title, slug: input.slug ?? existing.slug };
   }

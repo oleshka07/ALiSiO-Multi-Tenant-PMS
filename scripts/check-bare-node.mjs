@@ -139,7 +139,17 @@ for (const file of scripts) {
   const ownAliases = own.eagerStatic.filter(isAlias);
   if (appImports.length === 0 && ownAliases.length === 0) continue;
 
-  const hasHooks = /\bregisterHooks\s*\(/.test(own.text);
+  // Резолвер може бути СВІЙ або СПІЛЬНИЙ. `scripts/lib/module-aliases.mjs`
+  // кличе `registerHooks` при своєму обчисленні, а статичний імпорт
+  // виконується до тіла файла — тобто аліаси стоять рівно так само вчасно, як
+  // від інлайнової копії. Доти гейт шукав саме рядок `registerHooks(` у
+  // самому файлі й вимагав копіювати резолвер туди, де для того й заведено
+  // спільний (знайдено 09.09.2026, коли `seed-chart-of-accounts.mjs` уперше
+  // потягнув модуль). Властивість та сама: резолвер на місці ДО першого
+  // аліаса; змінився лише спосіб її досягти.
+  const SHARED_RESOLVER = /(^|\/)lib\/module-aliases\.mjs$/;
+  const hasHooks = /\bregisterHooks\s*\(/.test(own.text)
+    || own.all.some((spec) => SHARED_RESOLVER.test(spec));
   const touchesModules = appImports.some((s) => s.startsWith('../src/modules/'));
   inventory.push({ file: rel(file), hasHooks, touchesModules, entries: appImports.length });
 

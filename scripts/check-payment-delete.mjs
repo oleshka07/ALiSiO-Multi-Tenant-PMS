@@ -42,6 +42,16 @@ const ALLOWED = new Map([
 /** Файли, де рядок є, а книги гостя не буває взагалі. */
 const NOT_MONEY = new Set([
   'scripts/check-isolation.mjs',   // зносить власну тестову організацію
+  // Той самий випадок: прибирає ВЛАСНІ пробні організації, у яких немає ні
+  // броні, ні гостя, ні фоліо — рядки, які він знімає, створені ним же
+  // кількома рядками вище (Р12.3).
+  'src/modules/finance/api/operation-scope.check.ts',
+  // І цей — рівно того ж роду: прибирає власні пробні організації, у яких
+  // немає ні броні, ні гостя, ні фоліо (Р13.2).
+  'src/modules/finance/data/operation-tags.check.ts',
+  'src/modules/finance/api/pnl-classifier.check.ts',
+  'src/modules/finance/data/axis-repair.check.ts',
+  'src/modules/finance/api/recurring-scope.check.ts',
 ]);
 
 const DELETES = /DELETE\s+FROM\s+fin_operations\b/i;

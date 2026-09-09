@@ -11,6 +11,7 @@
 import { NextResponse } from 'next/server';
 import { withModule, type Actor } from '@core/auth/session';
 import { todayFor } from '@core/hotel-day';
+import { requestPropertyScope } from '@core/auth/property-scope';
 import { houseList, breakfastList, keyList, dayClose } from '../data/day-sheets.repo';
 
 /**
@@ -36,10 +37,14 @@ export const getDaySheet = withModule('day_sheets', null, async (
   if (!date) return NextResponse.json({ error: 'date must be YYYY-MM-DD' }, { status: 400 });
 
   try {
+    const scope = await requestPropertyScope(request, actor.organizationId);
     switch (kind) {
-      case 'house':      return NextResponse.json({ date, rows: await houseList(date) });
-      case 'breakfast':  return NextResponse.json({ date, rows: await breakfastList(date) });
-      case 'keys':       return NextResponse.json({ date, rows: await keyList(date) });
+      // Аркуш належить БУДИНКУ, не рахунку (INC-029): зміна, яка його друкує,
+      // працює в одному будинку. «Усі обʼєкти» лишається законним — власник
+      // двох готелів дивиться зведений аркуш, — але сказано це параметром.
+      case 'house':      return NextResponse.json({ date, rows: await houseList(date, scope) });
+      case 'breakfast':  return NextResponse.json({ date, rows: await breakfastList(date, scope) });
+      case 'keys':       return NextResponse.json({ date, rows: await keyList(date, scope) });
       case 'day-close':  return NextResponse.json({ date, rows: await dayClose(date) });
       default:
         return NextResponse.json({ error: 'Unknown sheet' }, { status: 404 });

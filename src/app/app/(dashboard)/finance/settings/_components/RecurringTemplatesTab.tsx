@@ -29,6 +29,9 @@ export interface RecurringTemplate {
   last_run_at: string | null;
   runs_created: number;
   is_active: number;
+  /** Скільки прогонів поспіль відмовили і чим (Р13.7). */
+  failed_runs?: number;
+  last_error?: string | null;
 }
 
 const SCHEDULE_LABELS: Record<string, string> = {
@@ -139,6 +142,16 @@ export default function RecurringTemplatesTab() {
                     <Clock size={12} style={{ marginRight: 6, verticalAlign: 'middle', color: 'var(--text-secondary)' }} />
                     {t.name}
                     {t.comment && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{t.comment}</div>}
+                    {/* Чому шаблон не спрацював — ТУТ, а не в логу контейнера
+                        (Р13.7). Доти рушій гасив шаблон із першої відмови й
+                        мовчав: оренда просто переставала нараховуватись. */}
+                    {t.last_error && (
+                      <div style={{ fontSize: 11, color: 'var(--accent-warning)', marginTop: 2 }}>
+                        {t.is_active
+                          ? `${tUi('Остання спроба не вдалася')} (${t.failed_runs}×): ${t.last_error}`
+                          : `${tUi('Вимкнено після невдалих спроб')} (${t.failed_runs}×): ${t.last_error}`}
+                      </div>
+                    )}
                   </td>
                   <td style={td}>{tUi(OP_TYPE_LABEL[t.op_type])}</td>
                   <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>

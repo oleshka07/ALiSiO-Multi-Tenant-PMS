@@ -141,8 +141,13 @@ const day = (n) => { const d = new Date(); d.setUTCDate(d.getUTCDate() + n); ret
 // однакові роди лишили б прохід зеленим і тоді, коли поле не доїжджає до
 // обʼєкта взагалі.
 const HOTELS = [
-  { key: 'A', slug: `${SLUG_TAG}-alpha`, name: 'Onboarding Alpha', currency: 'EUR', timezone: 'Europe/Kyiv', lodgingKind: 'hotel', price: 120, total: 240, room: '101' },
-  { key: 'B', slug: `${SLUG_TAG}-beta`, name: 'Onboarding Beta', currency: 'CZK', timezone: 'Europe/Prague', lodgingKind: 'apartment', price: 200, total: 400, room: '201' },
+// Зведення двох гілок, і обидва набори полів потрібні цілком: `timezone` і
+// `lodgingKind` — бо без них заведення відмовляє названо (В1, О10), `rent` і
+// `tax` — бо на них стоять твердження про розділи P&L нижче. Втрата будь-якої
+// половини не дала б червоного там, де її прибрали: без пояса прохід упав би
+// на заведенні, а без `rent` — на `undefined` у сумі, тобто далеко від причини.
+  { key: 'A', slug: `${SLUG_TAG}-alpha`, name: 'Onboarding Alpha', currency: 'EUR', timezone: 'Europe/Kyiv', lodgingKind: 'hotel', price: 120, total: 240, room: '101', rent: 300, tax: 50 },
+  { key: 'B', slug: `${SLUG_TAG}-beta`, name: 'Onboarding Beta', currency: 'CZK', timezone: 'Europe/Prague', lodgingKind: 'apartment', price: 200, total: 400, room: '201', rent: 700, tax: 90 },
 ];
 
 async function login(email) {
@@ -157,40 +162,120 @@ async function login(email) {
   return `session_id=${m[1]}`;
 }
 
+/**
+ * Прибрати рядок і СКАЗАТИ, якщо не вийшло.
+ *
+ * Тут стояло тринадцять `.catch(() => {})` — у файлі, чия ж власна правка цей
+ * рід і викриває (Р13.8). Глухий рукав у прибиранні шкодить двічі: наступний
+ * прогін стартує з чужого сміття й падає в місці, яке до причини стосунку не
+ * має; а якщо `DELETE` перестав прибирати через ПОЛІТИКУ (під роллю
+ * застосунку без контексту орендаря він знімає нуль рядків і мовчить —
+ * INC-014), то мовчання приховує саме те, заради чого цей гейт існує.
+ *
+ * Відмова прибирання не валить прогін: гейт про заведення, а не про
+ * прибирання. Але вона ВИДИМА, і рядок називає таблицю.
+ */
+const cleanupProblems = [];
+async function drop(sqlText, params, what) {
+  try {
+    await sql.run(sqlText, params);
+  } catch (e) {
+    cleanupProblems.push(`${what}: ${e.message}`);
+  }
+}
+
 async function cleanup() {
+  cleanupProblems.length = 0;
+  // `organizations` — єдина таблиця тут БЕЗ політики орендаря (вона й є коренем
+  // орендаря), тож цей рядок читається поза контекстом правильно. Усе інше —
+  // ні, і саме на цьому все й трималось: див. нижче.
   const orgs = (await sql.rows("SELECT id FROM organizations WHERE slug LIKE ?", [`${SLUG_TAG}%`])).map((r) => r.id);
   for (const org of orgs) {
-    const props = (await sql.rows('SELECT id FROM properties WHERE organization_id = ?', [org])).map((r) => r.id);
     await runWithOrganization(org, async () => {
+      // Список обʼєктів читається ВСЕРЕДИНІ контексту орендаря, і це не
+      // косметика (Р14.3).
+      //
+      // Тут стояв `sql.rows(…)` перед `runWithOrganization`, тобто читання
+      // тенантної таблиці поза орендарем. На Postgres пул ставить
+      // `app.organization_id = ''` на кожне вільне зʼєднання, політика
+      // `properties_tenant` порівнює з ним — і запит віддає НУЛЬ рядків, не
+      // помилку. Виміряно на стенді §7 роллю `alisio_app`: `props` поза
+      // контекстом — 0, усередині — 1. Тобто ВЕСЬ блок нижче (броні, фактури,
+      // журнал, реєстрації, канали, збори, тарифи, номери, типи, категорії) не
+      // виконувався на Postgres жодного разу, а видимим це ставало одним
+      // рядком не про те: `DELETE FROM guests` бився об зовнішній ключ
+      // уцілілих броней. Даних це не лишало — усе зносив каскад від
+      // `organizations` нижче, — але рядок «!» був у кожному прогоні, а
+      // читача, який щоразу бачить «!» і йде далі, більше немає сенсу
+      // попереджати взагалі.
+      //
+      // Третій випадок класу INC-014 у цьому файлі: тенантний запит без
+      // орендаря не падає, він тихо віддає порожнє (AGENTS §7).
+      const props = (await sql.rows('SELECT id FROM properties WHERE organization_id = ?', [org])).map((r) => r.id);
       for (const pid of props) {
         const resIds = (await sql.rows('SELECT id FROM reservations WHERE property_id = ?', [pid])).map((r) => r.id);
         for (const rid of resIds) {
           for (const t of ['invoices', 'booking_activity_log', 'guest_registrations']) {
-            await sql.run(`DELETE FROM ${t} WHERE reservation_id = ?`, [rid]).catch(() => {});
+            await drop(`DELETE FROM ${t} WHERE reservation_id = ?`, [rid], `${t}`);
           }
         }
-        await sql.run('DELETE FROM reservations WHERE property_id = ?', [pid]).catch(() => {});
-        for (const t of ['ical_channels', 'cm_inbound_bookings', 'cm_outbox', 'cm_mappings', 'cm_events', 'cm_connections', 'fees_taxes']) {
-          await sql.run(`DELETE FROM ${t} WHERE property_id = ?`, [pid]).catch(() => {});
+        await drop('DELETE FROM reservations WHERE property_id = ?', [pid], 'reservations');
+        // Тільки ті, у кого `property_id` СПРАВДІ є.
+        //
+        // Тут стояли ще `cm_inbound_bookings`, `cm_outbox`, `cm_mappings`,
+        // `cm_events` — усі чотири скоупляться `organization_id`, а не
+        // обʼєктом, тож `DELETE … WHERE property_id = ?` падав з «no such
+        // column» на кожному прогоні. Під `.catch(() => {})` цього не було
+        // видно, і чотири таблиці не прибирались НІКОЛИ. Вони каскадують від
+        // `organizations` — тобто прибирались наприкінці й без цих рядків;
+        // єдине, що ці рядки робили, — ховали помилку (Р13.8).
+        for (const t of ['ical_channels', 'cm_connections', 'fees_taxes']) {
+          await drop(`DELETE FROM ${t} WHERE property_id = ?`, [pid], `${t}`);
         }
         // Ціни й статті обліку НЕ прибираються тут окремим запитом: вони
         // належать чужим модулям, і назвати їх у SQL означало б пробити межу
         // (`check-boundaries`). Каскад від `organizations` зносить їх сам —
         // так само робить `check-routes-live`.
-        await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [pid]).catch(() => {});
-        await sql.run('DELETE FROM units WHERE property_id = ?', [pid]).catch(() => {});
-        await sql.run('DELETE FROM unit_types WHERE property_id = ?', [pid]).catch(() => {});
-        await sql.run('DELETE FROM categories WHERE property_id = ?', [pid]).catch(() => {});
+        await drop('DELETE FROM rate_plans WHERE property_id = ?', [pid], 'rate_plans');
+        await drop('DELETE FROM units WHERE property_id = ?', [pid], 'units');
+        await drop('DELETE FROM unit_types WHERE property_id = ?', [pid], 'unit_types');
+        await drop('DELETE FROM categories WHERE property_id = ?', [pid], 'categories');
       }
       for (const t of ['guests', 'invoices', 'invoice_counters',
         'invoice_series', 'organization_features', 'organization_currencies']) {
-        await sql.run(`DELETE FROM ${t} WHERE organization_id = ?`, [org]).catch(() => {});
+        await drop(`DELETE FROM ${t} WHERE organization_id = ?`, [org], `${t}`);
       }
-      await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]).catch(() => {});
+      await drop('DELETE FROM properties WHERE organization_id = ?', [org], 'properties');
     });
-    await sql.run('DELETE FROM sessions WHERE user_id IN (SELECT id FROM app_users WHERE organization_id = ?)', [org]).catch(() => {});
-    await sql.run('DELETE FROM app_users WHERE organization_id = ?', [org]).catch(() => {});
-    await sql.run('DELETE FROM organizations WHERE id = ?', [org]).catch(() => {});
+    // `app_users` НЕ знімається окремо, і `sessions` теж.
+    //
+    // `fin_operations.created_by → app_users(id)` має `ON DELETE NO ACTION`, а
+    // прохід заводить оплату — тобто явний `DELETE FROM app_users` падав на
+    // зовнішньому ключі щоразу, і `.catch(() => {})` це ховав: користувачі й
+    // сесії лишались, поки їх не знімав каскад від `organizations` рядком
+    // нижче. Каскад робить це правильно й у правильному порядку, тож обидва
+    // рядки були зайві — вони лише приховували відмову (Р13.8).
+    await drop('DELETE FROM organizations WHERE id = ?', [org], 'organizations');
+  }
+  // ЧИТАННЯ НАЗАД, а не «жоден DELETE не впав» (інваріант 27, Р14.3).
+  //
+  // «Помилок не було» і «нічого не лишилось» — різні твердження, і саме на цій
+  // різниці жила вада вище: помилка була одна, а не виконувався цілий блок.
+  // Тому останнє слово каже не `try/catch`, а окремий запит.
+  //
+  // Питати досить `organizations`: кожна тенантна таблиця має шлях до неї
+  // зовнішнім ключем з `ON DELETE CASCADE` (міграція «every table now reaches
+  // an organization»), тож нуль організацій із нашим тегом означає нуль рядків
+  // усього іншого. Ця ж таблиця — єдина, яку видно поза контекстом орендаря,
+  // тобто перевірка не залежить від того, чи правильно ми ставимо орендаря.
+  const left = await sql.row("SELECT COUNT(*) AS n FROM organizations WHERE slug LIKE ?", [`${SLUG_TAG}%`]);
+  const leftN = Number(left?.n ?? 0);
+
+  if (cleanupProblems.length > 0 || leftN > 0) {
+    console.log(`  !  прибирання лишило ${cleanupProblems.length} проблем(и) і ${leftN} організац(ій) — наступний прогін почнеться з чужого сміття:`);
+    for (const p of cleanupProblems) console.log(`       ${p}`);
+  } else {
+    console.log('  ok  прибирання: жодної відмови, і назад читається нуль організацій із тегом');
   }
 }
 
@@ -223,12 +308,25 @@ async function runHotel(h) {
 
   // Модулі, вимкнені за замовчуванням (П15): прохід перевіряє ШЛЯХ, а не
   // право на модуль — 403 «не куплено» тут означав би, що ми не спитали.
-  for (const feature of ['channels', 'invoicing', 'accounting', 'guest_page']) {
-    await sql.run(
-      `INSERT INTO organization_features (organization_id, feature, enabled) VALUES (?, ?, TRUE)
-       ON CONFLICT(organization_id, feature) DO UPDATE SET enabled = TRUE`,
-      [org.organizationId, feature]).catch(() => {});
-  }
+  //
+  // У КОНТЕКСТІ ОРЕНДАРЯ і БЕЗ ковтання помилки (INC-014). Тут стояло
+  // `sql.run(...).catch(() => {})` поза контекстом — і на Postgres під роллю
+  // застосунку політика відхиляла вставку, а `catch` це з'їдав. Наслідок
+  // виглядав як вада продукту: свіжий готель отримував 403 «Модуль обліку
+  // вимкнено» на кожному фінансовому маршруті, і прохід доповідав про це як
+  // про поломку плану рахунків. На SQLite політик немає, тому там усе
+  // проходило — той самий клас, що INC-014: зелене саме там, де осі немає.
+  const enabled = await runWithOrganization(org.organizationId, async () => {
+    const { setFeature } = await import('../src/core/features.ts');
+    for (const feature of ['channels', 'invoicing', 'accounting', 'guest_page']) {
+      await setFeature(org.organizationId, feature, true);
+    }
+    return sql.rows(
+      'SELECT feature FROM organization_features WHERE organization_id = ? AND enabled = TRUE',
+      [org.organizationId]);
+  });
+  claim(fam, enabled.length >= 4,
+    `модулі готелю увімкнено (${enabled.length}) — інакше далі буде 403 «не куплено», а не вада`);
 
   // Вхід — це ще й перевірка, що прохід і застосунок дивляться в ОДНУ базу:
   // готель щойно заведено цим процесом, і якщо сервер про нього не знає, річ
@@ -369,6 +467,83 @@ async function runHotel(h) {
   const pay = await body(payRes);
   claim(fam, payRes.status === 201 && pay?.id,
     `оплату готівкою прийнято (${payRes.status}${pay?.error ? ` — ${pay.error}` : ''})`);
+
+  // ── 8b. Дві витрати і P&L: оренда стоїть в ОПЕРАЦІЙНИХ, податок у ПОДАТКАХ ──
+  //
+  // Р12.1. Засів плану рахунків ставив назву, групу і ознаки — і НЕ ставив
+  // двох колонок, за якими цей план читається: `op_type` і `classifier`.
+  // Стаття без них існує, показується в списку і приймає операції; невидима
+  // вона рівно там, де по ній рахують гроші:
+  //
+  //   - P&L (`reports.handlers.ts`) розкладає рядки за `classifier`, а
+  //     порожнє поле бере `COALESCE(ec.classifier,'other')` — оренда,
+  //     зарплата й податки лягають в «Інше», тобто нижче EBITDA. Для готелю
+  //     це не косметика: EBITDA свіжого готелю дорівнює виручці;
+  //   - `/api/finance/categories?op_type=expense` — той самий список, який
+  //     відкриває форма витрати, — віддає ПОРОЖНЬО;
+  //   - `autoResolveCategory` шукає `op_type='income'|'expense'` і не
+  //     знаходить нічого.
+  //
+  // Твердження тут — про ЧИСЛО В РЯДКУ звіту, не про колонку в базі: колонка
+  // може називатись інакше, а «оренда в операційних» — це те, за чим готель
+  // ухвалює рішення. Дві різні статті навмисно (інваріант 26): один
+  // classifier не розрізнив би «розклало правильно» і «склало все в одну
+  // купу», а суми різні й несумісні — 300 і 50 не дають 350 в жодному
+  // правильному прочитанні.
+  const accRes = await call(cookie, '/api/finance/accounts');
+  const accounts = await body(accRes);
+  const cash = (Array.isArray(accounts) ? accounts : (accounts?.accounts ?? []))
+    .find((a) => a.type === 'cash');
+  claim(fam, !!cash, `у готелю є каса (${cash ? cash.currency : 'НЕМАЄ'})`);
+
+  const chartRes = await call(cookie, '/api/finance/categories');
+  const cats = await body(chartRes);
+  const catList = Array.isArray(cats) ? cats : (cats?.categories ?? []);
+  const byCode = (code) => catList.find((c) => c.code === code);
+
+  const expenseRes = await call(cookie, '/api/finance/categories?op_type=expense');
+  const expenseCats = await body(expenseRes);
+  claim(fam, Array.isArray(expenseCats) && expenseCats.length > 0,
+    `форма витрати має з чого обрати статтю (op_type=expense → ${
+      Array.isArray(expenseCats) ? expenseCats.length : '?'} статей)`);
+
+  const spend = async (code, amount) => {
+    const cat = byCode(code);
+    if (!cat || !cash) return null;
+    const res = await call(cookie, '/api/finance/operations', {
+      method: 'POST',
+      body: JSON.stringify({
+        op_type: 'expense', amount, currency: h.currency, paid_at: iso(new Date()),
+        account_from_id: cash.id, category_id: cat.id, comment: `${TAG} ${code}`,
+      }),
+    });
+    const op = await body(res);
+    claim(fam, res.status === 201 && op?.id,
+      `витрату «${code}» ${amount} ${h.currency} проведено (${res.status}${op?.error ? ` — ${op.error}` : ''})`);
+    return cat.id;
+  };
+  const rentCat = await spend('rent', h.rent);
+  const taxCat = await spend('taxes', h.tax);
+
+  // Вікно назване явно, і це не косметика: звіт за замовчуванням бере ПІВРОКУ
+  // НАЗАД, а рахує за `accrued_at` — оплата броні нарахована на дату
+  // заїзду, тобто в майбутньому. З дефолтним вікном виручка дорівнює нулю не
+  // тому, що щось зламано, а тому, що ми спитали про інші місяці.
+  const pnlRes = await call(cookie, `/api/finance/pnl-matrix?from=${iso(new Date()).slice(0, 7)}&to=${day(120).slice(0, 7)}`);
+  const pnl = await body(pnlRes);
+  const section = (key) => (pnl?.sections ?? []).find((s) => s.key === key);
+  const inSection = (key, catId) => (section(key)?.rows ?? []).find((r) => r.category_id === catId);
+
+  claim(fam, Number(section('revenue')?.total) === h.total,
+    `у P&L виручка ${h.total} (${section('revenue')?.total ?? '—'})`);
+  claim(fam, Number(inSection('operational', rentCat)?.total) === h.rent,
+    `оренда ${h.rent} стоїть в ОПЕРАЦІЙНИХ (${inSection('operational', rentCat)?.total ?? 'її там немає'})`);
+  claim(fam, Number(inSection('tax', taxCat)?.total) === h.tax,
+    `податок ${h.tax} стоїть у ПОДАТКАХ (${inSection('tax', taxCat)?.total ?? 'його там немає'})`);
+  claim(fam, Number(section('other')?.total ?? 0) === 0,
+    `а в «Іншому» — нуль (${section('other')?.total ?? '—'})`);
+  claim(fam, Number(section('ebitda')?.total) === h.total - h.rent,
+    `EBITDA = виручка мінус операційні = ${h.total - h.rent} (${section('ebitda')?.total ?? '—'})`);
 
   return { h, fam, org, cookie, unitType, unit, booking, ical, category };
 }
