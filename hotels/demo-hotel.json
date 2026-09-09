@@ -16,6 +16,7 @@
     "address": "Seepromenade 1",
     "city": "Seestadt",
     "country": "DE",
+    "propertyType": "hotel",
     "phone": "+49 000 0000000",
     "email": "reception@aurora.example",
     "checkInTime": "15:00",

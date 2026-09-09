@@ -12,8 +12,14 @@ export interface ICalEvent {
 
 /**
  * Parse an iCal (VCALENDAR) string into an array of events.
+ *
+ * Пояс — АРГУМЕНТ без дефолту, і це третя з «трьох Праг» (Р13.13). Тут
+ * стояло `timezone = 'Europe/Prague'`: єдиний виклик передає справжній пояс
+ * готелю, тож дефолт нічого не робив — він просто чекав другого виклику,
+ * який про нього забуде. Дата заїзду, зсунута на добу, для календаря, за
+ * яким канал вирішує, чи номер вільний, — це подвійна бронь.
  */
-export function parseICal(text: string, timezone = 'Europe/Prague'): ICalEvent[] {
+export function parseICal(text: string, timezone: string): ICalEvent[] {
   const events: ICalEvent[] = [];
   // Unfold long lines (RFC 5545: CRLF + space/tab = continuation)
   const unfolded = text.replace(/\r\n[\t ]/g, '');

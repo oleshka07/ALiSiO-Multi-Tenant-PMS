@@ -7,6 +7,8 @@ import { runWithOrganization } from './auth/tenant-context.ts';
 import { DEFAULT_LANGUAGE, LANGUAGE_CODES, isLanguage } from './i18n/languages.ts';
 import { defaultBookingSources } from './booking-sources.ts';
 import { CHART_OF_ACCOUNTS, BUSINESS_UNITS } from './chart-of-accounts.ts';
+import { timezoneForCountry, isKnownTimezone } from './hotel-day.ts';
+import { LODGING_KINDS, isLodgingKind } from './lodging-kinds.ts';
 
 /**
  * Creating a customer.
@@ -50,6 +52,16 @@ export interface NewOrganization {
   currency?: string;
   timezone?: string;
   /**
+   * Рід житла, яким готель називається каналу продажу. ОБОВʼЯЗКОВИЙ.
+   *
+   * Рішення власника В1 (09.09.2026): «має бути чіткий вибір, один раз
+   * обирається і закріплюється за готелем». Не дефолт: вендор каналу бере це
+   * поле за ОСНОВУ РАХУНКУ — готельна група тарифікується за обʼєкт, оренда
+   * за юніт, — тож підставлений `hotel` це чужий рахунок, виставлений
+   * мовчки. Той самий розклад, що з валютою і поясом.
+   */
+  lodgingKind?: string;
+  /**
    * The hotel's base language. Its staff get the interface in it, and it is
    * the language its people type content in — so it is also the source the
    * guest-facing translations are made from. Defaults to Ukrainian, which is
@@ -65,6 +77,16 @@ export interface ProvisionedOrganization {
   propertyId: string;
   ownerId: string;
   language: string;
+  /** Пояс, який реально ліг у базу. */
+  timezone: string;
+  /**
+   * Звідки він узявся: `input` — назвав оператор, `country` — виведено з
+   * країни. Повертається, щоб той, хто заводить готель, МІГ ПОКАЗАТИ висновок
+   * на підтвердження, а не видати його за введене.
+   */
+  timezoneFrom: 'input' | 'country';
+  /** Рід житла, який ліг на обʼєкт. Названий — іншого шляху немає (В1). */
+  lodgingKind: string;
 }
 
 /**
@@ -145,6 +167,74 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
     throw new Error('currency is required: three letters, ISO 4217 (CZK, EUR, UAH, …)');
   }
 
+  // Часовий пояс — за тим самим правилом, і ціна помилки тут вища за валюту.
+  //
+  // Тут стояло `input.timezone || 'Europe/Prague'`. Пояс вирішує, де
+  // проходить МЕЖА ДОБИ: списки приїздів і виїздів, нічний архів неявок,
+  // «сьогодні» на кожному екрані — і, головне, дати, якими торгує канал.
+  // Український готель із празьким поясом продає не ті дні, і жодної помилки
+  // при цьому не видно: колонка заповнена, значення схоже на правду. Вендор
+  // каналу тому й пише «Make sure you set … timezone when you create a
+  // property».
+  //
+  // Два шляхи, і обидва явні: пояс називають, або його ВИВОДЯТЬ із країни —
+  // і тоді той, хто заводить готель, показує висновок на підтвердження
+  // (`timezoneFrom`). Третього — мовчазного — немає.
+  let timezone = input.timezone?.trim();
+  let timezoneFrom: 'input' | 'country' = 'input';
+  if (!timezone) {
+    timezone = timezoneForCountry(input.country) ?? undefined;
+    timezoneFrom = 'country';
+  }
+  if (!timezone) {
+    // Українською з тієї ж причини, що й рід житла нижче: цей текст друкує
+    // оператору `provision-org.mjs`. Імʼя поля лишається — воно каже, ЩО
+    // назвати.
+    throw new Error(
+      'Не вказано часовий пояс (timezone). Назвіть його прямо, або країну, у якої пояс ОДИН '
+      + '(UA, CZ, PL, DE, …): країна з кількома поясами, як US чи ES, пояс не визначає');
+  }
+  // Рід житла — за тим самим правилом, і з тієї ж причини, що валюта й пояс.
+  //
+  // Рішення власника В1: вибір, а не дефолт. Вендор каналу бере це поле за
+  // основу рахунку (готельна група — за обʼєкт, оренда — за юніт), тож
+  // мовчазний `hotel` означає чужий тариф, виставлений готелю без його
+  // відома, і помітить це не код, а виписка першого числа.
+  //
+  // Перелік — у ядрі (`lodging-kinds.ts`), не в модулі каналів: рід житла це
+  // факт про сам обʼєкт, і форма обʼєкта питає його в готелю, який каналів
+  // не купував.
+  //
+  // Мова відмови — продуктова, і саме тут це не косметика: `provision-org.mjs`
+  // друкує `e.message` оператору дослівно (`:92`), тобто ЦЕ і є той екран, на
+  // якому людина дізнається про В1. Коміт, що приводив відмови модуля до мови
+  // продукту, ці дві проґавив (рецензія раунду 20, П3).
+  //
+  // Ім'я поля лишається в тексті навмисно, і лише тут: цю відмову читає той,
+  // хто заводить готель командою або файлом, і йому потрібно знати, ЯКЕ поле
+  // назвати. Відмови, які бачить портьє (`properties.repo`), назв колонок не
+  // містять.
+  const lodgingKind = input.lodgingKind?.trim();
+  if (!lodgingKind) {
+    throw new Error(
+      'Не вказано рід житла (lodgingKind). Готель називає його сам — ми не вгадуємо: '
+      + 'від цього залежить, за що менеджер каналів бере гроші, за обʼєкт чи за юніт. '
+      + `Один із ${LODGING_KINDS.length}: ${LODGING_KINDS.join(' ')}`);
+  }
+  if (!isLodgingKind(lodgingKind)) {
+    throw new Error(
+      `Роду житла «${lodgingKind}» немає в переліку. `
+      + `Один із ${LODGING_KINDS.length}: ${LODGING_KINDS.join(' ')}`);
+  }
+
+  // Вигаданий пояс не записується: `todayIn` з нього мовчки падає на UTC, і
+  // готель отримує «сьогодні» за Гринвічем, не помітивши цього.
+  if (!isKnownTimezone(timezone)) {
+    throw new Error(
+      `Часової зони «${timezone}» (timezone) не існує. `
+      + 'Потрібна назва з бази IANA — наприклад Europe/Kyiv або Europe/Prague');
+  }
+
   // Checked before the transaction so the caller gets the real reason rather
   // than a UNIQUE constraint message.
   if (await sql.row<any>('SELECT 1 FROM organizations WHERE slug = ?', [slug])) {
@@ -173,13 +263,13 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
     await t.run(`
       INSERT INTO organizations (id, name, slug, timezone, default_currency, language)
       VALUES (?, ?, ?, ?, ?, ?)
-    `, [organizationId, name, slug, input.timezone || 'Europe/Prague', currency, language]);
+    `, [organizationId, name, slug, timezone, currency, language]);
 
     // Currency lives on the organization; a property carries location and
     // times. (getOrgIdentity and the ARI push both read it from there.)
     await t.run(`
-      INSERT INTO properties (id, organization_id, name, slug, city, country)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO properties (id, organization_id, name, slug, city, country, property_type)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `, [propertyId, organizationId,
       input.propertyName || name,
       `${slug}-1`,
@@ -194,7 +284,9 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
       //
       // Тому мовчазного вгадування тут більше немає: не названо — NULL, і
       // юрисдикцію вирішує мова готелю, поки країну не введуть явно.
-      input.country || null]);
+      input.country || null,
+      // Рід житла — названий, звірений вище. Мовчазного дефолту немає (В1).
+      lodgingKind]);
 
     // One category so the calendar has a group to draw. Its name is generic on
     // purpose — the hotel renames it, and the type is now free text.
@@ -327,5 +419,5 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
     // шлях, яким його отримують готелі, заведені до 0111.
   }));
 
-  return { organizationId, propertyId, ownerId, language };
+  return { organizationId, propertyId, ownerId, language, timezone, timezoneFrom, lodgingKind };
 }

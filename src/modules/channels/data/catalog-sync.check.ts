@@ -45,6 +45,9 @@ const { getSql } = await import('@core/db/async');
 const { syncConnectionCatalog } = await import('./catalog-sync.ts');
 const { remoteIdOf } = await import('./mappings.repo.ts');
 const { queuedChanges, OUTBOX_HORIZON_DAYS } = await import('./outbox.repo.ts');
+// Вісь рахунку — ДОМЕННИМИ словами: `check-vendor-isolation` тримає імʼя
+// вендора всередині `channex/`, а цей файл далеко за його межами.
+const { billingBasisOf } = await import('../ui/billing-group.ts');
 
 const sql = getSql();
 const A = '__catsync__a';
@@ -93,11 +96,13 @@ async function cleanup() {
  * Двох орендарів треба, і не для симетрії: один не доводить нічого — з ним
  * зламана межа виглядає цілою (той самий довід, що в `check-isolation.mjs`).
  */
-async function seed(org: string) {
-  await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [org, org, org]);
+async function seed(org: string, timezone: string, propertyType: string) {
+  await sql.run('INSERT INTO organizations (id, name, slug, timezone) VALUES (?, ?, ?, ?)',
+    [org, org, org, timezone]);
   await runWithOrganization(org, async () => {
-    await sql.run('INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)',
-      [`${org}_prop`, org, org, `${org}_prop`]);
+    await sql.run(
+      'INSERT INTO properties (id, organization_id, name, slug, property_type) VALUES (?, ?, ?, ?, ?)',
+      [`${org}_prop`, org, org, `${org}_prop`, propertyType]);
     await sql.run('INSERT INTO categories (id, property_id, name, type) VALUES (?, ?, ?, ?)',
       [`${org}_cat`, `${org}_prop`, 'Rooms', 'rooms']);
     await sql.run(
@@ -137,10 +142,16 @@ async function seed(org: string) {
  * скриптом (`scripts/channex-catalog-live.mjs`), а гейт мусить бути
  * детермінованим, інакше збірка червоніє від чужого простою.
  */
+const sentProperties: Record<string, any> = {};
+
 function fakeTarget(prefix: string) {
   let n = 0;
   return {
-    createProperty: async () => `${prefix}-property`,
+    createProperty: async (property: any) => { sentProperties[prefix] = property; return `${prefix}-property`; },
+    // Дзеркало в цих проходах порожнє, тож звірка не кличеться; порожня
+    // розбіжність тримає її безшумною, якщо колись покличеться.
+    propertyDrift: async () => [],
+    updateProperty: async (_id: string, property: any) => { sentProperties[prefix] = property; },
     createUnitType: async () => `${prefix}-ut-${++n}`,
     createRatePlan: async (
       _p: string, _ut: string, _plan: unknown, occupancies: number[],
@@ -154,8 +165,11 @@ function fakeTarget(prefix: string) {
 }
 
 await cleanup();
-await seed(A);
-await seed(B);
+// Два орендарі в РІЗНИХ поясах і різних типах — інакше вісь вироджена:
+// 'Europe/Prague' це дефолт схеми, і з ним «правильно» не відрізнити від
+// «взяли дефолт». Київ ліворуч саме тому.
+await seed(A, 'Europe/Kyiv', 'guest_house');
+await seed(B, 'Europe/Prague', 'apartment');
 
 await runWithOrganization(A, async () => {
   const report = await syncConnectionCatalog(`${A}_conn`, { target: fakeTarget('a') as never });
@@ -164,6 +178,28 @@ await runWithOrganization(A, async () => {
     report.skipped.map((x) => `${x.what}:${x.reason}`), ['rate_plan:no_price'],
     'тариф без ціни називається у звіті, а не зникає мовчки (інваріант 17)',
   );
+
+  // ── Вендор перед продакшном: «set property type and timezone» ─────────
+  //
+  // Обидва поля мовчали. `property_type` не існував ніде в `src/`, а
+  // `timezone` ВИГЛЯДАВ відправленим: у `catalog-target.ts` стоїть умовний
+  // спред `...(property.timezone ? ... : {})`, але `catalog-sync` цього поля
+  // не заповнював, тож умова була хибною завжди. Порожній ключ і невірний
+  // ключ на екрані не розрізняються — обидва просто відсутні в тілі.
+  //
+  // Ціна різна, і обидві не косметичні. `property_type` вендор називає
+  // прямо: «affects billing». `timezone` вирішує, де проходить межа доби, а
+  // канал торгує ДАТАМИ заїзду — зсунута межа це зсунуті броні.
+  //
+  // Твердження про ВЛАСТИВІСТЬ, не про наявність ключа: пояс мусить бути
+  // поясом ЦЬОГО готелю. Київ обрано навмисно — 'Europe/Prague' це дефолт
+  // схеми, і на ньому «взяли з готелю» не відрізнити від «взяли дефолт».
+  const sentA = sentProperties['a'];
+  assert.equal(sentA?.timezone, 'Europe/Kyiv',
+    `пояс обʼєкта — пояс ГОТЕЛЮ, не дефолт схеми (поїхало: ${sentA?.timezone})`);
+  assert.equal(sentA?.propertyType, 'guest_house',
+    `тип обʼєкта поїхав своїм (поїхало: ${sentA?.propertyType})`);
+  console.log('  ok  обʼєкт їде з поясом і типом ЦЬОГО готелю');
 
   // ── Головне твердження: зʼєднання знає свій обʼєкт на тому боці ───────
   const rows = await sql.rows<{ remote_property_id: string | null }>(
@@ -226,6 +262,123 @@ await runWithOrganization(A, async () => {
     'повторний прохід не має переписувати обʼєкт на новий');
 });
 console.log('  ok  повторний прохід ідемпотентний і не переписує обʼєкт');
+
+// ── Друга половина осі: сусід їде СВОЇМ поясом і своїм типом ────────────
+//
+// Без цього твердження читач, який підставляв би 'Europe/Kyiv' константою,
+// проходив би перевірку А. Тут пояс і тип мусять бути ІНШИМИ — саме тому
+// орендарі заведені в різних поясах (інваріант 26).
+await runWithOrganization(B, async () => {
+  await syncConnectionCatalog(`${B}_conn`, { target: fakeTarget('b') as never });
+});
+const sentB = sentProperties['b'];
+assert.equal(sentB?.timezone, 'Europe/Prague', `сусід поїхав своїм поясом (${sentB?.timezone})`);
+assert.equal(sentB?.propertyType, 'apartment', `сусід поїхав своїм типом (${sentB?.propertyType})`);
+assert.notEqual(sentProperties['a']?.timezone, sentB?.timezone,
+  'обидва орендарі поїхали ОДНИМ поясом — вісь вироджена, твердження нічого не варте');
+console.log('  ok  сусід їде своїм поясом і типом, і вони інші');
+
+/**
+ * «Названа відмова» — це три речі одночасно, і збіг тексту не доводить
+ * жодної з них (§3.2.1: гейт стереже ВЛАСТИВІСТЬ, а не візерунок).
+ *
+ *   1) це відмова, а не виняток — тобто вона доїде до оператора своїм 400,
+ *      а не перетвориться на «Внутрішня помилка сервера» (Р13.10);
+ *   2) вона мовою продукту — інакше німецький портьє бачить рядок коду
+ *      (Р15.2: тут стояло `catalog: property_type is not set — …`);
+ *   3) вона називає ПРЕДМЕТ, а не нашу колонку: людина мусить зрозуміти,
+ *      що саме піти й полагодити.
+ *
+ * Тому перевіряються всі три, і третя — по суті, а не дослівно: змінити
+ * формулювання можна, перестати називати предмет — ні.
+ */
+function namedRefusal(subject: RegExp) {
+  return (e: unknown) => {
+    const err = e as { isRefusal?: boolean; status?: number; message?: string };
+    const text = err?.message ?? String(e);
+    assert.ok(err?.isRefusal, `очікували названу відмову, а прилетів голий виняток: ${text}`);
+    assert.strictEqual(err.status, 400, `названа відмова їде своїм 400, а не ${err.status}`);
+    assert.ok(/[а-яіїєґ]/i.test(text), `відмова не мовою продукту: ${text}`);
+    assert.ok(subject.test(text), `відмова не називає предмет (${subject}): ${text}`);
+    return true;
+  };
+}
+
+// ── Готель, який не назвався, не їде взагалі ────────────────────────────
+//
+// Тип впливає на рахунок ВЕНДОРА готелю. Підставити 'hotel' означало б
+// заплатити за нього його ж грошима, і мовчки.
+await runWithOrganization(A, async () => {
+  await sql.run('UPDATE properties SET property_type = NULL WHERE id = ?', [`${A}_prop`]);
+  await sql.run('UPDATE cm_connections SET remote_property_id = NULL WHERE id = ?', [`${A}_conn`]);
+  await assert.rejects(
+    () => syncConnectionCatalog(`${A}_conn`, { target: fakeTarget('n') as never }),
+    namedRefusal(/рід житла/i),
+    'обʼєкт без типу мусить відмовити НАЗВАНО, а не поїхати з нашим здогадом',
+  );
+});
+console.log('  ok  готель, який не назвав тип житла, отримує названу відмову');
+
+// ── Пояс: дві ОКРЕМІ сцени, бо це дві різні поломки ────────────────────
+//
+// Лист вендора 09.09.2026: «Always set timezone explicitly to an IANA name.
+// Do not omit it — arrival dates follow the property timezone day boundary.»
+// У вендорському доці те саме поле позначене `[optional]`
+// (`hotels-collection.md:430`), і саме ця розбіжність — причина, чому варта
+// потрібна В НАС: вендор дозволяє пропустити, а наслідок лягає на готель.
+//
+// Сцени різні, бо різні механізми відмови, і кожен ламався б окремо:
+//   ПОРОЖНІЙ рядок `NOT NULL` дозволяє, і він мовчки випадав з тіла через
+//   умовний спред — 200, обʼєкт без поясу, жодної помилки;
+//   ВИГАДАНА зона проходить будь-яку перевірку на непорожність і вмирає
+//   422-ю у вендора вже посеред створення каталогу, коли обʼєкт заведено.
+await runWithOrganization(A, async () => {
+  await sql.run('UPDATE properties SET property_type = ? WHERE id = ?', ['hotel', `${A}_prop`]);
+
+  await sql.run('UPDATE organizations SET timezone = ? WHERE id = ?', ['', A]);
+  await assert.rejects(
+    () => syncConnectionCatalog(`${A}_conn`, { target: fakeTarget('tz1') as never }),
+    namedRefusal(/пояс/i),
+    'порожній пояс мовчки випав з тіла замість названої відмови',
+  );
+
+  await sql.run('UPDATE organizations SET timezone = ? WHERE id = ?', ['Europe/Atlantis', A]);
+  await assert.rejects(
+    () => syncConnectionCatalog(`${A}_conn`, { target: fakeTarget('tz2') as never }),
+    // Названа зона В ТЕКСТІ: «зона невідома» без імені лишає оператора з
+    // питанням «яка саме», а він міг ввести її три екрани тому.
+    namedRefusal(/Europe\/Atlantis/),
+    'вигадана зона поїхала б вендору і повернулась 422 посеред створення каталогу',
+  );
+
+  await sql.run('UPDATE organizations SET timezone = ? WHERE id = ?', ['Europe/Kyiv', A]);
+});
+assert.strictEqual(
+  sentProperties['tz1'], undefined,
+  'обʼєкт із порожнім поясом усе одно поїхав у канал',
+);
+assert.strictEqual(
+  sentProperties['tz2'], undefined,
+  'обʼєкт із вигаданою зоною усе одно поїхав у канал',
+);
+console.log('  ok  порожній пояс і вигадана зона — дві названі відмови, і жоден обʼєкт не поїхав');
+
+// ── Вісь рахунку: два орендарі стоять по різні боки тарифу ─────────────
+//
+// Фікстура невироджена не лише по поясу, а й по ГРУПІ ТАРИФІКАЦІЇ: A —
+// `guest_house` (готельна група, рахунок за обʼєкт), B — `apartment`
+// (оренда, рахунок за юніт). Якби обидва були готелями, твердження про рід
+// житла лишалось би зеленим і в коді, який шле одну константу — а ціна
+// такої помилки тепер не «каталог не поїхав», а неправильний рахунок
+// готелю (лист вендора 09.09.2026).
+assert.notStrictEqual(
+  billingBasisOf(sentProperties['a']?.propertyType),
+  billingBasisOf(sentB?.propertyType),
+  'обидва орендарі на ОДНІЙ основі рахунку — вісь у фікстурі вироджена',
+);
+assert.strictEqual(billingBasisOf(sentProperties['a']?.propertyType), 'per_property');
+assert.strictEqual(billingBasisOf(sentB?.propertyType), 'per_unit');
+console.log('  ok  фікстура невироджена й по осі рахунку: обʼєкт проти юніта');
 
 await cleanup();
 console.log('каталог: зʼєднання знає свій обʼєкт на тому боці');

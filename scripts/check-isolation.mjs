@@ -210,9 +210,14 @@ async function main() {
     const cookieB = await login(b);
 
     // A creates a property.
+    //
+    // `property_type` названо — писач без нього відмовляє (В1): рід житла це
+    // вісь рахунку вендора, і мовчазного `hotel` більше немає. У двох
+    // орендарів роди РІЗНІ навмисно: однакові лишили б будь-яке твердження
+    // нижче зеленим і тоді, коли поле береться не з того обʼєкта.
     const created = await call(cookieA, '/api/properties', {
       method: 'POST',
-      body: JSON.stringify({ name: 'Probe A Hotel', slug: `${TAG}a-hotel` }),
+      body: JSON.stringify({ name: 'Probe A Hotel', slug: `${TAG}a-hotel`, property_type: 'hotel' }),
     });
     assert.strictEqual(created.status, 201, `A could not create a property: ${created.status}`);
     const propA = await created.json();
@@ -227,7 +232,7 @@ async function main() {
     // mode this file already learned once with `if (siteRes.ok)`.
     const createdB = await call(cookieB, '/api/properties', {
       method: 'POST',
-      body: JSON.stringify({ name: 'Probe B Hotel', slug: `${TAG}b-hotel` }),
+      body: JSON.stringify({ name: 'Probe B Hotel', slug: `${TAG}b-hotel`, property_type: 'camping' }),
     });
     assert.strictEqual(createdB.status, 201, `B could not create a property: ${createdB.status}`);
     const propB = await createdB.json();

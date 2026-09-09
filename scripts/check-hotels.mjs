@@ -23,6 +23,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
+// Перелік родів житла — з ЯДРА, не список у цьому файлі. Другий список
+// розійшовся б із першим, і розійшовся б мовчки: файл готелю пройшов би тут і
+// впав би у писача вже на сервері.
+const { LODGING_KINDS } = await import('../src/core/lodging-kinds.ts');
+
 const DIR = 'hotels';
 const problems = [];
 const note = (file, what) => problems.push(`${file}: ${what}`);
@@ -68,6 +73,24 @@ for (const name of files) {
     note(file, `organization.slug "${slug}" — лише малі літери, цифри й дефіси`);
   }
   if (!f(org, 'ownerEmail')) note(file, 'organization.ownerEmail відсутній — без нього готель не створиться');
+
+  // ── рід житла ─────────────────────────────────────────────────────────────
+  //
+  // Обовʼязковий, і в ШАБЛОНІ теж (В1). Це поле — основа рахунку, який вендор
+  // каналу виставить готелю: готельна група тарифікується за обʼєкт, оренда —
+  // за юніт. Мовчазний `hotel` кемпінгу означає чужий тариф, і побачить це не
+  // код, а виписка першого числа.
+  //
+  // У шаблоні воно потрібне саме тому, що шаблон копіюють: поле, якого нема в
+  // зразку, не зʼявиться і в копії, а `apply-hotel` відмовиться створювати
+  // готель — тобто помилка знайдеться на сервері, а не тут.
+  const kind = f(plan.property || {}, 'propertyType', 'lodgingKind');
+  if (!kind) {
+    note(file, 'property.propertyType відсутній — рід житла обирає готель, і саме він визначає, '
+      + 'за що канал бере гроші (за обʼєкт чи за юніт); мовчазного «hotel» більше немає');
+  } else if (!LODGING_KINDS.includes(kind)) {
+    note(file, `property.propertyType "${kind}" — такого роду житла немає; є ${LODGING_KINDS.length}: ${LODGING_KINDS.join(' ')}`);
+  }
   // Пароль у файлі поїхав би в git і лишився б в історії назавжди.
   for (const key of ['ownerPassword', 'owner_password', 'password']) {
     if (org[key]) note(file, `organization.${key} — пароль не кладуть у репозиторій; він генерується при створенні`);

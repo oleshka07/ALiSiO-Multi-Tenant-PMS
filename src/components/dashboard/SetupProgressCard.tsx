@@ -16,12 +16,14 @@ import Link from 'next/link';
 import { CheckCircle2, Circle, ChevronRight } from 'lucide-react';
 import { useT } from '@core/i18n/client';
 import { usePropertyScope, type ScopedProperty } from '@/ui/PropertyScopeContext';
+import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
+import { LodgingBillingHint } from '@/modules/channels/ui/LodgingBillingHint';
 
 interface Step { key: string; done: boolean; href: string }
-interface Progress { steps: Step[]; done: number; total: number }
+interface Progress { steps: Step[]; done: number; total: number; lodgingKind: string | null }
 
 const STEP_LABELS: Record<string, string> = {
-  property: 'Обʼєкт: адреса, країна, час заїзду та виїзду',
+  property: 'Обʼєкт: адреса, країна, час заїзду та виїзду, рід житла',
   rooms: 'Типи номерів і номери',
   seasons: 'Сезони',
   ratePlans: 'Тарифи',
@@ -70,6 +72,7 @@ export default function SetupProgressCard() {
 
 function PropertySetupCard({ property, progress, named }: { property: ScopedProperty; progress: Progress; named: boolean }) {
   const t = useT();
+  const { features } = useCurrentUser();
   return (
     <div className="card" style={{ marginBottom: 20 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
@@ -102,6 +105,13 @@ function PropertySetupCard({ property, progress, named }: { property: ScopedProp
           </Link>
         ))}
       </div>
+      {/* Наслідок роду житла для рахунку каналу — В ОНБОРДИНГУ, не лише в
+          налаштуваннях обʼєкта (В1). Тут його бачить той, хто заводить
+          готель, і бачить ДО того, як дійде до екрана каналів: рід — вісь
+          тарифікації вендора, а помітна помилка в ній буває лише випискою
+          першого числа. Лише з модулем каналів: готель, який їх не купував,
+          нічого про чужі тарифи знати не мусить. */}
+      {features.channels && <LodgingBillingHint kind={progress.lodgingKind} />}
     </div>
   );
 }

@@ -170,6 +170,73 @@ export async function rememberFullSync(connectionId: string, at: string = nowSta
 }
 
 /**
+ * Каталог цього зʼєднання щойно поїхав до вендора (0130, Р15.1).
+ *
+ * Окремо від `rememberFullSync`: та мітка про ARI — наявність і ціни, —
+ * а ця про КАТАЛОГ, тобто про сам обʼєкт, типи номерів і тарифи. Змішати їх
+ * означало б, що нічна розсилка цін «полагодила» рід житла, якого ніхто не
+ * надсилав.
+ *
+ * Ставиться в кінці успішного проходу, а не на початку: перерваний синк
+ * лишає мітку старою, і оператор бачить «каталог розійшовся» — що правда.
+ */
+export async function rememberCatalogSync(connectionId: string, at: string = nowStamp()): Promise<string> {
+  const organizationId = currentOrganizationId();
+  if (!organizationId) throw new Error('cm: connection update without a tenant');
+
+  const sql = getSql();
+  const current = await connectionInTenant(connectionId);
+  if (!current) throw new Error('cm: connection not found');
+
+  await sql.run(
+    `UPDATE cm_connections
+        SET catalog_synced_at = ?, updated_at = ?
+      WHERE id = ? AND organization_id = ?`,
+    [at, new Date().toISOString(), connectionId, organizationId],
+  );
+  return at;
+}
+
+/**
+ * Чи розійшовся каталог обʼєкта з тим, що ми востаннє відправили вендору.
+ *
+ * ── Чому локально, без походу до вендора ────────────────────────────────
+ *
+ * Бо це підказка на ЕКРАНІ. Екран не має права ходити в чужий API, щоб
+ * намалювати рядок тексту: це чужий бюджет запитів, чужа затримка і ще одна
+ * причина, з якої сторінка може не відкритись. `propertyDrift` (справжня
+ * звірка з вендором) лишається там, де їй місце — усередині синку.
+ *
+ * ── Чому `updated_at` обʼєкта, а не знімок надісланих полів ─────────────
+ *
+ * Усе, що ми взагалі відправляємо (`PROPERTY_FIELDS_WE_OWN` — назва,
+ * валюта, країна, місто, адреса, індекс, пошта, телефон, пояс, рід житла),
+ * лежить на тому самому рядку `properties` і рухає той самий `updated_at`.
+ * Тобто мітка не бреше — вона лише трохи щедріша: правка телефону теж
+ * скаже «розійшлося», і це правда, бо телефон ми вендору теж шлемо.
+ *
+ * `catalog_synced_at IS NULL` — НЕ розходження: обʼєкта у вендора ще немає,
+ * розходитись нема з чим. Інакше кожен готель до першого синку носив би
+ * попередження, яке нічого не означає.
+ */
+export async function propertyCatalogStale(propertyId: string): Promise<boolean> {
+  const organizationId = currentOrganizationId();
+  if (!organizationId) throw new Error('cm: catalog staleness without a tenant');
+
+  const sql = getSql();
+  const row = await sql.row<any>(
+    `SELECT COUNT(*) AS n
+       FROM cm_connections c
+       JOIN properties p ON p.id = c.property_id AND p.organization_id = c.organization_id
+      WHERE c.property_id = ? AND c.organization_id = ?
+        AND c.catalog_synced_at IS NOT NULL
+        AND p.updated_at > c.catalog_synced_at`,
+    [propertyId, organizationId],
+  );
+  return Number(row?.n ?? 0) > 0;
+}
+
+/**
  * Усі зʼєднання обʼєкта — для писачів черги: бронь, ціна, блокування кажуть
  * «змінилось» кожному менеджеру каналів цього обʼєкта.
  *
