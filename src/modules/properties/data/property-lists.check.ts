@@ -1,9 +1,9 @@
 /**
- * Типи номерів і категорії — теж списки ОДНОГО обʼєкта.
+ * Типи номерів, категорії і брудні номери — списки ОДНОГО обʼєкта.
  *
  *   node src/modules/properties/data/property-lists.check.ts
  *
- * Один файл на два списки навмисно: вони сидять на одній осі, на одній
+ * Один файл на три списки навмисно: вони сидять на одній осі, на одній
  * фікстурі й ламаються однаково, а кожен окремий `.check.ts` піднімає свою
  * SQLite і мігрує її з нуля. Різні твердження — різні сцени всередині.
  *
@@ -36,11 +36,14 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'alisio-prop-lists-'));
 process.env.ALISIO_DATA_DIR = tmp;
 
 await import('@core/db/index.ts');
+const { getSql } = await import('@core/db/async.ts');
 const { seedTwoProperties, seedNeighbourOrganization } = await import('@core/fixtures/two-properties.ts');
 const { ALL_PROPERTIES, oneProperty } = await import('@core/property-scope.ts');
 const { listUnitTypes } = await import('./unit-types.repo.ts');
 const { listCategories } = await import('./categories.repo.ts');
+const { dirtyUnitsForShift } = await import('./cleaning.repo.ts');
 
+const sql = getSql();
 const fx = await seedTwoProperties();
 const neighbour = await seedNeighbourOrganization();
 
@@ -119,6 +122,57 @@ assert.strictEqual(
 );
 
 console.log('  ok  категорії: своя в кожній області, обидві в «усіх», чужа — ніде');
+
+// ─── Брудні номери зміни ────────────────────────────────────────────────────
+//
+// Перший підтверджений випадок класу «вісь орендаря, вдягнена як вісь
+// обʼєкта» (звуження означення 09.09.2026, список 137 пар). Чекліст зміни
+// покоївки читав `JOIN properties p ON p.id = u.property_id WHERE
+// p.organization_id = ?` — тобто брудні номери ВСІХ обʼєктів рахунку. З одним
+// готелем непомітно; з двома покоївка сусіднього будинку бачить чужі кімнати
+// і йде їх прибирати.
+//
+// 2 і 4, не 3 і 3: сума 6 не дорівнює жодному обʼєкту, тож «забув вісь» не
+// сплутати з «урахував» (інваріант 26, друга половина).
+
+const dirty = async (unitIds: string[]) => {
+  for (const id of unitIds) {
+    await sql.run("UPDATE units SET cleaning_status = 'dirty' WHERE id = ?", [id]);
+  }
+};
+await dirty(fx.a.unitIds.slice(0, 2));
+await dirty(fx.b.unitIds.slice(0, 4));
+// Сусід теж має брудні номери — інакше «віддав лише свої» зелене й на коді,
+// який просто не бачить нікого, крім нашого рахунку.
+await dirty(neighbour.unitIds.slice(0, 3));
+
+const dirtyA = await dirtyUnitsForShift(fx.organizationId, oneProperty(fx.a.id)) as { id: string }[];
+assert.strictEqual(dirtyA.length, 2, `очікували 2 брудні номери обʼєкта А, отримали ${dirtyA.length}`);
+assert.ok(dirtyA.every((u) => fx.a.unitIds.includes(u.id)), 'у чеклісті А є номер чужого обʼєкта');
+
+const dirtyB = await dirtyUnitsForShift(fx.organizationId, oneProperty(fx.b.id)) as { id: string }[];
+assert.strictEqual(dirtyB.length, 4, `очікували 4 брудні номери обʼєкта Б, отримали ${dirtyB.length}`);
+
+const dirtyAll = await dirtyUnitsForShift(fx.organizationId, ALL_PROPERTIES) as unknown[];
+assert.strictEqual(dirtyAll.length, 6, `«усі обʼєкти» мали дати 6 брудних, отримали ${dirtyAll.length}`);
+
+assert.strictEqual(
+  (await dirtyUnitsForShift(neighbour.organizationId, ALL_PROPERTIES) as unknown[]).length, 3,
+  'сусід мав побачити рівно свої 3 брудні номери',
+);
+assert.strictEqual(
+  (await dirtyUnitsForShift(fx.organizationId, oneProperty(neighbour.propertyId)) as unknown[]).length, 0,
+  'обʼєкт сусіда, названий нашою організацією, віддав брудні номери',
+);
+
+// Чистий номер у чеклісті не потрібен: фільтр стану лишається на місці.
+await sql.run("UPDATE units SET cleaning_status = 'clean' WHERE id = ?", [fx.a.unitIds[0]]);
+assert.strictEqual(
+  (await dirtyUnitsForShift(fx.organizationId, oneProperty(fx.a.id)) as unknown[]).length, 1,
+  'прибраний номер лишився в чеклісті — фільтр стану зник разом із віссю',
+);
+
+console.log('  ok  брудні номери зміни: 2 у А, 4 у Б, 6 «усі», 0 через межу орендаря');
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('property-lists: усі перевірки пройдено');

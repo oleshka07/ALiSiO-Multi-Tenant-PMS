@@ -113,7 +113,8 @@ export { searchUnits } from '../data/unit-search';
 // Прибирання (Блок 4 §2.2, 0092): єдиний писач стану номера з журналом і
 // читачі борду/історії. Housekeeping не пише SQL до `units` — питає сюди.
 export {
-  setCleaningStatus, housekeepingBoard, cleaningHistory, housekeepingSummary, CLEANING_STATUSES,
+  setCleaningStatus, housekeepingBoard, cleaningHistory, housekeepingSummary,
+  dirtyUnitsForShift, CLEANING_STATUSES,
 } from '../data/cleaning.repo';
 export type { BoardUnit, CleaningLogRow, CleaningChange } from '../data/cleaning.repo';
 

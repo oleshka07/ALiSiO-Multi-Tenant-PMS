@@ -13,6 +13,7 @@
 import type { Sql } from '@core/db/async';
 import { getSql } from '@core/db/async';
 import { todayFor } from '@core/hotel-day';
+import { propertyScopeFilter, type PropertyScope } from '@core/property-scope';
 
 export const CLEANING_STATUSES = ['clean', 'dirty', 'in_progress'] as const;
 export type CleaningStatus = (typeof CLEANING_STATUSES)[number];
@@ -228,4 +229,44 @@ function nextDay(iso: string): string {
   const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + 1);
   return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Номери, які треба прибрати, — для чекліста зміни (`GET /api/checklists`).
+ *
+ * ── Що ламалося ─────────────────────────────────────────────────────────
+ *
+ * Запит жив прямо в маршруті і був такий:
+ *
+ *   FROM units u JOIN properties p ON p.id = u.property_id
+ *    WHERE p.organization_id = ? AND u.cleaning_status IN ('dirty','in_progress')
+ *
+ * Над ним стояв коментар «Scoped: unqualified this listed every hotel's dirty
+ * rooms» — і він правдивий рівно наполовину. Це вісь ОРЕНДАРЯ: чужий рахунок
+ * справді не видно, а сусідній ОБʼЄКТ того самого рахунку — видно повністю.
+ * Покоївка другого будинку відкриває свій чекліст і бачить кімнати першого.
+ *
+ * Перший підтверджений випадок класу «вісь орендаря, вдягнена як вісь
+ * обʼєкта» — після того, як контролер звузив означення «названо» 09.09.2026
+ * (`docs/tasks/2026-09-09-INC-029-tenant-join-list.md`, 137 пар).
+ *
+ * Область приходить типом і не має значення за замовчуванням; `ALL_PROPERTIES`
+ * лишається законним для зведеного екрана, але пишеться словом.
+ */
+export async function dirtyUnitsForShift(organizationId: string, scope: PropertyScope) {
+  const sql = getSql();
+  const inScope = propertyScopeFilter(scope, 'u');
+  return sql.rows<{
+    id: string; code: string; name: string; cleaning_status: CleaningStatus; zone: string | null;
+    property_id: string; property_name: string;
+  }>(
+    `SELECT u.id, u.code, u.name, u.cleaning_status, u.zone, u.property_id, p.name AS property_name
+       FROM units u
+       JOIN properties p ON p.id = u.property_id
+      WHERE p.organization_id = ?
+        AND ${inScope.sql}
+        AND u.cleaning_status IN ('dirty', 'in_progress')
+      ORDER BY p.name, u.code ASC`,
+    [organizationId, ...inScope.params],
+  );
 }

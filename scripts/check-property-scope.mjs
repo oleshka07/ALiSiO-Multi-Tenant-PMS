@@ -224,6 +224,14 @@ if (problems.length) {
 // звірене число: на `05af394` цей розбір дає 597 пар, сесія 1 доповіла 596, і
 // «не доведено» збігається точно — 372 і 372. Одиниця «оператор» дала б на
 // тому самому дереві 297, тобто інший базлайн за ту саму роботу.
+//
+// **Означення «називає» звужено 09.09.2026** (рішення контролера після
+// звірки): названим є ОБМЕЖЕННЯ обʼєктом, а не згадка `property_id` у фільтрі.
+// Вісь орендаря — `JOIN properties p ON p.id = u.property_id WHERE
+// p.organization_id = ?` — більше не рахується названою: це «усі обʼєкти
+// рахунку», рівно та форма, з якої почався INC-029. Різниця — 137 пар у 45
+// файлах, список у `docs/tasks/2026-09-09-INC-029-tenant-join-list.md`; гейт
+// друкує їхнє число в кожному прогоні, щоб список не розійшовся з кодом.
 
 /**
  * Стеля кожного файла — «не доведено» (мовчить + невизначений) на день
@@ -259,30 +267,32 @@ const scopedTables = propertyScopedTables(ROOT);
 // області проти голого `${…}`, вісь орендаря проти осі обʼєкта, `JOIN` проти
 // `FROM`, конкатенація проти шаблона (§3.2.1 — та сама помилка іншою формою).
 const SELF_CHECK = [
-  // [кошиків, зразок, {спільне означення}, {суворе означення}]
+  // [кошиків, зразок, {чинне означення}, {означення до звуження}]
   [1, "const q = `SELECT u.id, u.property_id FROM units u WHERE u.is_active = TRUE`;", 'silent', 'silent'],
   [1, "const q = `SELECT g.id FROM guests g JOIN reservations r ON r.guest_id = g.id WHERE g.email = ?`;", 'silent', 'silent'],
   [1, "const q = `SELECT u.id FROM units u WHERE u.property_id = ?`;", 'names', 'names'],
   [1, "const q = `SELECT ${cols} FROM units u WHERE u.property_id = ?`;", 'names', 'names'],
   [1, "const q = 'SELECT a FROM units ' + 'WHERE property_id = ?';", 'names', 'names'],
+  [1, "const q = 'SELECT a FROM units WHERE property_id IN (?, ?)';", 'names', 'names'],
   [1, "const f = propertyScopeFilter(scope, 'u');\nconst q = `SELECT u.id FROM units u WHERE ${f.sql}`;", 'names', 'names'],
   [1, "const { sql: s } = propertyScopeFilter(scope, 'r');\nconst q = `SELECT r.id FROM reservations r WHERE ${s}`;", 'names', 'names'],
   [1, "const q = `SELECT u.id FROM units u WHERE ${where}`;", 'unknown', 'unknown'],
   // Пара «оператор × таблиця»: два scoped-джойни — дві одиниці, не одна.
   [2, "const q = `SELECT r.id FROM reservations r JOIN units u ON u.id = r.unit_id WHERE r.property_id = ?`;", 'names', 'names'],
-  // Сліпа пляма спільного означення, названа числом: вісь ОРЕНДАРЯ виглядає
-  // названою, суворе означення її не приймає.
-  [1, "const q = 'SELECT id FROM units WHERE property_id IN (SELECT id FROM properties WHERE organization_id = ?)';", 'names', 'silent'],
-  [1, "const q = `SELECT u.id FROM units u JOIN properties p ON p.id = u.property_id WHERE p.organization_id = ?`;", 'names', 'silent'],
+  // Звуження означення (09.09.2026): вісь ОРЕНДАРЯ більше не названий обʼєкт.
+  // Обидві форми — і підзапитом, і джойном — мають бути мовчазними ЗАРАЗ і
+  // названими за старим означенням, інакше звуження не відбулося.
+  [1, "const q = 'SELECT id FROM units WHERE property_id IN (SELECT id FROM properties WHERE organization_id = ?)';", 'silent', 'names'],
+  [1, "const q = `SELECT u.id FROM units u JOIN properties p ON p.id = u.property_id WHERE p.organization_id = ?`;", 'silent', 'names'],
 ];
-for (const [count, sample, expected, expectedStrict] of SELF_CHECK) {
+for (const [count, sample, expected, expectedLoose] of SELF_CHECK) {
   const hits = scanSource(sample, 'self-check.ts', scopedTables);
   const bad = hits.length !== count
-    || hits.some((h) => h.verdict !== expected || h.strict !== expectedStrict);
+    || hits.some((h) => h.verdict !== expected || h.loose !== expectedLoose);
   if (bad) {
     console.error(`check-property-scope: самоперевірка осі «читання» — очікували ${count}×`
-      + `«${expected}»/«${expectedStrict}», отримали `
-      + `«${hits.map((h) => `${h.verdict}/${h.strict}`).join(', ') || 'нічого'}» на зразку:\n`
+      + `«${expected}»/«${expectedLoose}», отримали `
+      + `«${hits.map((h) => `${h.verdict}/${h.loose}`).join(', ') || 'нічого'}» на зразку:\n`
       + `  ${sample.replace(/\n/g, '\n  ')}`);
     process.exit(2);
   }
@@ -298,14 +308,14 @@ if (scanSource("const q = 'SELECT id FROM organizations WHERE id = ?';", 'self-c
 const codeFiles = sourceFiles(ROOT);
 const reads = new Map();
 const totals = { names: 0, silent: 0, unknown: 0 };
-let strictUnproven = 0;
+let tenantJoinOnly = 0;
 for (const file of codeFiles) {
   const rel = path.relative(ROOT, file).split(path.sep).join('/');
   const hits = scanSource(fs.readFileSync(file, 'utf8'), rel, scopedTables);
   if (hits.length === 0) continue;
   for (const h of hits) {
     totals[h.verdict]++;
-    if (h.strict !== 'names') strictUnproven++;
+    if (h.tenantJoinOnly) tenantJoinOnly++;
   }
   const unproven = hits.filter((h) => h.verdict !== 'names');
   if (unproven.length) reads.set(rel, unproven);
@@ -314,7 +324,7 @@ const unprovenTotal = totals.silent + totals.unknown;
 
 const summary = () => `називає ${totals.names}, мовчить ${totals.silent}, `
   + `невизначено ${totals.unknown} → не доведено ${unprovenTotal} у ${reads.size} файлах`
-  + ` (за суворим означенням було б ${strictUnproven})`;
+  + `; з них ${tenantJoinOnly} — вісь орендаря, вдягнена як вісь обʼєкта`;
 
 if (list) {
   console.log('');

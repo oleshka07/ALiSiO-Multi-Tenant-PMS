@@ -45,31 +45,35 @@
  *
  * ── Три кошики ──────────────────────────────────────────────────────────
  *
- *   `names`   — `property_id` стоїть у ФІЛЬТРІ, тобто після першого `FROM`
- *               (`WHERE`, `JOIN … ON`, `USING`), або в оператор вставлено
- *               фрагмент від `propertyScopeFilter()` — тоді область прийшла
- *               ТИПОМ, і `{ kind: 'all' }` сказано словом вище за течією;
- *   `silent`  — оператор визначений і `property_id` у фільтрі не має;
+ *   `names`   — читання ОБМЕЖЕНЕ обʼєктом: `property_id` порівняно з
+ *               параметром після першого `FROM` (`WHERE`, `JOIN … ON`,
+ *               `USING`), або зчеплено з `property_id` іншої таблиці того ж
+ *               запиту, або в оператор вставлено фрагмент від
+ *               `propertyScopeFilter()` — тоді область прийшла ТИПОМ, і
+ *               `{ kind: 'all' }` сказано словом вище за течією;
+ *   `silent`  — оператор визначений і обʼєктом не обмежений;
  *   `unknown` — умова приїздить підстановкою, і статично не видно, що в ній.
  *
  * Храповик рахує **«не доведено» = silent + unknown**. Запит, що переїхав з
  * `unknown` у `names`, опускає стелю законно; той, що переїхав у `silent`, не
  * міняє нічого.
  *
- * ── Сліпа пляма цього означення, названа навмисно ───────────────────────
+ * ── Чому «є у фільтрі» замінено на «обмежує» ────────────────────────────
  *
- * `names` тут означає «`property_id` є у фільтрі», а не «фільтр обмежує ОДНИМ
- * обʼєктом». Тому `JOIN properties p ON p.id = u.property_id WHERE
- * p.organization_id = ?` рахується названим, хоч це вісь ОРЕНДАРЯ — «усі
- * обʼєкти цього рахунку», тобто рівно та форма, з якої почався INC-029.
- * Суворіше означення («`property_id` проти параметра») на тому самому дереві
- * дає на 100 операторів більше в «не доведено», і серед них є справжня діра
- * (`src/app/api/checklists/route.ts:28` — брудні номери ВСІХ обʼєктів рахунку).
+ * Перше означення казало «`property_id` СТОЇТЬ у фільтрі», і під нього
+ * підпадала вісь ОРЕНДАРЯ:
  *
- * Означення лишається спільним, а не виправляється тут мовчки: три сесії
- * міряють одним інструментом, і зміна означення — рішення контролера, не
- * сесії. `strictNames` нижче рахує суворий варіант ПОРУЧ, щоб розмір ями був
- * видно числом, а не на слово.
+ *   FROM units u JOIN properties p ON p.id = u.property_id
+ *    WHERE p.organization_id = ?
+ *
+ * Це «усі обʼєкти цього рахунку» — рівно та форма, з якої почався INC-029, і
+ * вона рахувалась захищеною. Різниця виміряна: 137 пар у 45 файлах, і серед
+ * них справжня діра `src/app/api/checklists/route.ts:28` — брудні номери ВСІХ
+ * обʼєктів рахунку в чеклісті покоївки одного з них.
+ *
+ * Звуження ухвалив контролер 09.09.2026 після звірки; список 137 пар —
+ * `docs/tasks/2026-09-09-INC-029-tenant-join-list.md`. `loose` нижче лишається
+ * порахованим ПОРУЧ, щоб той список відтворювався командою, а не пам'яттю.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -97,18 +101,27 @@ export function propertyScopedTables(root) {
   return out;
 }
 
-/** Спільне означення: `property_id` будь-де у фільтрі. */
-const NAMED_IN_FILTER = /property_id/i;
-
 /**
- * Суворе означення — обмеження ОДНИМ обʼєктом, названим параметром.
- * Рахується поруч і в стелю не входить: див. «сліпа пляма» в шапці.
+ * Чинне означення: читання ОБМЕЖЕНЕ названим обʼєктом.
+ *
+ * Три форми, і всі три — обмеження, а не згадка: проти параметра, зчеплення з
+ * `property_id` іншої таблиці запиту (обмеження переноситься джойном), список
+ * параметрів. `IN (SELECT …)` сюди не входить навмисно — це підзапит по
+ * `properties`, тобто вісь орендаря.
  */
-const STRICTLY_NAMED = [
+const NAMED_IN_FILTER = [
   /property_id\s*(?:=|<>|!=)\s*(?:\?|\$\d+|:\w+)/i,
   /property_id\s*(?:=|<>|!=)\s*\w+\.property_id\b/i,
   /property_id\s+(?:NOT\s+)?IN\s*\(\s*(?!SELECT\b)/i,
 ];
+
+/**
+ * Означення до звуження — «`property_id` будь-де у фільтрі».
+ * Рахується поруч і в стелю НЕ входить: пара, названа ним і не названа чинним,
+ * — це вісь орендаря, вдягнена як вісь обʼєкта, і саме з таких складається
+ * список 137.
+ */
+const LOOSELY_NAMED = /property_id/i;
 
 /** Склеєний текст SQL-виразу, або `null`, якщо вузол текстом не є. */
 function glue(node, source) {
@@ -173,9 +186,10 @@ function substitutions(text) {
  * Читання scoped-таблиць в одному файлі — по одному запису на ПАРУ
  * «оператор × таблиця».
  *
- * `[{ line, table, tables, verdict, strict }]`, де `verdict` — кошик за
- * спільним означенням (`names`/`silent`/`unknown`), а `strict` — той самий
- * кошик за суворим означенням; у стелю входить `verdict`.
+ * `[{ line, table, tables, verdict, loose, tenantJoinOnly, sql }]`, де
+ * `verdict` — чинний кошик (`names`/`silent`/`unknown`) і саме він входить у
+ * стелю, `loose` — кошик за означенням до звуження, `tenantJoinOnly` — пара,
+ * яку старе означення рахувало названою, а чинне не рахує.
  */
 export function scanSource(source, fileName, scopedTables) {
   const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true);
@@ -201,13 +215,18 @@ export function scanSource(source, fileName, scopedTables) {
       || [...fragments].some((n) => new RegExp(`\\b${n}\\b`).test(s)));
 
     const bucket = (named) => (named ? 'names' : (subs.length > 0 ? 'unknown' : 'silent'));
-    const verdict = bucket(fromDoor || NAMED_IN_FILTER.test(where));
-    const strict = bucket(fromDoor || STRICTLY_NAMED.some((re) => re.test(where)));
+    const verdict = bucket(fromDoor || NAMED_IN_FILTER.some((re) => re.test(where)));
+    const loose = bucket(fromDoor || LOOSELY_NAMED.test(where));
+    // Вісь орендаря, вдягнена як вісь обʼєкта: старе означення рахувало це
+    // названим, чинне — ні. Саме з таких пар складається список 137.
+    const tenantJoinOnly = loose === 'names' && verdict !== 'names';
 
     const line = file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1;
     // Одиниця — ПАРА «оператор × таблиця»: запит на три scoped-таблиці це три
     // одиниці. Так рахує спільний інструмент трьох сесій.
-    for (const table of tables) found.push({ line, table, tables, verdict, strict });
+    for (const table of tables) {
+      found.push({ line, table, tables, verdict, loose, tenantJoinOnly, sql: where.replace(/\s+/g, ' ').slice(0, 160) });
+    }
   };
 
   ts.forEachChild(file, visit);
