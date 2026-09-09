@@ -116,6 +116,35 @@ export async function tagNamesForBatch(
 }
 
 /**
+ * Підзапит «операції, помічені хоч однією з цих міток» — із орендарем (Р14.4).
+ *
+ * Останнє місце, де звʼязка згадувалась повз ці двері: фільтр списку операцій
+ * писав `SELECT operation_id FROM fin_operation_tags WHERE tag_id IN (…)` без
+ * джойна на `finance_tags`. Сьогодні цим не витікає чужа ОПЕРАЦІЯ — зовнішній
+ * запит обмежений організацією, — але витікає ІСНУВАННЯ чужої мітки: рядок
+ * звʼязки, засіяний повз API, робить `?tag_id=<чужий>` відповіддю «так, ця
+ * мітка у мене є». Питання не в шкоді, а в тому, що звʼязка знову згадана в
+ * місці, яке не памʼятає про орендаря; двері існують саме щоб таких місць не
+ * було (шапка файла).
+ *
+ * Повертає ТІЛО підзапиту, не цілу умову: зовнішній аліас операції належить
+ * тому, хто будує запит (`o.id IN (…)`), і вгадувати його тут означало б
+ * знати про чужий SQL більше, ніж потрібно.
+ */
+export function taggedOperationsSubquery(
+  organizationId: string,
+  tagIds: readonly string[],
+): { sql: string; params: string[] } {
+  const ph = tagIds.map(() => '?').join(',');
+  return {
+    sql: `SELECT ot.operation_id FROM fin_operation_tags ot
+            JOIN finance_tags t ON t.id = ot.tag_id AND t.organization_id = ?
+           WHERE ot.tag_id IN (${ph})`,
+    params: [organizationId, ...tagIds.map((t) => String(t))],
+  };
+}
+
+/**
  * Ідентифікатори міток операції — лише свої.
  *
  * Читається перед копіюванням операції. Без орендаря копія тягла б за собою

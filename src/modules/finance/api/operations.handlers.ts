@@ -12,6 +12,7 @@ import { requireOrganizationId } from '@core/auth/tenant-context';
 import { ownedFinanceRow, requireOwnedReferences } from '../data/owned.repo';
 import {
   requireOwnedTags, setOperationTags, tagNamesFor, tagNamesForBatch, tagIdsFor,
+  taggedOperationsSubquery,
 } from '../data/operation-tags.repo';
 // Зняття грошей із книги гостя після видалення рядка — одні двері на всіх
 // (Р8.7). Файл листковий навмисно: інакше тут був би цикл із `payment-bridge`.
@@ -205,9 +206,12 @@ export async function listOperations(request: NextRequest): Promise<NextResponse
     if (reservationId) { where.push('o.reservation_id = ?'); params.push(reservationId); }
     if (source) { where.push('o.source = ?'); params.push(source); }
     if (tagIds.length > 0) {
-      const ph = tagIds.map(() => '?').join(',');
-      where.push(`o.id IN (SELECT operation_id FROM fin_operation_tags WHERE tag_id IN (${ph}))`);
-      params.push(...tagIds);
+      // Звʼязка міток згадується тільки через свої двері (Р14.4): тут стояв
+      // `SELECT operation_id FROM fin_operation_tags WHERE tag_id IN (…)` без
+      // орендаря — останнє місце старого шва.
+      const tagged = taggedOperationsSubquery(orgId, tagIds);
+      where.push(`o.id IN (${tagged.sql})`);
+      params.push(...tagged.params);
     }
     if (search) {
       const searchNum = parseFloat(search.replace(/\s/g, '').replace(',', '.'));

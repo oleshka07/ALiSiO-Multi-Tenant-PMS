@@ -9,6 +9,12 @@
  * id прямо в `fin_operation_tags`, а три читачі (`getTagsFor`, `getBatchTags`,
  * `getTagIds`) джойнили `finance_tags` БЕЗ орендаря.
  *
+ * Читачів виявилось ЧОТИРИ (Р14.4): четвертий — фільтр списку за `?tag_id=`,
+ * і він згадував звʼязку не читанням імені, а підзапитом, тож у перший захід
+ * під «три читачі» не потрапив. Ним не видно чужої операції (зовнішній запит
+ * обмежений організацією), але видно чуже ІСНУВАННЯ: на звʼязці, засіяній повз
+ * API, `?tag_id=<чужий>` відповідав «так, ця мітка у мене є». Сцена 4 нижче.
+ *
  * Чому це червоне саме на SQLite. `fin_operation_tags` — чиста звʼязка, без
  * `organization_id`; орендар у ній читається лише через `finance_tags`. На
  * Postgres запис ловить `WITH CHECK` політики на `finance_tags`, а читання
@@ -222,6 +228,35 @@ try {
     });
     say(copyStatus === 201 && !copyTags.includes(alien.ownTagName),
       `getTagIds (копіювання) не переносить чужої мітки (статус ${copyStatus}, ${JSON.stringify(copyTags)})`);
+
+    // ── 4. ФІЛЬТР списку за міткою — четвертий читач звʼязки (Р14.4) ───────
+    //
+    // Він жив повз двері: `SELECT operation_id FROM fin_operation_tags WHERE
+    // tag_id IN (…)` без джойна на `finance_tags`. Чужої ОПЕРАЦІЇ ним не
+    // видно — зовнішній запит обмежений організацією, — а от чуже ІСНУВАННЯ
+    // видно: на засіяній вище звʼязці `?tag_id=<чужий>` відповідає «так, ця
+    // мітка у мене є».
+    //
+    // Осі (інваріант 26). Дві, і обидві потрібні: без першої «за чужою нічого
+    // не знайшлось» істинне й тоді, коли фільтр не працює взагалі; без другої
+    // не видно, що операція взагалі досяжна. Мітки різні саме ІДЕНТИФІКАТОРОМ
+    // на тій самій операції — інакше сцена розрізняла б готелі, а не мітки.
+    const idsWithTag = (organizationId: string, tagId: string) =>
+      runWithOrganization(organizationId, async () => {
+        const res = await listOperations({
+          nextUrl: new URL(`http://local/api/finance/operations?pageSize=100&tag_id=${tagId}`),
+        } as never);
+        const body = await res.json() as { items?: { id: string }[] };
+        return (body.items || []).map((r) => r.id);
+      });
+
+    const byOwn = await idsWithTag(one.organizationId, mine.sharedTag);
+    say(byOwn.includes(created),
+      `фільтр за ВЛАСНОЮ міткою знаходить операцію (знайдено ${byOwn.length})`);
+
+    const byAlien = await idsWithTag(one.organizationId, alien.ownTag);
+    say(byAlien.length === 0,
+      `фільтр за ЧУЖИМ ідентифікатором мітки не знаходить нічого (знайдено ${byAlien.length})`);
   }
 } finally {
   await cleanup();
@@ -231,5 +266,5 @@ if (fails.length) {
   console.log(`\noperation-tags: ${fails.length} червоних`);
   process.exit(1);
 }
-console.log('operation-tags: мітка на операції — лише СВОГО готелю, на обох входах і в трьох читачах');
+console.log('operation-tags: мітка на операції — лише СВОГО готелю, на обох входах, у трьох читачах і у фільтрі списку');
 assert.ok(true);

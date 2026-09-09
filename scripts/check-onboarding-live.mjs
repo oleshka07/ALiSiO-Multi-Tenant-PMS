@@ -171,10 +171,32 @@ async function drop(sqlText, params, what) {
 
 async function cleanup() {
   cleanupProblems.length = 0;
+  // `organizations` — єдина таблиця тут БЕЗ політики орендаря (вона й є коренем
+  // орендаря), тож цей рядок читається поза контекстом правильно. Усе інше —
+  // ні, і саме на цьому все й трималось: див. нижче.
   const orgs = (await sql.rows("SELECT id FROM organizations WHERE slug LIKE ?", [`${SLUG_TAG}%`])).map((r) => r.id);
   for (const org of orgs) {
-    const props = (await sql.rows('SELECT id FROM properties WHERE organization_id = ?', [org])).map((r) => r.id);
     await runWithOrganization(org, async () => {
+      // Список обʼєктів читається ВСЕРЕДИНІ контексту орендаря, і це не
+      // косметика (Р14.3).
+      //
+      // Тут стояв `sql.rows(…)` перед `runWithOrganization`, тобто читання
+      // тенантної таблиці поза орендарем. На Postgres пул ставить
+      // `app.organization_id = ''` на кожне вільне зʼєднання, політика
+      // `properties_tenant` порівнює з ним — і запит віддає НУЛЬ рядків, не
+      // помилку. Виміряно на стенді §7 роллю `alisio_app`: `props` поза
+      // контекстом — 0, усередині — 1. Тобто ВЕСЬ блок нижче (броні, фактури,
+      // журнал, реєстрації, канали, збори, тарифи, номери, типи, категорії) не
+      // виконувався на Postgres жодного разу, а видимим це ставало одним
+      // рядком не про те: `DELETE FROM guests` бився об зовнішній ключ
+      // уцілілих броней. Даних це не лишало — усе зносив каскад від
+      // `organizations` нижче, — але рядок «!» був у кожному прогоні, а
+      // читача, який щоразу бачить «!» і йде далі, більше немає сенсу
+      // попереджати взагалі.
+      //
+      // Третій випадок класу INC-014 у цьому файлі: тенантний запит без
+      // орендаря не падає, він тихо віддає порожнє (AGENTS §7).
+      const props = (await sql.rows('SELECT id FROM properties WHERE organization_id = ?', [org])).map((r) => r.id);
       for (const pid of props) {
         const resIds = (await sql.rows('SELECT id FROM reservations WHERE property_id = ?', [pid])).map((r) => r.id);
         for (const rid of resIds) {
@@ -220,9 +242,25 @@ async function cleanup() {
     // рядки були зайві — вони лише приховували відмову (Р13.8).
     await drop('DELETE FROM organizations WHERE id = ?', [org], 'organizations');
   }
-  if (cleanupProblems.length > 0) {
-    console.log(`  !  прибирання лишило ${cleanupProblems.length} проблем(и) — наступний прогін почнеться з чужого сміття:`);
+  // ЧИТАННЯ НАЗАД, а не «жоден DELETE не впав» (інваріант 27, Р14.3).
+  //
+  // «Помилок не було» і «нічого не лишилось» — різні твердження, і саме на цій
+  // різниці жила вада вище: помилка була одна, а не виконувався цілий блок.
+  // Тому останнє слово каже не `try/catch`, а окремий запит.
+  //
+  // Питати досить `organizations`: кожна тенантна таблиця має шлях до неї
+  // зовнішнім ключем з `ON DELETE CASCADE` (міграція «every table now reaches
+  // an organization»), тож нуль організацій із нашим тегом означає нуль рядків
+  // усього іншого. Ця ж таблиця — єдина, яку видно поза контекстом орендаря,
+  // тобто перевірка не залежить від того, чи правильно ми ставимо орендаря.
+  const left = await sql.row("SELECT COUNT(*) AS n FROM organizations WHERE slug LIKE ?", [`${SLUG_TAG}%`]);
+  const leftN = Number(left?.n ?? 0);
+
+  if (cleanupProblems.length > 0 || leftN > 0) {
+    console.log(`  !  прибирання лишило ${cleanupProblems.length} проблем(и) і ${leftN} організац(ій) — наступний прогін почнеться з чужого сміття:`);
     for (const p of cleanupProblems) console.log(`       ${p}`);
+  } else {
+    console.log('  ok  прибирання: жодної відмови, і назад читається нуль організацій із тегом');
   }
 }
 
