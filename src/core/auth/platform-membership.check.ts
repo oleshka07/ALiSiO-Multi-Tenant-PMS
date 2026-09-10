@@ -60,6 +60,23 @@ const say = (cond: boolean, what: string) => {
 };
 
 // ── Фікстура: три рахунки, дві людини ────────────────────────────────────
+//
+// Прибирання ПЕРЕД засівом, а не після: у `check:pg` усі сцени бігають в
+// ОДНІЙ базі, і сцена, яка лишає по собі рядки, падає при другому прогоні на
+// `organizations_pkey` — тобто червоніє не про те, що стверджує. Знайдено
+// власним прогоном на стенді (INC-101), і це той самий клас, який я минулого
+// разу назвала про спільну фікстуру.
+const CLEAN: Array<[string, string]> = [
+  ['platform_memberships', "platform_user_id IN (SELECT id FROM platform_users WHERE email IN ('support@alisio.test','owner@hotel-a.test'))"],
+  ['platform_sessions', "platform_user_id IN (SELECT id FROM platform_users WHERE email IN ('support@alisio.test','owner@hotel-a.test'))"],
+  ['platform_audit', "organization_id LIKE '__pm\\_%' ESCAPE '\\'"],
+  ['platform_users', "email IN ('support@alisio.test','owner@hotel-a.test')"],
+  ['app_users', "id = '__pm_au_a'"],
+  ['organizations', "id LIKE '__pm\\_%' ESCAPE '\\'"],
+];
+for (const [table, where] of CLEAN) {
+  await sql.run(`DELETE FROM ${table} WHERE ${where}`, []).catch(() => undefined);
+}
 
 const ORGS = [
   ['__pm_a', 'Hotel A', 'pm-a'],
@@ -93,10 +110,16 @@ await sql.run(
   [hotelierId, 'owner@hotel-a.test', 'Марта Ковальська', platform.hashPlatformPassword('x-hotelier-x')]);
 
 // Членство — рівно в А, і воно НАЗИВАЄ, ким людина є в тому рахунку.
-await sql.run(
+//
+// Засів іде В КОНТЕКСТІ рахунку навмисно, хоч справжній писач
+// (`scripts/platform-user.mjs --grant`) пише поза ним. Причина методична: сцена
+// стверджує про ЧИТАННЯ, і щоб довести червоність поверненням тенантної
+// політики (INC-101), решта має лишитись сталою. Із засівом поза контекстом
+// політика валила б фікстуру на `WITH CHECK` — червоне було б, але не про те.
+await runWithOrganization('__pm_a', () => sql.run(
   `INSERT INTO platform_memberships (id, platform_user_id, organization_id, app_user_id)
    VALUES (?, ?, ?, ?)`,
-  [crypto.randomUUID(), hotelierId, '__pm_a', HOTELIER_APP_USER]);
+  [crypto.randomUUID(), hotelierId, '__pm_a', HOTELIER_APP_USER]));
 
 const sessionOf = async (userId: string) =>
   (await platform.getPlatformSession(await platform.createPlatformSession(userId)))!;
@@ -121,7 +144,24 @@ const trace = await runWithOrganization('__pm_b', () =>
 say(Number(trace?.n ?? -1) === 0,
   `і жодного сліду в журналі чужого рахунку, отримали ${trace?.n}`);
 
-// ── 2. Список показує лише свої ──────────────────────────────────────────
+// ── 2. Список показує лише свої — і ЩЕ НІКУДИ НЕ УВІЙШОВШИ ───────────────
+//
+// Стан, у якому цей список і малюється: людина зайшла в платформу, рахунок ще
+// не обрано. На Postgres саме тут ламалося (INC-101): `platform_memberships`
+// має `organization_id`, тож генератор дав їй тенантну політику механічно —
+// а орендаря на зʼєднанні ще немає, пул пише порожній рядок, і строгий
+// предикат не збігав НІЧОГО. Не виняток, а порожній список: готельєр бачив
+// «жодного готелю не призначено» при заведеному членстві, і вхід у власний
+// готель віддавав 404. Клас INC-014: функція зникла, а не впала.
+//
+// Тому твердження про порожню сесію окреме, а не «десь по дорозі»: на SQLite
+// політик немає, і воно зелене там завжди. Червоніє воно лише в `check:pg`.
+const outside = await sessionOf(hotelierId);
+say(outside.actingOrganizationId === null,
+  `сесія ще нікуди не входила (контроль), отримали ${JSON.stringify(outside.actingOrganizationId)}`);
+const listedOutside = await platform.accountsFor(outside);
+say(listedOutside.length === 1 && listedOutside[0]?.id === '__pm_a',
+  `і вже бачить свій рахунок: ${listedOutside.length} рядків ${JSON.stringify(listedOutside.map((o) => o.id))}`);
 
 const mine = await platform.accountsFor(hotelier);
 say(mine.length === 1, `готельєр бачить ОДИН рахунок із трьох, отримали ${mine.length}`);
