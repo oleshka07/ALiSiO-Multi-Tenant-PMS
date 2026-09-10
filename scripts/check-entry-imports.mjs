@@ -55,6 +55,9 @@ const DECLARED = [
   'platform-user.mjs',
   'reset-password.mjs',
   'check-deployed-db.mjs',
+  // Читає живу базу перед переїздом клієнта (DEPLOY.md §«Перед першим
+  // справжнім клієнтом», пункт 4) — тобто запускається в прод-образі.
+  'count-payer-folios.mjs',
   'encrypt-credentials.mjs',
   // Демо-проживання: `deploy.sh` кличе його одразу після звірки готельних
   // файлів, і він другий у дереві скрипт із власним резолвером аліасів

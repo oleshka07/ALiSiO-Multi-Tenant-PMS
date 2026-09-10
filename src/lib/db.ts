@@ -334,6 +334,10 @@ function buildSchema(database: any) {
       document_number TEXT,
       date_of_birth TEXT,
       notes TEXT,
+      -- Звідки цей рядок прийшов: система, таблиця, ідентифікатор у ній
+      -- (INC-301, міграція 0301). Порожньо — завели в нас. Тримає повторний
+      -- прогін імпорту від подвоєння, і тримає це UNIQUE-індекс, а не цикл.
+      external_ref TEXT,
       -- Кого лишили, коли цей рядок злили дублікатом (INC-300, міграція 0300).
       -- Рядок злитого гостя НЕ ВИДАЛЯЄТЬСЯ: посилання на нього лежать у
       -- виданих документах і в чужих системах, і «такого гостя немає» — гірша
@@ -347,6 +351,13 @@ function buildSchema(database: any) {
     -- Списки гостей питають «живі, тобто не злиті» на кожному екрані.
     CREATE INDEX IF NOT EXISTS idx_guests_merged_into
       ON guests (organization_id) WHERE merged_into IS NULL;
+
+    -- Унікальність включає орендаря: ADRESSEN.LNR = 1 є в кожній базі
+    -- Winhotel, тож тотальний індекс зробив би неможливим імпорт другого
+    -- готелю. Предикат — щоб гості без походження (їх більшість) не
+    -- конфліктували між собою.
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_guests_external_ref
+      ON guests (organization_id, external_ref) WHERE external_ref IS NOT NULL;
 
     -- Згоди GDPR живуть на ОСОБІ й переживають бронь (INC-300, міграція 0300).
     --
@@ -444,6 +455,11 @@ function buildSchema(database: any) {
       -- Postgres-клієнт отримав би колонку не зі schema.sql, а лише з ALTER-у
       -- в 0133 — рівно та розбіжність, про яку AGENTS §4 каже про індекси.
       is_pool_unit INTEGER NOT NULL DEFAULT 0,
+      -- Походження імпорту (INC-301). Окремо від external_uid: те поле
+      -- ділять iCal-синк і канали, воно навмисно не ключ, і класти туди ще
+      -- й імпорт означало б, що «звідки ця бронь» відповідає той, хто
+      -- записав останнім.
+      external_ref TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -7875,10 +7891,32 @@ function runMigrations(database: any) {
   // `tsc` або дасть видимий повтор у лозі — замість тиші.
   migrateOtaMirror(database);
 
-  // 0140 — так само окремою функцією, з тієї самої причини.
+  // --- Migration: ключ походження імпорту (INC-301) ---
+  //
+  // Пара до CREATE вище (AGENTS §4). Індекси — ПІСЛЯ колонок.
+  try {
+    for (const t of ['guests', 'reservations']) {
+      const cols = database.prepare(`PRAGMA table_info(${t})`).all() as { name: string }[];
+      if (cols.length > 0 && !cols.some((c) => c.name === 'external_ref')) {
+        database.exec(`ALTER TABLE ${t} ADD COLUMN external_ref TEXT`);
+        console.log(`[DB] ${t}: external_ref (INC-301)`);
+      }
+    }
+    database.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_guests_external_ref
+        ON guests (organization_id, external_ref) WHERE external_ref IS NOT NULL;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_reservations_external_ref
+        ON reservations (organization_id, external_ref) WHERE external_ref IS NOT NULL;
+    `);
+  } catch (e: any) {
+    console.log('[DB] external_ref migration note:', e.message);
+  }
+
+  // 0400 — так само окремою функцією, з тієї самої причини.
   migrateApps(database);
 
-  // 0143 — застосунок winhotel_import: знімки бази Winhotel.
+  // Застосунок winhotel_import: знімки бази Winhotel. Номер міграції тут не
+  // називається навмисно — сесія 5 їх зараз перенумеровує.
   migrateWinhotelImport(database);
 
   // 0411 — застосунок kiosk: термінал у холі, код парування, журнал доби.
@@ -8102,9 +8140,9 @@ function runMigrations(database: any) {
   }
 
 /**
- * Міграція 0140 — стан звʼязку застосунків і попит «хочу» (Блок «Застосунки»,
+ * Міграція 0400 — стан звʼязку застосунків і попит «хочу» (Блок «Застосунки»,
  * docs/tasks/2026-09-09-block-apps.md §3.3–3.4). Дзеркало
- * `db/postgres/migrations/0140-*.sql`; політики — лише на Postgres.
+ * `db/postgres/migrations/0400-*.sql`; політики — лише на Postgres.
  *
  * `app_connections`: один рядок на (організація, обʼєкт-або-NULL, застосунок)
  * — статус, час останнього успіху, час і текст останньої помилки. Унікальність
@@ -8140,10 +8178,10 @@ function migrateApps(database: any) {
     `);
     database.exec('CREATE INDEX IF NOT EXISTS idx_app_wishes_org ON app_wishes(organization_id)');
   } catch (e) {
-    console.error('[DB] 0140 app_connections/app_wishes:', (e as Error).message);
+    console.error('[DB] 0400 app_connections/app_wishes:', (e as Error).message);
   }
 
-  // 0141: PIN і PUK адміністратора TSE на рядку обʼєкта — під seal(), ніколи
+  // 0401: PIN і PUK адміністратора TSE на рядку обʼєкта — під seal(), ніколи
   // відкритим текстом (Блок «Застосунки» 3.8, З17). Лише ALTER: цей блок іде
   // ПІСЛЯ CREATE fin_fiscal_settings, тож і свіжа, і мігрована база дістають
   // колонку тут.
@@ -8152,19 +8190,19 @@ function migrateApps(database: any) {
     for (const col of ['tse_admin_pin', 'tse_admin_puk']) {
       if (!cols.includes(col)) {
         database.exec(`ALTER TABLE fin_fiscal_settings ADD COLUMN ${col} TEXT`);
-        console.log(`[DB] 0141: fin_fiscal_settings.${col} added`);
+        console.log(`[DB] 0401: fin_fiscal_settings.${col} added`);
       }
     }
-    // 0142: недороблена TSS запамʼятовується (id + PUK з 0141), а не
+    // 0402: недороблена TSS запамʼятовується (id + PUK з 0401), а не
     // створюється вдруге; замок на час походу до вендора.
     for (const col of ['tse_pending_tss_id', 'tse_connecting_at']) {
       if (!cols.includes(col)) {
         database.exec(`ALTER TABLE fin_fiscal_settings ADD COLUMN ${col} TEXT`);
-        console.log(`[DB] 0142: fin_fiscal_settings.${col} added`);
+        console.log(`[DB] 0402: fin_fiscal_settings.${col} added`);
       }
     }
   } catch (e) {
-    console.error('[DB] 0141/0142 fin_fiscal_settings TSE columns:', (e as Error).message);
+    console.error('[DB] 0401/0402 fin_fiscal_settings TSE columns:', (e as Error).message);
   }
 }
 

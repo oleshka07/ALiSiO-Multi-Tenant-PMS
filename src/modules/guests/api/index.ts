@@ -73,6 +73,19 @@ export type { ConsentKind, ConsentSource, ConsentRow, RecordConsentInput }
 export { mergeGuests } from '../data/guest-merge.repo';
 export type { MergeGuestsInput, MergeGuestsResult } from '../data/guest-merge.repo';
 
+// «Схоже, це одна людина» — ПРОПОЗИЦІЯ злиття, ніколи не саме злиття
+// (INC-303). Пошта працює лише в парі з імʼям: сімʼя під однією поштою — не
+// одна людина, і правило IMPORT-PLAN §2.7 («однаковий E_MAIL → один гість»)
+// злило б подружжя з дітьми.
+export { guestDuplicateCandidates, searchName, STRONG_TIERS } from '../data/guest-duplicates.repo';
+export type { DuplicateCandidate, DuplicateTier } from '../data/guest-duplicates.repo';
+
+// Згоди Winhotel → наші таблиці (INC-302). Редакція береться з АДРЕСИ
+// (`ADRESSEN.DS_VERSION`), бо в довіднику пунктів колонки версії немає взагалі;
+// згода, чиєї редакції в базі немає, іде в карантин, а не під нинішній текст.
+export { planConsentImport, winhotelRef } from '../domain/consent-import';
+export type { ConsentImportPlan, QuarantinedConsent } from '../domain/consent-import';
+
 // Загальний пошук питає модуль, а не таблицю. Див. core/search-types.ts.
 export { searchGuests } from '../data/guest-search';
 

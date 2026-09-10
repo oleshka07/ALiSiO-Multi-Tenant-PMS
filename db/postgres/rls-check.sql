@@ -45,7 +45,7 @@ INSERT INTO categories (id, property_id, name, type) VALUES
   ('rlsprobe_cat_a', 'rlsprobe_prop_a', 'A rooms', 'resort'),
   ('rlsprobe_cat_b', 'rlsprobe_prop_b', 'B rooms', 'resort');
 
--- Блок «Застосунки» (0140): стан звʼязку і попит «хочу» — обидва тенантні.
+-- Блок «Застосунки» (0400): стан звʼязку і попит «хочу» — обидва тенантні.
 -- Стан fiskaly A з ТЕКСТОМ помилки: саме текст чужої відмови не має дістатись
 -- сусідові; «хочу» A — лічильник попиту читає лише постачальник.
 INSERT INTO app_connections (id, organization_id, property_id, app, status, last_error) VALUES
@@ -82,7 +82,7 @@ BEGIN
   GET DIAGNOSTICS n = ROW_COUNT;
   IF n <> 0 THEN RAISE EXCEPTION 'B deleted % of A''s properties', n; END IF;
 
-  -- Застосунки (0140): текст чужої помилки і чужий попит невидимі.
+  -- Застосунки (0400): текст чужої помилки і чужий попит невидимі.
   SELECT count(*) INTO n FROM app_connections WHERE app = 'fiskaly';
   IF n <> 0 THEN RAISE EXCEPTION 'B can see A''s app connection (% rows)', n; END IF;
   SELECT count(*) INTO n FROM app_connections;

@@ -133,45 +133,17 @@ Charter описує, ЯК називати. Він не вимагає нега
     воно ще й збігається з іменем поля вендора. CHECK у базі немає свідомо
     (О9) — перевіряє писач. Дефолту немає ніде (В1, К16): не назвали —
     названа відмова
-  - `app_connections.status` (**стан звʼязку із чужою системою**, 0140):
+  - `app_connections.status` (**стан звʼязку із чужою системою**, 0400):
     `connected | degraded | error | disabled`; на картці ще `soon` (коду
     немає) і `unknown` (ще не зверталися) — обчислені, у базу не пишуться.
     `app_connections.app` і `app_wishes.app` — `id` з реєстру `core/apps.ts`
     (`fiskaly`, `smtp`, `winhotel_import`, …); `channel_manager` у
     `app_connections` не буває — менеджер каналів читається з `cm_connections`
-  - `fin_fiscal_settings.tse_admin_pin`, `tse_admin_puk` (0141) — секрети TSS
+  - `fin_fiscal_settings.tse_admin_pin`, `tse_admin_puk` (0401) — секрети TSS
     під `seal()` (`enc1:`), як і секрети `channel_credentials`; поруч із
     `tse_client_id` і `tss_id`, які секретами не є; `tse_pending_tss_id`
-    (0142) — id TSS, створеної у вендора, але не завершеної (NULL = немає),
+    (0402) — id TSS, створеної у вендора, але не завершеної (NULL = немає),
     `tse_connecting_at` — замок на час походу до вендора (NULL = вільно)
-  - `winhotel_snapshots.status` (**стан знімка бази Winhotel**, 0143):
-    `received | extracting | extracted | imported | failed` — прийнято
-    застосунком → міст узяв → міст витяг `*.jsonl` → імпортовано в ядро
-    (частина Б) / відмова з текстом у `error`; переводить лише застосунок,
-    читаючи маркери мосту з тією самою назвою (`<id>.extracting`,
-    `.extracted`, `.failed`). `winhotel_snapshots.mode` (**як агент зняв
-    базу**): `backup` — готовий `.fbk` з теки бекапів Winhotel | `gbak` —
-    `gbak -b` агентом | `copy` — копія `winhotel.fdb` при закритому Winhotel.
-    Таблиці застосунку — префікс `winhotel_*`, кожна з `organization_id`;
-    у таблиці ядра колонок застосунок не додає.
-    `winhotel_refs.entity` (**що за рядок Winhotel став нашим**, 0144):
-    `address` — `ADRESSEN` без `DEBI_NR` → `guests` | `company` — з `DEBI_NR`
-    → `companies` | `reservation` — `GASTKONT` → `reservations` |
-    `reservation_guest` — адреса броні → `reservation_guests` (LNR =
-    `GASTKONT.LNR·100 + слот 1..9`) | `folio_line` — `BUCHKONT` →
-    `fin_folio_items` | `payment` — `ZAHLUNGEN` → `fin_folio_payments`.
-    `winhotel_staging.entity` — ті самі слова плюс `invoice`, `balance`,
-    `consent`, `cash_book`. `winhotel_staging.reason` (**чому не в ядрі**):
-    `frozen` — заморожена фактура з чужою нумерацією | `frozen_sammelrechnung`
-    — те саме, виставлена дебітору | `fiscal_guard` — готівка/картка на
-    обʼєкті DE без `fiscal_de` | `method_unmapped` — `DEVISEN` поза чотирма
-    класами оплати | `overlap` — бронь поверх зайнятого номера |
-    `no_unit_type` — бронь без категорії, що є в нас | `no_guest` — бронь без
-    жодної адреси | `changed` — рядок або оплата змінені у Winhotel після
-    нашого імпорту, дверей на зміну немає | `refused_by_core` — фасад відмовив
-    (текст у payload) | `core_gap_gdpr_journal`, `core_gap_cash_book` —
-    CORE-GAPS 6 і 9 | ключі агрегатів (`open_guest_balances`, …) — сальдо
-    числом. Нова причина = рядок тут + слово у `STAGING_REASON` картки.
   - `guest_consents.consent_kind`: `marketing | data_processing | profiling` —
     на ЩО людина погодилась (INC-300, 0300). Вільний рядок, не CHECK:
     юрисдикції додають свої пункти, і словник, що вимагає міграції, змусив би

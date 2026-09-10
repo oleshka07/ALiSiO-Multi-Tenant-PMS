@@ -1313,6 +1313,7 @@ CREATE TABLE "guests" (
   "document_number" TEXT,
   "date_of_birth" TEXT,
   "notes" TEXT,
+  "external_ref" TEXT,
   "merged_into" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
@@ -1942,6 +1943,7 @@ CREATE TABLE "reservations" (
   "lodging_discount_reason" TEXT,
   "breakfast_included" BOOLEAN,
   "company_id" TEXT,
+  "external_ref" TEXT,
   "is_pool_unit" BOOLEAN DEFAULT false NOT NULL,
   PRIMARY KEY ("id"),
   UNIQUE ("guest_page_token"),
@@ -3062,6 +3064,7 @@ CREATE INDEX "idx_gift_cards_status" ON "gift_cards" ("status");
 CREATE INDEX "idx_guest_consents_guest" ON "guest_consents" ("organization_id", "guest_id", "consent_kind");
 CREATE INDEX "idx_guest_consents_org" ON "guest_consents" ("organization_id");
 CREATE UNIQUE INDEX "idx_guest_page_sections_row" ON "guest_page_sections" ("property_id", "section");
+CREATE UNIQUE INDEX "idx_guests_external_ref" ON "guests" ("organization_id", "external_ref") WHERE external_ref IS NOT NULL;
 CREATE INDEX "idx_guests_merged_into" ON "guests" ("organization_id") WHERE merged_into IS NULL;
 CREATE INDEX "idx_guests_name" ON "guests" ("last_name", "first_name");
 CREATE INDEX "idx_guests_org" ON "guests" ("organization_id");
@@ -3107,6 +3110,7 @@ CREATE INDEX "idx_line_items_sub" ON "reservation_line_items" ("sub_booking_id")
 CREATE INDEX "idx_sub_bookings_res" ON "reservation_sub_bookings" ("reservation_id");
 CREATE INDEX "idx_reservations_company" ON "reservations" ("company_id");
 CREATE INDEX "idx_reservations_dates" ON "reservations" ("check_in", "check_out");
+CREATE UNIQUE INDEX "idx_reservations_external_ref" ON "reservations" ("organization_id", "external_ref") WHERE external_ref IS NOT NULL;
 CREATE INDEX "idx_reservations_external_uid" ON "reservations" ("external_uid");
 CREATE INDEX "idx_reservations_guest" ON "reservations" ("guest_id");
 CREATE UNIQUE INDEX "idx_reservations_guest_token" ON "reservations" ("guest_page_token");
