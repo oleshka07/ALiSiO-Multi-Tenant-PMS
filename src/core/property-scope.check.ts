@@ -40,52 +40,63 @@ const {
 const sql = getSql();
 const fx = await seedTwoProperties();
 
+/**
+ * Читання фікстури — ПІД її орендарем.
+ *
+ * На SQLite політик немає, тож `sql.row(...)` у тілі сцени працює й без
+ * контексту. На Postgres під роллю `alisio_app` той самий рядок віддає
+ * ПОРОЖНЄ — не помилку, а нуль, — і сцена падає з «очікували 5, отримали 0»,
+ * виглядаючи поломкою фікстури. Саме так вона й виглядала 10.09.2026.
+ */
+const inTenant = <T>(fn: () => Promise<T>) => runWithOrganization(fx.organizationId, fn);
+
 // ─── 1. Фікстура: числа з БАЗИ, не з обʼєкта засіву ─────────────────────────
 
-const countUnits = async (propertyId: string) => Number(
+const countUnits = async (propertyId: string) => inTenant(async () => Number(
   (await sql.row<{ n: number }>('SELECT COUNT(*) AS n FROM units WHERE property_id = ?', [propertyId]))!.n,
-);
+));
 
 assert.strictEqual(await countUnits(fx.a.id), 5, 'обʼєкт А мав отримати 5 номерів');
 assert.strictEqual(await countUnits(fx.b.id), 7, 'обʼєкт Б мав отримати 7 номерів');
 assert.strictEqual(
-  Number((await sql.row<{ n: number }>(
+  await inTenant(async () => Number((await sql.row<{ n: number }>(
     `SELECT COUNT(*) AS n FROM units
      WHERE property_id IN (SELECT id FROM properties WHERE organization_id = ?)`,
     [fx.organizationId],
-  ))!.n),
+  ))!.n)),
   12, 'разом мало вийти 12 — число, яким не є жоден обʼєкт',
 );
 assert.strictEqual(fx.totalUnits, 12, 'фікстура рахує свої номери не так, як база');
 
 // Типи, ціни і збір теж різняться — вісь несе не лише кількість номерів.
-const typeCount = async (propertyId: string) => Number(
+const typeCount = async (propertyId: string) => inTenant(async () => Number(
   (await sql.row<{ n: number }>('SELECT COUNT(*) AS n FROM unit_types WHERE property_id = ?', [propertyId]))!.n,
-);
+));
 assert.strictEqual(await typeCount(fx.a.id), 2, 'у А мало бути два типи');
 assert.strictEqual(await typeCount(fx.b.id), 1, 'у Б мав бути один тип');
 
 // Грошова вісь — колонками, які не є ціновими таблицями: інваріант 16 каже,
 // що `price_calendar`/`price_occupancy`/`price_los_tiers` питає лише
 // `modules/pricing`, і фікстура в ядрі другого джерела ціни не заводить.
-const chargeOf = async (propertyId: string) => Number(
+const chargeOf = async (propertyId: string) => inTenant(async () => Number(
   (await sql.row<{ p: number }>(
     'SELECT MIN(extra_person_charge) AS p FROM unit_types WHERE property_id = ?', [propertyId],
   ))!.p,
-);
+));
 assert.strictEqual(await chargeOf(fx.a.id), 300, 'надбавка за особу в А');
 assert.strictEqual(await chargeOf(fx.b.id), 900, 'надбавка Б — чуже число тут було б видимою вадою');
 
-const stayTotalOf = async (propertyId: string) => Number(
+const stayTotalOf = async (propertyId: string) => inTenant(async () => Number(
   (await sql.row<{ t: number }>(
     'SELECT MAX(total_price) AS t FROM reservations WHERE property_id = ?', [propertyId],
   ))!.t,
-);
+));
 assert.strictEqual(await stayTotalOf(fx.a.id), 1000, 'сума броні в А');
 assert.strictEqual(await stayTotalOf(fx.b.id), 3300, 'сума броні в Б');
 
 assert.strictEqual(
-  Number((await sql.row<{ n: number }>('SELECT COUNT(*) AS n FROM reservations WHERE property_id = ?', [fx.b.id]))!.n),
+  await inTenant(async () => Number((await sql.row<{ n: number }>(
+    'SELECT COUNT(*) AS n FROM reservations WHERE property_id = ?', [fx.b.id]))!.n)),
   3, 'у Б мало бути три броні',
 );
 
@@ -103,7 +114,7 @@ console.log('  ok  фікстура: 5 і 7 номерів, 2 і 1 типи, 300
 // без першого рядка цей запит на порожній базі віддав би ще й 12 номерів
 // демо-засіву, тобто «усі» означало б чуже.
 
-const unitsInScope = async (scope: Parameters<typeof scopedPropertyId>[0]) => {
+const unitsInScope = async (scope: Parameters<typeof scopedPropertyId>[0]) => inTenant(async () => {
   const filter = propertyScopeFilter(scope, 'u');
   const rows = await sql.rows<{ id: string }>(
     `SELECT u.id FROM units u
@@ -114,7 +125,7 @@ const unitsInScope = async (scope: Parameters<typeof scopedPropertyId>[0]) => {
     [fx.organizationId, ...filter.params],
   );
   return rows.length;
-};
+});
 
 const inA = await unitsInScope(oneProperty(fx.a.id));
 const inB = await unitsInScope(oneProperty(fx.b.id));
@@ -222,9 +233,19 @@ await runWithOrganization(fx.organizationId, async () => {
 // законне. Друга організація потрібна ще й для того, щоб доводити, що чужий
 // обʼєкт не стає областю: з однією організацією таке твердження порожнє.
 const SOLO = '__two_props__solo';
+// Третій рахунок сцена заводить сама, тож сама його й прибирає: на спільному
+// Postgres `check:pg` другий прогін інакше падав би дублем ключа.
+await runWithOrganization(SOLO, async () => {
+  await sql.run('DELETE FROM properties WHERE organization_id = ?', [SOLO]);
+});
+await sql.run('DELETE FROM organizations WHERE id = ?', [SOLO]);
 await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [SOLO, 'Solo', SOLO]);
-await sql.run('INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)',
-  [`${SOLO}_prop`, SOLO, 'Solo', SOLO]);
+// Обʼєкт — під контекстом свого рахунку: без нього політика Postgres відхиляє
+// вставку, і сцена падає не там, де вада.
+await runWithOrganization(SOLO, async () => {
+  await sql.run('INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)',
+    [`${SOLO}_prop`, SOLO, 'Solo', SOLO]);
+});
 
 await runWithOrganization(SOLO, async () => {
   assert.deepStrictEqual(
