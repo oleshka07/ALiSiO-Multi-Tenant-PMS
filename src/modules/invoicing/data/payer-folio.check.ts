@@ -200,6 +200,27 @@ const openBefore = await runWithOrganization(ORG, () => folio.openInvoicesOfComp
 say(openBefore.length === 1 && openBefore[0].open === SUM_A + SUM_B,
   `до оплати відкрито ${openBefore[0]?.open} однією фактурою`);
 
+// ── 5a. Прострочення — опора для «дебіторки», і воно ПОХІДНЕ ─────────────
+//
+// ТРИ дати спостереження, і третя додана після того, як другий злом НЕ
+// почервонів. Перші дві були «у день строку 0» і «через пʼять днів 5» — і
+// вони обидві зелені на коді без нижньої межі (`return days` замість
+// `days > 0 ? days : 0`): у день строку різниця і так рівно нуль. Тобто та
+// сама помилка, записана інакше, проходила повз — §3.2.1 дослівно.
+//
+// Третя дата (за 16 днів ДО строку) робить властивість перевірюваною: без
+// межі там вийшло б −16, і жодне з трьох чисел не сходиться з
+// альтернативними прочитаннями — «днів від виписки» дало б 5, 21 і 26.
+const early = await runWithOrganization(ORG, () => folio.openInvoicesOfCompany(ours.mine, '2026-11-10'));
+say(early[0]?.overdue_days === 0,
+  `до строку прострочення 0, а не відʼємне: отримали ${early[0]?.overdue_days}`);
+const onDue = await runWithOrganization(ORG, () => folio.openInvoicesOfCompany(ours.mine, '2026-11-26'));
+say(onDue[0]?.overdue_days === 0,
+  `у день строку прострочення 0, отримали ${onDue[0]?.overdue_days}`);
+const late = await runWithOrganization(ORG, () => folio.openInvoicesOfCompany(ours.mine, '2026-12-01'));
+say(late[0]?.overdue_days === 5,
+  `через пʼять днів після строку — 5, отримали ${late[0]?.overdue_days}`);
+
 const PART = 400;
 await runWithOrganization(ORG, () => sql.run(
   `INSERT INTO fin_folio_payments (id, organization_id, folio_id, invoice_id, amount, method)
@@ -216,6 +237,51 @@ await runWithOrganization(ORG, () => sql.run(
   ['__pf_pay2', ORG, state.payer, issued.invoiceId, SUM_A + SUM_B - PART]));
 const openDone = await runWithOrganization(ORG, () => folio.openInvoicesOfCompany(ours.mine));
 say(openDone.length === 0, `сплачена цілком — зі списку відкритих зникає: лишилось ${openDone.length}`);
+
+// ── 6. Умов оплати немає — і відповідей ДВІ, за родом фоліо (Д59) ────────
+//
+// Вісь тут — САМЕ РІД ФОЛІО, і фікстура має обидва його значення: фоліо
+// платника сусідньої фірми (без умов) і звичайне фоліо її ж стою. З одним
+// родом твердження зелене і на коді, який відмовляє завжди, і на коді, який
+// не відмовляє ніколи. Фірма в обох випадках та сама — тобто різницю робить
+// рід фоліо, а не фірма.
+
+let noTerms = 'не відмовило зовсім';
+await runWithOrganization(ORG, async () => {
+  const payerOther = await folio.createFolio({ companyId: ours.other, propertyId: PROP, payerKind: 'company' });
+  const items3 = await sql.rows<{ id: string }>(
+    'SELECT id FROM fin_folio_items WHERE organization_id = ? AND folio_id = ?', [ORG, state.f3]);
+  await folio.moveCharges(items3.map((i) => i.id), payerOther);
+  try {
+    await folio.issueInvoice({ folioId: payerOther, issueDate: '2026-11-05' });
+  } catch (e) { noTerms = String((e as Error).message); }
+});
+say(/payment terms/i.test(noTerms),
+  `фоліо ПЛАТНИКА без умов оплати — названа відмова: «${noTerms}»`);
+
+// А звичайне фоліо стою тієї самої фірми — виписується, і строку в нього
+// просто НЕМАЄ. Не 14 днів, не сьогодні: відсутність, а не дефолт.
+// Виняток тут ЛОВИТЬСЯ, а не пускається назовні. Сцена, яка падає стеком,
+// червоніє не про те, що стверджує: у виводі `npm run check` це читається як
+// «сцена зламана», і саме так виглядав злом «відмовляти ЗАВЖДИ», поки цього
+// `catch` не було — вихід ненульовий, а жодного рядка про твердження немає.
+const stayOther = await runWithOrganization(ORG, async () => {
+  const f = await folio.createFolio({ reservationId: '__pf_r3' });
+  await sql.run(
+    `INSERT INTO fin_folio_items (id, organization_id, folio_id, reservation_id, kind, source,
+                                  service_date, description, quantity, unit_price_gross, total_gross, vat_rate)
+     VALUES (?, ?, ?, ?, 'lodging', 'nightly', '2026-11-01', 'Ніч', 1, 500, 500, 0)`,
+    ['__pf_i_stay_other', ORG, f, '__pf_r3']);
+  try {
+    const res = await folio.issueInvoice({ folioId: f, issueDate: '2026-11-05' });
+    const inv = await sql.row<{ due_date: string | null }>(
+      'SELECT due_date FROM invoices WHERE id = ? AND organization_id = ?', [res.invoiceId, ORG]);
+    return { due: inv?.due_date ?? null, refused: '' };
+  } catch (e) { return { due: null, refused: String((e as Error).message) }; }
+});
+say(stayOther.refused === '' && stayOther.due === null,
+  `звичайне фоліо стою тієї самої фірми виписується БЕЗ строку: `
+  + `${stayOther.refused ? `ВІДМОВИЛО — «${stayOther.refused}»` : String(stayOther.due)}`);
 
 fs.rmSync(tmp, { recursive: true, force: true });
 
