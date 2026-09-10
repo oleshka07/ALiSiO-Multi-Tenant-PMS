@@ -126,6 +126,14 @@ const OVERRIDE = {
   // клієнта розійшлися б у ТИПІ колонки, і `check-schema-drift` сказав би про
   // це вже після того, як обидві існують.
   'properties.kiosk_auto_assign': 'BOOLEAN',
+  // Кіоск (0411): `at` — мить, а не назва. Шаблон дат знає `*_at`, `created_at`,
+  // `updated_at` — рівно `at` під нього не підпадає, і колонка мовчки лишалась
+  // TEXT у schema.sql, тоді як міграція оголошує TIMESTAMPTZ. Тобто база нового
+  // клієнта (з schema.sql) і мігрована база розходились у ТИПІ, і жоден
+  // `check-schema-drift` цього не бачить: обидві його бази будуються з
+  // schema.sql, а `CREATE TABLE IF NOT EXISTS` у міграції мовчить. Знайдено
+  // `check-schema-types` на злитті (Д66).
+  'kiosk_events.at': 'TIMESTAMPTZ',
   // Три стани: null = «вирішує правило каналу», і це не те саме, що false.
   // BOOLEAN у Postgres nullable, тож третій стан зберігається.
   'unit_types.breakfast_included': 'BOOLEAN',

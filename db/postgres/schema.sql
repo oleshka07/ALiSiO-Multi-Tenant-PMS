@@ -1500,7 +1500,7 @@ CREATE TABLE "kiosk_events" (
   "kind" TEXT NOT NULL,
   "result" TEXT DEFAULT 'ok' NOT NULL,
   "detail" TEXT,
-  "at" TEXT DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') NOT NULL,
+  "at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
   CHECK (result IN ('ok', 'refused', 'error'))
 );
