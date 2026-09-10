@@ -6493,8 +6493,17 @@ function runMigrations(database: any) {
         name              TEXT,
         kind              TEXT NOT NULL,
         ledger_account    TEXT,
-        settles_to_debtor INTEGER NOT NULL DEFAULT 0,
-        is_active         INTEGER NOT NULL DEFAULT 1,
+        -- BOOLEAN оголошено ЯВНО, а не лишено на здогад за іменем.
+        -- pg-schema.mjs мапить INTEGER у BIGINT, а в BOOLEAN підвищує лише
+        -- те, чиє ІМʼЯ підпадає під BOOL-візерунок (is_*, has_*, …).
+        -- settles_to_debtor під нього не підпадає — і мовчки стала числом, у
+        -- яке писач клав true: на SQLite bindable() перетворює це на 1 без
+        -- слова, на Postgres виходить
+        -- invalid input syntax for type bigint: "false" (Д65).
+        -- Оголошений тип іменем не керується: case BOOLEAN у генераторі
+        -- відповідає раніше за будь-який візерунок.
+        settles_to_debtor BOOLEAN NOT NULL DEFAULT 0,
+        is_active         BOOLEAN NOT NULL DEFAULT 1,
         position          INTEGER NOT NULL DEFAULT 0,
         created_at        TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
@@ -8250,8 +8259,17 @@ function runMigrations(database: any) {
         name              TEXT,
         kind              TEXT NOT NULL,
         ledger_account    TEXT,
-        settles_to_debtor INTEGER NOT NULL DEFAULT 0,
-        is_active         INTEGER NOT NULL DEFAULT 1,
+        -- BOOLEAN оголошено ЯВНО, а не лишено на здогад за іменем.
+        -- pg-schema.mjs мапить INTEGER у BIGINT, а в BOOLEAN підвищує лише
+        -- те, чиє ІМʼЯ підпадає під BOOL-візерунок (is_*, has_*, …).
+        -- settles_to_debtor під нього не підпадає — і мовчки стала числом, у
+        -- яке писач клав true: на SQLite bindable() перетворює це на 1 без
+        -- слова, на Postgres виходить
+        -- invalid input syntax for type bigint: "false" (Д65).
+        -- Оголошений тип іменем не керується: case BOOLEAN у генераторі
+        -- відповідає раніше за будь-який візерунок.
+        settles_to_debtor BOOLEAN NOT NULL DEFAULT 0,
+        is_active         BOOLEAN NOT NULL DEFAULT 1,
         position          INTEGER NOT NULL DEFAULT 0,
         created_at        TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
