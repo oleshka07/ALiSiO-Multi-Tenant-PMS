@@ -337,7 +337,33 @@ const ORG_COL = 'organization_id';
 // person belongs to. Scoped by the application instead: every query that lists
 // or edits users carries WHERE organization_id = ?, and check-isolation.mjs
 // proves it against a live database.
-const IDENTITY = new Set(['organizations', 'sessions']);
+// `platform_memberships` — тут же, і це вимір, а не аналогія (INC-101).
+//
+// Таблиця МАЄ `organization_id`, тож механічно дістала тенантну політику: рядок
+// начебто належить рахунку. Насправді він належить ЛЮДИНІ — це відповідь на
+// питання «у які рахунки їй можна увійти», і читають її РАНІШЕ, ніж рахунок
+// відомий: `accountsFor()` малює список до будь-якого входу.
+//
+// На свіжій базі з політикою виміряно роллю застосунку (`alisio_app`), готельєр
+// із одним членством, який ще нікуди не входив:
+//
+//   accountsFor()        -> 0 рядків при 1 рядку в таблиці (не виняток: пул
+//                          пише app.organization_id = '', і строгий предикат
+//                          просто нічого не збігає)
+//   enterOrganization()  -> false у ВЛАСНИЙ готель, тобто 404 на маршруті
+//
+// Тобто перемикач мертвий в обидва боки, і мовчки — той самий клас INC-014
+// («функція зникла», а не «помилка»).
+//
+// Чому саме IDENTITY, а не READ_BEFORE_TENANT. Друга форма
+// (OR current_setting('app.organization_id') = '') на цій базі СПРАЦЮВАЛА б,
+// бо пул завжди пише порожній рядок, — але вона лишає строгу гілку чинною там,
+// де орендар УЖЕ стоїть: сесія всередині готелю А не побачила б власного
+// членства в Б, тобто перехід «з готелю в готель» залежав би від того, чи
+// несе зʼєднання орендаря. Політика, чинність якої залежить від випадкового
+// стану зʼєднання, гірша за її відсутність. Обмеження тут інше й воно в коді:
+// кожен запит несе WHERE platform_user_id = ?.
+const IDENTITY = new Set(['organizations', 'sessions', 'platform_memberships']);
 
 // Reference data, the same rows for every customer.
 // Readable before the tenant is known. Two entry points have this shape, and

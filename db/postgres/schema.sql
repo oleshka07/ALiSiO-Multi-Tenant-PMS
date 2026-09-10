@@ -3162,8 +3162,6 @@ ALTER TABLE "partner_reports" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "platform_audit" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
-ALTER TABLE "platform_memberships" ALTER COLUMN "organization_id"
-  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "price_los_tiers" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "price_occupancy" ALTER COLUMN "organization_id"
@@ -3668,12 +3666,6 @@ CREATE POLICY "platform_audit_tenant" ON "platform_audit"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
-ALTER TABLE "platform_memberships" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "platform_memberships" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "platform_memberships_tenant" ON "platform_memberships"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
 ALTER TABLE "price_calendar" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "price_calendar" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "price_calendar_tenant" ON "price_calendar"
@@ -3905,6 +3897,7 @@ CREATE POLICY "widget_price_list_tenant" ON "widget_price_list"
 -- Identity: read before the tenant is known, so a policy here would not
 -- restrict these queries, it would break them. Scoped by the application.
 --   organizations
+--   platform_memberships
 --   sessions
 
 -- Reference data, identical for every customer: no policy by design.
