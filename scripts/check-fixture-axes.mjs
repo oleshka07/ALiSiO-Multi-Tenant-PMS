@@ -591,6 +591,36 @@ const AXES = [
     file: 'src/app/api/public/availability/availability-scope.check.ts',
     axis: 'ночей у календарі: свій обʼєкт ≠ сусідній будинок ≠ чужий рахунок',
     distinct: /const NIGHTS_\w+ = (\d+);/g, min: 3,
+    file: 'src/modules/channels/data/inbound-bookings.property-axis.check.ts',
+    // Вісь, про яку сцена стверджує, — саме БУДИНОК: «ревізія зʼєднання А не
+    // дістає до Б». Один обʼєкт у фікстурі лишив би її зеленою на коді, який
+    // осі не має взагалі, — рівно те, що інваріант 26 і називає виродженням.
+    axis: 'обʼєктів рахунку (зʼєднання на А ≠ сусідній Б)',
+    scope: /const PROP_A[\s\S]*?const RES_B = '[^']*';/,
+    distinct: /const PROP_([AB]) = '([^']+)'/g, group: 2, min: 2,
+  },
+  {
+    file: 'src/modules/channels/data/inbound-bookings.property-axis.check.ts',
+    // Друга вісь тієї самої сцени, і без неї «не змінили» не відрізнити від
+    // «змінили»: дати планової броні будинку Б і дати ревізії не мають
+    // спільних днів, тож число в твердженні арифметично несумісне з чужим
+    // прочитанням.
+    axis: 'дат: планова бронь сусіда ≠ дати ревізії',
+    distinct: /'(2026-1[01]-\d\d)'/g, min: 2,
+  },
+  {
+    file: 'src/modules/channels/api/ical-scope.check.ts',
+    // Вісь сцени — будинок: «канал А не дістає до Б». Один будинок у фікстурі
+    // лишив би її зеленою на коді, який осі не має взагалі.
+    axis: 'будинків рахунку (канал в А ≠ сусідній Б)',
+    distinct: /unitIn\(fx\.([ab])\.id/g, min: 2,
+  },
+  {
+    file: 'src/modules/channels/api/ical-scope.check.ts',
+    // Друга вісь: без різних дат «не чіпали» і «переписали» дали б те саме
+    // число. Дати фіда і планової броні сусіда не мають спільних днів.
+    axis: 'дат: фід ≠ планова бронь сусіда',
+    distinct: /'(2026-1[12]-\d\d)'/g, min: 2,
   },
   {
     file: 'src/modules/channels/data/pull-bookings.check.ts',

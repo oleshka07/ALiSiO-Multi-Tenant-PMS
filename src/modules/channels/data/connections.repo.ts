@@ -1,5 +1,6 @@
 import { getSql } from '@core/db/async';
 import { currentOrganizationId } from '@core/auth/tenant-context';
+import { ALL_PROPERTIES, propertyScopeFilter } from '@core/property-scope';
 
 /**
  * Зʼєднання з менеджером каналів — завжди в межах орендаря.
@@ -85,6 +86,32 @@ function toConnection(row: Record<string, any>): Connection {
   };
 }
 
+/**
+ * Вісь обʼєкта для читань САМОГО зʼєднання — навмисно `ALL_PROPERTIES`.
+ *
+ * `cm_connections` має `property_id`, тож гейт осі (INC-029) рахує кожне
+ * читання цієї таблиці як своє. Але рядок, який тут читають, і Є носієм осі:
+ * зʼєднання належить рівно одному будинку і саме воно каже якому. Звузити ці
+ * запити по будинку можна було б лише взявши будинок із цього ж рядка —
+ * спитати відповідь у питання.
+ *
+ * Чотири вживання, і в кожного своя причина бути «усіма»:
+ *
+ *   `connectionInTenant`   — за первинним ключем; далі саме воно й дає
+ *                            `conn.propertyId`, яким звужується все інше
+ *                            (К19, `inbound-bookings.repo.ts`);
+ *   `connectionsInTenant`  — екран «Канал-менеджер» показує зʼєднання ВСЬОГО
+ *                            рахунку, згруповані по будинках: це його
+ *                            питання, і звужений до одного він перестав би
+ *                            на нього відповідати;
+ *   `connectionByWebhookToken` — вхід вебхука, де орендаря ще немає взагалі:
+ *                            токен і є те, що шукають (політика 0060);
+ *   `webhookRegistration`  — за первинним ключем, перед походом до вендора.
+ *
+ * Сказано дверима, а не мовчанням.
+ */
+const CONNECTION_IS_THE_AXIS = propertyScopeFilter(ALL_PROPERTIES, '');
+
 export async function connectionInTenant(connectionId: string): Promise<Connection | null> {
   const organizationId = currentOrganizationId();
   if (!organizationId) throw new Error('cm: connection lookup without a tenant');
@@ -94,8 +121,8 @@ export async function connectionInTenant(connectionId: string): Promise<Connecti
     `SELECT id, organization_id, property_id, provider, environment,
             remote_property_id, remote_webhook_id, is_enabled, pricing_modifier_percent, last_full_sync_at
        FROM cm_connections
-      WHERE id = ? AND organization_id = ?`,
-    [connectionId, organizationId],
+      WHERE id = ? AND organization_id = ? AND ${CONNECTION_IS_THE_AXIS.sql}`,
+    [connectionId, organizationId, ...CONNECTION_IS_THE_AXIS.params],
   ) as Record<string, unknown> | undefined;
 
   if (!row) return null;
@@ -277,9 +304,9 @@ export async function connectionsInTenant(): Promise<Connection[]> {
     `SELECT id, organization_id, property_id, provider, environment,
             remote_property_id, remote_webhook_id, is_enabled, pricing_modifier_percent, last_full_sync_at
        FROM cm_connections
-      WHERE organization_id = ?
+      WHERE organization_id = ? AND ${CONNECTION_IS_THE_AXIS.sql}
       ORDER BY property_id, id`,
-    [organizationId],
+    [organizationId, ...CONNECTION_IS_THE_AXIS.params],
   ) as Record<string, unknown>[];
   return rows.map(toConnection);
 }
@@ -306,8 +333,9 @@ export interface WebhookGate {
 export async function connectionByWebhookToken(token: string): Promise<WebhookGate | null> {
   if (!token || token.length < 16) return null;
   const row = await getSql().row<any>(
-    'SELECT id, organization_id, provider, webhook_secret FROM cm_connections WHERE webhook_token = ?',
-    [token],
+    `SELECT id, organization_id, provider, webhook_secret FROM cm_connections
+      WHERE webhook_token = ? AND ${CONNECTION_IS_THE_AXIS.sql}`,
+    [token, ...CONNECTION_IS_THE_AXIS.params],
   );
   if (!row) return null;
   return {
@@ -334,8 +362,8 @@ export async function webhookRegistration(connectionId: string): Promise<Webhook
   const row = await getSql().row<any>(
     `SELECT id, environment, remote_property_id, remote_webhook_id, webhook_token, webhook_secret
        FROM cm_connections
-      WHERE id = ? AND organization_id = ?`,
-    [connectionId, organizationId],
+      WHERE id = ? AND organization_id = ? AND ${CONNECTION_IS_THE_AXIS.sql}`,
+    [connectionId, organizationId, ...CONNECTION_IS_THE_AXIS.params],
   );
   if (!row) return null;
   return {
