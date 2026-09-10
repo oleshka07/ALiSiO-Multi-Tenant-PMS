@@ -87,6 +87,54 @@ export function listUnits(
   return sql.rows<any>(query, params);
 }
 
+/**
+ * Код скриньки з ключем — для ОДНОГО номера, призначеного ОДНІЙ броні.
+ *
+ * ── Чому це окремі двері, а не прапорець у `listUnits` ──────────────────
+ *
+ * `unitColumnsSql(secrets)` вище віддає `lock_code` лише під
+ * `manage_properties`, і це правильно: список номерів читають екрани зміни,
+ * а роль покоївки має одне право. Кіоск (Блок «Кіоск», §3.2 крок 5) мусить
+ * назвати гостю код скриньки — але саме тому, що він відповідає БЕЗ СЕСІЇ,
+ * дати йому `manage_properties` не можна, а дати `secrets: true` у список
+ * означало б віддати терміналу коди ВСІХ номерів готелю за один запит.
+ *
+ * Тому виняток свідомо вузький, і вузькість тут — уся суть:
+ *
+ *   один номер   — той, що стоїть у броні (`reservations.unit_id`), і жоден
+ *                  інший. Номера немає — немає й коду;
+ *   одна бронь   — названа викликачем, і вона мусить бути цієї організації;
+ *   один обʼєкт  — той, до якого припаяний термінал. Бронь сусіднього
+ *                  будинку того самого рахунку → «немає» (вісь INC-029);
+ *   один стан    — гість уже заселений. Код скриньки до заселення це ключ,
+ *                  виданий тому, хто ще не заїхав.
+ *
+ * Пароля мережі тут немає навмисно, хоч кіоск його теж показує: Wi-Fi
+ * належить ОБʼЄКТУ і читається зі своєї конфігурації гостя, а не з рядка
+ * номера. Одні двері — одна таємниця.
+ */
+export async function lockCodeForStay(input: {
+  organizationId: string;
+  propertyId: string;
+  reservationId: string;
+}): Promise<{ unitId: string; unitName: string; lockCode: string | null } | null> {
+  const sql = getSql();
+  const row = await sql.row<{ unit_id: string; name: string; lock_code: string | null }>(`
+    SELECT u.id AS unit_id, u.name, u.lock_code
+      FROM reservations r
+      JOIN units u ON u.id = r.unit_id
+      JOIN properties p ON p.id = r.property_id
+     WHERE r.id = ?
+       AND r.organization_id = ?
+       AND r.property_id = ?
+       AND p.organization_id = ?
+       AND u.property_id = r.property_id
+       AND r.status = 'checked_in'
+  `, [input.reservationId, input.organizationId, input.propertyId, input.organizationId]);
+  if (!row) return null;
+  return { unitId: row.unit_id, unitName: row.name, lockCode: row.lock_code ?? null };
+}
+
 export interface CreateUnitInput {
   unit_type_id: string;
   property_id: string;

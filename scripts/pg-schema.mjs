@@ -426,6 +426,13 @@ const PUBLIC_TOKEN_READ = new Map([
   // read before the tenant is known (migration 0060). The header secret is
   // checked by code after the read; the token opens a row, never the door.
   ['cm_connections', 'webhook_token'],
+  // Термінал у холі обмінює шестизначний код на токен, ще не знаючи
+  // орендаря: рядок парування має бути прочитаний ДО того, як відомо, чий
+  // він (Блок «Кіоск», міграція 0411). У базі лежить sha256 коду, і саме він
+  // ставиться перепусткою — тобто перепустка тут не «схожа на секрет», вона
+  // і Є секрет, тож звіряти її може сама політика. Вікно завширшки в один
+  // запит: далі йде звичайний `runWithOrganization`.
+  ['kiosk_pairings', 'code_hash'],
 ]);
 
 /**

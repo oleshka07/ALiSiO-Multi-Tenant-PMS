@@ -54,7 +54,10 @@ const BASELINE = {
   'src/app/api/gift-cards/[id]/route.ts': 1,
   'src/modules/auth/api/user.handlers.ts': 5,
   'src/modules/bookings/api/reservation-registrations.handlers.ts': 3,
-  'src/modules/bookings/api/reservation.handlers.ts': 15,
+  // 15 → 14 (10.09.2026): варта заселення переїхала у фасад
+  // (`data/checkin.repo.ts`), і разом із нею зникло читання
+  // `SELECT payment_status, registration_status … WHERE id = ?`.
+  'src/modules/bookings/api/reservation.handlers.ts': 14,
   'src/modules/bookings/api/sub-bookings.handlers.ts': 3,
   'src/modules/channels/api/ical-channel.handlers.ts': 2,
   'src/modules/finance/api/attachments.handlers.ts': 2,

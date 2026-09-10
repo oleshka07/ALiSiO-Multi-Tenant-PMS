@@ -174,6 +174,21 @@ function buildSchema(database: any) {
       -- (інваріант 20: значення належить готелю, не константі в коді).
       -- І тут, і в ALTER нижче (AGENTS §4).
       property_type TEXT,
+      -- Кіоск, 0410 (docs/tasks/2026-09-10-block-kiosk.md §3.1, К1/К8).
+      -- checkin_payment_policy — чи пускають у номер до оплати; дефолт
+      -- 'prepaid' дослівно повторює те, що робив PATCH-хендлер числом до
+      -- цієї колонки, тож наявні готелі поведінки не змінюють.
+      -- system_of_record — чия книга головна: доти головними були завжди
+      -- ми, і поки триває дзеркало Winhotel це неправда.
+      -- kiosk_walkin_url — адреса ВЛАСНОГО онлайн-модуля готелю (К8, CDSoft
+      -- Onlinebuchung); порожньо = walk-in на терміналі вимкнено. CHECK на
+      -- двох перших лише тут: SQLite не додає обмежень через ALTER, значення
+      -- звіряє писач (checkin-policy.ts).
+      checkin_payment_policy TEXT NOT NULL DEFAULT 'prepaid'
+        CHECK (checkin_payment_policy IN ('prepaid', 'allow_pay_later')),
+      system_of_record TEXT NOT NULL DEFAULT 'alisio'
+        CHECK (system_of_record IN ('external', 'alisio')),
+      kiosk_walkin_url TEXT,
       UNIQUE(organization_id, slug)
     );
 
@@ -3165,6 +3180,9 @@ function runMigrations(database: any) {
         registered_at TEXT,
         created_at TEXT DEFAULT (datetime('now')),
         reg_status TEXT NOT NULL DEFAULT 'not_started',
+        -- 0410: підпис пальцем на кіоску (К3). І тут, і в ALTER нижче.
+        signature_png TEXT,
+        signed_at TEXT,
         FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE,
         FOREIGN KEY (guest_id) REFERENCES guests(id) ON DELETE CASCADE
       )
@@ -5245,6 +5263,14 @@ function runMigrations(database: any) {
   try { database.exec("ALTER TABLE guest_registrations ADD COLUMN consent_ip TEXT"); } catch { /* already exists */ }
   try { database.exec("ALTER TABLE guest_registrations ADD COLUMN purpose_of_stay TEXT"); } catch { /* already exists */ }
   try { database.exec("ALTER TABLE guest_registrations ADD COLUMN visa_number TEXT"); } catch { /* already exists */ }
+  // 0410 — підпис пальцем (К3, кіоск §3.1). `data:image/png;base64,…` як його
+  // віддає полотно; ≤ 200 КБ стереже писач (`guests/data/signature.repo.ts`),
+  // а не обмеження бази: завеликий підпис — звичайний палець на великому
+  // екрані, і відповідь на нього має бути названою відмовою, не 500-кою.
+  // Знеособлення окремого правила не потребує: GDPR-ретенція видаляє рядок
+  // `guest_registrations` цілком, тож підпис іде разом із рештою.
+  try { database.exec("ALTER TABLE guest_registrations ADD COLUMN signature_png TEXT"); } catch { /* already exists */ }
+  try { database.exec("ALTER TABLE guest_registrations ADD COLUMN signed_at TEXT"); } catch { /* already exists */ }
 
   // --- Migration: add new columns to reservations for Analytics ---
   try {
@@ -7232,6 +7258,21 @@ function runMigrations(database: any) {
       database.exec('ALTER TABLE properties ADD COLUMN property_type TEXT');
       console.log('[DB] Added property_type to properties');
     }
+    // 0410 — політики кіоска на обʼєкті. І в CREATE вище, і тут (AGENTS §4).
+    // Дефолти повторюють дотеперішню поведінку: `prepaid` — та сама варта
+    // заселення, що стояла в хендлері; `alisio` — «книга наша», як було.
+    if (!propCols.includes('checkin_payment_policy')) {
+      database.exec("ALTER TABLE properties ADD COLUMN checkin_payment_policy TEXT NOT NULL DEFAULT 'prepaid'");
+      console.log('[DB] 0410: properties.checkin_payment_policy');
+    }
+    if (!propCols.includes('system_of_record')) {
+      database.exec("ALTER TABLE properties ADD COLUMN system_of_record TEXT NOT NULL DEFAULT 'alisio'");
+      console.log('[DB] 0410: properties.system_of_record');
+    }
+    if (!propCols.includes('kiosk_walkin_url')) {
+      database.exec('ALTER TABLE properties ADD COLUMN kiosk_walkin_url TEXT');
+      console.log('[DB] 0410: properties.kiosk_walkin_url');
+    }
   } catch (e: any) {
     console.error('[DB] properties checkout_balance_policy:', e.message);
   }
@@ -7840,6 +7881,9 @@ function runMigrations(database: any) {
   // 0143 — застосунок winhotel_import: знімки бази Winhotel.
   migrateWinhotelImport(database);
 
+  // 0411 — застосунок kiosk: термінал у холі, код парування, журнал доби.
+  migrateKiosk(database);
+
   // --- Migration: згоди на особі і слід злиття (INC-300) ---
   //
   // Пара до CREATE вище: «додаєш колонку — додай її і в CREATE, і в ALTER»
@@ -8191,6 +8235,69 @@ function migrateWinhotelImport(database: any) {
     database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_staging_entity ON winhotel_staging(organization_id, entity, reason)');
   } catch (e) {
     console.error('[DB] 0144 winhotel_refs/winhotel_staging:', (e as Error).message);
+  }
+}
+
+/**
+ * Міграція 0411 — застосунок `kiosk`: пристрій, код парування, журнал доби.
+ * Дзеркало `db/postgres/migrations/0411-*.sql`; окремою функцією з тієї самої
+ * причини, що `migrateWinhotelImport` (див. коментар у місці виклику).
+ *
+ * Політик тут немає й бути не може — на SQLite їх не існує. Тому все, що на
+ * Postgres тримає політика, тут тримає ЗАПИТ: кожен репозиторій застосунку
+ * називає `organization_id` явно (інваріант 12), а не покладається на
+ * контекст. Саме ця пара і є весь захист на машині розробника.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function migrateKiosk(database: any) {
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS kiosk_devices (
+        id              TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        property_id     TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        name            TEXT NOT NULL,
+        token_hash      TEXT NOT NULL,
+        paired_at       TEXT,
+        last_seen_at    TEXT,
+        revoked_at      TEXT,
+        config_json     TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS kiosk_pairings (
+        id              TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        property_id     TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        name            TEXT NOT NULL,
+        code_hash       TEXT NOT NULL,
+        expires_at      TEXT NOT NULL,
+        used_at         TEXT,
+        device_id       TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS kiosk_events (
+        id              TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        device_id       TEXT NOT NULL,
+        reservation_id  TEXT REFERENCES reservations(id) ON DELETE SET NULL,
+        kind            TEXT NOT NULL,
+        result          TEXT NOT NULL DEFAULT 'ok' CHECK (result IN ('ok', 'refused', 'error')),
+        detail          TEXT,
+        at              TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_kiosk_devices_org ON kiosk_devices(organization_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_kiosk_devices_property ON kiosk_devices(organization_id, property_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_kiosk_pairings_org ON kiosk_pairings(organization_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_kiosk_pairings_code ON kiosk_pairings(code_hash)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_kiosk_events_org ON kiosk_events(organization_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_kiosk_events_device_at ON kiosk_events(organization_id, device_id, at)');
+  } catch (e) {
+    console.error('[DB] 0411 kiosk_devices/kiosk_pairings/kiosk_events:', (e as Error).message);
   }
 }
 

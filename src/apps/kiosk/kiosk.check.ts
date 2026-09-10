@@ -1,0 +1,386 @@
+/**
+ * Термінал у холі робить рівно те, що йому дозволено, — і нічого поруч.
+ *
+ *   node src/apps/kiosk/kiosk.check.ts
+ *   DB_DRIVER=postgres DATABASE_URL=… node src/apps/kiosk/kiosk.check.ts
+ *
+ * Частина А блоку (docs/tasks/2026-09-10-block-kiosk.md §3.4): особа
+ * пристрою, політика заселення, призначення номера, підпис, код скриньки,
+ * журнал. Екранні сцени (вікно ±1 день, два чинники пошуку, таймер
+ * бездіяльності, лист за `system_of_record`) — частини Б і В; вони названі
+ * в звіті, а не мовчки пропущені.
+ *
+ * ── Осі (інваріант 26) ──────────────────────────────────────────────────
+ *
+ * ДВА готелі: A (застосунок увімкнено) і B (вимкнено) — щоб «чужий» і
+ * «вимкнений» були різними відмовами, а не однією. У A — ДВА обʼєкти
+ * (головний і сусідній), щоб вісь будинку перевірялась усередині одного
+ * рахунку: термінал у холі корпусу 1 не мусить знаходити бронь корпусу 2,
+ * і саме це не ловить жодна перевірка орендаря (INC-029).
+ *
+ * Далі кожне твердження — двома боками:
+ *
+ *   політика оплати   `prepaid` не пускає / `allow_pay_later` пускає;
+ *   писач             рецепції брудний номер — попередження, терміналу —
+ *                     відмова;
+ *   стан номера       чистий призначається / брудний і зайнятий — ні;
+ *   токен             живий працює / відкликаний 401;
+ *   код парування     свіжий парує / зужитий і строчений — ні.
+ *
+ * Один бік не доводить нічого: «пускає» без «не пускає» — це код, який
+ * пускає завжди.
+ */
+import assert from 'node:assert';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import '../../../scripts/lib/module-aliases.mjs';
+
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'alisio-kiosk-'));
+process.env.ALISIO_DATA_DIR = tmp;
+process.env.APP_SECRET_KEY ||= '0'.repeat(64);
+
+await import('@core/db/index.ts');
+const { getSql } = await import('@core/db/async.ts');
+const { runWithOrganization } = await import('@core/auth/tenant-context.ts');
+const { setFeature } = await import('@core/features.ts');
+const { checkIn, checkOut, assignUnit, readCheckinPolicy } = await import('@bookings/kernel.ts');
+const { saveSignature, isSigned, SIGNATURE_MAX_BYTES } = await import('@guests/kernel.ts');
+const { lockCodeForStay } = await import('@properties/kernel.ts');
+const devices = await import('./data/devices.repo.ts');
+const tokens = await import('./data/device-token.ts');
+const pairing = await import('./api/pairing.handlers.ts');
+const session = await import('./api/session.handlers.ts');
+
+const sql = getSql();
+const A = '__kiosk_check__a';
+const B = '__kiosk_check__b';
+const P1 = '__kiosk_check__p1';   // головний корпус A — тут стоїть термінал
+const P2 = '__kiosk_check__p2';   // сусідній корпус A — тут термінала немає
+const PB = '__kiosk_check__pb';   // обʼєкт B
+
+/** Дати заїзду/виїзду — завтра і післязавтра, щоб не залежати від «сьогодні». */
+const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+
+async function cleanup() {
+  for (const org of [A, B]) {
+    await runWithOrganization(org, async () => {
+      await sql.run('DELETE FROM kiosk_events WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM kiosk_pairings WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM kiosk_devices WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM guest_registrations WHERE reservation_id IN (SELECT id FROM reservations WHERE organization_id = ?)', [org]);
+      await sql.run('DELETE FROM reservation_guests WHERE reservation_id IN (SELECT id FROM reservations WHERE organization_id = ?)', [org]);
+      await sql.run('DELETE FROM reservations WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM units WHERE property_id IN (SELECT id FROM properties WHERE organization_id = ?)', [org]);
+      await sql.run('DELETE FROM unit_types WHERE property_id IN (SELECT id FROM properties WHERE organization_id = ?)', [org]);
+      await sql.run('DELETE FROM categories WHERE property_id IN (SELECT id FROM properties WHERE organization_id = ?)', [org]);
+      await sql.run('DELETE FROM guests WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM organization_features WHERE organization_id = ?', [org]);
+    });
+    await sql.run('DELETE FROM organizations WHERE id = ?', [org]);
+  }
+  await sql.run("DELETE FROM rate_limits WHERE token LIKE 'kiosk_%'");
+}
+
+/** Обʼєкт із категорією, типом і двома номерами. Усе — під орендарем. */
+async function seedProperty(org: string, propertyId: string) {
+  await sql.run(
+    "INSERT INTO properties (id, organization_id, name, slug, country, checkin_payment_policy) VALUES (?, ?, ?, ?, 'DE', 'prepaid')",
+    [propertyId, org, propertyId, propertyId]);
+  await sql.run("INSERT INTO categories (id, property_id, name, type) VALUES (?, ?, 'Zimmer', 'room')",
+    [`${propertyId}_cat`, propertyId]);
+  await sql.run("INSERT INTO unit_types (id, property_id, category_id, name, code) VALUES (?, ?, ?, 'Doppel', 'DBL')",
+    [`${propertyId}_ut`, propertyId, `${propertyId}_cat`]);
+  for (const n of [1, 2]) {
+    await sql.run(`
+      INSERT INTO units (id, unit_type_id, property_id, category_id, name, code, lock_code, cleaning_status, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'clean', ?)
+    `, [`${propertyId}_u${n}`, `${propertyId}_ut`, propertyId, `${propertyId}_cat`, `21${n}`, `21${n}`, `487${n}`, n]);
+  }
+}
+
+/** Бронь на завтра. `unitId` = null — номер ще не призначений. */
+async function seedStay(org: string, propertyId: string, id: string, opts: {
+  unitId?: string | null; paymentStatus?: string; registered?: boolean;
+} = {}) {
+  await sql.run("INSERT INTO guests (id, organization_id, first_name, last_name) VALUES (?, ?, 'Max', 'Muster')",
+    [`${id}_g`, org]);
+  await sql.run(`
+    INSERT INTO reservations (id, organization_id, property_id, unit_id, unit_type_id, guest_id,
+                              check_in, check_out, nights, adults, status, payment_status,
+                              registration_status, total_price, currency)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 2, 'confirmed', ?, ?, 200, 'EUR')
+  `, [
+    id, org, propertyId, opts.unitId === undefined ? `${propertyId}_u1` : opts.unitId,
+    `${propertyId}_ut`, `${id}_g`, day(1), day(2),
+    opts.paymentStatus ?? 'unpaid', opts.registered === false ? 'not_registered' : 'registered',
+  ]);
+  await sql.run(`
+    INSERT INTO guest_registrations (id, reservation_id, guest_id, is_primary, reg_status)
+    VALUES (?, ?, ?, 1, 'completed')
+  `, [`${id}_gr`, id, `${id}_g`]);
+}
+
+const deviceActor = (org: string, propertyId: string) =>
+  ({ kind: 'device' as const, organizationId: org, propertyId, userId: null });
+const receptionActor = (org: string, propertyId: string) =>
+  ({ kind: 'reception' as const, organizationId: org, propertyId, userId: null });
+const eventCount = (org: string) => runWithOrganization(org, async () =>
+  Number((await sql.row<{ n: number }>('SELECT COUNT(*) AS n FROM kiosk_events WHERE organization_id = ?', [org]))?.n));
+const policy = (propertyId: string, value: string) =>
+  sql.run('UPDATE properties SET checkin_payment_policy = ? WHERE id = ?', [value, propertyId]);
+const clean = (unitId: string, value: string) =>
+  sql.run('UPDATE units SET cleaning_status = ? WHERE id = ?', [value, unitId]);
+
+await cleanup();
+for (const org of [A, B]) {
+  await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [org, org, org]);
+}
+await runWithOrganization(A, () => setFeature(A, 'kiosk', true));
+await runWithOrganization(B, () => setFeature(B, 'kiosk', false));
+await runWithOrganization(A, async () => { await seedProperty(A, P1); await seedProperty(A, P2); });
+await runWithOrganization(B, () => seedProperty(B, PB));
+
+try {
+  // ── 1. Парування: свіжий код парує; зужитий, строчений і чужий — ні ──────
+  const made = await runWithOrganization(A, () => devices.createPairing({ organizationId: A, propertyId: P1, name: 'Foyer' }));
+  assert.match(made.code, /^[0-9]{6}$/, `код парування «${made.code}» не шестизначний`);
+  // Сам код у базі не лежить — лежить його sha256.
+  const stored = await runWithOrganization(A, () => sql.row<{ code_hash: string }>(
+    'SELECT code_hash FROM kiosk_pairings WHERE id = ? AND organization_id = ?', [made.pairingId, A]));
+  assert.notStrictEqual(stored?.code_hash, made.code, 'код парування лежить у базі відкритим');
+  assert.strictEqual(stored?.code_hash, devices.hashCode(made.code), 'у базі не sha256 коду');
+
+  const pair = (code: string) => pairing.pairDevice(new Request('http://alisio.test/api/apps/kiosk/pair', {
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': '10.0.0.1' },
+    body: JSON.stringify({ code }),
+  }));
+
+  let res = await pair('000000');
+  assert.strictEqual(res.status, 400, `невідомий код: очікували 400, отримали ${res.status}`);
+  res = await pair(made.code);
+  // Тіло читається ОДИН раз і до assert: повідомлення шаблонного рядка
+  // обчислюється завжди, навіть коли перевірка проходить, і `await res.text()`
+  // у ньому зʼїдав би тіло ще до `res.json()` нижче.
+  let text = await res.text();
+  assert.strictEqual(res.status, 200, `свіжий код: очікували 200, отримали ${res.status} ${text}`);
+  const paired = JSON.parse(text) as { token: string; deviceId: string; propertyId: string };
+  assert.strictEqual(paired.propertyId, P1, 'термінал спарувався не з тим обʼєктом');
+  // Другий раз той самий код — мертвий.
+  res = await pair(made.code);
+  assert.strictEqual(res.status, 400, `зужитий код: очікували 400, отримали ${res.status}`);
+  // Строчений — теж, і саме за строком: рядок є, він незужитий.
+  const stale = await runWithOrganization(A, () => devices.createPairing({ organizationId: A, propertyId: P1, name: 'Stale' }));
+  await runWithOrganization(A, () => sql.run('UPDATE kiosk_pairings SET expires_at = ? WHERE id = ?',
+    [new Date(Date.now() - 60_000).toISOString(), stale.pairingId]));
+  res = await pair(stale.code);
+  assert.strictEqual(res.status, 400, `строчений код: очікували 400, отримали ${res.status}`);
+  // Код організації B: код правильний, застосунок вимкнено — той самий 400,
+  // а не 404: інакше маршрут підтвердив би, що код існує.
+  const codeB = await runWithOrganization(B, () => devices.createPairing({ organizationId: B, propertyId: PB, name: 'B' }));
+  res = await pair(codeB.code);
+  assert.strictEqual(res.status, 400, `код B із вимкненим застосунком: очікували 400, отримали ${res.status}`);
+  assert.strictEqual(await eventCount(B), 0, 'у B зʼявилась подія від невдалого парування');
+  console.log('  ok  1. парує лише свіжий незужитий код свого рахунку; у базі — хеш, не код');
+
+  // ── 2. Токен: живий працює, відкликаний 401, сміття 401 ──────────────────
+  const ask = (token: string | null) => session.deviceSession(new Request('http://alisio.test/api/apps/kiosk/session', {
+    headers: token ? { authorization: `Bearer ${token}` } : {},
+  }));
+  res = await ask(paired.token);
+  text = await res.text();
+  assert.strictEqual(res.status, 200, `живий токен: очікували 200, отримали ${res.status} ${text}`);
+  const state = JSON.parse(text) as {
+    property: { id: string }; checkinPaymentPolicy: string; walkinUrl: string | null;
+    touchBand: { top: number; bottom: number }; languages: string[];
+  };
+  assert.strictEqual(state.property.id, P1, 'сесія назвала не той обʼєкт');
+  assert.deepStrictEqual(state.languages, ['de', 'en'], 'мови екрана не DE+EN (К7)');
+  assert.strictEqual(state.walkinUrl, null, 'walk-in увімкнений без адреси');
+  assert.deepStrictEqual(state.touchBand, session.DEFAULT_TOUCH_BAND, 'робоча смуга не дефолтна');
+  res = await ask(null);
+  assert.strictEqual(res.status, 401, `без токена: очікували 401, отримали ${res.status}`);
+  res = await ask('garbage.garbage.zz');
+  assert.strictEqual(res.status, 401, `сміття замість токена: очікували 401, отримали ${res.status}`);
+  // Префікс і пристрій свої, секрет чужий — 401 на хеші, а не на пошуку рядка.
+  const parsedOk = tokens.parseBearer(`Bearer ${paired.token}`)!;
+  res = await ask(`${parsedOk.organizationId}.${parsedOk.propertyId}.${parsedOk.deviceId}.${'a'.repeat(64)}`);
+  assert.strictEqual(res.status, 401, `чужий секрет: очікували 401, отримали ${res.status}`);
+  // Корпус у токені підмінено: секрет той самий, рядок не знаходиться.
+  res = await ask(`${parsedOk.organizationId}.${P2}.${parsedOk.deviceId}.${parsedOk.secret}`);
+  assert.strictEqual(res.status, 401, `підмінений корпус у токені: очікували 401, отримали ${res.status}`);
+  console.log('  ok  2. живий токен віддає стан обʼєкта; без токена, зі сміттям, із чужим секретом і з підміненим корпусом — 401');
+
+  // ── 3. Заселення: політика оплати ОБИДВОМА боками ────────────────────────
+  await runWithOrganization(A, () => seedStay(A, P1, 'kc_pay'));
+  let got = await runWithOrganization(A, () => checkIn('kc_pay', { actor: deviceActor(A, P1) }));
+  assert.deepStrictEqual(got, { ok: false, refusal: 'payment_required' }, `prepaid без оплати: ${JSON.stringify(got)}`);
+  // Третій бік тієї самої осі — у ЧИТАЧІ, а не в рядку: слово, якого немає у
+  // словнику, і порожнеча читаються як найсуворіше (інваріант 13). Через базу
+  // це не перевірити, і це добре: CHECK відмовляє записати чуже слово. Але
+  // порожнеча приходить не з рядка — вона приходить із ВІДСУТНОСТІ рядка: на
+  // Postgres запит без орендаря повертає нуль рядків, і найм'якший дефолт
+  // відчинив би двері рівно там, де орендар невідомий.
+  for (const raw of [undefined, null, '', 'whatever', 'PREPAID']) {
+    assert.strictEqual(readCheckinPolicy(raw), 'prepaid',
+      `невідоме слово політики «${String(raw)}» прочиталось як ${readCheckinPolicy(raw)}`);
+  }
+  assert.strictEqual(readCheckinPolicy('allow_pay_later'), 'allow_pay_later',
+    'відоме слово політики не читається — тоді перевірка вище нічого не доводить');
+  await runWithOrganization(A, () => policy(P1, 'allow_pay_later'));
+  got = await runWithOrganization(A, () => checkIn('kc_pay', { actor: deviceActor(A, P1) }));
+  assert.strictEqual(got.ok, true, `allow_pay_later не пустив: ${JSON.stringify(got)}`);
+  // Повторне натискання — ідемпотентно: один заїзд, не два.
+  const again = await runWithOrganization(A, () => checkIn('kc_pay', { actor: deviceActor(A, P1) }));
+  assert.strictEqual(again.ok, true, `повторне заселення відмовило: ${JSON.stringify(again)}`);
+  const status = await runWithOrganization(A, () => sql.row<{ status: string }>(
+    'SELECT status FROM reservations WHERE id = ? AND organization_id = ?', ['kc_pay', A]));
+  assert.strictEqual(status?.status, 'checked_in', 'бронь не заселена');
+  console.log('  ok  3. prepaid і невідоме слово не пускають без оплати, allow_pay_later пускає; повторне заселення — те саме');
+
+  // ── 4. Реєстрація обовʼязкова за БУДЬ-ЯКОЇ політики ──────────────────────
+  await runWithOrganization(A, () => seedStay(A, P1, 'kc_reg', { unitId: `${P1}_u2`, registered: false }));
+  got = await runWithOrganization(A, () => checkIn('kc_reg', { actor: deviceActor(A, P1) }));
+  assert.deepStrictEqual(got, { ok: false, refusal: 'not_registered' }, `без реєстрації: ${JSON.stringify(got)}`);
+  const asReception = await runWithOrganization(A, () => checkIn('kc_reg', { actor: receptionActor(A, P1) }));
+  assert.deepStrictEqual(asReception, { ok: false, refusal: 'not_registered' },
+    `рецепції теж не можна без реєстрації: ${JSON.stringify(asReception)}`);
+  console.log('  ok  4. заселення без реєстрації — відмова і терміналу, і рецепції');
+
+  // ── 5. Брудний номер: терміналу відмова, рецепції попередження ───────────
+  await runWithOrganization(A, () => seedStay(A, P1, 'kc_dirty', { unitId: `${P1}_u2` }));
+  await runWithOrganization(A, () => clean(`${P1}_u2`, 'dirty'));
+  got = await runWithOrganization(A, () => checkIn('kc_dirty', { actor: deviceActor(A, P1) }));
+  assert.deepStrictEqual(got, { ok: false, refusal: 'unit_dirty' }, `брудний номер терміналу: ${JSON.stringify(got)}`);
+  const dirtyReception = await runWithOrganization(A, () => checkIn('kc_dirty', { actor: receptionActor(A, P1) }));
+  assert.deepStrictEqual(dirtyReception, { ok: true, warning: 'unit_dirty', unitId: `${P1}_u2` },
+    `брудний номер рецепції: ${JSON.stringify(dirtyReception)}`);
+  console.log('  ok  5. брудний номер: терміналу відмова, рецепції попередження — і заселення');
+
+  // ── 6. assignUnit: не бере зайнятий і не бере брудний ────────────────────
+  await runWithOrganization(A, () => clean(`${P1}_u2`, 'clean'));
+  await runWithOrganization(A, () => seedStay(A, P1, 'kc_assign', { unitId: null }));
+  // u1 зайнятий бронню kc_pay, u2 зайнятий kc_dirty — вільних немає.
+  let assigned = await runWithOrganization(A, () => assignUnit('kc_assign', { actor: deviceActor(A, P1), prefer: 'clean' }));
+  assert.deepStrictEqual(assigned, { ok: false, refusal: 'no_free_unit' }, `усі зайняті: ${JSON.stringify(assigned)}`);
+  // Звільняємо u2, але бруднимо його: вільний є, чистого немає — інша відмова.
+  //
+  // Бронь СКАСОВУЄТЬСЯ, а не лишається без номера: `freeUnitsForRange` віднімає
+  // ще й тиск безномерних броней того самого типу (інваріант И3), тож «зняв
+  // номер» звільнило б кімнату поіменно і тут же зʼїло її кількістю — і сцена
+  // перевіряла б не те, що написано в її назві.
+  await runWithOrganization(A, () => sql.run(
+    "UPDATE reservations SET unit_id = NULL, status = 'cancelled' WHERE id IN (?, ?)", ['kc_dirty', 'kc_reg']));
+  await runWithOrganization(A, () => clean(`${P1}_u2`, 'dirty'));
+  assigned = await runWithOrganization(A, () => assignUnit('kc_assign', { actor: deviceActor(A, P1), prefer: 'clean' }));
+  assert.deepStrictEqual(assigned, { ok: false, refusal: 'no_clean_unit' }, `вільний, але брудний: ${JSON.stringify(assigned)}`);
+  await runWithOrganization(A, () => clean(`${P1}_u2`, 'clean'));
+  assigned = await runWithOrganization(A, () => assignUnit('kc_assign', { actor: deviceActor(A, P1), prefer: 'clean' }));
+  assert.deepStrictEqual(assigned, { ok: true, unitId: `${P1}_u2`, alreadyAssigned: false }, `вільний і чистий: ${JSON.stringify(assigned)}`);
+  console.log('  ok  6. assignUnit: зайнятий — no_free_unit, брудний — no_clean_unit, чистий — призначено');
+
+  // ── 7. Код скриньки — лише для номера ЦІЄЇ броні, і лише заселеної ───────
+  // kc_assign щойно дістала номер, але ще не заселена.
+  let key = await runWithOrganization(A, () => lockCodeForStay({ organizationId: A, propertyId: P1, reservationId: 'kc_assign' }));
+  assert.strictEqual(key, null, 'код скриньки віддано до заселення');
+  await runWithOrganization(A, () => policy(P1, 'allow_pay_later'));
+  got = await runWithOrganization(A, () => checkIn('kc_assign', { actor: deviceActor(A, P1) }));
+  assert.strictEqual(got.ok, true, `заселення після призначення: ${JSON.stringify(got)}`);
+  key = await runWithOrganization(A, () => lockCodeForStay({ organizationId: A, propertyId: P1, reservationId: 'kc_assign' }));
+  assert.strictEqual(key?.lockCode, '4872', `код скриньки призначеного номера: ${JSON.stringify(key)}`);
+  assert.strictEqual(key?.unitId, `${P1}_u2`, 'код скриньки не того номера');
+  // Той самий термінал, але бронь СУСІДНЬОГО корпусу того самого рахунку.
+  await runWithOrganization(A, () => seedStay(A, P2, 'kc_other_house', { paymentStatus: 'paid' }));
+  const alien = await runWithOrganization(A, () => lockCodeForStay({ organizationId: A, propertyId: P1, reservationId: 'kc_other_house' }));
+  assert.strictEqual(alien, null, 'термінал корпусу 1 дістав код скриньки корпусу 2');
+  // Та сама вісь у ФАСАДАХ, не лише в коді скриньки: заселити, виселити,
+  // призначити номер і підписати бронь сусіднього корпусу — теж «немає».
+  // Орендар тут збігається, тож жодна перевірка орендаря цього не ловить.
+  const houseIn = await runWithOrganization(A, () => checkIn('kc_other_house', { actor: deviceActor(A, P1) }));
+  assert.deepStrictEqual(houseIn, { ok: false, refusal: 'not_found' }, `заселення чужого корпусу: ${JSON.stringify(houseIn)}`);
+  const houseAssign = await runWithOrganization(A, () => assignUnit('kc_other_house', { actor: deviceActor(A, P1), prefer: 'clean' }));
+  assert.deepStrictEqual(houseAssign, { ok: false, refusal: 'not_found' }, `призначення в чужому корпусі: ${JSON.stringify(houseAssign)}`);
+  const houseOut = await runWithOrganization(A, () => checkOut('kc_other_house', { actor: deviceActor(A, P1) }));
+  assert.deepStrictEqual(houseOut, { ok: false, refusal: 'not_found' }, `виселення в чужому корпусі: ${JSON.stringify(houseOut)}`);
+  const houseSig = await runWithOrganization(A, () => saveSignature({ organizationId: A, propertyId: P1, reservationId: 'kc_other_house', signaturePng: 'data:image/png;base64,iVBORw0KGgo=' }));
+  assert.deepStrictEqual(houseSig, { ok: false, refusal: 'not_found' }, `підпис у чужому корпусі: ${JSON.stringify(houseSig)}`);
+  // І той самий фасад із ПРАВИЛЬНИМ корпусом працює — інакше сцена доводила б
+  // лише те, що бронь зіпсована.
+  const houseOk = await runWithOrganization(A, () => assignUnit('kc_other_house', { actor: deviceActor(A, P2), prefer: 'clean' }));
+  assert.strictEqual(houseOk.ok, true, `свій корпус має працювати: ${JSON.stringify(houseOk)}`);
+  console.log('  ok  7. корпус: lock_code і всі чотири фасади — лише свій будинок, чужий «немає»');
+
+  // ── 8. Чужий рахунок: термінал A не бачить броні B, і в B нуль подій ─────
+  await runWithOrganization(B, () => seedStay(B, PB, 'kc_b_stay', { paymentStatus: 'paid' }));
+  const crossOrg = await runWithOrganization(A, () => checkIn('kc_b_stay', { actor: deviceActor(A, P1) }));
+  assert.deepStrictEqual(crossOrg, { ok: false, refusal: 'not_found' }, `бронь B терміналом A: ${JSON.stringify(crossOrg)}`);
+  const crossKey = await runWithOrganization(A, () => lockCodeForStay({ organizationId: A, propertyId: P1, reservationId: 'kc_b_stay' }));
+  assert.strictEqual(crossKey, null, 'термінал A дістав код скриньки готелю B');
+  assert.strictEqual(await eventCount(B), 0, 'у журналі B зʼявилась подія від термінала A');
+  const stillB = await runWithOrganization(B, () => sql.row<{ status: string }>(
+    'SELECT status FROM reservations WHERE id = ? AND organization_id = ?', ['kc_b_stay', B]));
+  assert.strictEqual(stillB?.status, 'confirmed', 'бронь B змінилась від дії термінала A');
+  console.log('  ok  8. бронь чужого рахунку — «немає», нуль подій у чужому журналі, рядок не змінено');
+
+  // ── 9. Відкликаний термінал перестає відповідати — і лишається в журналі ─
+  await runWithOrganization(A, () => devices.noteEvent({ organizationId: A, deviceId: paired.deviceId, kind: 'checkin' }));
+  const before = await eventCount(A);
+  assert.ok(before > 0, 'журнал A порожній — нема чого зберігати');
+  const revoked = await runWithOrganization(A, () => devices.revokeDevice(A, paired.deviceId));
+  assert.strictEqual(revoked, true, 'відкликання не спрацювало');
+  res = await ask(paired.token);
+  assert.strictEqual(res.status, 401, `відкликаний токен: очікували 401, отримали ${res.status}`);
+  assert.strictEqual(await eventCount(A), before, 'відкликання стерло журнал');
+  const twice = await runWithOrganization(A, () => devices.revokeDevice(A, paired.deviceId));
+  assert.strictEqual(twice, false, 'повторне відкликання вдруге «спрацювало»');
+  console.log('  ok  9. відкликаний термінал — 401, журнал доби лишається, друге відкликання — ні');
+
+  // ── 10. Підпис: форма, розмір, адресат ──────────────────────────────────
+  assert.strictEqual(await runWithOrganization(A, () => isSigned(A, P1, 'kc_pay')), false, 'бронь підписана до підпису');
+  let sig = await runWithOrganization(A, () => saveSignature({ organizationId: A, propertyId: P1, reservationId: 'kc_pay', signaturePng: '<svg/>' }));
+  assert.deepStrictEqual(sig, { ok: false, refusal: 'not_png' }, `не PNG: ${JSON.stringify(sig)}`);
+  const huge = `data:image/png;base64,${'A'.repeat(SIGNATURE_MAX_BYTES)}`;
+  sig = await runWithOrganization(A, () => saveSignature({ organizationId: A, propertyId: P1, reservationId: 'kc_pay', signaturePng: huge }));
+  assert.deepStrictEqual(sig, { ok: false, refusal: 'too_large' }, `завеликий: ${JSON.stringify(sig)}`);
+  const png = 'data:image/png;base64,iVBORw0KGgo=';
+  sig = await runWithOrganization(A, () => saveSignature({ organizationId: A, propertyId: P1, reservationId: 'kc_pay', signaturePng: png }));
+  assert.strictEqual(sig.ok, true, `справжній PNG: ${JSON.stringify(sig)}`);
+  assert.strictEqual(await runWithOrganization(A, () => isSigned(A, P1, 'kc_pay')), true, 'підпис не записався');
+  // Бронь чужого рахунку — «немає», а не тихий запис не туди.
+  const sigCross = await runWithOrganization(A, () => saveSignature({ organizationId: A, propertyId: P1, reservationId: 'kc_b_stay', signaturePng: png }));
+  assert.deepStrictEqual(sigCross, { ok: false, refusal: 'not_found' }, `підпис на бронь B: ${JSON.stringify(sigCross)}`);
+  assert.strictEqual(await runWithOrganization(B, () => isSigned(B, PB, 'kc_b_stay')), false, 'підпис ліг на бронь B');
+  console.log('  ok  10. підпис: не-PNG і >200 КБ — відмова, свій PNG — записано, чужа бронь — «немає»');
+
+  // ── 11. Виселення: політика боргу як є, номер стає брудним ──────────────
+  await runWithOrganization(A, () => sql.run(
+    "UPDATE properties SET checkout_balance_policy = 'none' WHERE id = ?", [P1]));
+  const out = await runWithOrganization(A, () => checkOut('kc_assign', { actor: deviceActor(A, P1) }));
+  assert.strictEqual(out.ok, true, `виселення: ${JSON.stringify(out)}`);
+  const unitAfter = await runWithOrganization(A, () => sql.row<{ cleaning_status: string }>(
+    'SELECT cleaning_status FROM units WHERE id = ?', [`${P1}_u2`]));
+  assert.strictEqual(unitAfter?.cleaning_status, 'dirty', 'номер після виселення не брудний');
+  // `blocking` із боргом не випускає — друга вісь тієї самої політики.
+  await runWithOrganization(A, () => sql.run(
+    "UPDATE properties SET checkout_balance_policy = 'blocking' WHERE id = ?", [P1]));
+  const blocked = await runWithOrganization(A, () => checkOut('kc_pay', { actor: deviceActor(A, P1) }));
+  assert.strictEqual(blocked.ok, false, `борг під blocking: ${JSON.stringify(blocked)}`);
+  assert.strictEqual(blocked.ok === false ? blocked.refusal : null, 'balance_blocking', JSON.stringify(blocked));
+  console.log('  ok  11. виселення бруднить номер; борг під blocking не випускає');
+
+  // ── 12. Ліміт частоти — на ПРИСТРОЇ, не на IP ───────────────────────────
+  const fresh = await runWithOrganization(A, () => devices.createPairing({ organizationId: A, propertyId: P1, name: 'Rate' }));
+  res = await pair(fresh.code);
+  assert.strictEqual(res.status, 200, `парування для сцени ліміту: ${res.status}`);
+  const rate = await res.json() as { token: string };
+  let last = 200;
+  for (let i = 0; i < 125 && last === 200; i += 1) last = (await ask(rate.token)).status;
+  assert.strictEqual(last, 429, `ліміт на пристрої не спрацював: останній статус ${last}`);
+  console.log('  ok  12. 120 викликів на хвилину — далі 429, і рахується ПРИСТРІЙ');
+
+  console.log('  ok  kiosk: термінал робить лише своє — свій рахунок, свій корпус, свою бронь');
+} finally {
+  await cleanup();
+  fs.rmSync(tmp, { recursive: true, force: true });
+}

@@ -1289,6 +1289,8 @@ CREATE TABLE "guest_registrations" (
   "registered_at" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now(),
   "reg_status" TEXT DEFAULT 'not_started' NOT NULL,
+  "signature_png" TEXT,
+  "signed_at" TIMESTAMPTZ,
   "consent_given" BIGINT DEFAULT 0,
   "consent_at" TIMESTAMPTZ,
   "consent_ip" TEXT,
@@ -1421,6 +1423,46 @@ CREATE TABLE "invoices" (
   PRIMARY KEY ("id"),
   UNIQUE ("organization_id", "invoice_number"),
   CHECK (status IN ('issued', 'cancelled', 'storno', 'corrected'))
+);
+
+CREATE TABLE "kiosk_devices" (
+  "id" TEXT NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "property_id" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "token_hash" TEXT NOT NULL,
+  "paired_at" TIMESTAMPTZ,
+  "last_seen_at" TIMESTAMPTZ,
+  "revoked_at" TIMESTAMPTZ,
+  "config_json" JSONB,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id")
+);
+
+CREATE TABLE "kiosk_events" (
+  "id" TEXT NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "device_id" TEXT NOT NULL,
+  "reservation_id" TEXT,
+  "kind" TEXT NOT NULL,
+  "result" TEXT DEFAULT 'ok' NOT NULL,
+  "detail" TEXT,
+  "at" TEXT DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') NOT NULL,
+  PRIMARY KEY ("id"),
+  CHECK (result IN ('ok', 'refused', 'error'))
+);
+
+CREATE TABLE "kiosk_pairings" (
+  "id" TEXT NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "property_id" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "code_hash" TEXT NOT NULL,
+  "expires_at" TIMESTAMPTZ NOT NULL,
+  "used_at" TIMESTAMPTZ,
+  "device_id" TEXT,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id")
 );
 
 CREATE TABLE "menu_items" (
@@ -1668,9 +1710,14 @@ CREATE TABLE "properties" (
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "checkout_balance_policy" TEXT DEFAULT 'warning' NOT NULL,
   "property_type" TEXT,
+  "checkin_payment_policy" TEXT DEFAULT 'prepaid' NOT NULL,
+  "system_of_record" TEXT DEFAULT 'alisio' NOT NULL,
+  "kiosk_walkin_url" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("organization_id", "slug"),
-  CHECK (checkout_balance_policy IN ('none', 'warning', 'blocking'))
+  CHECK (checkout_balance_policy IN ('none', 'warning', 'blocking')),
+  CHECK (checkin_payment_policy IN ('prepaid', 'allow_pay_later')),
+  CHECK (system_of_record IN ('external', 'alisio'))
 );
 
 CREATE TABLE "property_amenities" (
@@ -2646,6 +2693,18 @@ ALTER TABLE "invoices" ADD CONSTRAINT "fk_invoices_reservation_id_2"
   FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE CASCADE;
 ALTER TABLE "invoices" ADD CONSTRAINT "fk_invoices_organization_id_3"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "kiosk_devices" ADD CONSTRAINT "fk_kiosk_devices_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "kiosk_devices" ADD CONSTRAINT "fk_kiosk_devices_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "kiosk_events" ADD CONSTRAINT "fk_kiosk_events_reservation_id_1"
+  FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE SET NULL;
+ALTER TABLE "kiosk_events" ADD CONSTRAINT "fk_kiosk_events_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "kiosk_pairings" ADD CONSTRAINT "fk_kiosk_pairings_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "kiosk_pairings" ADD CONSTRAINT "fk_kiosk_pairings_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "menu_items" ADD CONSTRAINT "fk_menu_items_service_id_1"
   FOREIGN KEY ("service_id") REFERENCES "additional_services" ("id") ON DELETE CASCADE;
 ALTER TABLE "organization_currencies" ADD CONSTRAINT "fk_organization_currencies_organization_id_1"
@@ -3017,6 +3076,12 @@ CREATE INDEX "idx_invoices_folio" ON "invoices" ("folio_id");
 CREATE INDEX "idx_invoices_issued" ON "invoices" ("issued_at");
 CREATE INDEX "idx_invoices_number" ON "invoices" ("organization_id", "invoice_number");
 CREATE INDEX "idx_invoices_reservation" ON "invoices" ("reservation_id");
+CREATE INDEX "idx_kiosk_devices_org" ON "kiosk_devices" ("organization_id");
+CREATE INDEX "idx_kiosk_devices_property" ON "kiosk_devices" ("organization_id", "property_id");
+CREATE INDEX "idx_kiosk_events_device_at" ON "kiosk_events" ("organization_id", "device_id", "at");
+CREATE INDEX "idx_kiosk_events_org" ON "kiosk_events" ("organization_id");
+CREATE INDEX "idx_kiosk_pairings_code" ON "kiosk_pairings" ("code_hash");
+CREATE INDEX "idx_kiosk_pairings_org" ON "kiosk_pairings" ("organization_id");
 CREATE INDEX "idx_org_currencies_org" ON "organization_currencies" ("organization_id");
 CREATE INDEX "idx_partner_reports_period" ON "partner_reports" ("organization_id", "period");
 CREATE INDEX "idx_platform_audit_org" ON "platform_audit" ("organization_id", "at");
@@ -3151,6 +3216,9 @@ CREATE INDEX IF NOT EXISTS "idx_invoice_counters_org" ON "invoice_counters" ("or
 CREATE INDEX IF NOT EXISTS "idx_invoice_periods_org" ON "invoice_periods" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_invoice_series_org" ON "invoice_series" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_invoices_org" ON "invoices" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_kiosk_devices_org" ON "kiosk_devices" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_kiosk_events_org" ON "kiosk_events" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_kiosk_pairings_org" ON "kiosk_pairings" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_organization_currencies_org" ON "organization_currencies" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_organization_features_org" ON "organization_features" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_organization_invoicing_org" ON "organization_invoicing" ("organization_id");
@@ -3307,6 +3375,12 @@ ALTER TABLE "invoice_periods" ALTER COLUMN "organization_id"
 ALTER TABLE "invoice_series" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "invoices" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "kiosk_devices" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "kiosk_events" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "kiosk_pairings" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "organization_currencies" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -3814,6 +3888,24 @@ ALTER TABLE "invoices" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "invoices" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "invoices_tenant" ON "invoices"
   USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "kiosk_devices" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "kiosk_devices" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "kiosk_devices_tenant" ON "kiosk_devices"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "kiosk_events" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "kiosk_events" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "kiosk_events_tenant" ON "kiosk_events"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "kiosk_pairings" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "kiosk_pairings" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "kiosk_pairings_tenant" ON "kiosk_pairings"
+  USING ("organization_id" = current_setting('app.organization_id') OR "code_hash" = NULLIF(current_setting('app.public_token', true), ''))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
 ALTER TABLE "menu_items" ENABLE ROW LEVEL SECURITY;

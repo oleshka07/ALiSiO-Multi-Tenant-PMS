@@ -157,6 +157,12 @@ const PUBLIC = new RegExp([
   // Прийом знімка Winhotel — за токеном агента, без сесії (proxy.ts). Рівно
   // цей шлях: решта `/api/apps/…`, якщо зʼявиться, лишається під вартою.
   '/api/apps/winhotel-import/snapshots\\b',
+  // Кіоск — увесь префікс безсесійний (proxy.ts), КРІМ сегмента `admin/`:
+  // там лежить картка застосунку, і вона під вартою власника. Заперечний
+  // погляд уперед тут не косметика — без нього маршрут адмінки без варти
+  // пропустили б ОБИДВА гейти: цей за префіксом, а `check-public-routes` —
+  // як «під вартою», якої в ньому немає.
+  '/api/apps/kiosk/(?!admin/)',
 ].join('|'));
 
 // Read the alias table with a regex rather than JSON.parse: tsconfig.json is

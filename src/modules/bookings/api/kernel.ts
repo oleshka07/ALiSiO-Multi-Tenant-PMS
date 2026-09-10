@@ -13,3 +13,18 @@ export type { CompanyStayStats } from '../data/company-stays.repo';
 // голим node падає на `__dirname`, тож сцена каси не піднімалась узагалі.
 export { recalcPaymentStatusFromFolio } from '../data/payment-status.repo';
 export type { PaymentStatusChange } from '../data/payment-status.repo';
+
+/**
+ * Заселення й виселення — фасади, якими пише і рецепція, і кіоск. У kernel,
+ * а не лише в `@bookings`: застосунок `kiosk` і його сцена під голим node
+ * не можуть тягнути обробники з `next/server`.
+ */
+export { checkIn, checkOut, assignUnit, decideCheckIn } from '../data/checkin.repo';
+export type { CheckinAnswer, CheckoutAnswer, AssignAnswer, FacadeActor } from '../data/checkin.repo';
+export {
+  checkinDecision, readCheckinPolicy, readSystemOfRecord,
+  CHECKIN_PAYMENT_POLICIES, SYSTEMS_OF_RECORD,
+} from '../domain/checkin-policy';
+export type {
+  CheckinPaymentPolicy, SystemOfRecord, CheckinActorKind, CheckinDecision, CheckinRefusal,
+} from '../domain/checkin-policy';

@@ -61,7 +61,15 @@ const ALLOWED = new Map([
 
 // Обгортка модуля (`stay-notes` у bookings) рахується дверима: вона сама імпортує
 // @channels/outbox, а писачі кличуть її, щоб не переписувати одне й те саме.
-const DOOR = /from\s+['"](?:@channels\/outbox|@channels|\.{1,2}\/(?:api\/)?outbox(?:-notes)?|\.\/outbox-notes|\.\.\/data\/outbox-notes|\.{1,2}\/(?:data\/)?stay-notes)['"]/;
+//
+// `reservation-write.repo` — обгортка другого рівня, і рахується з тієї самої
+// причини: це ТРАНЗАКЦІЯ зміни броні, і `noteStay` стоїть усередині неї, тим
+// самим зʼєднанням (інваріант 11). Писач, який кличе її, кладе координату в
+// чергу НАДІЙНІШЕ за того, хто кличе `noteStay` сам: там її неможливо
+// поставити не в ту транзакцію. Без цього рядка гейт вимагав би від фасадів
+// заселення (`checkin.repo.ts`) імпортувати двері, якими вони не
+// користуються, — тобто зробити імпорт заради гейта (§3.2.1).
+const DOOR = /from\s+['"](?:@channels\/outbox|@channels|\.{1,2}\/(?:api\/)?outbox(?:-notes)?|\.\/outbox-notes|\.\.\/data\/outbox-notes|\.{1,2}\/(?:data\/)?stay-notes|\.{1,2}\/(?:data\/)?reservation-write\.repo)['"]/;
 
 function walk(dir, out = []) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
