@@ -143,11 +143,21 @@ export async function createWidgetReservation(request: NextRequest) {
     // booking: free on SQLite, refused on Postgres, where the application's
     // role owns nothing and may not create anything.
 
+    // Рядок САЙТА і глобальна унікальність токена — носії осі, а не її
+    // читачі: перше саме каже, який тут будинок, друге мусить бачити ВСІ
+    // рядки, бо `idx_reservations_guest_token` унікальний по таблиці, і
+    // звужений до будинку він перестав би доводити унікальність. Сказано
+    // дверима, а не мовчанням (INC-029, К19).
+    const CARRIES_THE_AXIS = propertyScopeFilter(ALL_PROPERTIES, '');
+
     // Which hosts this site trusts — its own domain plus allowed_domains.
     let originSite: SiteRow | undefined;
     const searchSite = siteId || siteSlug;
     if (searchSite) {
-      originSite = await sql.row<any>("SELECT id, slug, site_url, allowed_domains FROM booking_sites WHERE (id = ? OR slug = ?) AND status != 'deleted'", [searchSite, searchSite]) as SiteRow | undefined;
+      originSite = await sql.row<any>(
+        `SELECT id, slug, property_id, site_url, allowed_domains FROM booking_sites
+          WHERE (id = ? OR slug = ?) AND status != 'deleted' AND ${CARRIES_THE_AXIS.sql}`,
+        [searchSite, searchSite, ...CARRIES_THE_AXIS.params]) as SiteRow | undefined;
     }
 
     const origin = request.headers.get('origin');
@@ -182,9 +192,31 @@ export async function createWidgetReservation(request: NextRequest) {
     // застаріло» замість своєї броні. Саме це й показала червона сцена: перше
     // твердження впало не на 409, а на 403.
     //
-    // Відповідати без рукостискання тут безпечно: ми не створюємо нічого, а
-    // віддаємо бронь, чий ідентифікатор виводиться з подання того, хто питає.
-    // Хто не робив цього бронювання, не назве його змісту.
+    // ── І чому повтор віддається ЛИШЕ на клієнтський ключ (INC-047) ──────
+    //
+    // Тут стояв довід: «відповідати без рукостискання безпечно — ми нічого не
+    // створюємо, а ідентифікатор виводиться з подання того, хто питає; хто не
+    // робив цього бронювання, не назве його змісту». Перша половина істинна.
+    // Друга — ні, і рецензія контролера це показала.
+    //
+    // `guestPageToken` у відповіді — не довідка, а ПЕРЕПУСТКА: за нею
+    // відкривається гостьовий портал, запит на оплату, дії гостя і
+    // завантаження документів (інваріант 14). А зміст подання відгадуваний:
+    // `unitId` перелічує сам віджет, дати перебирає календар, імʼя, пошта й
+    // телефон відомі кожному, хто знає гостя. Тобто перепустку дістає
+    // знайомий, а не «зловмисник із базою».
+    //
+    // І це ОРАКУЛ без гальма: відповідь розрізняє здогади однозначно (201 —
+    // вгадав, 403 — ні), а всі обмеження швидкості стоять на рукостисканні,
+    // яке цей шлях обходить за побудовою.
+    //
+    // Тому повтор віддається лише тоді, коли ключ ПРИЙШОВ ВІД КЛІЄНТА: це
+    // випадковий UUID, якого не відгадати, і обидва входи віджета його вже
+    // шлють. Виведений ключ (старий бандл із кешу браузера) повтору не
+    // дістає — він поводиться так, як до INC-046: другий клік бачить 409 на
+    // зайнятий номер. Сам виведений ключ лишається і далі: він тримає
+    // ідентифікатор броні детермінованим, тобто вставка не може роздвоїтись
+    // на первинному ключі.
     const stayKey = reserveKey(
       request.headers.get('idempotency-key') ?? body.idempotencyKey,
       {
@@ -200,8 +232,10 @@ export async function createWidgetReservation(request: NextRequest) {
       },
     );
     const stayIds = reservationIdsFor(stayKey, Number(body.quantity) || 1);
-    const replay = await withSite(siteId || siteSlug,
-      (site) => replayReservation(sql, stayIds, site?.property_id ? String(site.property_id) : null));
+    const replay = stayKey.origin === 'client'
+      ? await withSite(siteId || siteSlug,
+        (site) => replayReservation(sql, stayIds, site?.property_id ? String(site.property_id) : null))
+      : null;
     if (replay) {
       console.log(`[Reserve] repeat (${stayKey.origin} key) → ${replay.reservationId}`);
       return NextResponse.json(replay, { status: 201, headers: dynamicHeaders });
@@ -296,6 +330,22 @@ export async function createWidgetReservation(request: NextRequest) {
     const hasPromotions = existingTables.has('promotions');
     const hasPriceCalendar = existingTables.has('price_calendar');
 
+    // Будинок сайта — умова ЗАПИТУ, а не наслідок списку (INC-203).
+    //
+    // Нижче стоїть перевірка «номер є в списку цього сайта», і вона була
+    // єдиною. Але список може містити рядок спадку: писач звіряє
+    // `u.property_id = site.property_id` лише від INC-034 (09.09.2026), а
+    // рядки, записані раніше, у базі лежать і жодна міграція їх не
+    // переглядала. Через такий рядок сайт будинку А ПРОДАВАВ номер будинку Б:
+    // гість платив, лист приходив, а на рецепції за цією адресою про кімнату
+    // не знали.
+    //
+    // Легасі-віджет без сайта (`useBookingWidget` шле `siteId` лише
+    // `if (siteId)`) сайта не називає ніде, тож будинок звузити нема по чому:
+    // там `ALL_PROPERTIES`, і орендаря тримає окрема гілка — єдина
+    // організація або відмова (`withSite`).
+    const siteHouse = propertyScopeFilter(
+      originSite?.property_id ? oneProperty(String(originSite.property_id)) : ALL_PROPERTIES, 'u');
     const unit = await sql.row<any>(`
       SELECT u.id, u.name, u.code, u.property_id, u.unit_type_id
       FROM units u
@@ -306,8 +356,8 @@ export async function createWidgetReservation(request: NextRequest) {
       -- unit id already in it. «Online nicht buchbar» has to hold against the
       -- request, not against the screen.
       WHERE u.id = ? AND u.is_active = TRUE AND u.room_status = 'available'
-        AND ut.bookable_online = TRUE
-    `, [unitId]) as any;
+        AND ut.bookable_online = TRUE AND ${siteHouse.sql}
+    `, [unitId, ...siteHouse.params]) as any;
 
     if (unit && siteId && existingTables.has('site_listings')) {
       const allowed = await sql.row<any>('SELECT 1 FROM site_listings WHERE site_id = ? AND unit_id = ?', [siteId, unitId]);
@@ -343,7 +393,9 @@ export async function createWidgetReservation(request: NextRequest) {
 
     if (siteId) {
       if (existingTables.has('booking_sites')) {
-        const site = await sql.row<any>('SELECT name FROM booking_sites WHERE id = ?', [siteId]) as any;
+        const site = await sql.row<any>(
+          `SELECT name FROM booking_sites WHERE id = ? AND ${CARRIES_THE_AXIS.sql}`,
+          [siteId, ...CARRIES_THE_AXIS.params]) as any;
         if (site) siteName = `widget:${siteId}`; // unified format: widget:<siteId>
       }
       if (existingTables.has('site_listings')) {
@@ -355,13 +407,15 @@ export async function createWidgetReservation(request: NextRequest) {
       }
     }
 
+    // Будинок — той, у якому стоїть уже доведений номер (див. `siteHouse`).
+    const unitHouse = propertyScopeFilter(oneProperty(String(unit.property_id)), 'r');
     const isBooked = await sql.row<any>(`
       SELECT 1 FROM reservations r
-      WHERE r.unit_id = ?
+      WHERE r.unit_id = ? AND ${unitHouse.sql}
         AND r.status NOT IN ('cancelled', 'no_show')
         AND r.check_in < ? AND r.check_out > ?
       LIMIT 1
-    `, [unitId, checkOut, checkIn]);
+    `, [unitId, ...unitHouse.params, checkOut, checkIn]);
 
     if (isBooked) {
       return NextResponse.json({ error: 'This unit is already booked for the selected dates' }, { status: 409, headers: CORS_HEADERS });
@@ -462,7 +516,11 @@ export async function createWidgetReservation(request: NextRequest) {
     }
 
     let extraPersonTotal = 0;
-    const unitTypeInfo = await sql.row<any>('SELECT base_occupancy, extra_person_charge, pet_allowed, pet_charge FROM unit_types WHERE id = ?', [unit.unit_type_id]) as any;
+    const typeHouse = propertyScopeFilter(oneProperty(String(unit.property_id)), '');
+    const unitTypeInfo = await sql.row<any>(
+      `SELECT base_occupancy, extra_person_charge, pet_allowed, pet_charge FROM unit_types
+        WHERE id = ? AND ${typeHouse.sql}`,
+      [unit.unit_type_id, ...typeHouse.params]) as any;
     // Not when the matrix priced the stay: it already charges by how many
     // people are in the room, and adding the per-extra-guest surcharge on top
     // would bill the third guest twice.
@@ -652,7 +710,9 @@ export async function createWidgetReservation(request: NextRequest) {
     const generateToken = async (): Promise<string> => {
       for (let attempt = 0; attempt < 5; attempt++) {
         const t = Math.random().toString(36).slice(2, 14);
-        const existing = await sql.row<any>('SELECT 1 FROM reservations WHERE guest_page_token = ?', [t]);
+        const existing = await sql.row<any>(
+          `SELECT 1 FROM reservations WHERE guest_page_token = ? AND ${CARRIES_THE_AXIS.sql}`,
+          [t, ...CARRIES_THE_AXIS.params]);
         if (!existing) return t;
       }
       return `${Math.random().toString(36).slice(2)}_${Date.now()}`;
@@ -727,7 +787,10 @@ export async function createWidgetReservation(request: NextRequest) {
 
       // Канали: ночі цього типу зайняті. Публічний шлях без сесії — орендар
       // тут той, кому належить номер, і двері читають зʼєднання через нього.
-      const stayUnit = await sql.row<any>('SELECT unit_type_id FROM units WHERE id = ?', [unitId]);
+      const stayHouse = propertyScopeFilter(oneProperty(String(unit.property_id)), '');
+      const stayUnit = await sql.row<any>(
+        `SELECT unit_type_id FROM units WHERE id = ? AND ${stayHouse.sql}`,
+        [unitId, ...stayHouse.params]);
       if (stayUnit?.unit_type_id) {
         await runWithOrganization(String(unitOrg.organization_id), () => noteAvailabilityChanged(sql, {
           propertyId: String(unit.property_id), unitTypeId: String(stayUnit.unit_type_id),
@@ -814,11 +877,13 @@ export async function createWidgetReservation(request: NextRequest) {
       try {
         const alisioAppUrl = appBaseUrl();
         const { sendEmail } = await import('@core/mail/email');
+        // Назва готелю в листі гостю — того будинку, номер якого продали.
+        const mailHouse = propertyScopeFilter(oneProperty(String(unit.property_id)), 'u');
         const propertyInfo = await sql.row<any>(`
           SELECT p.name, u.name as unit_name
           FROM units u LEFT JOIN properties p ON u.property_id = p.id
-          WHERE u.id = ?
-        `, [unitId]) as any;
+          WHERE u.id = ? AND ${mailHouse.sql}
+        `, [unitId, ...mailHouse.params]) as any;
         const propertyName = propertyInfo?.name || 'ALiSiO';
         const unitName = propertyInfo?.unit_name || '';
 
@@ -832,7 +897,9 @@ export async function createWidgetReservation(request: NextRequest) {
 
         let widgetConfig: any = {};
         if (siteId) {
-          const siteRow = await sql.row<any>('SELECT widget_config FROM booking_sites WHERE id = ?', [siteId]) as any;
+          const siteRow = await sql.row<any>(
+            `SELECT widget_config FROM booking_sites WHERE id = ? AND ${CARRIES_THE_AXIS.sql}`,
+            [siteId, ...CARRIES_THE_AXIS.params]) as any;
           if (siteRow?.widget_config) {
             try {
               widgetConfig = JSON.parse(siteRow.widget_config);
@@ -1000,7 +1067,13 @@ export async function createWidgetReservation(request: NextRequest) {
           // Only insert services that are included/free in the bundle
           if (!inc.service_id || (!inc.free && !inc.isIncluded)) continue;
           // Verify the service exists
-          const svcExists = await sql.row<any>('SELECT id FROM additional_services WHERE id = ?', [inc.service_id]);
+          // Послуга пакета — теж цього будинку: пакет купують на сайті
+          // одного обʼєкта, і послуга сусіднього в замовленні означала б
+          // послугу, якої за цією адресою не надають.
+          const svcHouse = propertyScopeFilter(oneProperty(String(unit.property_id)), '');
+          const svcExists = await sql.row<any>(
+            `SELECT id FROM additional_services WHERE id = ? AND ${svcHouse.sql}`,
+            [inc.service_id, ...svcHouse.params]);
           if (!svcExists) continue;
 
           await sql.run(`

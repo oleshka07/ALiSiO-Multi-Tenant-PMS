@@ -33,7 +33,7 @@ const cases = [
   ['\tabc', 'табуляція', 1],
   ['ключ', 'неASCII-символ U+043A', 1],
   ['abcé', 'неASCII-символ U+00E9', 4],
-  ['abc', 'керівний символ U+0001', 3],
+  ['ab\u0001c', 'керівний символ U+0001', 3],
 ];
 for (const [value, what, position] of cases) {
   const bad = badKeyChar(value);

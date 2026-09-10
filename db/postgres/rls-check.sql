@@ -45,7 +45,7 @@ INSERT INTO categories (id, property_id, name, type) VALUES
   ('rlsprobe_cat_a', 'rlsprobe_prop_a', 'A rooms', 'resort'),
   ('rlsprobe_cat_b', 'rlsprobe_prop_b', 'B rooms', 'resort');
 
--- Блок «Застосунки» (0140): стан звʼязку і попит «хочу» — обидва тенантні.
+-- Блок «Застосунки» (0400): стан звʼязку і попит «хочу» — обидва тенантні.
 -- Стан fiskaly A з ТЕКСТОМ помилки: саме текст чужої відмови не має дістатись
 -- сусідові; «хочу» A — лічильник попиту читає лише постачальник.
 INSERT INTO app_connections (id, organization_id, property_id, app, status, last_error) VALUES
@@ -82,7 +82,7 @@ BEGIN
   GET DIAGNOSTICS n = ROW_COUNT;
   IF n <> 0 THEN RAISE EXCEPTION 'B deleted % of A''s properties', n; END IF;
 
-  -- Застосунки (0140): текст чужої помилки і чужий попит невидимі.
+  -- Застосунки (0400): текст чужої помилки і чужий попит невидимі.
   SELECT count(*) INTO n FROM app_connections WHERE app = 'fiskaly';
   IF n <> 0 THEN RAISE EXCEPTION 'B can see A''s app connection (% rows)', n; END IF;
   SELECT count(*) INTO n FROM app_connections;
@@ -181,6 +181,14 @@ BEGIN
       -- свіжій базі — і саме тому її вивід звикли читати як «ну там завжди
       -- щось червоне». Перевірка, якій не вірять, не перевіряє нічого.
       'platform_users', 'platform_sessions',
+      -- `platform_memberships` — з тієї ж причини, але вона має `organization_id`
+      -- і тому попалася механічно (INC-101). Рядок відповідає на питання «у які
+      -- рахунки цій ЛЮДИНІ можна увійти», і читається він РАНІШЕ, ніж рахунок
+      -- відомий. З політикою на свіжій базі готельєр діставав порожній список і
+      -- 404 у власний готель — виміряно роллю alisio_app, не виведено.
+      -- Обмеження тут не «свій рахунок», а «свій платформний користувач», і
+      -- воно в коді: WHERE platform_user_id = ?.
+      'platform_memberships',
       -- Журнал накочених міграцій — його створює `deploy/migrate.sh`, не
       -- схема; орендаря в нього немає за означенням. Без цього рядка перевірка
       -- падала на КОЖНІЙ живій базі (там журнал є) і проходила лише на свіжій

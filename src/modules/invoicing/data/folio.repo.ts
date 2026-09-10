@@ -15,6 +15,10 @@ import { propertyOrSharedFilter, type PropertyScope } from '@core/property-scope
 import { recordPayment } from './folio-payments.repo';
 import { allocateInvoiceNumber, isPeriodLocked, seriesForChannel, invoicePropertyId } from '../domain/invoice-numbering';
 import { buildSnapshot, buildStorno, type FolioItem } from '../domain/invoice-snapshot';
+// Умови оплати живуть у довіднику компаній, і читаються ЙОГО дверима:
+// власний `SELECT … FROM companies` тут був би пробоєм межі модуля —
+// саме так його і назвав `check-boundaries`, коли він тут стояв.
+import { companyPaymentTerms } from '@companies/kernel';
 
 /**
  * Будинок документа: бронь, а якщо її немає — сам рахунок (INC-038).
@@ -76,6 +80,12 @@ export async function createFolio(input: {
   reservationId?: string | null;
   /** For a folio with no reservation (events): where its invoice's jurisdiction comes from. */
   propertyId?: string | null;
+  /**
+   * Фоліо ПЛАТНИКА (Д57): рахунок фірми, на який лягають рядки кількох
+   * перебувань. Названа компанія, а не знімок імені, — саме нею
+   * `moveCharges` звіряє, що платник той самий.
+   */
+  companyId?: string | null;
   payerKind?: 'guest' | 'company';
   payerName?: string | null;
   payerAddress?: string | null;
@@ -88,9 +98,9 @@ export async function createFolio(input: {
   const currency = await resolveCurrency(organizationId, input.reservationId ?? null);
   await getSql().run(
     `INSERT INTO fin_folios
-       (id, organization_id, reservation_id, property_id, payer_kind, payer_name, payer_address, payer_vat_no, payer_debtor_no, label, currency)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, organizationId, input.reservationId ?? null, input.propertyId ?? null, input.payerKind ?? 'guest',
+       (id, organization_id, reservation_id, property_id, company_id, payer_kind, payer_name, payer_address, payer_vat_no, payer_debtor_no, label, currency)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, organizationId, input.reservationId ?? null, input.propertyId ?? null, input.companyId ?? null, input.payerKind ?? 'guest',
      input.payerName ?? null, input.payerAddress ?? null, input.payerVatNo ?? null,
      input.payerDebtorNo ?? null, input.label ?? null, currency],
   );
@@ -329,7 +339,7 @@ export async function moveCharges(itemIds: readonly string[], toFolioId: string)
   if (!itemIds.length) return 0;
 
   const target = await sql.row<any>(
-    'SELECT id, reservation_id FROM fin_folios WHERE id = ? AND organization_id = ?',
+    'SELECT id, reservation_id, company_id FROM fin_folios WHERE id = ? AND organization_id = ?',
     [toFolioId, organizationId]);
   if (!target) throw new Error('Folio not found');
 
@@ -343,9 +353,38 @@ export async function moveCharges(itemIds: readonly string[], toFolioId: string)
       if (!item) throw new Error('Charge not found');
       if (item.invoice_id) throw new Error('Charge is already invoiced — storno the invoice first');
       if (item.voided_by_item_id) throw new Error('Charge is voided');
-      // Same stay on both sides. Money moving between two bookings' bills is
-      // not a split, it is a transfer nobody asked for.
-      if (item.reservation_id && target.reservation_id
+      // Куди рядок їхати МОЖЕ (Д57).
+      //
+      // Стара умова була «та сама бронь з обох боків», і причина, яку вона
+      // стерегла, лишається чинною: «splitting who PAYS must not change what
+      // is OWED» — гроші, що переїжджають між рахунками двох різних броней,
+      // це не поділ, а переказ, якого ніхто не просив.
+      //
+      // Змінилось те, що зʼявився ТРЕТІЙ законний випадок: фоліо ПЛАТНИКА —
+      // рахунок фірми, на який навмисно збираються рядки кількох перебувань
+      // (одна фактура за пʼять стоїв). Тому умова тепер називає його прямо, а
+      // не тримається на тому, що `target.reservation_id` порожній.
+      //
+      // І ось що вимір показав, коли цю сцену написали: стара умова спрацьовує
+      // лише коли бронь названа з ОБОХ боків, тож рядки їхали на будь-яке
+      // фоліо без броні вже сьогодні — без жодної перевірки платника. Тобто
+      // правка не «знімає сторожа», а ставить його там, де його не було.
+      const toPayerFolio = !target.reservation_id && target.company_id;
+      if (toPayerFolio) {
+        // Платник той самий: бронь рядка належить ТІЙ фірмі, чиє це фоліо.
+        // Інакше рахунок однієї фірми поповнився б чужим перебуванням.
+        //
+        // Осі обʼєкта тут немає навмисно: `item.reservation_id` приходить із
+        // рядка, який ми щойно прочитали під орендарем, а не з URL. Звуження
+        // по будинку відкинуло б законний випадок — фоліо платника збирає
+        // стої з кількох обʼєктів (Д57).
+        const res = item.reservation_id ? await t.row<any>(
+          'SELECT company_id FROM reservations WHERE id = ? AND organization_id = ?',
+          [item.reservation_id, organizationId]) : null;
+        if (!res || String(res.company_id ?? '') !== String(target.company_id)) {
+          throw new Error('Charge belongs to another payer');
+        }
+      } else if (item.reservation_id && target.reservation_id
           && item.reservation_id !== target.reservation_id) {
         throw new Error('Charge and folio belong to different reservations');
       }
@@ -432,6 +471,14 @@ export async function issueInvoice(input: {
   const items = await openCharges(input.folioId);
   if (items.length === 0) throw new Error('Nothing to invoice on this folio');
 
+  // Строк оплати ВИВОДИТЬСЯ з умов фірми, а не вводиться руками (Д58).
+  //
+  // Введений строк розійшовся б з умовами, записаними на самій фірмі, і ніхто
+  // б цього не помітив до першого прострочення: у списку «відкриті фактури»
+  // рядок стояв би зеленим. Умов не названо — строку немає, і це чесніше за
+  // підставлені «14 днів»: чуже число виглядає як домовленість, якої не було.
+  const dueDate = await dueDateFor(sql, organizationId, folio, issueDate);
+
   // Будинок документа — до першого питання про серію: і серія, і замок місяця
   // тепер належать обʼєктові (INC-038, Д54).
   const property = await folioProperty(sql, organizationId, folio);
@@ -462,9 +509,9 @@ export async function issueInvoice(input: {
       // guests split one room, that is the only thing telling their invoices
       // apart — and the only thing stopping a correction to one of them from
       // cancelling the other.
-      `INSERT INTO invoices (id, organization_id, invoice_number, issued_at, amount, currency, status, reservation_id, folio_id)
-       VALUES (?, ?, ?, ?, ?, ?, 'issued', ?, ?)`,
-      [invoiceId, organizationId, number, issueDate, snapshot.gross,
+      `INSERT INTO invoices (id, organization_id, invoice_number, issued_at, due_date, amount, currency, status, reservation_id, folio_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?)`,
+      [invoiceId, organizationId, number, issueDate, dueDate, snapshot.gross,
        invoiceCurrency, folio.reservation_id, folio.id],
     );
 
@@ -613,4 +660,87 @@ export async function stornoInvoice(input: {
   });
 
   return { invoiceId: stornoId, invoiceNumber: number, series, gross: mirrored.gross, lines: mirrored.lines.length };
+}
+
+/**
+ * Строк оплати цієї фактури — з умов ФІРМИ, або його немає (Д58).
+ *
+ * Фірма береться від фоліо платника, а якщо це звичайне фоліо стою — від
+ * броні. Гість без фірми строку не має: рахунок на виїзді оплачують на місці,
+ * і «14 днів» там означало б відпустити гостя з боргом.
+ */
+async function dueDateFor(
+  sql: Sql,
+  organizationId: string,
+  folio: { company_id?: string | null; reservation_id?: string | null },
+  issueDate: string,
+): Promise<string | null> {
+  let companyId = folio.company_id ?? null;
+  if (!companyId && folio.reservation_id) {
+    // Знову id з рядка, який уже в руках, — не з URL; осі обʼєкта не треба.
+    const res = await sql.row<{ company_id: string | null }>(
+      'SELECT company_id FROM reservations WHERE id = ? AND organization_id = ?',
+      [folio.reservation_id, organizationId]);
+    companyId = res?.company_id ?? null;
+  }
+  if (!companyId) return null;
+  const days = await companyPaymentTerms(organizationId, companyId);
+  if (days === null || days === undefined) return null;
+  const d = new Date(`${issueDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + Number(days));
+  return d.toISOString().slice(0, 10);
+}
+
+export interface OpenInvoice {
+  id: string;
+  invoice_number: string;
+  issued_at: string;
+  due_date: string | null;
+  amount: number;
+  paid: number;
+  open: number;
+  currency: string;
+}
+
+/**
+ * Відкриті фактури фірми: скільки виставлено, скільки прийшло, скільки лишилось.
+ *
+ * «Сплачено» — це фактура МІНУС платежі по ній, а не окремий прапорець
+ * (Д58): прапорець розходиться з платежами при першому ж частковому внеску, і
+ * розходиться мовчки. Арифметика та сама, що в `openGross` вище, тільки з
+ * іншого боку — тому вона й лишається однією.
+ *
+ * Сторно й скасовані сюди не потрапляють: це не борг.
+ *
+ * Осі ОБʼЄКТА тут немає, і це рішення, а не недогляд. Борг фірми — борг перед
+ * акаунтом, не перед будинком: фоліо платника навмисно збирає стої з кількох
+ * обʼєктів (Д57), а `invoices` колонки `property_id` не має взагалі. Звузити
+ * запит по `fin_folios.property_id` означало б показати ЧАСТИНУ боргу як
+ * увесь — і, гірше, не побачити платіж, який ліг на фоліо сусіднього будинку,
+ * тобто вимагати грошей, уже сплачених. Помилка в цей бік мовчить.
+ */
+export async function openInvoicesOfCompany(companyId: string): Promise<OpenInvoice[]> {
+  const organizationId = await requireOrganizationId();
+  const sql = getSql();
+  const rows = await sql.rows<any>(
+    `SELECT i.id, i.invoice_number, i.issued_at, i.due_date, i.amount, i.currency,
+            COALESCE((SELECT SUM(p.amount) FROM fin_folio_payments p
+                       WHERE p.invoice_id = i.id AND p.organization_id = i.organization_id), 0) AS paid
+       FROM invoices i
+       JOIN fin_folios f ON f.id = i.folio_id
+      WHERE i.organization_id = ? AND f.company_id = ? AND i.status = 'issued'
+      ORDER BY i.issued_at, i.invoice_number`,
+    [organizationId, companyId]);
+  return rows
+    .map((r: any) => ({
+      id: r.id,
+      invoice_number: r.invoice_number,
+      issued_at: r.issued_at,
+      due_date: r.due_date ?? null,
+      amount: Number(r.amount),
+      paid: Number(r.paid),
+      open: Math.round((Number(r.amount) - Number(r.paid)) * 100) / 100,
+      currency: r.currency,
+    }))
+    .filter((r: OpenInvoice) => r.open > 0);
 }

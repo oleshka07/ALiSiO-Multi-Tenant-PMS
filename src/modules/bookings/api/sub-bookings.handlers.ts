@@ -132,7 +132,7 @@ export const createSubBooking = withPermission('manage_bookings', async (request
       // токена, а писачів у `reservations` шість. Ловимо названу відмову і
       // відповідаємо ТИМ САМИМ текстом, що перевірка.
       try {
-      await insertingStay(() => sql.run(`
+        await insertingStay(() => sql.run(`
         -- organization_id, named rather than left to the column DEFAULT: that
         -- DEFAULT is a Postgres mechanism (migration 0005) and on SQLite the
         -- row landed with a NULL tenant. From the master booking, so a
@@ -148,8 +148,8 @@ export const createSubBooking = withPermission('manage_bookings', async (request
         master.check_in, master.check_out, master.nights, adults, children, infants,
         master.status, master.payment_status, master.source, subtotal, master.currency,
         childToken, `Sub-booking: ${label}`]),
-      { unitId: String(unitId), checkIn: String(master.check_in), checkOut: String(master.check_out),
-        reservationId: childReservationId });
+        { unitId: String(unitId), checkIn: String(master.check_in), checkOut: String(master.check_out),
+          reservationId: childReservationId });
       } catch (e) {
         if (e instanceof UnitOverlap) {
           return NextResponse.json({ error: ALREADY_BOOKED }, { status: 409 });

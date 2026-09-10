@@ -99,19 +99,19 @@ hotel's dirty rooms» — правдивий рівно наполовину: ч
   ```
 - `:97` → unit_types, units
   ```sql
-  FROM units u JOIN properties p ON p.id = u.property_id LEFT JOIN unit_types ut ON ut.id = u.unit_type_id WHERE p.organization_id = ? scope AND u.is_active = T
+  FROM units u JOIN properties p ON p.id = u.property_id LEFT JOIN unit_types ut ON ut.id = u.unit_type_id WHERE p.organization_id = ? ${scope} AND u.is_active = T
   ```
 - `:108` → units
   ```sql
-  FROM availability_blocks b JOIN units u ON u.id = b.unit_id JOIN properties p ON p.id = u.property_id WHERE p.organization_id = ? scope AND b.date_from <= ? A
+  FROM availability_blocks b JOIN units u ON u.id = b.unit_id JOIN properties p ON p.id = u.property_id WHERE p.organization_id = ? ${scope} AND b.date_from <= ? A
   ```
 - `:117` → reservations
   ```sql
-  FROM reservations r JOIN properties p ON p.id = r.property_id LEFT JOIN guests g ON g.id = r.guest_id WHERE p.organization_id = ? scope.replace('u.property_id'
+  FROM reservations r JOIN properties p ON p.id = r.property_id LEFT JOIN guests g ON g.id = r.guest_id WHERE p.organization_id = ? ${scope.replace('u.property_id'
   ```
 - `:198` → units
   ```sql
-  FROM unit_cleaning_log l JOIN units u ON u.id = l.unit_id JOIN properties p ON p.id = u.property_id LEFT JOIN app_users a ON a.id = l.changed_by WHERE where.jo
+  FROM unit_cleaning_log l JOIN units u ON u.id = l.unit_id JOIN properties p ON p.id = u.property_id LEFT JOIN app_users a ON a.id = l.changed_by WHERE ${where.jo
   ```
 
 **`src/modules/bookings/api/reservation.handlers.ts`** — 5 пар у 2 операторах
@@ -201,7 +201,7 @@ hotel's dirty rooms» — правдивий рівно наполовину: ч
 
 - `:20` → unit_types, units
   ```sql
-  FROM units u JOIN properties pr ON pr.id = u.property_id LEFT JOIN unit_types ut ON ut.id = u.unit_type_id WHERE pr.organization_id = ? AND (like('u.name') OR
+  FROM units u JOIN properties pr ON pr.id = u.property_id LEFT JOIN unit_types ut ON ut.id = u.unit_type_id WHERE pr.organization_id = ? AND (${like('u.name')} OR
   ```
 
 **`src/modules/bookings/api/booking-source-widgets.handlers.ts`** — 1 пар у 1 операторах
@@ -386,7 +386,7 @@ hotel's dirty rooms» — правдивий рівно наполовину: ч
 
 - `:43` → ical_channels
   ```sql
-  FROM ical_channels ic JOIN properties p ON ic.property_id = p.id WHERE ic.is_active = TRUE AND ic.ical_url IS NOT NULL AND ( ic.last_synced_at IS NULL OR sql.d
+  FROM ical_channels ic JOIN properties p ON ic.property_id = p.id WHERE ic.is_active = TRUE AND ic.ical_url IS NOT NULL AND ( ic.last_synced_at IS NULL OR ${sql.d
   ```
 
 **`src/modules/channels/data/connections.repo.ts`** — 1 пар у 1 операторах
@@ -512,11 +512,11 @@ hotel's dirty rooms» — правдивий рівно наполовину: ч
 
 - `:59` → reservations, units
   ```sql
-  FROM reservations r JOIN guests g ON r.guest_id = g.id LEFT JOIN units u ON r.unit_id = u.id JOIN properties p ON p.id = r.property_id WHERE scope('r.') AND r
+  FROM reservations r JOIN guests g ON r.guest_id = g.id LEFT JOIN units u ON r.unit_id = u.id JOIN properties p ON p.id = r.property_id WHERE ${scope('r.')} AND r
   ```
 - `:73` → reservations, units
   ```sql
-  FROM reservations r JOIN guests g ON r.guest_id = g.id LEFT JOIN units u ON r.unit_id = u.id JOIN properties p ON p.id = r.property_id WHERE scope('r.') AND r
+  FROM reservations r JOIN guests g ON r.guest_id = g.id LEFT JOIN units u ON r.unit_id = u.id JOIN properties p ON p.id = r.property_id WHERE ${scope('r.')} AND r
   ```
 
 **`src/modules/guests/data/guest-portal.repo.ts`** — 4 пар у 1 операторах
@@ -567,7 +567,7 @@ hotel's dirty rooms» — правдивий рівно наполовину: ч
   ```
 - `:155` → reservations
   ```sql
-  FROM reservation_guests rg JOIN reservations r ON rg.reservation_id = r.id JOIN properties p ON r.property_id = p.id WHERE ORG_SCOPE AND r.check_in >= ? AND r
+  FROM reservation_guests rg JOIN reservations r ON rg.reservation_id = r.id JOIN properties p ON r.property_id = p.id WHERE ${ORG_SCOPE} AND r.check_in >= ? AND r
   ```
 
 **`src/app/api/booking-sites/[id]/listings/route.ts`** — 2 пар у 2 операторах

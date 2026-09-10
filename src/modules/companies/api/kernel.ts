@@ -42,6 +42,22 @@ export async function companyNames(organizationId: string, ids: readonly string[
 }
 
 /**
+ * Скільки днів фірмі на оплату — двері для `@invoicing`, який виводить із
+ * цього `due_date` фактури (Д58).
+ *
+ * Вужче за `companyPayer` навмисно: строк потрібен ПИСАЧЕВІ документа, а не
+ * екрану реквізитів, і тягнути заради однієї колонки повний знімок платника
+ * означало б, що писач залежить від форми знімка.
+ *
+ * Чужа, неіснуюча і фірма без названих умов — однаково `null`: строку немає
+ * в усіх трьох випадках, і розрізняти їх викликачеві нема для чого.
+ */
+export async function companyPaymentTerms(organizationId: string, id: string): Promise<number | null> {
+  const c = await getCompany(organizationId, id);
+  return c?.payment_terms_days ?? null;
+}
+
+/**
  * Реквізити компанії як платника. Чужа або неіснуюча — `null` (інваріант 5).
  * Архівна повертається з прапорцем: бронь, на якій вона вже стоїть, має
  * читатись; нову на неї викликач не ставить.
@@ -52,6 +68,13 @@ export async function companyPayer(organizationId: string, id: string): Promise<
   return {
     id: c.id, name: c.name, archived: c.archived_at !== null,
     ...payerSnapshot(c),
-    payer_address: payerAddressLine(c), payer_vat_no: c.vat_id, payer_debtor_no: c.business_id,
+    payer_address: payerAddressLine(c), payer_vat_no: c.vat_id,
+    // Номер дебітора — той, що видав ГОТЕЛЬ (Д56, 0140), а не реєстраційний
+    // номер держави. Досі тут стояв `business_id`, бо свого номера не було;
+    // це були різні числа під одним іменем, і фірма без реєстрації —
+    // приватна особа, закордонний партнер — лишалась у картці дебітора
+    // порожньою. Реєстраційний номер нікуди не подівся: він їде в
+    // `invoice_company_ico` знімка, своїм іменем.
+    payer_debtor_no: c.debtor_no === null || c.debtor_no === undefined ? null : String(c.debtor_no),
   };
 }

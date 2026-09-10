@@ -133,16 +133,16 @@ Charter описує, ЯК називати. Він не вимагає нега
     воно ще й збігається з іменем поля вендора. CHECK у базі немає свідомо
     (О9) — перевіряє писач. Дефолту немає ніде (В1, К16): не назвали —
     названа відмова
-  - `app_connections.status` (**стан звʼязку із чужою системою**, 0140):
+  - `app_connections.status` (**стан звʼязку із чужою системою**, 0400):
     `connected | degraded | error | disabled`; на картці ще `soon` (коду
     немає) і `unknown` (ще не зверталися) — обчислені, у базу не пишуться.
     `app_connections.app` і `app_wishes.app` — `id` з реєстру `core/apps.ts`
     (`fiskaly`, `smtp`, `winhotel_import`, …); `channel_manager` у
     `app_connections` не буває — менеджер каналів читається з `cm_connections`
-  - `fin_fiscal_settings.tse_admin_pin`, `tse_admin_puk` (0141) — секрети TSS
+  - `fin_fiscal_settings.tse_admin_pin`, `tse_admin_puk` (0401) — секрети TSS
     під `seal()` (`enc1:`), як і секрети `channel_credentials`; поруч із
     `tse_client_id` і `tss_id`, які секретами не є; `tse_pending_tss_id`
-    (0142) — id TSS, створеної у вендора, але не завершеної (NULL = немає),
+    (0402) — id TSS, створеної у вендора, але не завершеної (NULL = немає),
     `tse_connecting_at` — замок на час походу до вендора (NULL = вільно)
   - `winhotel_snapshots.status` (**стан знімка бази Winhotel**, 0143):
     `received | extracting | extracted | imported | failed` — прийнято
@@ -181,6 +181,19 @@ Charter описує, ЯК називати. Він не вимагає нега
     у `STAGING_REASON` картки. `fiscal_guard` скасовано 10.09 (З34): імпортна
     оплата йде у фоліо з `fin_folio_payments.source = 'import'` і
     `origin = winhotel:<LNR>`; `source` NULL — наша каса.
+  - `guest_consents.consent_kind`: `marketing | data_processing | profiling` —
+    на ЩО людина погодилась (INC-300, 0300). Вільний рядок, не CHECK:
+    юрисдикції додають свої пункти, і словник, що вимагає міграції, змусив би
+    готель чекати релізу заради галочки в анкеті. Читач невідомого роду не
+    вигадує дозволу — його немає в жодному похідному, поки його не спитали
+    поіменно
+  - `guest_consents.source`: `portal | reception | widget | import` — звідки
+    прийшла згода. Теж вільний рядок; `import` існує окремо саме тому, що
+    доказ «це прийшло з попередньої системи, а не від нас» — частина того, що
+    показують наглядачеві
+  - `guests.merged_into`: не статус, а посилання — ким став цей рядок після
+    злиття дублікатів. `NULL` = живий гість. Ланцюгів не буває: злиття
+    перенацілює старі посилання, тож це завжди ОДИН крок до живого
   Новий статус = міграція + рядок тут + бейдж у UI. Статус, якого немає в
   мапі UI, — баг (`partial` у календарі був невидимим саме так).
 - **Без назв юрисдикцій у схемі** (AGENTS.md, інваріант 22): ні в таблиці, ні
