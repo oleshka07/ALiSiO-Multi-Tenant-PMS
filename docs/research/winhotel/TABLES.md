@@ -38,7 +38,7 @@
 | `DOKUMENT` | 17 542 | Документи/листи на адресу і рахунок гостя: `WAS` тип, `MEMO` BLOB, `DATEINAME`, `BETREFF`, `CONVERSATION_ID` (e-mail) | упевнено |
 | `LANDSTAM` | 51 | Країни (ISO, KFZ, група для статистики) | упевнено |
 | `PLZ_ORT` | 25 180 | Довідник індекс → місто (Німеччина), не дані готелю | упевнено |
-| `PLZ_STR…` (індекс → вулиця) | 245 559 | Довідник вулиць Німеччини, найбільша таблиця бази; не дані готелю. Повне ім'я — у `table-counts.tsv`; тут скорочене, бо містить слово, яке ловить PII-grep приймання | упевнено |
+| `PLZ_STRASSE` | 245 559 | Довідник індекс → вулиця (Німеччина), найбільша таблиця бази; не дані готелю | упевнено |
 | `ANSPRECHP`, `ADR_ADDON`, `ADR_MAIL`, `ADR_NACHRICHT`, `ADR_SELE`, `ADR_TELETAPI`, `ADR_TELE_PROT`, `ADR_VERKN`, `ADR_WEITERE_BEGL`, `MELDEDATEN`, `MELDEKARTEN`, `GASTARTEN`, `STATUS_GK`, `REISEZWECK`, `SELESTAM`, `SELESTAM_VERERB`, `SELEKTION_TEMP`, `MARKETING`, `MARKETING_TEMP`, `MARKETING_TEMP_HISTORY`, `TODOLIST`, `TODOLIST_ADD` | 0 | Контактні особи, розсилки, TAPI, зв'язки адрес, Meldeschein-дані, типи гостей, сегментація/селекції, маркетинг, задачі — порожні | гіпотеза |
 
 ## C. Брони, пропозиції, онлайн

@@ -10,6 +10,21 @@
 `TA_STATUS`: 0 чинний, 1000 вимкнений/видалений; `1050` у `PREISLIST` — окремий стан
 (ймовірно «неактивний веб-рядок»).
 
+## Правила для того, хто доповнить
+
+- Лише довідники **без персональних даних**: категорії, номери, послуги, ставки ПДВ,
+  цінові таблиці, сезони, політики, джерела броні, способи оплати (`DEVISEN`), сегменти
+  (`SEGMSTAM`), типи адрес (`ADR_AUSWAHL`). По 5–10 рядків на таблицю.
+- **Жодного рядка** з `ADRESSEN`, `GASTKONT`, `BUCHKONT`, `RECHNUNG*`, `ZAHLUNGEN`,
+  `GASTHIST`, `DOKUMENT`, `TEMP_TODO_NACHRICHTEN` — навіть знеособленого; і **жодного**
+  з `PARAMETE_WEB`, `PARAMETE_GUTSCHEIN`, `FREIMELD_PRO`, `BEDIENER`, `MANDANT` — там
+  паролі й ключі (AGENTS.md §3 інваріант 7).
+- Зразки бере `extract.sh --sample T1,T2` лише для таблиць, названих явно, після того,
+  як їх колонки прочитано в `table-columns.tsv` і в них немає `NAME*`, `STRASSE`, `PLZ`,
+  `ORT`, `TELE*`, `E_MAIL`, `IBAN`, `KONTONR`, `KREDIT*`, `PASSW*`, `APIKEY`.
+- Перед комітом — PII-grep з `README.md` (виключає імена колонок словом) має бути
+  порожнім.
+
 ## KATESTAM — категорії (11 рядків, усі)
 
 | LNR | KATEGORIE | ANZ_KATE | PSEUDO | ANZ_BETTEN | ANZ_ERW | ANZ_K1 | PREISLIST | SORT_NR | ONLINE | BEMERK1 |
