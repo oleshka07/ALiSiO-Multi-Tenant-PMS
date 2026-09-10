@@ -369,7 +369,7 @@ function buildSchema(database: any) {
       currency TEXT NOT NULL DEFAULT 'CZK',
       notes TEXT,
       internal_notes TEXT,
-      -- Копія units.is_pool на самій броні (INC-045, міграція 0132).
+      -- Копія units.is_pool на самій броні (INC-045, міграція 0133).
       --
       -- На Postgres подвійне бронювання забороняє EXCLUDE USING gist, а він не
       -- вміє джойнитись — тож ознака службового фонду мусить лежати колонкою
@@ -377,7 +377,7 @@ function buildSchema(database: any) {
       -- обмеження немає й колонку ніхто не читає; вона тут лише тому, що
       -- db/postgres/schema.sql генерується з ЦІЄЇ схеми, і без неї свіжий
       -- Postgres-клієнт отримав би колонку не зі schema.sql, а лише з ALTER-у
-      -- в 0132 — рівно та розбіжність, про яку AGENTS §4 каже про індекси.
+      -- в 0133 — рівно та розбіжність, про яку AGENTS §4 каже про індекси.
       is_pool_unit INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -7778,7 +7778,7 @@ function runMigrations(database: any) {
   //
   // Значення тут ніхто не підтримує: на SQLite обмеження немає, і колонка
   // існує рівно для того, щоб схема двох двигунів була однією схемою. На
-  // Postgres її наповнює тригер із 0132.
+  // Postgres її наповнює тригер із 0133.
   try {
     const cols = database.prepare('PRAGMA table_info(reservations)').all() as { name: string }[];
     if (cols.length > 0 && !cols.some((c) => c.name === 'is_pool_unit')) {
