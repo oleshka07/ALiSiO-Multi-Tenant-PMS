@@ -91,6 +91,60 @@ say(namesOnly?.tier === 'name_only',
 say(!STRONG_TIERS.includes(namesOnly!.tier),
   'і саме лише імʼя НЕ входить у «майже напевно» — однофамільці бувають');
 
+// ── «Це різні люди» — рішення, яке памʼятається ─────────────────────────────
+//
+// Пара, а не напрямок: відхиляємо в одному порядку, а перевіряємо, що зникла
+// й у протилежному. Без цієї половини твердження зелене й на таблиці, яка
+// зберігає напрямок, — а тоді шукач показав би ту саму пару, спитавши її
+// іншою формою.
+const { markNotDuplicates, previewMerge } = await import('./guest-merge.repo.ts');
+
+await inOurs(() => markNotDuplicates({
+  organizationId: ORG, guestA: 'dup_ns_b', guestB: 'dup_ns_a', decidedBy: 'u_reception',
+}));
+const afterRefusal = await inOurs(() => guestDuplicateCandidates(ORG));
+say(!afterRefusal.some((c) =>
+  (c.keepId === 'dup_ns_a' && c.dropId === 'dup_ns_b') || (c.keepId === 'dup_ns_b' && c.dropId === 'dup_ns_a')),
+  'пара, названа «різні люди», більше не пропонується — у ЖОДНОМУ порядку');
+say(afterRefusal.some((c) => c.tier === 'document'),
+  'решта пар лишилась: відхилили одну, а не вимкнули шукач');
+
+// Повтор рішення — не помилка: портьє може натиснути двічі.
+let twice: unknown = null;
+try {
+  await inOurs(() => markNotDuplicates({ organizationId: ORG, guestA: 'dup_ns_a', guestB: 'dup_ns_b' }));
+} catch (e) { twice = e; }
+say(twice === null, 'повторне «різні люди» проходить тихо — рішення вже ухвалене');
+
+// ── Попередній перегляд показує, ЩО переїде ─────────────────────────────────
+//
+// Злиття незворотне, тож «перенесеться 1» до натискання — не те саме, що
+// «перенесено 1» після. Перегляд НЕ ПИШЕ: це перевіряється числом нижче.
+await inOurs(() => sql.run(
+  `INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id,
+                             check_in, check_out, nights, adults, currency)
+   VALUES ('dup_res', ?, ?, ?, 'dup_doc_b', '2027-10-01', '2027-10-02', 1, 2,
+           (SELECT default_currency FROM organizations WHERE id = ?))`,
+  [ORG, fx.a.id, fx.a.unitIds[0], ORG]));
+const preview = await inOurs(() => previewMerge({
+  organizationId: ORG, keepId: 'dup_doc_a', dropId: 'dup_doc_b',
+}));
+say(preview.reservations === 1,
+  `перегляд каже, що переїде 1 бронь (${preview.reservations})`);
+say(await inOurs(async () => Number((await sql.row<{ n: number }>(
+  "SELECT COUNT(*) AS n FROM reservations WHERE guest_id = 'dup_doc_b'"))?.n ?? 0)) === 1,
+  'і після перегляду бронь ЛИШИЛАСЬ на місці — перегляд не пише');
+
+// ── Хто злив — видно в рядку ────────────────────────────────────────────────
+const { mergeGuests } = await import('./guest-merge.repo.ts');
+await inOurs(() => mergeGuests({
+  organizationId: ORG, keepId: 'dup_doc_a', dropId: 'dup_doc_b', decidedBy: 'u_reception',
+}));
+const who = await inOurs(() => sql.row<{ merged_by: string | null; merged_at: string | null }>(
+  'SELECT merged_by, merged_at FROM guests WHERE id = ?', ['dup_doc_b']));
+say(who?.merged_by === 'u_reception' && who?.merged_at != null,
+  'у рядку злитого видно, ХТО і КОЛИ — дія незворотна, тож має автора');
+
 // Шукач не пише.
 const before = await inOurs(async () => Number((await sql.row<{ n: number }>(
   'SELECT COUNT(*) AS n FROM guests WHERE merged_into IS NOT NULL AND organization_id = ?', [ORG]))?.n ?? 0));

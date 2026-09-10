@@ -34,6 +34,7 @@
  * поведінка ДЖЕРЕЛА, а не наша вигадка, і ми повторюємо саме її.
  */
 import { getSql } from '@core/db/async';
+import { notDuplicatePairs } from './guest-merge.repo';
 
 /**
  * Наскільки впевнена пара. Порядок — від найсильнішого.
@@ -93,6 +94,12 @@ export async function guestDuplicateCandidates(organizationId: string): Promise<
   const found = new Map<string, DuplicateCandidate>();
   const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 
+  // Пари, які людина вже назвала різними людьми, більше не пропонуються.
+  // Без цього шукач псує сам себе тим більше, чим довше працює: та сама пара
+  // щодня, звичка тиснути «різні» не дивлячись — і справжній дублікат закрито
+  // тим самим рухом.
+  const refused = await notDuplicatePairs(organizationId);
+
   /** Згрупувати за ключем і видати пари — з рангом, який не перебиває сильніший. */
   const group = (key: (g: GuestRow) => string | null, tier: DuplicateTier, says: (g: GuestRow) => string) => {
     const buckets = new Map<string, GuestRow[]>();
@@ -107,6 +114,7 @@ export async function guestDuplicateCandidates(organizationId: string): Promise<
       for (let i = 0; i < list.length; i++) {
         for (let j = i + 1; j < list.length; j++) {
           const k = pairKey(list[i].id, list[j].id);
+          if (refused.has(k)) continue;
           const already = found.get(k);
           // Перший, хто знайшов пару, і є найсильнішим: групи йдуть за рангом.
           if (already) continue;

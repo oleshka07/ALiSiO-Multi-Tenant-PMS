@@ -323,6 +323,11 @@ function buildSchema(database: any) {
       -- (INC-301, міграція 0301). Порожньо — завели в нас. Тримає повторний
       -- прогін імпорту від подвоєння, і тримає це UNIQUE-індекс, а не цикл.
       external_ref TEXT,
+      -- Хто злив і коли (INC-304, міграція 0302). Колонками, а не журналом:
+      -- це факт САМОГО рядка, буває рівно раз, і окремий журнал розділив би
+      -- одну правду на два місця, які розходяться при першій же чистці.
+      merged_at TEXT,
+      merged_by TEXT,
       -- Кого лишили, коли цей рядок злили дублікатом (INC-300, міграція 0300).
       -- Рядок злитого гостя НЕ ВИДАЛЯЄТЬСЯ: посилання на нього лежать у
       -- виданих документах і в чужих системах, і «такого гостя немає» — гірша
@@ -343,6 +348,27 @@ function buildSchema(database: any) {
     -- конфліктували між собою.
     CREATE UNIQUE INDEX IF NOT EXISTS idx_guests_external_ref
       ON guests (organization_id, external_ref) WHERE external_ref IS NOT NULL;
+
+    -- «Це різні люди» — рішення, яке мусить памʼятатись (INC-304, 0302).
+    --
+    -- Пара, а не напрямок: злиття має бік, відмова — ні. Порядок тримає
+    -- CHECK, а не домовленість у коді: інакше в таблиці зʼявились би (A,B) і
+    -- (B,A) як дві різні відмови, і шукач, що питає одну форму, показав би
+    -- пару, яку вже відхилили.
+    CREATE TABLE guest_not_duplicates (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      guest_low_id TEXT NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
+      guest_high_id TEXT NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
+      decided_by TEXT,
+      decided_at TEXT NOT NULL DEFAULT (datetime('now')),
+      note TEXT,
+      CHECK (guest_low_id < guest_high_id)
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_guest_not_duplicates_pair
+      ON guest_not_duplicates (organization_id, guest_low_id, guest_high_id);
+    CREATE INDEX IF NOT EXISTS idx_guest_not_duplicates_org
+      ON guest_not_duplicates (organization_id);
 
     -- Згоди GDPR живуть на ОСОБІ й переживають бронь (INC-300, міграція 0300).
     --
@@ -7885,6 +7911,35 @@ function runMigrations(database: any) {
   // туди, лишить визначення на місці, а виклик у чужому циклі впаде на
   // `tsc` або дасть видимий повтор у лозі — замість тиші.
   migrateOtaMirror(database);
+
+  // --- Migration: «різні люди» і хто злив (INC-304) ---
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS guest_not_duplicates (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        guest_low_id TEXT NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
+        guest_high_id TEXT NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
+        decided_by TEXT,
+        decided_at TEXT NOT NULL DEFAULT (datetime('now')),
+        note TEXT,
+        CHECK (guest_low_id < guest_high_id)
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_guest_not_duplicates_pair
+        ON guest_not_duplicates (organization_id, guest_low_id, guest_high_id);
+      CREATE INDEX IF NOT EXISTS idx_guest_not_duplicates_org
+        ON guest_not_duplicates (organization_id);
+    `);
+    const gc = database.prepare('PRAGMA table_info(guests)').all() as { name: string }[];
+    for (const col of ['merged_at', 'merged_by']) {
+      if (gc.length > 0 && !gc.some((c) => c.name === col)) {
+        database.exec(`ALTER TABLE guests ADD COLUMN ${col} TEXT`);
+        console.log(`[DB] guests: ${col} (INC-304)`);
+      }
+    }
+  } catch (e: any) {
+    console.log('[DB] not-duplicates migration note:', e.message);
+  }
 
   // --- Migration: ключ походження імпорту (INC-301) ---
   //
