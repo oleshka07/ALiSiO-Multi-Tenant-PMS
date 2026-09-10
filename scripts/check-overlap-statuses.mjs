@@ -34,7 +34,7 @@
  * Список живе в трьох місцях, і кожне з них потрібне окремо:
  *
  *   код          `conflicts.repo.ts` — перевірка ПЕРЕД записом і людський текст;
- *   міграція     `0132` — оновлює базу, яка вже існує;
+ *   міграція     `0133` — оновлює базу, яка вже існує;
  *   генератор    `pg-schema.mjs` — створює базу НОВОГО клієнта, бо SQLite
  *                `EXCLUDE` не має і переказати його з неї нічим.
  *
@@ -57,7 +57,7 @@ import fs from 'node:fs';
 
 const STRICT = process.argv.includes('--strict');
 const CODE = 'src/modules/bookings/data/conflicts.repo.ts';
-const MIGRATION = 'db/postgres/migrations/0132-two-guests-do-not-share-one-room-for-one-night.sql';
+const MIGRATION = 'db/postgres/migrations/0133-two-guests-do-not-share-one-room-for-one-night.sql';
 const GENERATOR = 'scripts/pg-schema.mjs';
 const CONSTRAINT = 'no_double_booking';
 const COLUMN = 'status';
@@ -68,7 +68,7 @@ const notes = [];
 /**
  * Вирізати коментарі — інакше перевірка рахує власну документацію.
  *
- * Тут це не теорія: шапка `0132` цитує `FREES_THE_ROOM = "('cancelled',
+ * Тут це не теорія: шапка `0133` цитує `FREES_THE_ROOM = "('cancelled',
  * 'no_show')"` дослівно, пояснюючи, навіщо цей гейт існує. Без вирізання гейт
  * знаходив би список у коментарі й зеленів би, навіть якби в самому
  * `ALTER TABLE` не було жодного статусу.
