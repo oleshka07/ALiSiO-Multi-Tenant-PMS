@@ -63,9 +63,12 @@ async function handle(request: NextRequest): Promise<NextResponse> {
     console.log('[ČNB Rates] Synced', fixing.date, '→', `${upserted} rate(s) across ${hotels.length} hotel(s)`);
     return NextResponse.json({ ok: true, date: fixing.date, hotels: hotels.length, upserted, failed });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error('[ČNB Rates]', msg);
-    return NextResponse.json({ ok: false, error: msg }, { status: 502 });
+    // 502 віддає ВЕНДОР, тобто текст, якого ми не писали, — рівно те, від чого
+    // інваріант 6. Деталь у лог із міткою місця, назовні — речення.
+    // `ok: false` лишається: його читає `deploy/run-cron.sh`, і саме за ним
+    // крон вважається невдалим (AGENTS §5).
+    console.error('[ČNB Rates]', e instanceof Error ? e.message : String(e));
+    return NextResponse.json({ ok: false, error: 'ČNB rates are unavailable' }, { status: 502 });
   }
 }
 

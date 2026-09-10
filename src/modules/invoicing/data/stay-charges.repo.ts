@@ -22,6 +22,7 @@ import { getSql } from '@core/db/async';
 import { parseVatSplit, splitCharge } from '../domain/service-vat-split.ts';
 import { money } from '@core/money';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { oneProperty, propertyOrSharedFilter } from '@core/property-scope';
 import { pickRate, type TaxRate } from '../domain/invoice-vat';
 import { splitOtaAmount, linesGross, type ChargeLine } from '../domain/ota-split';
 import { ruleFor, type ChannelRateRule } from '../domain/channel-rate-rule';
@@ -133,11 +134,27 @@ export async function postStayCharges(input: {
     (Date.parse(`${checkOut}T00:00:00Z`) - Date.parse(`${checkIn}T00:00:00Z`)) / 86_400_000));
   const persons = Math.max(1, (Number(res.adults) || 0) + (Number(res.children) || 0));
 
+  // ── Правило каналу — ЦЬОГО будинку, або спільне на рахунок ───────────────
+  //
+  // `channel_rate_rules.property_id` нульовий і UNIQUE на «рахунок × канал»
+  // немає, тож два будинки одного готелю можуть мати кожен своє правило для
+  // `booking.com`. Доти сюди приїжджали ОБИДВА, і вибір робив `rules.find()` —
+  // тобто ПОРЯДОК РЯДКІВ, який на SQLite і на Postgres різний (INC-027).
+  //
+  // Ціна помилки не в списку: правило вирішує, чи ділити суму на проживання й
+  // сніданок, за якими цінами — і якими ПОДАТКОВИМИ КОДАМИ. Тобто чужий рядок
+  // ставив у рахунок ставку іншої домовленості, а на двох юрисдикціях — іншої
+  // країни (інваріант 22).
+  //
+  // `propertyOrSharedFilter`, а не звичайний: правило без будинку законне й
+  // означає «на весь рахунок» (Д51). Старшинство між ним і правилом будинку
+  // називає `ruleFor`, конкретніше першим.
+  const axis = propertyOrSharedFilter(oneProperty(String(res.property_id)), '');
   const rules = await sql.rows<any>(
-    `SELECT channel, includes_breakfast, breakfast_food_price, breakfast_drinks_price,
+    `SELECT property_id, channel, includes_breakfast, breakfast_food_price, breakfast_drinks_price,
             lodging_tax_code, food_tax_code, drinks_tax_code, markup_percent
-       FROM channel_rate_rules WHERE organization_id = ?`,
-    [organizationId],
+       FROM channel_rate_rules WHERE organization_id = ? AND ${axis.sql}`,
+    [organizationId, ...axis.params],
   );
   const rule = ruleFor(rules.map(toRule), res.source);
 
@@ -494,6 +511,7 @@ export async function postCatalogService(input: {
 
 function toRule(r: any): ChannelRateRule {
   return {
+    property_id: r.property_id ?? null,
     channel: r.channel ?? null,
     // SQLite stores a flag as 0/1 and Postgres as a boolean; both arrive here.
     includes_breakfast: r.includes_breakfast === true || Number(r.includes_breakfast) === 1,

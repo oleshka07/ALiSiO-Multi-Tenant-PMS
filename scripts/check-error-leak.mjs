@@ -73,6 +73,43 @@
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import ts from 'typescript';
+
+/**
+ * Коментарі геть — РОЗБОРОМ, а не регуляркою (AGENTS §4, остання теза).
+ *
+ * Причина конкретна і виміряна. Третя вісь нижче спершу знайшла девʼяте
+ * «порушення» — `properties/api/properties.handlers.ts:42`, — і воно було
+ * ХИБНИМ: рядок `{ error: msg }` стоїть там у КОМЕНТАРІ, який пояснює, чому
+ * так робити НЕ треба. Гейт назвав порушенням власну документацію проєкту.
+ *
+ * Це рівно §3.2.1, сьомий випадок: найдешевше здається переписати коментар, і
+ * саме так гейт помирає з іншого боку — він і далі не вміє того, чого не вміє,
+ * а в коді лишається слід, який наступний читач прийме за норму. Тому
+ * лагодиться в ГЕЙТІ.
+ *
+ * Розбір, а не сканер і не регулярка: сканер не знає, чи `/` — це ділення, чи
+ * початок регулярного виразу (через це `check-currency-literals` знаходив 10
+ * коментарів із 256), а наївна регулярка відкриває «блоковий коментар» на
+ * рядку `'/*'` і їсть десятки рядків (`check-bare-node`). Пробіли замість
+ * вирізання — щоб номери рядків і баланс дужок лишились тими самими.
+ */
+function withoutComments(src) {
+  const out = src.split('');
+  const blank = (from, to) => {
+    for (let i = from; i < to && i < out.length; i += 1) {
+      if (out[i] !== '\n') out[i] = ' ';
+    }
+  };
+  const file = ts.createSourceFile('x.tsx', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const visit = (node) => {
+    for (const r of ts.getLeadingCommentRanges(src, node.getFullStart()) || []) blank(r.pos, r.end);
+    for (const r of ts.getTrailingCommentRanges(src, node.getEnd()) || []) blank(r.pos, r.end);
+    for (const child of node.getChildren(file)) visit(child);
+  };
+  visit(file);
+  return out.join('');
+}
 
 const strict = process.argv.includes('--strict');
 // fileURLToPath, не URL.pathname: на Windows pathname лишає %20 і слеш перед
@@ -167,6 +204,51 @@ function statusKind(catchBody) {
 }
 
 /**
+ * Імена, у які в ЦЬОМУ `catch` поклали текст винятку.
+ *
+ * ── Навіщо третя вісь (09.09.2026) ──────────────────────────────────────
+ *
+ * Дві осі вище шукають ВІЗЕРУНОК `error: e.message`, і одна змінна між
+ * винятком і відповіддю робить їх сліпими:
+ *
+ *     catch (e: unknown) {
+ *       const msg = e instanceof Error ? e.message : String(e);
+ *       return NextResponse.json({ error: msg }, { status: 500 });
+ *     }
+ *
+ * Це та сама вада, записана інакше, — §3.2.1 у чистому вигляді: візерунок
+ * треба вгадати, властивість — ні. Виміряно розбором AST на HEAD `e954b0fe`:
+ * **8 місць у 6 файлах**, усі при зеленому `check-error-leak --strict`, і серед
+ * них `invoices/[id]/pdf` — маршрут, що рендерить фактуру, тобто місце, де
+ * текст помилки бази чи pdfkit їде клієнту зі статусом 500.
+ *
+ * Властивість, яку стереже ця вісь: **у відповідь потрапляє текст, ПОХІДНИЙ від
+ * упійманого винятку**, скільки б імен між ними не стояло. Пошук навмисно
+ * обмежений тілом ТОГО САМОГО `catch`: імена на кшталт `msg` живуть у половині
+ * файлів, і файловий пошук давав би хибно-червоне, а хибно-червоний гейт
+ * лагодять переписуванням КОДУ під гейт — тобто вбивають його з іншого боку.
+ *
+ * `String(e)` враховано разом із `.message`: воно дає той самий текст вендора,
+ * лише з префіксом `Error:`.
+ */
+function taintedNames(catchBody) {
+  const names = new Set();
+  for (const m of catchBody.matchAll(
+    /\b(?:const|let|var)\s+(\w+)\s*=\s*([^;\n]*(?:\.message|String\s*\(\s*\w+\s*\))[^;\n]*)/g)) {
+    if (/\b(?:e|err|error)\b/.test(m[2])) names.add(m[1]);
+  }
+  return names;
+}
+
+/** Чи їде котресь із заражених імен у полі `error` відповіді. */
+function leaksThroughName(catchBody, names) {
+  for (const name of names) {
+    if (new RegExp(`error:\\s*${name}\\b`).test(catchBody)) return name;
+  }
+  return null;
+}
+
+/**
  * Розбір ОДНОГО файлу — те, що стереже гейт, окремо від того, як він обходить
  * дерево.
  *
@@ -175,7 +257,11 @@ function statusKind(catchBody) {
  * підрядок» не тримало ніщо. Перевіряти поведінку на рядках чесніше, ніж на
  * тимчасових файлах: фікстура видима в тексті твердження.
  */
-export function analyse(text) {
+export function analyse(source) {
+  // Розбір може впасти лише на тексті, який не є TS; тоді краще міряти сирий
+  // текст, ніж мовчки не міряти нічого (гейт, який доповідає про чистоту, — §3.2).
+  let text;
+  try { text = withoutComments(source); } catch { text = source; }
   const found = { offenders: [], blind: [] };
   LEAK.lastIndex = 0;
   let m;
@@ -183,12 +269,28 @@ export function analyse(text) {
     found.offenders.push(text.slice(0, m.index).split('\n').length);
   }
   for (const pair of tryCatchPairs(text)) {
-    if (!/error:\s*(?:e|err|error)\??\.message/.test(pair.catchBody)) continue;
+    const line = text.slice(0, pair.catchIndex).split('\n').length;
     const kind = statusKind(pair.catchBody);
+
+    // ── Третя вісь: текст винятку доїжджає ЧЕРЕЗ ЗМІННУ ────────────────────
+    //
+    // Разом із двома нижче це те саме твердження, лише без вимоги вгадати
+    // форму запису. 5xx із таким текстом — порушення без жодних умов, як і в
+    // першої осі: повідомлень, які ми не писали, у 5xx не буває взагалі.
+    const through = leaksThroughName(pair.catchBody, taintedNames(pair.catchBody));
+    if (through) {
+      if (kind === '5xx') { found.offenders.push(line); continue; }
+      if ((kind === '4xx' || kind === 'computed') && DB_CALL.test(pair.tryBody)) {
+        found.blind.push({ line, kind });
+        continue;
+      }
+    }
+
+    if (!/error:\s*(?:e|err|error)\??\.message/.test(pair.catchBody)) continue;
     // 5xx уже названо першою віссю — тут решта: літеральна 4xx і обчислена.
     if (kind !== '4xx' && kind !== 'computed') continue;
     if (!DB_CALL.test(pair.tryBody)) continue;
-    found.blind.push({ line: text.slice(0, pair.catchIndex).split('\n').length, kind });
+    found.blind.push({ line, kind });
   }
   return found;
 }

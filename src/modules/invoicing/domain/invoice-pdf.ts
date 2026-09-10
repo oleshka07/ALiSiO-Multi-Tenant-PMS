@@ -16,11 +16,33 @@ import { organizationCurrency } from '@core/currency';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 
 // ─── Font resolution ─────────────────────────────────────────────────────────
-function resolveFont(name: 'regular' | 'bold'): string {
+/**
+ * Тека цього модуля — або порожньо, якщо її неможливо назвати.
+ *
+ * `__dirname` існує у збірці Next (webpack його визначає) і НЕ існує в модулі
+ * ESM. А цей файл читають обидва світи: прод — з бандла, перевірки й живі
+ * проходи — голим `node` через хук аліасів. Голе звертання до нього кидало
+ * `ReferenceError: __dirname is not defined in ES module scope` **на імпорті**,
+ * тобто будь-який `.check.ts`, який хоч транзитивно тягне цей файл, падав до
+ * першого твердження. Так лишились без сцен `accounting/isdoc-batch`,
+ * `accounting/invoice-batch/zip` і `invoices/[id]/pdf` — три вивантаження, які
+ * виходять із системи файлами.
+ *
+ * `typeof` — єдина форма, що не кидає в обох світах: на неоголошеному імені
+ * вона повертає `'undefined'` замість помилки. У бандлі кандидат лишається той
+ * самий, що був; під ESM його просто немає, а перший кандидат
+ * (`process.cwd()`) там і влучає.
+ */
+function moduleDir(): string | null {
+  return typeof __dirname === 'string' ? __dirname : null;
+}
+
+export function resolveFont(name: 'regular' | 'bold'): string {
   const filename = name === 'bold' ? 'DejaVuSans-Bold.ttf' : 'DejaVuSans.ttf';
+  const here = moduleDir();
   const candidates = [
     path.join(process.cwd(), 'src', 'assets', 'fonts', filename),
-    path.join(__dirname, '..', '..', '..', '..', 'src', 'assets', 'fonts', filename),
+    ...(here ? [path.join(here, '..', '..', '..', '..', 'src', 'assets', 'fonts', filename)] : []),
     path.join('/usr/share/fonts/truetype/dejavu', filename),
     `/root/projects/alisio-pms/src/assets/fonts/${filename}`,
   ];

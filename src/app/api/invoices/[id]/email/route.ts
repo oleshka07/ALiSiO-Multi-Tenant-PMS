@@ -10,17 +10,34 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getOrgIdentity } from '@core/org-identity';
 import { getSql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { ALL_PROPERTIES, propertyOrSharedFilter } from '@core/property-scope';
 import { renderInvoiceHtml, type InvoiceData } from '@invoicing';
 import { sendEmail } from '@core/mail/email';
 import { requirePermission } from '@core/security/route-guard';
 
-export const POST = requirePermission('manage_documents', _POST);
-async function _POST(
+export const POST = requirePermission('manage_documents', invoiceEmail);
+// Тіло іменованим експортом — щоб сцена кликала МАРШРУТ (див. `invoice-pdf`).
+export async function invoiceEmail(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
     const { id } = await params;
+  /**
+   * ── Орендар у цьому запиті (INC-043) ──────────────────────────────────
+   *
+   * Стояло голе `WHERE i.id = ?`. Ідентифікатор фактури приходить із адреси,
+   * тобто від того, хто питає; на Postgres чуже ховала політика, на SQLite не
+   * ховало ніщо. Це третій маршрут того самого інциденту поруч із пакетним ZIP
+   * і PDF — і всі три читають ОДНУ таблицю однією формою запиту.
+   *
+   * Вісь обʼєкта — `ALL_PROPERTIES` і це сказано: документ читається за
+   * первинним ключем, належність доводить орендар, а посилання стоїть у картці
+   * броні. `propertyOrSharedFilter`, а не звичайний: `invoices` не має
+   * `property_id`, і фактура без броні обʼєкта не має взагалі (Д51).
+   */
+  const organizationId = await requireOrganizationId();
+  const axis = propertyOrSharedFilter(ALL_PROPERTIES, 'r');
     const body = await request.json().catch(() => ({}));
     const sql = getSql();
 
@@ -54,9 +71,9 @@ async function _POST(
       ) rg ON rg.reservation_id = r.id
       LEFT JOIN fin_operations p
         ON p.reservation_id = r.id AND p.op_type = 'income' AND p.status = 'completed'
-      WHERE i.id = ?
+      WHERE i.id = ? AND i.organization_id = ? AND ${axis.sql}
       ORDER BY p.paid_at DESC LIMIT 1
-    `, [id]);
+    `, [id, organizationId, ...axis.params]);
 
     if (!data || !data.invoice_number) {
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
@@ -122,7 +139,7 @@ async function _POST(
 </body>
 </html>`;
 
-    await sendEmail({ to, organizationId: await requireOrganizationId(), fromName: orgName, subject, html: emailHtml });
+    await sendEmail({ to, organizationId, fromName: orgName, subject, html: emailHtml });
 
     return NextResponse.json({ sent: true, to, invoice_number: data.invoice_number });
   } catch (e: unknown) {

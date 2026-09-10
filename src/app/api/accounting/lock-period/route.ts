@@ -12,6 +12,7 @@ import { requireFinanceAccess } from '@core/security/route-guard';
 import { lockPeriod, unlockPeriod, seriesForChannel } from '@invoicing';
 import type { Actor } from '@core/auth/session';
 import { getSql } from '@core/db/async';
+import { serverError } from '@core/http/errors';
 
 export const GET = requireFinanceAccess(async (_request, _ctx, actor: Actor): Promise<NextResponse> => {
   const sql = getSql();
@@ -43,7 +44,9 @@ export const POST = requireFinanceAccess(async (request: NextRequest, _ctx, acto
     await lockPeriod(sql, actor.organizationId, resolvedSeries, month);
     return NextResponse.json({ ok: true, series: resolvedSeries, month, status: 'locked' });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    // Текст винятку — у лог, клієнту речення (інваріант 6, Ц43). Тут раніше
+    // їхало повідомлення бази: список дозволених значень CHECK і назва колонки,
+    // зі статусом 500 і без жодного рядка в лозі.
+    return serverError('app/api/accounting/lock-period', e, 'Failed to lock the period');
   }
 });

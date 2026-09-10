@@ -32,6 +32,7 @@ const { getSql } = await import('@core/db/async');
 const { runWithOrganization } = await import('@core/auth/tenant-context');
 const { provisionOrganization } = await import('@core/provisioning');
 const repo = await import('./partner-report.repo');
+const { ALL_PROPERTIES, oneProperty } = await import('@core/property-scope');
 
 const sql = getSql();
 const SLUG = 'partnerrep-check';
@@ -125,6 +126,35 @@ try {
   const byTokenAgain = await repo.readPublishedReport(a.token);
   say(byTokenAgain?.html === 'ЧИСЛА-А-1050',
     `за тим самим токеном А прийшли ВИПРАВЛЕНІ числа А (${byTokenAgain?.html ?? 'нічого'})`);
+  // ── Список звітів — теж пара «період × обʼєкт» (INC-029, Д45) ───────────
+  //
+  // Без осі готель із двома будинками бачив в одному списку вересень А і
+  // вересень Б із однаковими назвами й різними числами — і надсилав партнерові
+  // не той лінк. Третій рядок навмисно БЕЗ обʼєкта: звіт по всьому рахунку
+  // законний (Д45), і він мусить лишатись видимим із кожного обʼєкта, інакше
+  // документ зникає з усіх списків (Д51).
+  await runWithOrganization(organizationId, () => repo.publishReport({
+    title: 'Вересень, увесь рахунок', html: 'ЧИСЛА-РАХУНОК-9999',
+    period: PERIOD, propertyId: null,
+  }));
+
+  const listOf = (scope: unknown) =>
+    runWithOrganization(organizationId, () => repo.listReports(scope as never));
+
+  const inA = await listOf(oneProperty(String(propertyId)));
+  say(inA.length === 2,
+    `у списку обʼєкта А — його звіт і звіт по всьому рахунку, разом 2 (знайшли ${inA.length})`);
+  say(inA.some((r) => r.property_id === null),
+    'звіт БЕЗ обʼєкта видно зі списку обʼєкта А — інакше його не видно нікому');
+  say(!inA.some((r) => r.property_id === propertyB),
+    'звіту обʼєкта Б у списку обʼєкта А немає');
+
+  const inB = await listOf(oneProperty(propertyB));
+  say(inB.length === 2, `у списку обʼєкта Б — теж 2 (знайшли ${inB.length})`);
+
+  const inAll = await listOf(ALL_PROPERTIES);
+  say(inAll.length === 3,
+    `сказане «усі обʼєкти» дає всі 3 звіти (знайшли ${inAll.length})`);
 } finally {
   await cleanup();
 }

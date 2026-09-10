@@ -2,9 +2,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { serverError } from '@core/http/errors';
+import { propertyScopeFilter, ALL_PROPERTIES } from '@core/property-scope';
 
 // Transaction log — single SELECT from fin_operations (post-PR #6).
 // Reports all operations with shape compatible with the previous union-based log.
+/**
+ * Журнал грошей — по рахунку, і це сказано (Д52). Він показує операції
+ * `fin_operations`, які належать рахунку і не мають `property_id`: бронь тут
+ * тільки джойном, заради імені гостя в рядку. Звужувати журнал будинком
+ * означало б викинути з нього всі операції без броні — оренду, податки,
+ * переказ між касами.
+ */
+const ACROSS_PROPERTIES = propertyScopeFilter(ALL_PROPERTIES, 'r');
+
 export async function getFinanceLog(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
@@ -54,7 +64,7 @@ export async function getFinanceLog(request: NextRequest): Promise<NextResponse>
       SELECT COUNT(*) AS total FROM fin_operations o
       LEFT JOIN expense_categories    ec ON ec.id = o.category_id
       LEFT JOIN finance_counterparties cp ON cp.id = o.counterparty_id
-      LEFT JOIN reservations           r ON r.id = o.reservation_id
+      LEFT JOIN reservations           r ON r.id = o.reservation_id AND ${ACROSS_PROPERTIES.sql}
       LEFT JOIN guests                 g ON g.id = r.guest_id
       WHERE ${whereSql}
     `, [...params]) as { total: number };

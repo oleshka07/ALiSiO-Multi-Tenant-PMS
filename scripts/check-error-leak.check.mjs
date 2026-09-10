@@ -160,4 +160,76 @@ try { await a(); } catch (e) { return NextResponse.json({ error: e.message }, { 
 try { await b(); } catch (e) { return NextResponse.json({ error: e.message }, { status: 409 }); }
 `), 2, 'дві пари — дві знахідки');
 
-console.log('check-error-leak: гейт бачить вкладений try, обчислений статус і «country» у тілі — і мовчить там, де має');
+// ── 6. ТРЕТЯ ВІСЬ: текст винятку через ЗМІННУ (09.09.2026) ────────────────
+//
+// Та сама вада, записана інакше. Дві осі вище шукали візерунок
+// `error: e.message` і на одному імені між винятком і відповіддю ставали
+// сліпими — 8 місць у 6 файлах при зеленому гейті, серед них маршрут, який
+// рендерить фактуру.
+
+assert.strictEqual(leakCount(`
+try {
+  await sql.run('UPDATE t SET a = ?', [1]);
+  return NextResponse.json({ ok: true });
+} catch (e) {
+  const msg = e instanceof Error ? e.message : String(e);
+  return NextResponse.json({ error: msg }, { status: 500 });
+}
+`), 1, 'текст винятку через змінну в 5xx — це та сама вада, лише записана інакше');
+
+assert.strictEqual(blindCount(`
+try {
+  await sql.run('UPDATE t SET a = ?', [1]);
+  return NextResponse.json({ ok: true });
+} catch (err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  return NextResponse.json({ error: msg }, { status: 400 });
+}
+`), 1, 'і в 4xx над await — теж');
+
+// Ім'я, у якому лежить НЕ текст винятку, лишається чистим: інакше гейт
+// червонів би на кожному `const msg = t('…')`.
+assert.strictEqual(leakCount(`
+try {
+  await sql.run('UPDATE t SET a = ?', [1]);
+  return NextResponse.json({ ok: true });
+} catch (e) {
+  const msg = 'Не вдалося зберегти';
+  return NextResponse.json({ error: msg }, { status: 500 });
+}
+`), 0, 'власне речення у змінній — не витік');
+
+// Класифікація винятку без переказу тексту — правильний код.
+assert.strictEqual(leakCount(`
+try {
+  await sql.run('INSERT INTO t VALUES (?)', [1]);
+  return NextResponse.json({ ok: true });
+} catch (error) {
+  const msg = error instanceof Error ? error.message : '';
+  if (msg.includes('UNIQUE')) {
+    return NextResponse.json({ error: 'Slug already exists' }, { status: 409 });
+  }
+  return handleError('t POST', error, 'Failed');
+}
+`), 0, 'прочитати текст винятку, щоб КЛАСИФІКУВАТИ, і не переказати його — не витік');
+
+// ── 7. Коментар — не код, і саме на цьому третя вісь спершу збрехала ──────
+//
+// Перший прогін третьої осі дав девʼяте «порушення»:
+// `properties.handlers.ts:42`, де `{ error: msg }` стоїть у коментарі, який
+// пояснює, чому так робити НЕ треба. Гейт назвав порушенням власну
+// документацію проєкту — §3.2.1, сьомий випадок. Полагоджено в гейті
+// (розбір вирізає коментарі), а не переписуванням коментаря.
+
+assert.strictEqual(leakCount(`
+try {
+  await sql.run('UPDATE t SET a = ?', [1]);
+  return NextResponse.json({ ok: true });
+} catch (error) {
+  const msg = error instanceof Error ? error.message : '';
+  // \`handleError\`, не \`{ error: msg }, 500\`: текст винятку клієнту не їде.
+  return handleError('t POST', error, 'Failed');
+}
+`), 0, 'згадка витоку в КОМЕНТАРІ — не витік');
+
+console.log('check-error-leak: гейт бачить вкладений try, обчислений статус, змінну між винятком і відповіддю — і мовчить на коментарі');

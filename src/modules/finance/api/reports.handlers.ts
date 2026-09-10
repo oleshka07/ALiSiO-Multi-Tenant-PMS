@@ -7,7 +7,7 @@ import { requireOrganizationId } from '@core/auth/tenant-context';
 import { serverError, refuse, handleError } from '@core/http/errors';
 import { todayFor, shiftMonths, daysBetween, dayString } from '@core/hotel-day';
 import { requestPropertyScope } from '@core/auth/property-scope';
-import { propertyScopeFilter } from '@core/property-scope';
+import { propertyScopeFilter, ALL_PROPERTIES } from '@core/property-scope';
 
 // Helpers: SQL fragments that filter fin_operations by semantic slice.
 // A "payment" operation = income or refund tied to a reservation (source IN ('booking_widget','teia','hostex','manual') with reservation_id).
@@ -34,6 +34,18 @@ async function monthExpensesSql(month: string, org: string): Promise<number> {
   const m = await getMonthMoney(org, month);
   return m.expenses_operating + m.tax;
 }
+
+/**
+ * Зведення КОМПАНІЇ — по рахунку, і це сказано (Д52, В11).
+ *
+ * Порядкові читачі цього модуля (`getExpectedPayments`, `getPaidServices`)
+ * переведені на `PropertyScope`, бо віддають рядки з іменем гостя і номером
+ * кімнати. Два числа нижче — інші: показник «Неоплачені бронювання» у
+ * фінансовому огляді і зобовʼязання за передоплатами. Це підсумки компанії
+ * поруч із бізнес-юнітами й нарахуваннями; звужені до одного будинку, вони
+ * перестали б відповідати на своє ж питання.
+ */
+const ACROSS_PROPERTIES = propertyScopeFilter(ALL_PROPERTIES, 'r');
 
 export async function getFinanceOverview(request: NextRequest): Promise<NextResponse> {
   try {
@@ -140,7 +152,7 @@ export async function getFinanceOverview(request: NextRequest): Promise<NextResp
       COUNT(*) as cnt
       FROM reservations r
       JOIN properties prop ON r.property_id = prop.id
-      WHERE prop.organization_id = ?
+      WHERE prop.organization_id = ? AND ${ACROSS_PROPERTIES.sql}
         AND r.status IN ('confirmed', 'checked_in', 'tentative') AND r.payment_status != 'paid'
         AND r.total_price > (
           COALESCE((SELECT SUM(amount) FROM fin_operations
@@ -670,7 +682,8 @@ export async function getBalanceSheet(request: NextRequest): Promise<NextRespons
       SELECT COALESCE(SUM(o.amount_company), 0) AS total, COUNT(DISTINCT o.reservation_id) AS cnt
       FROM fin_operations o
       JOIN reservations r ON r.id = o.reservation_id
-      WHERE o.op_type = 'income' AND o.status = 'completed'
+      WHERE ${ACROSS_PROPERTIES.sql}
+        AND o.op_type = 'income' AND o.status = 'completed'
         AND o.paid_at <= ? AND r.check_in > ?
         AND r.status IN ('confirmed', 'tentative')
     `, [asOf, asOf]) as { total: number; cnt: number };

@@ -13,6 +13,7 @@ import { withPermission, type Actor } from '@core/auth/session';
  * voucher — with a monetary value — from whichever bundle the id named.
  */
 import { buildGiftCode, calcExpiresAt } from '@/modules/widget/domain/gift-card-builder';
+import { ALL_PROPERTIES, propertyScopeFilter } from '@core/property-scope';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -71,10 +72,26 @@ export const POST = withPermission('manage_sites', async (req: NextRequest, ctx:
     if (!site?.property_id) return NextResponse.json({ error: 'Property not found for site' }, { status: 400 });
 
     // Generate unique code
+    //
+    // Унікальність коду — ВЛАСТИВІСТЬ РАХУНКУ, і так само її тримає база:
+    // `gift_cards` має UNIQUE на `(organization_id, code)`. Запит без орендаря
+    // був суворішим за констрейнт: на SQLite він відкидав код лише тому, що
+    // його вже видав ЧУЖИЙ готель, а на Postgres те саме ховала політика —
+    // тобто поведінка залежала від рушія (рід INC-027). Тепер запит питає те
+    // саме, що стереже база.
+    //
+    // Обʼєкт тут `ALL_PROPERTIES` і це сказано: звузити означало б дозволити
+    // двом будинкам одного готелю видати однаковий код, а гасять його по
+    // рахунку — рецепція дістала б два ваучери з різними номіналами на один
+    // папірець.
+    const ACROSS_PROPERTIES = propertyScopeFilter(ALL_PROPERTIES, 'v');
     let code = '';
     for (let i = 0; i < 5; i++) {
       const c = buildGiftCode();
-      if (!(await sql.row('SELECT id FROM gift_cards WHERE code = ?', [c]))) { code = c; break; }
+      const taken = await sql.row(
+        `SELECT v.id FROM gift_cards v WHERE v.code = ? AND v.organization_id = ? AND ${ACROSS_PROPERTIES.sql}`,
+        [c, actor.organizationId, ...ACROSS_PROPERTIES.params]);
+      if (!taken) { code = c; break; }
     }
     if (!code) return NextResponse.json({ error: 'Code generation failed' }, { status: 500 });
 
