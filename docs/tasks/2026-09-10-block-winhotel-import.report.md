@@ -179,6 +179,20 @@ Winhotel), тож `EXECUTE BLOCK` з `extract.sh` працює й тут. На �
 **Живий прохід на справжньому `WINHOTEL.fbk` — контролер** (у хмарі, `aggregates.json`
 у `extract-out/`). У контейнері сесії справжньої бази немає і не буде (§3 задачі).
 
+### CI гілки після першого пушу — ЧЕРВОНИЙ, і чому (AGENTS §4)
+
+Запуск 801 (`76f8a6f`): `types, self-checks, build` — зелений; `hotel onboarding` (schema
+drift, hotel files) — зелений; `onboarding and tenant isolation` — `check:pg` роллю
+`alisio_app` **зелений** (мій гейт у складі), провізія, ізоляція, живі маршрути, два готелі до
+фактури — зелені; **`public site` (Playwright) — червоний.** Причина — `tests/e2e/apps.spec.ts`
+блоку «Застосунки» стверджував, що картка Winhotel — «скоро» з кнопкою «хочу»; тепер вона live.
+Відтворено локально на прод-збірці і свіжій SQLite з `provision-org.mjs`:
+`Locator: getByTestId('app-status-winhotel_import') · Expected /скоро|bald|brzy|soon/ ·
+Received "noch nicht angesprochen"`. Спец переведено: «скоро» — три картки, «хочу» — на DIRS21
+(і попит платформи — DIRS21), а Winhotel — окремий крок: без «хочу», вимикач, картка знімків,
+«Створити токен агента» → значення виду `org_….<64 hex>` показане один раз. Локально
+`33 passed (8.0m)` на всьому e2e; другий пуш — дивитись на запуск.
+
 ## 3. Що пішло в staging і чому
 
 Нічого — частина А в ядро не пише. `winhotel_refs`/`winhotel_staging` — частина Б

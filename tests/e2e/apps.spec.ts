@@ -7,11 +7,13 @@ import path from 'node:path';
  * Блок «Застосунки» — приймання §6 (docs/tasks/2026-09-09-block-apps.md).
  *
  * Власник → Налаштування → вкладка «Застосунки» → картка fiskaly зі станом і
- * полями ключів, картки Winhotel/DIRS21/PriceLabs/Unzer зі «скоро» і «хочу» →
- * «хочу» на Winhotel → «ви позначили» → повторний натиск нічого не змінює →
+ * полями ключів, картки DIRS21/PriceLabs/Unzer зі «скоро» і «хочу» →
+ * «хочу» на DIRS21 → «ви позначили» → повторний натиск нічого не змінює →
+ * картка Winhotel — live з 10.09.2026 (частина А `winhotel-import`): вимикач,
+ * «Створити токен агента», значення показане один раз →
  * у «Здоровʼї» є пошта, fiskaly, менеджер каналів → відмова чужої системи з
  * ТЕКСТОМ на картці → платформна сесія на /app/platform/apps бачить той самий
- * рядок червоним і попит Winhotel ≥ 1 → «Модулі» показують лише модулі.
+ * рядок червоним і попит DIRS21 ≥ 1 → «Модулі» показують лише модулі.
  *
  * Відмова симулюється на ПОШТІ, не на fiskaly: клієнт fiskaly живе в
  * `modules/invoicing/data`, і дверей у фасаді для проби немає (звіт блоку,
@@ -111,24 +113,39 @@ test.describe('Застосунки', () => {
     await expect(page.getByTestId('app-key-fiskaly-clientId')).toBeVisible();
     await expect(page.getByTestId('app-key-fiskaly-clientSecret')).toBeVisible();
 
-    // «Скоро» — чотири картки з бейджем і кнопкою «хочу» (або «ви позначили»).
-    for (const id of ['winhotel_import', 'dirs21', 'pricelabs', 'unzer']) {
+    // «Скоро» — три картки з бейджем і кнопкою «хочу» (або «ви позначили»).
+    for (const id of ['dirs21', 'pricelabs', 'unzer']) {
       await expect(page.getByTestId(`app-card-${id}`)).toBeVisible();
       await expect(page.getByTestId(`app-status-${id}`)).toHaveText(/скоро|bald|brzy|soon/);
       const wished = await page.getByTestId(`app-wished-${id}`).count();
       if (!wished) await expect(page.getByTestId(`app-wish-${id}`)).toBeVisible();
     }
 
-    // «Хочу» на Winhotel → «ви позначили»; повтор через API — нічого не змінює.
-    if (await page.getByTestId('app-wish-winhotel_import').count()) {
-      await page.getByTestId('app-wish-winhotel_import').click();
+    // «Хочу» на DIRS21 → «ви позначили»; повтор через API — нічого не змінює.
+    if (await page.getByTestId('app-wish-dirs21').count()) {
+      await page.getByTestId('app-wish-dirs21').click();
     }
-    await expect(page.getByTestId('app-wished-winhotel_import')).toBeVisible();
-    const again = await api(page, 'POST', '/api/settings/apps/winhotel_import/wish');
+    await expect(page.getByTestId('app-wished-dirs21')).toBeVisible();
+    const again = await api(page, 'POST', '/api/settings/apps/dirs21/wish');
     expect(again.ok, `повторний «хочу» відповів ${again.status}`).toBeTruthy();
     await page.reload();
-    await expect(page.getByTestId('app-wished-winhotel_import')).toBeVisible();
+    await expect(page.getByTestId('app-wished-dirs21')).toBeVisible();
+    await expect(page.getByTestId('app-wish-dirs21')).toHaveCount(0);
+
+    // Winhotel — live: без «хочу», з вимикачем; увімкнений — картка знімків і
+    // токен агента, який показується один раз (частина А, §2.4).
+    const winhotel = page.getByTestId('app-card-winhotel_import');
+    await expect(winhotel).toBeVisible();
     await expect(page.getByTestId('app-wish-winhotel_import')).toHaveCount(0);
+    await expect(page.getByTestId('app-status-winhotel_import')).not.toHaveText(/скоро|bald|brzy|soon/);
+    if ((await page.getByTestId('winhotel-card').count()) === 0) {
+      await winhotel.getByRole('button', { name: /Winhotel/ }).click();
+    }
+    await expect(page.getByTestId('winhotel-card')).toBeVisible();
+    await page.getByTestId('winhotel-token').click();
+    const tokenBox = page.getByTestId('winhotel-token-value').locator('input');
+    await expect(tokenBox).toBeVisible();
+    expect(await tokenBox.inputValue()).toMatch(/^org_[A-Za-z0-9_-]+\.[0-9a-f]{64}$/);
 
     // Здоровʼя: пошта, fiskaly, менеджер каналів.
     const health = page.getByTestId('apps-health');
@@ -194,7 +211,7 @@ test.describe('Застосунки', () => {
     await expect(page.getByTestId('platform-apps-health')).toBeVisible();
     await expect(page.locator('[data-testid$="-smtp"][data-status="error"]').first()).toBeVisible();
     await expect(page.locator('[data-testid$="-smtp"][data-status="error"]').first()).toContainText(/ECONN|refused|ETIMEDOUT/);
-    const demand = await page.getByTestId('platform-wish-count-winhotel_import').textContent();
+    const demand = await page.getByTestId('platform-wish-count-dirs21').textContent();
     expect(Number(demand)).toBeGreaterThanOrEqual(1);
     await shot(page, 'platform-apps');
   });
