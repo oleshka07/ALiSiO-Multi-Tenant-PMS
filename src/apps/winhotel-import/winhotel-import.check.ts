@@ -481,7 +481,14 @@ try {
   assert.strictEqual(stagedOf('invoice', 'frozen'), 2);
   assert.strictEqual(stagedOf('payment', 'fiscal_guard'), 0, 'fiscal_guard більше не причина (З34)');
   assert.strictEqual(stagedOf('folio_line', 'cash_article'), 2, `«Tanken» (750) і «Gutschein» (700) не в staging cash_article: ${JSON.stringify(staged)}`);
-  assert.strictEqual(stagedOf('company', 'debtor_no_pending'), 1, `DEBI_NR компанії не відкладено до колонки debtor_no: ${JSON.stringify(staged)}`);
+  // §1.2: DEBI_NR фірми — це її номер дебітора (`companies.debtor_no` прийшов із гілки робіт, 0140):
+  // приймається дверима `adoptDebtorNo`, staging `debtor_no_pending` — лише коли номер зайнятий.
+  assert.strictEqual(stagedOf('company', 'debtor_no_pending'), 0, `DEBI_NR мав лягти в companies.debtor_no, а не в staging: ${JSON.stringify(staged)}`);
+  const { companyPayer: payerOf } = await import('@companies/kernel');
+  const firmRef = await runWithOrganization(A, () => refsRepo.findRef(A, 'company', 3));
+  assert.ok(firmRef, 'ref компанії 3 немає');
+  const firmPayer = await runWithOrganization(A, () => payerOf(A, firmRef!.our_id));
+  assert.strictEqual(firmPayer?.payer_debtor_no, '10001', `номер дебітора фірми: ${firmPayer?.payer_debtor_no}, чекали DEBI_NR 10001 з Winhotel`);
   // Рід рядків фоліо — з групи: Logis → lodging, Kurtaxe (600) → city_tax, Frühstück (200) → service.
   const kinds = await runWithOrganization(A, () => sql.rows<{ kind: string; n: number }>(
     'SELECT kind, COUNT(*) AS n FROM fin_folio_items WHERE organization_id = ? GROUP BY kind ORDER BY kind', [A]));

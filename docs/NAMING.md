@@ -144,7 +144,7 @@ Charter описує, ЯК називати. Він не вимагає нега
     `tse_client_id` і `tss_id`, які секретами не є; `tse_pending_tss_id`
     (0402) — id TSS, створеної у вендора, але не завершеної (NULL = немає),
     `tse_connecting_at` — замок на час походу до вендора (NULL = вільно)
-  - `winhotel_snapshots.status` (**стан знімка бази Winhotel**, 0143):
+  - `winhotel_snapshots.status` (**стан знімка бази Winhotel**, 0403):
     `received | extracting | extracted | imported | failed` — прийнято
     застосунком → міст узяв → міст витяг `*.jsonl` → імпортовано в ядро
     (частина Б) / відмова з текстом у `error`; переводить лише застосунок,
@@ -152,11 +152,11 @@ Charter описує, ЯК називати. Він не вимагає нега
     `.extracted`, `.failed`). `winhotel_snapshots.mode` (**як агент зняв
     базу**): `backup` — готовий `.fbk` з теки бекапів Winhotel | `gbak` —
     `gbak -b` агентом | `copy` — копія `winhotel.fdb` при закритому Winhotel |
-    `delta` — не база, а вивід `isql` за вікном дат (0145), файл `<id>.delta.gz`,
+    `delta` — не база, а вивід `isql` за вікном дат (0405), файл `<id>.delta.gz`,
     заголовок `X-Winhotel-Window`, без правила «один на добу».
     Таблиці застосунку — префікс `winhotel_*`, кожна з `organization_id`;
     у таблиці ядра колонок застосунок не додає.
-    `winhotel_refs.entity` (**що за рядок Winhotel став нашим**, 0144):
+    `winhotel_refs.entity` (**що за рядок Winhotel став нашим**, 0404):
     `address` — `ADRESSEN` без `DEBI_NR` → `guests` | `company` — з `DEBI_NR`
     → `companies` | `reservation` — `GASTKONT` → `reservations` |
     `reservation_guest` — адреса броні → `reservation_guests` (LNR =
@@ -173,7 +173,7 @@ Charter описує, ЯК називати. Він не вимагає нега
     нашого імпорту, дверей на зміну немає | `refused_by_core` — фасад відмовив
     (текст у payload) | `cash_article` — рядок BUCHKONT групи 700/750/800
     (Geldtransit, Ausgaben, Kein Umsatz): каса/витрати, не фоліо гостя |
-    `debtor_no_pending` — `DEBI_NR` компанії, доки немає `companies.debtor_no` |
+    `debtor_no_pending` — `DEBI_NR` компанії, який не вдалося прийняти в `companies.debtor_no` (зайнятий іншою фірмою рахунку; `adoptDebtorNo` → `taken`) |
     `core_gap_gdpr_journal`, `core_gap_cash_book` — CORE-GAPS 6 і 9 | ключі
     агрегатів (`open_guest_balances`, …) — сальдо числом. У payload `overlap`
     — `cause`: `winhotel_double` (дві живі броні Winhotel на одному номері в ті

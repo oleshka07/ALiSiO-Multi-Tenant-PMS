@@ -1,5 +1,5 @@
 /**
- * `winhotel_refs` і `winhotel_staging` (0144) — памʼять імпорту.
+ * `winhotel_refs` і `winhotel_staging` (0404) — памʼять імпорту.
  *
  * Refs — єдиний спосіб, яким повторний імпорт знаходить свій рядок: не за
  * імʼям, не за датами, а за (сутність, LNR). `fingerprint` — відбиток полів,
@@ -22,7 +22,7 @@ export interface RefRow {
   winhotel_lnr: number;
   our_id: string;
   fingerprint: string | null;
-  /** Час знімка, який останнім писав цей рядок (0145): старіший знімок його не перепише. */
+  /** Час знімка, який останнім писав цей рядок (0405): старіший знімок його не перепише. */
   source_taken_at: string | null;
 }
 

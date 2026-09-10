@@ -1,5 +1,5 @@
 /**
- * Рядки `winhotel_snapshots` (0143) і читання маркерів мосту.
+ * Рядки `winhotel_snapshots` (0403) і читання маркерів мосту.
  *
  * Усе — під контекстом орендаря (`runWithOrganization` ставить приймальний
  * маршрут, `withOwner` — картка), і кожен запит ще й називає організацію
@@ -17,7 +17,7 @@ import { getSql } from '@core/db/async';
 import { snapshotPaths } from '../storage';
 
 export type SnapshotStatus = 'received' | 'extracting' | 'extracted' | 'imported' | 'failed';
-/** `delta` — денна дельта агента (0145): вікно дат замість бази, кожні 15 хв, без правила «один на добу». */
+/** `delta` — денна дельта агента (0405): вікно дат замість бази, кожні 15 хв, без правила «один на добу». */
 export type SnapshotMode = 'backup' | 'gbak' | 'copy' | 'delta';
 
 export const SNAPSHOT_MODES: readonly SnapshotMode[] = ['backup', 'gbak', 'copy', 'delta'];

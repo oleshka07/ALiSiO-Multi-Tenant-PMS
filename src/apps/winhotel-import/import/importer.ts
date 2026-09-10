@@ -49,7 +49,7 @@ import { propertyScopeFilter, ALL_PROPERTIES } from '@core/property-scope';
 import { money } from '@core/money';
 import { refuse } from '@core/http/refusal';
 import { findOrCreateGuest } from '@guests';
-import { createCompanyForTests as createCompanyRow, companyPayer } from '@companies/kernel';
+import { createCompanyForTests as createCompanyRow, companyPayer, adoptDebtorNo } from '@companies/kernel';
 import { ensureReservationFolio, openFolio, addCharges, recordReservationPayment, pickRate, type TaxRate } from '@invoicing/kernel';
 import { insertingStay, UnitOverlap } from '@bookings/overlap';
 import { recalcPaymentStatusFromFolio } from '@bookings/kernel';
@@ -271,12 +271,16 @@ export async function runImport(opts: ImportOptions): Promise<ImportReport> {
         await putRef(org, 'company', a.lnr, id, fp, takenAtKey);
         companyRefs.set(a.lnr, { entity: 'company', winhotel_lnr: a.lnr, our_id: id, fingerprint: fp, source_taken_at: takenAtKey });
         companies.imported += 1;
-        // `DEBI_NR` компанії → `companies.debtor_no`, коли колонка прийде з гілки
-        // робіт (сесія 1, задача 11); до того — staging із лічильником, щоб
-        // номер не загубився і не вигадувався в `business_id`.
+        // `DEBI_NR` фірми — її номер дебітора в бухгалтерії готелю: приймається
+        // дверима `adoptDebtorNo` (0140, З37) замість виданого лічильником;
+        // зайнятий іншою фірмою — staging `debtor_no_pending`, число не губиться.
         if ((a.debi_nr ?? 0) > 0) {
-          await stage(org, opts.snapshotId, 'company', a.lnr, 'debtor_no_pending', { debi_nr: a.debi_nr, company_id: id });
-          skip(companies, 'debtor_no_pending');
+          const adopted = await adoptDebtorNo(org, id, Number(a.debi_nr));
+          if (adopted === 'adopted' || adopted === 'already') skip(companies, 'debtor_no_adopted');
+          else {
+            await stage(org, opts.snapshotId, 'company', a.lnr, 'debtor_no_pending', { debi_nr: a.debi_nr, company_id: id, why: adopted });
+            skip(companies, 'debtor_no_pending');
+          }
         }
       } catch (e) {
         await stage(org, opts.snapshotId, 'company', a.lnr, 'refused_by_core', { row: a, error: String((e as Error)?.message ?? e).slice(0, 200) });
@@ -691,7 +695,7 @@ export async function runImport(opts: ImportOptions): Promise<ImportReport> {
     { name: 'номери псевдо (ZINR ≥ 9000)', winhotel: wh.units.length - whRealUnits, ours: 0, why: 'не імпортуються навмисно; брони на них — без номера' },
     { name: 'послуги без пари в каталозі', winhotel: unmatchedServices.length, ours: 0, why: unmatchedServices.length ? `пара потрібна лише майбутньому продажу; без пари: ${unmatchedServices.slice(0, 40).join(', ')}${unmatchedServices.length > 40 ? '…' : ''}` : 'усі живі послуги груп 200–500 мають пару' },
     { name: 'касові статті BUCHKONT (групи 700/750/800)', winhotel: cashArticles.n, ours: 0, why: `staging cash_article, сума ${cashArticles.sum}: каса/витрати, не фоліо гостя` },
-    { name: 'DEBI_NR компаній без колонки', winhotel: companies.skipped.debtor_no_pending ?? 0, ours: 0, why: 'staging debtor_no_pending до колонки companies.debtor_no (сесія 1, задача 11)' },
+    { name: 'DEBI_NR компаній → companies.debtor_no', winhotel: (companies.skipped.debtor_no_adopted ?? 0) + (companies.skipped.debtor_no_pending ?? 0), ours: companies.skipped.debtor_no_adopted ?? 0, why: `прийнято дверима adoptDebtorNo; зайнятий іншою фірмою → staging debtor_no_pending: ${companies.skipped.debtor_no_pending ?? 0}` },
     { name: 'брони з посиланням каналу (GASTKREF.EXT_SOURCE)', winhotel: refByBooking.size, ours: [...extSourceCounts.entries()].filter(([k]) => cat.sourceByName.has(k.toLowerCase())).reduce((a, [, n]) => a + n, 0), why: `джерело — з EXT_SOURCE, не з MARKSEG; значення: ${[...extSourceCounts.entries()].sort((x, y) => y[1] - x[1]).slice(0, 8).map(([k, n]) => `${k} ${n}`).join(', ') || 'немає'}; без пари в booking_sources → direct` },
     { name: 'перетини (overlap) за причиною', winhotel: bookings.skipped.overlap_winhotel_double ?? 0, ours: bookings.skipped.overlap_umzug ?? 0, why: `winhotel_double ${bookings.skipped.overlap_winhotel_double ?? 0} (дві живі броні Winhotel на одному номері в ті ж дати), umzug ${bookings.skipped.overlap_umzug ?? 0} (UMZUG_ZINR), other ${bookings.skipped.overlap_other ?? 0}` },
     { name: 'злиття гостей лише за імʼям з іншою датою народження / містом', winhotel: guests.skipped.merged_by_name ?? 0, ours: (guests.skipped.merged_by_name_other_birthdate ?? 0) + (guests.skipped.merged_by_name_other_city ?? 0), why: `інша дата народження ${guests.skipped.merged_by_name_other_birthdate ?? 0}, інше місто ${guests.skipped.merged_by_name_other_city ?? 0} — число для сесії 3 (правило @guests, З32)` },

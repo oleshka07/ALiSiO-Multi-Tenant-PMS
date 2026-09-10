@@ -10,7 +10,7 @@
 | Коміт | Що |
 |---|---|
 | `b47ec44` | копія задачі з гілки контролера |
-| (цей) | частина А цілком: агент, приймальний маршрут + 0143, міст, картка, гейт, документи |
+| (цей) | частина А цілком: агент, приймальний маршрут + 0403, міст, картка, гейт, документи |
 
 ## 2. Що зроблено — по пунктах задачі
 
@@ -55,7 +55,7 @@ snapshots.handlers.ts receiveSnapshot`. Публічний (`src/proxy.ts` — �
 організації. Ідентифікатор організації не секрет — він у кожній адресі кабінету.
 DECISIONS З23.
 
-Міграція **0143** `winhotel_snapshots` — колонки за задачею; `counts_json` **JSONB**
+Міграція **0403** `winhotel_snapshots` — колонки за задачею; `counts_json` **JSONB**
 (мапа генератора: усі `*_json` → JSONB; репозиторій зводить обʼєкт Postgres і рядок
 SQLite до рядка); `UNIQUE (organization_id, sha256)` табличним констрейнтом, не окремим
 індексом (генератор переказує унікальний індекс ще й констрейнтом, і новий клієнт дістав
@@ -196,7 +196,7 @@ Received "noch nicht angesprochen"`. Спец переведено: «скоро
 ## 3. Що пішло в staging і чому
 
 Нічого — частина А в ядро не пише. `winhotel_refs`/`winhotel_staging` — частина Б
-(міграція 0144+).
+(міграція 0404+).
 
 ## 4. Правки deploy-файлів рядок у рядок
 
@@ -240,7 +240,7 @@ Received "noch nicht angesprochen"`. Спец переведено: «скоро
 ## 7. Далі
 
 Цикл очікування з `origin/claude/controller-2` (`MINE=6`). Після рецензії — частина Б:
-0144 `winhotel_refs` + `winhotel_staging`, довідники-звірка, гості/компанії через
+0404 `winhotel_refs` + `winhotel_staging`, довідники-звірка, гості/компанії через
 `@guests`/`@companies`, брони через `@bookings`, рядки/оплати через `@invoicing`,
 заморожені фактури → staging, сальдо, ідемпотентність, `counts_json` §2.6, сцени §2.7,
 які лишились.
@@ -291,9 +291,9 @@ Received "noch nicht angesprochen"`. Спец переведено: «скоро
 
 **Коміт:** `98d21685` — код, схема, UI, i18n і документи одним; звіт — окремим комітом після нього. Гілка `claude/winhotel-import`.
 **CI гілки — запуск 815 (`5433afe5`) ЗЕЛЕНИЙ усіма трьома роботами:** `types,
-self-checks, build`; `hotel onboarding` (schema.sql і міграції з 0144 описують одну базу,
+self-checks, build`; `hotel onboarding` (schema.sql і міграції з 0404 описують одну базу,
 готелі заводяться двічі); `onboarding and tenant isolation` — крок `check:pg` на справжньому
-Postgres роллю `alisio_app` (гейт у ньому, тобто Б6 з політиками 0144) 12:18→12:31, ізоляція,
+Postgres роллю `alisio_app` (гейт у ньому, тобто Б6 з політиками 0404) 12:18→12:31, ізоляція,
 маршрути, два готелі до фактури, Playwright `public site` — усе зелене. Рядки гейта в логу CI
 очима не перечитані: інструмент сесії віддає останні 5000 рядків, і це лог контейнера бази;
 доказ — стан кроку, не цитата.
@@ -302,7 +302,7 @@ Postgres роллю `alisio_app` (гейт у ньому, тобто Б6 з по
 
 | Пункт | Де | Що |
 |---|---|---|
-| 0144 `winhotel_refs`, `winhotel_staging` | `db/postgres/migrations/0144-…sql`, `src/lib/db.ts migrateWinhotelImport`, `db/postgres/schema.sql` (+53 рядки, рівно дві таблиці — зі СВІЖОЇ SQLite: `ALISIO_DATA_DIR` у тимчасову теку → `apps.check.ts` мігрує → `wal_checkpoint(TRUNCATE)` → `DB_PATH` генератору) | обидві з `organization_id` NOT NULL, `DEFAULT NULLIF(current_setting(…))`, FK на `organizations` за ОЗНАЧЕННЯМ (`pg_get_constraintdef … LIKE 'FOREIGN KEY (organization_id)…'`), UNIQUE (організація, сутність, LNR) табличним констрейнтом, індекс по `organization_id`, RLS `USING`+`WITH CHECK`. `payload_json` — JSONB на Postgres, TEXT у SQLite; читає його поки ніхто (UI показує лічильники), тож різниця форми ще не коштує |
+| 0404 `winhotel_refs`, `winhotel_staging` | `db/postgres/migrations/0404-…sql`, `src/lib/db.ts migrateWinhotelImport`, `db/postgres/schema.sql` (+53 рядки, рівно дві таблиці — зі СВІЖОЇ SQLite: `ALISIO_DATA_DIR` у тимчасову теку → `apps.check.ts` мігрує → `wal_checkpoint(TRUNCATE)` → `DB_PATH` генератору) | обидві з `organization_id` NOT NULL, `DEFAULT NULLIF(current_setting(…))`, FK на `organizations` за ОЗНАЧЕННЯМ (`pg_get_constraintdef … LIKE 'FOREIGN KEY (organization_id)…'`), UNIQUE (організація, сутність, LNR) табличним констрейнтом, індекс по `organization_id`, RLS `USING`+`WITH CHECK`. `payload_json` — JSONB на Postgres, TEXT у SQLite; читає його поки ніхто (UI показує лічильники), тож різниця форми ще не коштує |
 | памʼять імпорту | `data/refs.repo.ts` | `refsOf`/`findRef`/`putRef` (UPDATE-потім-INSERT, без `ON CONFLICT` — SQLite-дзеркало без відповідного індексу), `stage` (той самий upsert), `stagingCounts`, `fingerprintOf` (стабільний JSON із сортованими ключами → sha256/32) |
 | довідники — ЗВІРКА, не створення | `import/importer.ts verifyDictionaries` | категорія ↔ `unit_types.code` (без регістру), номер ↔ `units.code` (псевдо `ZINR ≥ 9000` і `STOCK = 99` не звіряються), послуга ↔ `additional_services.name` (без регістру; послуги груп проживання/сніданку з `BETRAG 0` — не потребують), `STS` ↔ `fin_tax_rates.code`; хоч один незнайдений → `refuse(409)` з ПЕРЕЛІКОМ і нуль записів. **AP 111/112** (уточнення власника) — звичайна категорія: у готелі має бути `unit_types.code = 'AP'`, інакше відмова її назве. **STOCK** як поверх не переноситься нікуди |
 | адреси | крок 2–3 | `DEBI_NR > 0` → `createCompanyForTests` (`@companies/kernel`; це єдині двері модуля без HTTP, назва — справа модуля, З29) з `business_id = DEBI_NR`; решта → `findOrCreateGuest` (`@guests`): дедуплікація — правило фасаду (З32), не `SUCHNAME+PLZ+GEBDAT`; стать (`GESCHLECHT`/`ANREDE`), мова (`SPRACHE`), примітки (`BEMERK`, `BEMERK2`, `WUNSCH_ZI`) — лише в порожнє (`COALESCE`). Банк, картки, пароль — не приходять узагалі (міст їх не вибирає, З26) |
@@ -348,7 +348,7 @@ AssertionError: total_price 141.000 × 3 → 0.423
 0.423 !== 423
 ```
 
-Зелений: SQLite і `DB_DRIVER=pglite` (форма SQL і JSONB); політики 0144 — лише `check:pg` у
+Зелений: SQLite і `DB_DRIVER=pglite` (форма SQL і JSONB); політики 0404 — лише `check:pg` у
 CI (`alisio_app`). Один хибний очікуваний: перша редакція Б2 чекала 4 гостей — у стабі 4
 адреси, з них одна компанія; виправлено твердження, не код.
 
@@ -388,8 +388,23 @@ ARCHITECTURE (розділ Winhotel — таблиця кроків частин
 
 # Задача 8 — живі розриви частини Б, денна дельта і незатирання для кіоска
 
-**Коміти:** `d95bfc5a` — код, схема, агент і документи одним; звіт — окремим. **CI гілки** — дивитись запуск після пушу; рядок про нього — нижче, після
+**Коміти:** `d95bfc5a` — код, схема, агент і документи; `53550ce7` — звіт; далі за §0: `06446093` — злиття `block-apps`; наступний — перейменування 04xx, двері `adoptDebtorNo` і цей розділ (хеш у `git log`). **CI гілки** — дивитись запуск після пушу; рядок про нього — нижче, після
 результату.
+
+## 8.0 Дописка §0 — злиття `block-apps` і смуга 04xx
+
+Першим комітом задачі (за дописаною §0, `5e755115`) злито `origin/claude/block-apps`
+(`06446093`): міграції застосунків прийшли як 0400–0402 замість 0140–0142 (git побачив
+перейменування, старих імен у дереві немає — `ls db/postgres/migrations | grep 014` дає лише
+`0140-a-debtor-number…` сесії 1), разом із ними — дебітор (0140), згоди й злиття гостей
+(0300). Чотири конфлікти зведено обʼєднанням обох сторін: `package.json` (гейти обох гілок +
+`winhotel-import.check.ts` у `check` і `check:pg`), `src/lib/db.ts` (мігратор згод +
+`migrateWinhotelImport`), NAMING і ARCHITECTURE. Свої міграції перейменовано `git mv`:
+`0143 → 0403`, `0144 → 0404`, `0145 → 0405` (ніде не накочені); 42 згадки в `db.ts`, репо
+застосунку, шапках міграцій, ARCHITECTURE, NAMING, DECISIONS і цьому звіті — за новими
+іменами. `schema.sql` після злиття перегенеровано зі свіжої SQLite — diff порожній (злитий
+файл уже описував ту саму базу). Злиття принесло `companies.debtor_no` — тож §1.2 нижче пише
+`DEBI_NR` у колонку, а не в staging (див. рядок 1.2).
 
 ## 8.1 Блокери живого проходу (§1) — кожен червоним першим
 
@@ -413,9 +428,9 @@ für Hotel», послуга «Aufbettung», послуга «Tanken», посл
 | § | Правка | Червоне (злом після зеленого) |
 |---|---|---|
 | 1.1 | `groupCodeOf(service, groups)` — код групи ЛИШЕ джойном `wg → WARENGRU.lnr → wgnr`; `lineKind(code, groupName)`: 100 або «Logis/Übernachtung» → `lodging`, 600 → `city_tax`, ≥ 700 → `cash_article`; `needsCatalogMatch(s, code)` пропускає 100 і ≥ 600. Касові статті — staging `cash_article` (ідемпотентно через `stagedLnrs`), поза фоліо гостя і поза сумами звірки; у `explained` — кількість і сума. На стабі «Gutschein für Hotel» (700 Geldtransit) і «Tanken» (750) → staging; `lodging 3 / city_tax 1 / service 1` | код групи з `WG` без джойна → «рядків рахунку 7, у фоліо гостя мають бути 5 із 7 — 7 !== 5» |
-| 1.2 | `isCompany(a) = a.adr_wahl === 1`; `business_id` компанії більше не вигадується з `DEBI_NR`; `DEBI_NR > 0` компанії → staging `debtor_no_pending` `{debi_nr, company_id}` + лічильник `companies.skipped.debtor_no_pending` + рядок `explained`. Колонки `companies.debtor_no` на гілці робіт (`origin/beta`) немає — вона на `claude/block-4-hotel-finance-a11ofx` (сесія 1); коли зіллється — staging переноситься одним UPDATE. Для гостя `DEBI_NR` не переноситься | компанія за `DEBI_NR > 0` → «гостей 3, адрес з ADR_WAHL 0 у стабі 4 — 3 !== 4» |
+| 1.2 | `isCompany(a) = a.adr_wahl === 1`; `business_id` компанії більше не вигадується з `DEBI_NR`. Після злиття `block-apps` (§0) колонка `companies.debtor_no` (0140, сесія 1) на гілці є, тож `DEBI_NR` фірми приймається дверима **`adoptDebtorNo`** (`@companies/kernel`, нові двері: ставить номер замість виданого лічильником, зсуває `organizations.next_debtor_no` за ним; `taken` — коли номер уже в іншої фірми рахунку → staging `debtor_no_pending` з `why`). Сцена в `debtor-no.check.ts`: adopted / already / taken / not_found і лічильник. Для гостя `DEBI_NR` не переноситься | компанія за `DEBI_NR > 0` → «гостей 3, адрес з ADR_WAHL 0 у стабі 4 — 3 !== 4»; до підключення дверей → «DEBI_NR мав лягти в companies.debtor_no, а не в staging: 1 !== 0» |
 | 1.3 | `verifyDictionaries` повертає `unmatchedServices`, не відмовляє: звіряються послуги груп 200–500, ім'я нормалізоване (`normalizeServiceName`: NFC, регістр, `‐‑‒–—−` → `-`, пробіли навколо дефіса й подвійні пробіли) — «Frühstück - Speisen» знаходить «Frühstück – Speisen»; незнайдені → `explained` «послуги без пари в каталозі: N» з переліком (до 40 назв) | до правки — refusal вище; після — Б2 стверджує рівно «Haustier» у переліку і жодного «Speisen» |
-| 1.4 | `recordPayment({ source: 'import', origin: 'winhotel:<LNR>' })`: імпортна йде повз варту й підпис, `tse_status` NULL; `source = 'import'` без `origin` виду `/^winhotel:\d+$/` — відмова; `origin` без `source` — відмова. `recordReservationPayment` передає обидва. 0145: `fin_folio_payments.source`, `origin`. `folio-payments.check.ts`: дві нові сцени (імпортна без походження → відмова; після імпортної — рецепційна готівка на DE без `fiscal_de` відмовляється як раніше). Імпортер: `fiscal_guard` прибрано, усі 4 оплати стаба у фоліо (готівка й картка на DE) | вимога походження вимкнена → «Missing expected rejection: імпортна оплата без походження мала бути відмовлена» |
+| 1.4 | `recordPayment({ source: 'import', origin: 'winhotel:<LNR>' })`: імпортна йде повз варту й підпис, `tse_status` NULL; `source = 'import'` без `origin` виду `/^winhotel:\d+$/` — відмова; `origin` без `source` — відмова. `recordReservationPayment` передає обидва. 0405: `fin_folio_payments.source`, `origin`. `folio-payments.check.ts`: дві нові сцени (імпортна без походження → відмова; після імпортної — рецепційна готівка на DE без `fiscal_de` відмовляється як раніше). Імпортер: `fiscal_guard` прибрано, усі 4 оплати стаба у фоліо (готівка й картка на DE) | вимога походження вимкнена → «Missing expected rejection: імпортна оплата без походження мала бути відмовлена» |
 
 **Очікувані числа для повторного живого проходу контролера** (той самий знімок,
 `since 2025-01-01`): послуги більше не відмовляють; компаній = адрес з `ADR_WAHL 1` ≈ **2 143**,
@@ -468,7 +483,7 @@ für Hotel», послуга «Aufbettung», послуга «Tanken», посл
 occupancy, addresses трьох `GASTNR`, folio_lines, payments, booking_refs) і 7 довідників
 цілком; `-- columns:` дослівно як у SQL мосту (гейт Б9 звіряє кожен).
 
-**Сервер:** 0145 розширює `winhotel_snapshots.mode` на `delta` (Postgres — CHECK за
+**Сервер:** 0405 розширює `winhotel_snapshots.mode` на `delta` (Postgres — CHECK за
 означенням, SQLite — перебудова таблиці зі зняттям і поверненням індексів, лічильник
 звіряється); `parseWindow` — без заголовка 400, і рядка немає; дельти не рахуються в «один
 на добу»; файл `<id>.delta.gz`, `.ready` несе вікно. **Міст:** `processDelta` — секції →
@@ -476,7 +491,7 @@ occupancy, addresses трьох `GASTNR`, folio_lines, payments, booking_refs) �
 без вікна — відмова; без секції `bookings` — відмова. **Імпорт:** `mode` з агрегатів; дельта
 без вікна → названа відмова; `since` не застосовується; кроки 7–8 (фактури, сальдо, згоди,
 каса) пропускаються; скасування за відсутністю — лише для повного; `winhotel_refs.source_taken_at`
-(0145) — знімок, старіший за той, що писав рядок, його не переписує (`older_snapshot`).
+(0405) — знімок, старіший за той, що писав рядок, його не переписує (`older_snapshot`).
 
 **Незатирання** — `statusForward(current, incoming)`: ранг `tentative 0 < confirmed 1 <
 checked_in 2 < checked_out 3`, назад не пишеться; `cancelled` — лише з TA_STATUS або
@@ -498,8 +513,9 @@ Postgres — CI.
 
 ## 8.4 Відхилення й межі — названі
 
-- `companies.debtor_no` — на гілці робіт (`origin/beta`) немає; staging `debtor_no_pending`
-  до злиття сесії 1 (задача 11). Перенесення — один UPDATE із staging, коли колонка прийде.
+- `companies.debtor_no` прийшов злиттям `block-apps` (дописка §0), тож `DEBI_NR` пишеться дверима
+  `adoptDebtorNo`; staging `debtor_no_pending` лишається лише для зайнятих номерів. Виданий
+  лічильником номер імпортованої фірми замінюється — це номери, яких бухгалтерія не бачила.
 - Дельта на сервері готелю ще не запускалась: шаблони доведені на стабі живим `isql-fb`
   (Linux, вбудований режим); на Windows агент ходить через `localhost:` до сервісу Firebird —
   та сама відмінність, що в `gbak -b` режиму (b), уже пройденого.

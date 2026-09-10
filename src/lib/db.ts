@@ -6472,7 +6472,7 @@ function runMigrations(database: any) {
     // guarded ALTER stands AFTER the CREATE on purpose (lesson of 086ec1d).
     {
       const payCols = (database.prepare('PRAGMA table_info(fin_folio_payments)').all() as any[]).map((c: any) => c.name);
-      // 0145: `source`/`origin` — оплата, перенесена з попередньої системи (З34).
+      // 0405: `source`/`origin` — оплата, перенесена з попередньої системи (З34).
       for (const col of ['tse_status', 'tse_serial', 'tse_tx_number', 'tse_signature_counter',
         'tse_signature', 'tse_start_time', 'tse_end_time', 'tse_qr_payload',
         'tse_client_id', 'tse_process_type', 'tse_process_data', 'source', 'origin']) {
@@ -7888,7 +7888,7 @@ function runMigrations(database: any) {
   } catch (e: any) {
     console.log('[DB] guest consents migration note:', e.message);
   }
-  // 0143 — застосунок winhotel_import: знімки бази Winhotel.
+  // 0403 — застосунок winhotel_import: знімки бази Winhotel.
   migrateWinhotelImport(database);
 
   // --- Migration: is_pool_unit на броні (INC-045) ---
@@ -8127,9 +8127,9 @@ function migrateApps(database: any) {
 }
 
 /**
- * Міграція 0143 — знімки бази Winhotel (застосунок `winhotel_import`,
+ * Міграція 0403 — знімки бази Winhotel (застосунок `winhotel_import`,
  * docs/tasks/2026-09-10-block-winhotel-import.md §2.2). Дзеркало
- * `db/postgres/migrations/0143-*.sql`: один рядок на прийнятий gbak-знімок —
+ * `db/postgres/migrations/0403-*.sql`: один рядок на прийнятий gbak-знімок —
  * коли знято, режим, sha256, розмір, стан і числа звірки. Файл лежить на
  * томі; тут — лише те, що про нього треба знати без файлу.
  */
@@ -8154,7 +8154,7 @@ function migrateWinhotelImport(database: any) {
     `);
     database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_snapshots_org ON winhotel_snapshots(organization_id)');
     database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_snapshots_received ON winhotel_snapshots(organization_id, received_at)');
-    // 0145: режим `delta`. SQLite не вміє змінити CHECK — таблиця перебудовується,
+    // 0405: режим `delta`. SQLite не вміє змінити CHECK — таблиця перебудовується,
     // індекси знімаються до підміни й повертаються після (AGENTS §4).
     const ddl = String((database.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'winhotel_snapshots'").get() as any)?.sql ?? '');
     if (ddl && !ddl.includes("'delta'")) {
@@ -8181,13 +8181,13 @@ function migrateWinhotelImport(database: any) {
       database.exec('ALTER TABLE winhotel_snapshots_new RENAME TO winhotel_snapshots');
       for (const sqlText of indexes) database.exec(sqlText);
       const after = (database.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'index' AND tbl_name = 'winhotel_snapshots' AND sql IS NOT NULL").get() as any).n;
-      if (Number(after) !== indexes.length) console.error(`[DB] 0145 winhotel_snapshots: індексів було ${indexes.length}, стало ${after}`);
+      if (Number(after) !== indexes.length) console.error(`[DB] 0405 winhotel_snapshots: індексів було ${indexes.length}, стало ${after}`);
     }
   } catch (e) {
-    console.error('[DB] 0143 winhotel_snapshots:', (e as Error).message);
+    console.error('[DB] 0403 winhotel_snapshots:', (e as Error).message);
   }
-  // 0144: відповідність «рядок Winhotel → наш рядок» і те, чого ядро не
-  // вміє (частина Б). Дзеркало db/postgres/migrations/0144-*.sql.
+  // 0404: відповідність «рядок Winhotel → наш рядок» і те, чого ядро не
+  // вміє (частина Б). Дзеркало db/postgres/migrations/0404-*.sql.
   try {
     database.exec(`
       CREATE TABLE IF NOT EXISTS winhotel_refs (
@@ -8203,7 +8203,7 @@ function migrateWinhotelImport(database: any) {
         UNIQUE(organization_id, entity, winhotel_lnr)
       )
     `);
-    // 0145: час знімка, що писав рядок, — старіший знімок не перепише новіше (дельта).
+    // 0405: час знімка, що писав рядок, — старіший знімок не перепише новіше (дельта).
     {
       const refCols = (database.prepare('PRAGMA table_info(winhotel_refs)').all() as any[]).map((c: any) => c.name);
       if (!refCols.includes('source_taken_at')) database.exec('ALTER TABLE winhotel_refs ADD COLUMN source_taken_at TEXT');
@@ -8227,7 +8227,7 @@ function migrateWinhotelImport(database: any) {
     database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_staging_org ON winhotel_staging(organization_id)');
     database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_staging_entity ON winhotel_staging(organization_id, entity, reason)');
   } catch (e) {
-    console.error('[DB] 0144 winhotel_refs/winhotel_staging:', (e as Error).message);
+    console.error('[DB] 0404 winhotel_refs/winhotel_staging:', (e as Error).message);
   }
 }
 
