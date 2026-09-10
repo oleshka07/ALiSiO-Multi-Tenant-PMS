@@ -133,6 +133,17 @@ Charter описує, ЯК називати. Він не вимагає нега
     воно ще й збігається з іменем поля вендора. CHECK у базі немає свідомо
     (О9) — перевіряє писач. Дефолту немає ніде (В1, К16): не назвали —
     названа відмова
+  - `app_connections.status` (**стан звʼязку із чужою системою**, 0400):
+    `connected | degraded | error | disabled`; на картці ще `soon` (коду
+    немає) і `unknown` (ще не зверталися) — обчислені, у базу не пишуться.
+    `app_connections.app` і `app_wishes.app` — `id` з реєстру `core/apps.ts`
+    (`fiskaly`, `smtp`, `winhotel_import`, …); `channel_manager` у
+    `app_connections` не буває — менеджер каналів читається з `cm_connections`
+  - `fin_fiscal_settings.tse_admin_pin`, `tse_admin_puk` (0401) — секрети TSS
+    під `seal()` (`enc1:`), як і секрети `channel_credentials`; поруч із
+    `tse_client_id` і `tss_id`, які секретами не є; `tse_pending_tss_id`
+    (0402) — id TSS, створеної у вендора, але не завершеної (NULL = немає),
+    `tse_connecting_at` — замок на час походу до вендора (NULL = вільно)
   - `guest_consents.consent_kind`: `marketing | data_processing | profiling` —
     на ЩО людина погодилась (INC-300, 0300). Вільний рядок, не CHECK:
     юрисдикції додають свої пункти, і словник, що вимагає міграції, змусив би

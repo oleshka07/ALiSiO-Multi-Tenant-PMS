@@ -113,7 +113,10 @@ console.log('  ok  каталог для екрана збігається з р
 const INTEGRATIONS: Partial<Record<Key, string>> = {
   booking_engine: 'src/modules/widget/api/widget-site.handlers.ts',
   fiscal_de: 'src/modules/invoicing/data/folio-payments.repo.ts',
-  online_payments: 'src/core/integration-credentials.ts',
+  // Вимикач шлюзів живе в реєстрі застосунків (Блок «Застосунки», 09.09.2026):
+  // `INTEGRATION_FEATURE` тепер виводиться з `apps.ts`, і саме там кожен шлюз
+  // називає `online_payments`; збереження ключа питає цю мапу.
+  online_payments: 'src/core/apps.ts',
   channels: 'src/modules/channels/api/pull-cron.handlers.ts',
 };
 for (const [key, file] of Object.entries(INTEGRATIONS)) {

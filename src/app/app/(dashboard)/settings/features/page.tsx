@@ -1,32 +1,29 @@
 'use client';
 
 import { useT } from '@core/i18n/client';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Check, Loader2, ToggleLeft, ToggleRight } from 'lucide-react';
-import PaymentGatewayNotice from '@/components/payments/PaymentGatewayNotice';
+import { ArrowLeft, Loader2, ToggleLeft, ToggleRight } from 'lucide-react';
+import { APPS } from '@core/apps';
 import { notifyCurrentUserChanged } from '@/ui/hooks/useCurrentUser';
 
 /**
- * Which integrations this organization has, and whose account each one uses.
+ * «Модулі» — що ввімкнено у вашому готелі. Owner-only: the API refuses everyone else.
  *
- * The switches and the keys belong on one screen because they answer halves of
- * the same question: turning an integration on without a token gives a menu item that
- * refuses every request, and a token saved for an integration that is off is a
- * secret nothing can use. Owner-only: the API refuses everyone else.
+ * ── Що звідси пішло (Блок «Застосунки», 09.09.2026) ──────────────────────
  *
- * ── Чому оплата тут виглядає інакше ─────────────────────────────────────
+ * Цей екран звався «Модулі та інтеграції» і показував усі ключі реєстру одним
+ * списком, а під ними мав показувати поля ключів вендора. Полів насправді не
+ * бачив ніхто: вони шукались за ключем реєстру (`fiscal_de`) у мапі,
+ * ключованій каналом (`fiskaly`). Тепер ключі вендора, стан звʼязку і «скоро»
+ * живуть на екрані «Застосунки» (`/app/settings/apps`), а тут — лише ядро й
+ * модулі PMS: `kind: 'core' | 'module'`.
  *
- * `online_payments` — єдина фіча, чиї ключі НЕ на цьому екрані: шлюзів три
- * (Stripe, PayPal, Teya), у кожного свій набір полів і своє місце, де готель
- * ці ключі бере, тож вони живуть на `/app/settings/payments`.
- *
- * Без явного посилання це виглядало як зламане: менеджер вмикав перемикач,
- * під ним не зʼявлялось нічого — ні поля, ні пояснення, — і екран мовчав про
- * те, що півсправи ще попереду. Тому рядок оплати каже, що шлюзу поки немає в
- * продукті взагалі, і веде туди, де готель може обрати свій.
+ * Який ключ — застосунок, каже реєстр застосунків: ключ, який стереже хоч
+ * один запис `APPS`, тут не показується. Гейт `apps.check.ts` тримає, що це
+ * рівно ключі з `kind: 'app'` у реєстрі фіч — тобто екран не вгадує, а читає.
  */
-const PAYMENTS_FEATURE = 'online_payments';
+const APP_FEATURES = new Set(APPS.map((a) => a.feature).filter((f): f is NonNullable<typeof f> => !!f));
 
 /**
  * Людські назви функцій, які кличуть модель.
@@ -40,39 +37,20 @@ const AI_FEATURE_LABEL: Record<string, string> = {
   translate_content: 'Переклад контенту',
 };
 
-interface FieldSpec { field: string; label: string; hint?: string }
 interface AiUsage {
   month: string;
   totalTokens: number;
   byFeature: { feature: string; model: string; tokens: number; calls: number }[];
-}
-interface Status {
-  channel: string;
-  values: Record<string, string | null>;
-  perOrganization: boolean;
-  configured: boolean;
 }
 
 export default function FeaturesSettingsPage() {
   const t = useT();
   const [catalog, setCatalog] = useState<Record<string, string>>({});
   const [features, setFeatures] = useState<Record<string, boolean>>({});
-  const [fields, setFields] = useState<Record<string, FieldSpec[]>>({});
-  const [status, setStatus] = useState<Record<string, Status>>({});
-  const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
-  const [saved, setSaved] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
   const [ai, setAi] = useState<AiUsage | null>(null);
-
-  const loadCredentials = useCallback(async () => {
-    const res = await fetch('/api/settings/integration-credentials');
-    if (!res.ok) return;
-    const d = await res.json();
-    setFields(d.fields);
-    setStatus(Object.fromEntries((d.status as Status[]).map((s) => [s.channel, s])));
-  }, []);
 
   useEffect(() => {
     fetch('/api/settings/features')
@@ -81,7 +59,6 @@ export default function FeaturesSettingsPage() {
         return r.json();
       })
       .then((d) => { setCatalog(d.catalog); setFeatures(d.features); })
-      .then(loadCredentials)
       // Лічильник — не частина завантаження екрана: якщо він не відповість,
       // перемикачі мусять зʼявитись усе одно.
       .then(() => fetch('/api/settings/ai-usage')
@@ -90,7 +67,7 @@ export default function FeaturesSettingsPage() {
         .catch(() => {}))
       .catch((e) => setError(t(e.message)))
       .finally(() => setLoading(false));
-  }, [loadCredentials]);
+  }, [t]);
 
   const toggle = async (feature: string) => {
     setBusy(feature);
@@ -102,8 +79,6 @@ export default function FeaturesSettingsPage() {
       });
       if (res.ok) {
         setFeatures((await res.json()).features);
-        // Switching a feature on reveals its key fields; off hides them.
-        await loadCredentials();
         // Цей екран — не єдиний, хто живе за ключами модулів: за ними ховається
         // пункт меню, закривається розділ, зникає рядок у пошуку Ctrl+K.
         // `setFeatures` вище оновив лише цю сторінку — решта копій
@@ -115,27 +90,8 @@ export default function FeaturesSettingsPage() {
     }
   };
 
-  const saveKeys = async (channel: string) => {
-    setBusy(channel);
-    setError('');
-    try {
-      const res = await fetch('/api/settings/integration-credentials', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channel, values: drafts[channel] || {} }),
-      });
-      const d = await res.json();
-      if (!res.ok) { setError(d.error || 'Не вдалося зберегти'); return; }
-      setStatus((s) => ({ ...s, [channel]: d.status }));
-      setDrafts((s) => ({ ...s, [channel]: {} }));
-      setSaved(channel);
-      setTimeout(() => setSaved(''), 2500);
-    } finally {
-      setBusy('');
-    }
-  };
-
-  const line = '1px solid var(--border-color, rgba(128,128,128,.15))';
+  const line = '1px solid var(--border-color)';
+  const modules = Object.entries(catalog).filter(([key]) => !APP_FEATURES.has(key as never));
 
   return (
     <>
@@ -145,102 +101,38 @@ export default function FeaturesSettingsPage() {
             <Link href="/app/settings" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-tertiary)', textDecoration: 'none', marginBottom: 8 }}>
               <ArrowLeft size={14} /> {t('Налаштування')}
             </Link>
-            <h2 className="page-title">{t('Модулі та інтеграції')}</h2>
+            <h2 className="page-title">{t('Модулі')}</h2>
             <div className="page-subtitle">{t('Вимкнене тут зникає з меню і перестає відповідати на запити')}</div>
           </div>
         </div>
 
         {loading && <Loader2 className="animate-spin" size={20} />}
-        {error && <div className="card" style={{ color: 'var(--danger, #e5484d)' }}>{error}</div>}
+        {error && <div className="card" style={{ color: 'var(--danger)' }}>{error}</div>}
 
         {!loading && (
-          <div className="card" style={{ maxWidth: 640, padding: 0 }}>
-            {Object.entries(catalog).map(([key, label], i) => {
-              const spec = features[key] ? fields[key] : undefined;
-              const st = status[key];
-              return (
-                <div key={key} style={{ borderTop: i ? line : 'none' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px' }}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>{t(label)}</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2 }}>{key}</div>
-                    </div>
-                    <button
-                      onClick={() => toggle(key)}
-                      disabled={busy === key}
-                      aria-label={`${features[key] ? t('Вимкнути') : t('Увімкнути')} ${t(label)}`}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: features[key] ? 'var(--success, #30a46c)' : 'var(--text-tertiary)' }}
-                    >
-                      {features[key] ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
-                    </button>
+          <div className="card" data-testid="modules-list" style={{ maxWidth: 640, padding: 0 }}>
+            {modules.map(([key, label], i) => (
+              <div key={key} data-testid={`module-${key}`} style={{ borderTop: i ? line : 'none' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px' }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>{t(label)}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2 }}>{key}</div>
                   </div>
-
-                  {key === PAYMENTS_FEATURE && (
-                    <div style={{ padding: '0 20px 16px 20px' }}>
-                      <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 10 }}>
-                        {t('Ключі шлюзу зберігаються на окремому екрані — у кожного провайдера свої поля.')}
-                        {' '}
-                        {t('Списати картку продукт поки не вміє в жодного з них: збережений ключ чекає на день, коли шлюз буде готовий.')}
-                      </div>
-                      <PaymentGatewayNotice compact />
-                    </div>
-                  )}
-
-                  {spec && spec.length > 0 && (
-                    <div style={{ padding: '0 20px 16px 20px' }}>
-                      {st && !st.configured && (
-                        <div style={{ fontSize: 12, color: 'var(--warning, #f5a524)', marginBottom: 10 }}>
-                          {t('Ключа немає — інтеграція увімкнена, але відповідатиме помилкою')}
-                        </div>
-                      )}
-                      {st?.configured && !st.perOrganization && (
-                        <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 10 }}>
-                          {t('Зараз використовується ключ сервера. Збережіть свій, щоб від нього від\'єднатись.')}
-                        </div>
-                      )}
-
-                      {spec.map((f) => (
-                        <label key={f.field} style={{ display: 'block', marginBottom: 10 }}>
-                          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>
-                            {f.label}
-                            {st?.values[f.field] && (
-                              <span style={{ color: 'var(--text-tertiary)', marginLeft: 8 }}>
-                                {t('збережено:')} {st.values[f.field]}
-                              </span>
-                            )}
-                            {f.hint && <span style={{ color: 'var(--text-tertiary)', marginLeft: 8 }}>· {f.hint}</span>}
-                          </div>
-                          <input
-                            type="password"
-                            autoComplete="off"
-                            value={drafts[key]?.[f.field] ?? ''}
-                            onChange={(e) => setDrafts((s) => ({ ...s, [key]: { ...(s[key] || {}), [f.field]: e.target.value } }))}
-                            placeholder={st?.values[f.field] ? t('Замінити') : t('Вставте ключ')}
-                            style={{ width: '100%', padding: '8px 10px', fontSize: 13, borderRadius: 6, border: line, background: 'var(--bg-secondary, transparent)', color: 'var(--text-primary)' }}
-                          />
-                        </label>
-                      ))}
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <button
-                          onClick={() => saveKeys(key)}
-                          disabled={busy === key || !Object.values(drafts[key] || {}).some((v) => v !== '')}
-                          className="btn btn-secondary"
-                          style={{ fontSize: 13 }}
-                        >
-                          {busy === key ? t('Зберігаю…') : t('Зберегти ключі')}
-                        </button>
-                        {saved === key && (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--success, #30a46c)' }}>
-                            <Check size={14} /> {t('Збережено')}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                  <button
+                    onClick={() => toggle(key)}
+                    disabled={busy === key}
+                    aria-label={`${features[key] ? t('Вимкнути') : t('Увімкнути')} ${t(label)}`}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: features[key] ? 'var(--success)' : 'var(--text-tertiary)' }}
+                  >
+                    {features[key] ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
+                  </button>
                 </div>
-              );
-            })}
+              </div>
+            ))}
+            <div style={{ borderTop: line, padding: '12px 20px', fontSize: 12, color: 'var(--text-tertiary)' }}>
+              {t('Фіскалізація, онлайн-оплата, пошта та інші звʼязки з чужими системами — на екрані')}{' '}
+              <Link href="/app/settings/apps">{t('Застосунки')}</Link>
+            </div>
           </div>
         )}
 

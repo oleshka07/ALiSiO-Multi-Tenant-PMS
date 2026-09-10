@@ -45,6 +45,15 @@ INSERT INTO categories (id, property_id, name, type) VALUES
   ('rlsprobe_cat_a', 'rlsprobe_prop_a', 'A rooms', 'resort'),
   ('rlsprobe_cat_b', 'rlsprobe_prop_b', 'B rooms', 'resort');
 
+-- Блок «Застосунки» (0400): стан звʼязку і попит «хочу» — обидва тенантні.
+-- Стан fiskaly A з ТЕКСТОМ помилки: саме текст чужої відмови не має дістатись
+-- сусідові; «хочу» A — лічильник попиту читає лише постачальник.
+INSERT INTO app_connections (id, organization_id, property_id, app, status, last_error) VALUES
+  ('rlsprobe_conn_a', 'rlsprobe_a', 'rlsprobe_prop_a', 'fiskaly', 'error', 'A: TSS quota exceeded'),
+  ('rlsprobe_conn_b', 'rlsprobe_b', NULL, 'smtp', 'connected', NULL);
+INSERT INTO app_wishes (id, organization_id, app) VALUES
+  ('rlsprobe_wish_a', 'rlsprobe_a', 'winhotel_import');
+
 COMMIT;
 
 -- ── As tenant B ─────────────────────────────────────────────────────────────
@@ -72,6 +81,17 @@ BEGIN
   DELETE FROM properties WHERE id = 'rlsprobe_prop_a';
   GET DIAGNOSTICS n = ROW_COUNT;
   IF n <> 0 THEN RAISE EXCEPTION 'B deleted % of A''s properties', n; END IF;
+
+  -- Застосунки (0400): текст чужої помилки і чужий попит невидимі.
+  SELECT count(*) INTO n FROM app_connections WHERE app = 'fiskaly';
+  IF n <> 0 THEN RAISE EXCEPTION 'B can see A''s app connection (% rows)', n; END IF;
+  SELECT count(*) INTO n FROM app_connections;
+  IF n <> 1 THEN RAISE EXCEPTION 'B sees % app connections, expected only its own', n; END IF;
+  SELECT count(*) INTO n FROM app_wishes;
+  IF n <> 0 THEN RAISE EXCEPTION 'B can see A''s wish (% rows)', n; END IF;
+  UPDATE app_connections SET last_error = 'hijacked' WHERE id = 'rlsprobe_conn_a';
+  GET DIAGNOSTICS n = ROW_COUNT;
+  IF n <> 0 THEN RAISE EXCEPTION 'B updated A''s app connection'; END IF;
 
   RAISE NOTICE '  ok  B cannot see, change or delete A''s rows';
 END $$;
@@ -129,6 +149,11 @@ BEGIN
   GET DIAGNOSTICS n = ROW_COUNT;
   IF n <> 1 THEN RAISE EXCEPTION 'A cannot rename its own property'; END IF;
 
+  SELECT count(*) INTO n FROM app_connections WHERE id = 'rlsprobe_conn_a' AND last_error = 'A: TSS quota exceeded';
+  IF n <> 1 THEN RAISE EXCEPTION 'A cannot see its own app connection'; END IF;
+  SELECT count(*) INTO n FROM app_wishes WHERE id = 'rlsprobe_wish_a';
+  IF n <> 1 THEN RAISE EXCEPTION 'A cannot see its own wish'; END IF;
+
   RAISE NOTICE '  ok  A still sees and changes its own rows';
 END $$;
 
@@ -182,6 +207,8 @@ END $$;
 
 -- ── Cleanup ─────────────────────────────────────────────────────────────────
 BEGIN;
+DELETE FROM app_wishes WHERE id LIKE 'rlsprobe_%';
+DELETE FROM app_connections WHERE id LIKE 'rlsprobe_%';
 DELETE FROM categories WHERE id LIKE 'rlsprobe_%';
 DELETE FROM properties WHERE id LIKE 'rlsprobe_%';
 DELETE FROM organizations WHERE id LIKE 'rlsprobe_%';

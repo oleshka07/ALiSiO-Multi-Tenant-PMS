@@ -232,3 +232,10 @@ import {
 // Змінювати — той, хто відповідає за звітність.
 export const getInvoiceSettingsRoute = withModule('invoicing', 'manage_documents', _getInvoiceSettings);
 export const putInvoiceSettingsRoute = withModule('invoicing', 'manage_finance_settings', _putInvoiceSettings);
+
+// ─── Клієнт TSE — двері для екрана «Застосунки» ──────────────────────────
+// Один рядок, дозволений рецензією 1 блоку «Застосунки» (10.09.2026): картка
+// fiskaly перевіряє звʼязок і підключає TSE, і робить це через фасад, а не
+// через `data/` (check-boundaries).
+export { fiskalyDevice, fiskalyProbe, fiskalyConnect, FiskalyConnectError } from '../data/fiskaly-sign-de';
+export type { FiskalyConfig, FiskalyTss, FiskalyConnectOptions } from '../data/fiskaly-sign-de';

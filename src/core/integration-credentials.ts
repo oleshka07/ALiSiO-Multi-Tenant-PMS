@@ -2,6 +2,7 @@
 import { getDb } from './db/index.ts';
 import { getSql } from './db/async.ts';
 import { encryptSecret, decryptSecret, secretsConfigured } from './security/secrets.ts';
+import { APPS, type AppId } from './apps.ts';
 
 /**
  * Whose integration account is this?
@@ -23,12 +24,17 @@ import { encryptSecret, decryptSecret, secretsConfigured } from './security/secr
  */
 
 /**
- * Spelled out rather than derived from PAYMENT_PROVIDERS: payments.ts imports
- * this module, so importing it back would be a cycle. payments.check.ts keeps
- * the two lists honest instead — it fails if a payment provider exists that
- * this union does not name.
+ * Виведено з реєстру застосунків (`apps.ts`, Блок «Застосунки», 09.09.2026),
+ * плюс один названий канал, який застосунком НЕ є: `channel_manager` — ключ
+ * модуля `channels` (З4). До цього юніон був написаний руками, бо
+ * `payments.ts` імпортує цей модуль, і виводити його з `PAYMENT_PROVIDERS` було
+ * б циклом; `apps.ts` не імпортує нічого з рантайму, тож із нього — можна.
+ * `apps.check.ts` тримає це в обидва боки: зайвий запис з будь-якого боку —
+ * червона збірка. Три шлюзи названі й поіменно, хоч вони вже в `AppId`:
+ * `payments.check.ts` читає ТЕКСТ цього рядка і вимагає бачити кожен id
+ * шлюзу — так він тримав юніон чесним до появи реєстру, і ця сторожа лишається.
  */
-export type IntegrationChannel = 'fiskaly' | 'stripe' | 'paypal' | 'teya' | 'smtp' | 'channel_manager';
+export type IntegrationChannel = AppId | 'stripe' | 'paypal' | 'teya' | 'channel_manager';
 
 export interface IntegrationCredentials {
   clientId?: string;
@@ -86,7 +92,7 @@ function fromEnv(channel: IntegrationChannel): IntegrationCredentials | null {
  */
 const SEAL = 'enc1:';
 
-function seal(plain: string | null): string | null {
+export function seal(plain: string | null): string | null {
   if (plain === null || plain === '') return plain;
   if (plain.startsWith(SEAL)) return plain; // already sealed — do not double-wrap
   // No key means no save. Storing it in the clear "for now" is exactly how the
@@ -108,7 +114,7 @@ function seal(plain: string | null): string | null {
  * API key: a confusing 401 from a third party instead of a plain "this hotel
  * has no usable key". Null is the honest answer.
  */
-function unseal(stored: string | null | undefined): string | null {
+export function unseal(stored: string | null | undefined): string | null {
   if (!stored) return null;
   if (!stored.startsWith(SEAL)) return stored;
   try {
@@ -174,104 +180,40 @@ export async function integrationConfigured(
 // ─── The settings screen ──────────────────────────────────────────────────
 
 /**
- * Which secret each integration needs, named the way its own dashboard names
- * it. One list, read by both the API and the screen, so a new integration is
- * one entry rather than three edits that can disagree.
+ * Which secret each integration needs, and which feature switch governs it.
  *
- * Payment gateways are here too, at the bottom. The note that used to stand in
- * this spot said they were configured «per booking site, and that screen
- * already exists (Сайти → Платежі)» — there was no such screen, and there had
- * never been one. They are per organization, like every other key, and their
- * screen is /app/settings/payments.
+ * Обидві мапи ВИВЕДЕНІ з реєстру застосунків (`apps.ts`): застосунок із полями
+ * ключів дає рядок тут, і саме звідти його читають екран «Застосунки»
+ * (картка) та API збереження. Форма для решти коду не змінилась — мапа
+ * «канал → поля» і «канал → ключ реєстру або null».
+ *
+ * NOT the channel name as the feature. The settings handler used to cast the
+ * channel straight to a feature key, which worked only by coincidence:
+ * `fiskaly` is not — its switch is `fiscal_de` — so the German TSE key could
+ * never be saved (409 every time) and never even appeared on the screen.
+ *
+ * `null` — вимикача немає: пошту шле кожен готель, лист із підтвердженням броні
+ * не купують окремо; питання лише в тому, ЧИЄЮ адресою він іде.
+ *
+ * Один рядок поза реєстром — менеджер каналів. Не застосунок (З4), а модуль
+ * `channels`; назва нейтральна навмисно: який саме менеджер обслуговує цей
+ * готель, каже `cm_connections.provider`, а не назва поля в ядрі (інваріант
+ * И1). Один ключ обслуговує ВСІ обʼєкти акаунта, тому кожен запит до нього
+ * мусить називати обʼєкт окремо. Сам ключ іде через seal(), як усі інші; у
+ * `cm_connections` лежать лише токен і секрет вебхука (інваріант 7).
  */
-/**
- * Which feature switch governs which integration.
- *
- * NOT the channel name. The settings handler used to cast the channel straight
- * to a feature key, which worked only by coincidence: `hostex` and `pricelabs`
- * happened to be spelled the same on both sides. `fiskaly` is not — its switch
- * is `fiscal_de` — so the German TSE key could never be saved (409 every time)
- * and never even appeared on the screen, because the same cast filtered it out
- * of the list. Nobody noticed while the two coincidences were still here.
- *
- * `null` would mean an integration with no switch of its own. Nothing uses it
- * today; the type keeps it because the next integration may.
- */
+const CHANNEL_MANAGER_FIELDS: { field: 'accessToken' | 'clientId' | 'clientSecret'; label: string; hint?: string }[] = [
+  { field: 'accessToken', label: 'API key', hint: 'Кабінет менеджера каналів → Profile → API key' },
+];
+
 export const INTEGRATION_FEATURE: Record<string, string | null> = {
-  fiskaly: 'fiscal_de',
-  // `null` — вимикача немає, і не має бути. Пошту шле кожен готель: лист із
-  // підтвердженням броні не купують окремо. Питання лише в тому, ЧИЄЮ адресою
-  // він іде, і на це відповідають самі облікові дані.
-  smtp: null,
-  // One switch for all three gateways: «онлайн-оплата» is the module, and
-  // which provider serves it is the hotel's choice, not a separate purchase.
-  stripe: 'online_payments',
-  paypal: 'online_payments',
-  teya: 'online_payments',
-  // Ключ менеджера каналів. Назва нейтральна навмисно: який саме менеджер
-  // обслуговує цей готель, каже `cm_connections.provider`, а не назва поля в
-  // ядрі (інваріант И1). Один готель — один менеджер каналів; двох одночасно
-  // не буває, бо вони б розсилали наявність один поверх одного.
+  ...Object.fromEntries(APPS.filter((a) => a.fields.length > 0).map((a) => [a.id, a.feature])),
   channel_manager: 'channels',
 };
 
 export const INTEGRATION_FIELDS: Record<string, { field: 'accessToken' | 'clientId' | 'clientSecret'; label: string; hint?: string }[]> = {
-  // TSE (KassenSichV). Which TSS and which registered till a PROPERTY uses
-  // are identifiers, not secrets — they live in fin_fiscal_settings.
-  fiskaly: [
-    { field: 'clientId', label: 'API key', hint: 'fiskaly dashboard → SIGN DE' },
-    { field: 'clientSecret', label: 'API secret' },
-  ],
-
-  // Менеджер каналів. Один ключ обслуговує ВСІ обʼєкти акаунта, тому кожен
-  // запит до нього мусить називати обʼєкт окремо — інакше стрічка ревізій
-  // віддає броні всіх готелів одним списком. Сам ключ сюди йде через seal(),
-  // як усі інші: у `cm_connections` лежать лише токен і секрет вебхука
-  // (інваріант 7).
-  channel_manager: [
-    { field: 'accessToken', label: 'API key', hint: 'Кабінет менеджера каналів → Profile → API key' },
-  ],
-
-  // ── Payment gateways ──────────────────────────────────────────────────
-  //
-  // Here rather than in a registry of their own, on purpose: this is the one
-  // path that encrypts with seal(), refuses to save without APP_SECRET_KEY and
-  // never returns a secret to a screen. A second mechanism for payment keys
-  // would be a second chance to get all three wrong.
-  //
-  // Which of these a screen shows is decided by src/core/payments.ts — the
-  // «Модулі та інтеграції» page skips them, the «Онлайн-оплата» page shows
-  // only them. Saving a key here does NOT make the product able to charge a
-  // card; see the note on `live` in that file.
-  stripe: [
-    { field: 'clientId', label: 'Publishable key', hint: 'pk_live_… — Stripe Dashboard → Developers → API keys' },
-    { field: 'clientSecret', label: 'Secret key', hint: 'sk_live_…' },
-  ],
-  paypal: [
-    { field: 'clientId', label: 'Client ID', hint: 'PayPal Developer → Apps & Credentials' },
-    { field: 'clientSecret', label: 'Secret' },
-  ],
-  teya: [
-    { field: 'clientId', label: 'Client ID', hint: 'Teya Portal → API' },
-    { field: 'clientSecret', label: 'Client secret' },
-  ],
-
-  // ── Пошта готелю ──────────────────────────────────────────────────────
-  //
-  // Три поля, а не пʼять, і це свідоме обмеження. Порт фіксований 587 зі
-  // STARTTLS — так уже робив і серверний транспорт (465 він перетворював на
-  // 587), і так працює переважна більшість провайдерів. Адреса відправника
-  // дорівнює логіну: провайдери, які дозволяють слати «від» іншої адреси,
-  // рідкість, а спроба це підтримати перетворює екран на конструктор.
-  //
-  // Порт і окрема адреса відправника — наступне поле й наступна міграція,
-  // коли зʼявиться готель, якому цього замало. Записано, щоб наступний читач
-  // не шукав, куди вони поділись.
-  smtp: [
-    { field: 'clientId', label: 'SMTP-сервер', hint: 'напр. smtp.gmail.com · порт 587, STARTTLS' },
-    { field: 'accessToken', label: 'Логін', hint: 'він же адреса відправника' },
-    { field: 'clientSecret', label: 'Пароль' },
-  ],
+  ...Object.fromEntries(APPS.filter((a) => a.fields.length > 0).map((a) => [a.id, a.fields])),
+  channel_manager: CHANNEL_MANAGER_FIELDS,
 };
 
 const COLUMN = { accessToken: 'access_token', clientId: 'client_id', clientSecret: 'client_secret' } as const;
