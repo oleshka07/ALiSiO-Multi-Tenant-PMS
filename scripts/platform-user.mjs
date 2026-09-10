@@ -1,9 +1,17 @@
 /**
  * The supplier's own account — the one that can step into any customer.
  *
- *   node scripts/platform-user.mjs --email you@company.com [--password '…']
+ *   node scripts/platform-user.mjs --email you@company.com --supplier [--password '…']
  *   node scripts/platform-user.mjs --list
  *   node scripts/platform-user.mjs --email you@company.com --deactivate
+ *
+ * Готельєр із кількома рахунками (П21) — той самий акаунт, але РОДУ
+ * `hotelier`, і він входить лише туди, де має членство:
+ *
+ *   node scripts/platform-user.mjs --email owner@hotel.com            # створити (рід за замовчуванням)
+ *   node scripts/platform-user.mjs --email owner@hotel.com --grant <org-slug-або-id>
+ *   node scripts/platform-user.mjs --email owner@hotel.com --revoke <org-slug-або-id>
+ *   node scripts/platform-user.mjs --email owner@hotel.com --memberships
  *
  * On the server, inside the container of the environment:
  *
@@ -21,6 +29,20 @@
  *
  * Each environment is a separate database, so a platform account on beta is not
  * one on prod. Run it twice if you want both.
+ *
+ * ── Рід пишеться руками, і слабший — за замовчуванням ─────────────────────
+ *
+ * `--supplier` дає акаунт, який входить у БУДЬ-ЯКИЙ рахунок; без прапорця
+ * створюється готельєр, який без членства не входить нікуди. Так тому, що
+ * забутий прапорець мусить давати нуль доступу, а не всі готелі на сервері
+ * (інваріанти 8 і 13).
+ *
+ * ── Один пароль, а не два ─────────────────────────────────────────────────
+ *
+ * `--grant` за замовчуванням ЗНІМАЄ локальний пароль того рядка `app_users`:
+ * інакше в людини лишилось би два входи з двома паролями в той самий готель —
+ * рівно те, від чого П21 і йде. `--keep-local-password` лишає обидва свідомо, і
+ * скрипт про це каже вголос.
  */
 import crypto from 'node:crypto';
 
@@ -37,13 +59,14 @@ const sql = getSql();
 
 // ── --list ────────────────────────────────────────────────────────────────
 if (has('list')) {
-  const rows = await sql.rows('SELECT email, full_name, is_active, last_login, created_at FROM platform_users ORDER BY email');
+  const rows = await sql.rows('SELECT email, full_name, is_active, last_login, created_at, kind FROM platform_users ORDER BY email');
   if (rows.length === 0) {
     console.log('\nПлатформних акаунтів немає.');
   } else {
     console.log('\nПлатформні акаунти:');
     for (const r of rows) {
-      console.log(`  ${r.email}  ·  ${r.is_active ? 'активний' : 'ВИМКНЕНИЙ'}  ·  останній вхід: ${r.last_login || '—'}`);
+      const kind = r.kind === 'supplier' ? 'ПОСТАЧАЛЬНИК (усі рахунки)' : 'готельєр (лише свої)';
+      console.log(`  ${r.email}  ·  ${kind}  ·  ${r.is_active ? 'активний' : 'ВИМКНЕНИЙ'}  ·  останній вхід: ${r.last_login || '—'}`);
     }
   }
   process.exit(0);
@@ -57,9 +80,87 @@ if (!email) {
 }
 
 const existing = await sql.row(
-  'SELECT id, email, full_name, is_active FROM platform_users WHERE lower(email) = lower(?)',
+  'SELECT id, email, full_name, is_active, kind FROM platform_users WHERE lower(email) = lower(?)',
   [email],
 );
+
+// ── --memberships / --grant / --revoke ────────────────────────────────────
+//
+// Перелік «у які рахунки ця людина може входити». Постачальникові він не
+// потрібен і не питається — його рід і є переліком.
+if (has('memberships') || arg('grant') || arg('revoke')) {
+  if (!existing) {
+    console.error(`\nНемає платформного акаунта ${email}. Спершу створіть його.`);
+    process.exit(1);
+  }
+  if (existing.kind === 'supplier') {
+    console.error(`\n${email} — ПОСТАЧАЛЬНИК: він входить у будь-який рахунок, і перелік йому нічого не додає.`);
+    console.error('Членство заводиться готельєрам. Якщо це помилка роду — заведіть окремий акаунт.');
+    process.exit(2);
+  }
+
+  const findOrg = async (key) => await sql.row(
+    'SELECT id, name, slug FROM organizations WHERE id = ? OR lower(slug) = lower(?)', [key, key]);
+
+  if (arg('grant')) {
+    const org = await findOrg(arg('grant'));
+    if (!org) { console.error(`\nРахунку «${arg('grant')}» немає.`); process.exit(1); }
+
+    // Ким людина є в тому рахунку — без відповіді членства не існує.
+    const appUser = await sql.row(
+      'SELECT id, full_name, role, password_hash FROM app_users WHERE organization_id = ? AND lower(email) = lower(?)',
+      [org.id, email]);
+    if (!appUser) {
+      console.error(`\nУ рахунку «${org.name}» немає користувача з поштою ${email}.`);
+      console.error('Членство мусить назвати, КИМ людина є в тому рахунку: заведіть їй користувача');
+      console.error('на екрані «Користувачі» цього готелю, потім повторіть.');
+      process.exit(1);
+    }
+
+    const id = crypto.randomUUID().replace(/-/g, '').slice(0, 32);
+    await sql.run(
+      `INSERT INTO platform_memberships (id, platform_user_id, organization_id, app_user_id)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT (platform_user_id, organization_id) DO UPDATE SET app_user_id = excluded.app_user_id`,
+      [id, existing.id, org.id, appUser.id]);
+    console.log(`\n✓ ${email} → «${org.name}» як ${appUser.full_name} (${appUser.role}).`);
+
+    if (appUser.password_hash && !has('keep-local-password')) {
+      await sql.run('UPDATE app_users SET password_hash = NULL WHERE id = ?', [appUser.id]);
+      console.log('  Локальний пароль цього рядка знято: вхід тепер один — платформний.');
+      console.log('  (--keep-local-password лишає обидва, якщо це навмисно.)');
+    } else if (appUser.password_hash) {
+      console.log('  УВАГА: локальний пароль лишено — у людини два входи і два паролі в цей готель.');
+    }
+    process.exit(0);
+  }
+
+  if (arg('revoke')) {
+    const org = await findOrg(arg('revoke'));
+    if (!org) { console.error(`\nРахунку «${arg('revoke')}» немає.`); process.exit(1); }
+    const res = await sql.run(
+      'DELETE FROM platform_memberships WHERE platform_user_id = ? AND organization_id = ?',
+      [existing.id, org.id]);
+    // Членство знято — сесія, яка стоїть усередині, мусить вийти. Інакше
+    // «знято» означало б «не увійде наступного разу», а не «вже не всередині».
+    await sql.run(
+      'UPDATE platform_sessions SET acting_organization_id = NULL WHERE platform_user_id = ? AND acting_organization_id = ?',
+      [existing.id, org.id]);
+    console.log(res.changes ? `\n✓ ${email} більше не входить у «${org.name}»; відкриті сесії виведено.`
+                            : `\n${email} і не мав членства в «${org.name}».`);
+    process.exit(0);
+  }
+
+  const rows = await sql.rows(
+    `SELECT o.name, o.slug, u.full_name, u.role
+       FROM platform_memberships m
+       JOIN organizations o ON o.id = m.organization_id
+       JOIN app_users u ON u.id = m.app_user_id
+      WHERE m.platform_user_id = ? ORDER BY o.name`, [existing.id]);
+  console.log(rows.length ? `\nРахунки ${email}:` : `\n${email} не має жодного рахунку — увійти нікуди.`);
+  for (const r of rows) console.log(`  ${r.name} (${r.slug})  ·  ${r.full_name} — ${r.role}`);
+  process.exit(0);
+}
 
 // ── --deactivate / --activate ─────────────────────────────────────────────
 if (has('deactivate') || has('activate')) {
@@ -100,11 +201,15 @@ if (existing) {
   console.log(`\n✓ Пароль платформного акаунта ${existing.email} оновлено.`);
 } else {
   const id = crypto.randomUUID().replace(/-/g, '').slice(0, 32);
+  const kind = has('supplier') ? 'supplier' : 'hotelier';
   await sql.run(
-    'INSERT INTO platform_users (id, email, full_name, password_hash, is_active) VALUES (?, ?, ?, ?, TRUE)',
-    [id, email, arg('name') || null, hash],
+    'INSERT INTO platform_users (id, email, full_name, password_hash, is_active, kind) VALUES (?, ?, ?, ?, TRUE, ?)',
+    [id, email, arg('name') || null, hash, kind],
   );
-  console.log(`\n✓ Платформний акаунт ${email} створено.`);
+  console.log(`\n✓ Платформний акаунт ${email} створено — рід: ${kind === 'supplier' ? 'ПОСТАЧАЛЬНИК (усі рахунки)' : 'готельєр'}.`);
+  if (kind === 'hotelier') {
+    console.log('  Він поки не входить нікуди: заведіть членство --grant <рахунок>.');
+  }
 }
 
 // Read it back. An UPDATE the row-level policy filtered away returns success

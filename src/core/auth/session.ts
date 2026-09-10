@@ -51,7 +51,13 @@ export async function currentActor(): Promise<Actor | null> {
   const platform = await getPlatformSession(store.get(PLATFORM_COOKIE)?.value);
   if (!platform || !platform.actingOrganizationId) return null;
 
+  // `null` означає, що особи в цьому рахунку немає — членство зникло, поки
+  // сесія стояла всередині (П21). Тоді актора немає взагалі, і кожен тенантний
+  // маршрут відмовляє як чужому: це та сама відповідь, що й на сесію, яка
+  // нікуди не входила. Мовчазно лишити людину всередині з чиїмись правами було
+  // б протилежністю того, для чого перелік і заводили.
   const acting = await actingUserFor(platform, platform.actingOrganizationId);
+  if (!acting) return null;
   return {
     user: acting,
     organizationId: platform.actingOrganizationId,

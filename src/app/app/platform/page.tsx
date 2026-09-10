@@ -36,7 +36,7 @@ interface Org {
 export default function PlatformHomePage() {
   const t = useT();
   const [orgs, setOrgs] = useState<Org[]>([]);
-  const [me, setMe] = useState<{ email: string; acting: { id: string; name: string } | null } | null>(null);
+  const [me, setMe] = useState<{ email: string; kind?: string; acting: { id: string; name: string } | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -95,6 +95,41 @@ export default function PlatformHomePage() {
   const fmtDate = (iso: string | null) => (iso ? String(iso).slice(0, 10) : '—');
 
   if (loading) return <div style={{ padding: 40 }}>{t('Завантаження…')}</div>;
+
+  // Готельєр бачить СВОЇ готелі й кнопку входу — і більше нічого (П21).
+  //
+  // Це не спрощення заради вигляду. Колонки поруч (обʼєктів, OTA, сайт, Setup
+  // progress) — панель ПОСТАЧАЛЬНИКА, якою він дивиться на клієнтів; маршрут
+  // готельєру їх і не віддає, тож таблиця вище намалювала б йому `undefined`
+  // у половині клітинок. Межа проходить по ролі: готельєр не стає постачальником.
+  if (me?.kind === 'hotelier') {
+    return (
+      <div style={{ maxWidth: 620, margin: '0 auto', padding: '32px 20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 700 }}>{t('Ваші готелі')}</h1>
+          <button onClick={logout} className="btn btn-sm btn-ghost">{t('Вийти')}</button>
+        </div>
+        <p style={{ color: 'var(--text-tertiary)', fontSize: 13, marginBottom: 20 }}>{me?.email}</p>
+        {error && <div className="login-error" style={{ marginBottom: 16 }}>{error}</div>}
+        {orgs.length === 0 && (
+          <div style={{ color: 'var(--text-tertiary)' }}>
+            {t('Жодного готелю поки не призначено. Зверніться до підтримки.')}
+          </div>
+        )}
+        {orgs.map((o) => (
+          <div key={o.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 16, marginBottom: 10 }}>
+            <div>
+              <div style={{ fontWeight: 600 }}>{o.name}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{o.slug}{o.default_currency ? ` · ${o.default_currency}` : ''}</div>
+            </div>
+            <button className="btn btn-sm" disabled={busy === o.id} onClick={() => enter(o.id)}>
+              {busy === o.id ? '…' : t('Увійти')}
+            </button>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 20px' }}>

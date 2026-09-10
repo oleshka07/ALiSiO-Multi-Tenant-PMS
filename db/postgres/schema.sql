@@ -529,10 +529,25 @@ CREATE TABLE "companies" (
   "email" TEXT,
   "phone" TEXT,
   "notes" TEXT,
+  "debtor_no" BIGINT,
+  "payment_terms_days" BIGINT,
   "archived_at" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id")
+);
+
+CREATE TABLE "consent_texts" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "consent_kind" TEXT NOT NULL,
+  "version" TEXT NOT NULL,
+  "locale" TEXT NOT NULL,
+  "body" TEXT NOT NULL,
+  "is_active" BOOLEAN DEFAULT true NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  UNIQUE ("organization_id", "consent_kind", "version", "locale")
 );
 
 CREATE TABLE "content_translations" (
@@ -862,6 +877,7 @@ CREATE TABLE "fin_folios" (
   "payer_address" TEXT,
   "payer_vat_no" TEXT,
   "payer_debtor_no" TEXT,
+  "company_id" TEXT,
   "property_id" TEXT,
   "status" TEXT DEFAULT 'open' NOT NULL,
   "label" TEXT,
@@ -1212,6 +1228,19 @@ CREATE TABLE "gift_cards" (
   CHECK (status IN ('draft', 'active', 'paid', 'activated', 'expired', 'cancelled'))
 );
 
+CREATE TABLE "guest_consents" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "guest_id" TEXT NOT NULL,
+  "consent_kind" TEXT NOT NULL,
+  "version" TEXT NOT NULL,
+  "source" TEXT NOT NULL,
+  "given_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "revoked_at" TIMESTAMPTZ,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id")
+);
+
 CREATE TABLE "guest_page_config" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "unit_type_id" TEXT NOT NULL,
@@ -1282,6 +1311,7 @@ CREATE TABLE "guests" (
   "document_number" TEXT,
   "date_of_birth" TEXT,
   "notes" TEXT,
+  "merged_into" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "gender" TEXT,
@@ -1467,6 +1497,7 @@ CREATE TABLE "organizations" (
   "invoice_email" TEXT,
   "website" TEXT,
   "ocr_cloud_fallback" BIGINT DEFAULT 0 NOT NULL,
+  "next_debtor_no" BIGINT DEFAULT 1 NOT NULL,
   PRIMARY KEY ("id"),
   UNIQUE ("slug")
 );
@@ -1500,6 +1531,16 @@ CREATE TABLE "platform_audit" (
   CHECK (action IN ('enter', 'leave'))
 );
 
+CREATE TABLE "platform_memberships" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "platform_user_id" TEXT NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "app_user_id" TEXT NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  UNIQUE ("platform_user_id", "organization_id")
+);
+
 CREATE TABLE "platform_sessions" (
   "id" TEXT NOT NULL,
   "platform_user_id" TEXT NOT NULL,
@@ -1514,12 +1555,14 @@ CREATE TABLE "platform_users" (
   "email" TEXT NOT NULL,
   "full_name" TEXT,
   "password_hash" TEXT NOT NULL,
+  "kind" TEXT DEFAULT 'hotelier' NOT NULL,
   "is_active" BOOLEAN DEFAULT true NOT NULL,
   "last_login" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
-  UNIQUE ("email")
+  UNIQUE ("email"),
+  CHECK (kind IN ('supplier', 'hotelier'))
 );
 
 CREATE TABLE "price_calendar" (
@@ -2393,6 +2436,8 @@ ALTER TABLE "cm_sends" ADD CONSTRAINT "fk_cm_sends_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "companies" ADD CONSTRAINT "fk_companies_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "consent_texts" ADD CONSTRAINT "fk_consent_texts_organization_id_1"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "coupons" ADD CONSTRAINT "fk_coupons_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "coupons" ADD CONSTRAINT "fk_coupons_gift_card_rule_id_2"
@@ -2473,9 +2518,11 @@ ALTER TABLE "fin_folio_payments" ADD CONSTRAINT "fk_fin_folio_payments_property_
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE SET NULL;
 ALTER TABLE "fin_folio_payments" ADD CONSTRAINT "fk_fin_folio_payments_organization_id_4"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "fin_folios" ADD CONSTRAINT "fk_fin_folios_reservation_id_1"
+ALTER TABLE "fin_folios" ADD CONSTRAINT "fk_fin_folios_company_id_1"
+  FOREIGN KEY ("company_id") REFERENCES "companies" ("id") ON DELETE SET NULL;
+ALTER TABLE "fin_folios" ADD CONSTRAINT "fk_fin_folios_reservation_id_2"
   FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE SET NULL;
-ALTER TABLE "fin_folios" ADD CONSTRAINT "fk_fin_folios_organization_id_2"
+ALTER TABLE "fin_folios" ADD CONSTRAINT "fk_fin_folios_organization_id_3"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "fin_invoice_lines" ADD CONSTRAINT "fk_fin_invoice_lines_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
@@ -2555,6 +2602,10 @@ ALTER TABLE "gift_cards" ADD CONSTRAINT "fk_gift_cards_reservation_id_3"
   FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE SET NULL;
 ALTER TABLE "gift_cards" ADD CONSTRAINT "fk_gift_cards_property_id_4"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "guest_consents" ADD CONSTRAINT "fk_guest_consents_guest_id_1"
+  FOREIGN KEY ("guest_id") REFERENCES "guests" ("id") ON DELETE CASCADE;
+ALTER TABLE "guest_consents" ADD CONSTRAINT "fk_guest_consents_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "guest_page_config" ADD CONSTRAINT "fk_guest_page_config_unit_type_id_1"
   FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id") ON DELETE CASCADE;
 ALTER TABLE "guest_page_sections" ADD CONSTRAINT "fk_guest_page_sections_property_id_1"
@@ -2565,7 +2616,9 @@ ALTER TABLE "guest_registrations" ADD CONSTRAINT "fk_guest_registrations_guest_i
   FOREIGN KEY ("guest_id") REFERENCES "guests" ("id") ON DELETE CASCADE;
 ALTER TABLE "guest_registrations" ADD CONSTRAINT "fk_guest_registrations_reservation_id_2"
   FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE CASCADE;
-ALTER TABLE "guests" ADD CONSTRAINT "fk_guests_organization_id_1"
+ALTER TABLE "guests" ADD CONSTRAINT "fk_guests_merged_into_1"
+  FOREIGN KEY ("merged_into") REFERENCES "guests" ("id") ON DELETE SET NULL;
+ALTER TABLE "guests" ADD CONSTRAINT "fk_guests_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "ical_channels" ADD CONSTRAINT "fk_ical_channels_unit_id_1"
   FOREIGN KEY ("unit_id") REFERENCES "units" ("id") ON DELETE CASCADE;
@@ -2609,6 +2662,12 @@ ALTER TABLE "platform_audit" ADD CONSTRAINT "fk_platform_audit_platform_user_id_
   FOREIGN KEY ("platform_user_id") REFERENCES "platform_users" ("id") ON DELETE SET NULL;
 ALTER TABLE "platform_audit" ADD CONSTRAINT "fk_platform_audit_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "platform_memberships" ADD CONSTRAINT "fk_platform_memberships_app_user_id_1"
+  FOREIGN KEY ("app_user_id") REFERENCES "app_users" ("id") ON DELETE CASCADE;
+ALTER TABLE "platform_memberships" ADD CONSTRAINT "fk_platform_memberships_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "platform_memberships" ADD CONSTRAINT "fk_platform_memberships_platform_user_id_3"
+  FOREIGN KEY ("platform_user_id") REFERENCES "platform_users" ("id") ON DELETE CASCADE;
 ALTER TABLE "platform_sessions" ADD CONSTRAINT "fk_platform_sessions_acting_organization_id_1"
   FOREIGN KEY ("acting_organization_id") REFERENCES "organizations" ("id") ON DELETE SET NULL;
 ALTER TABLE "platform_sessions" ADD CONSTRAINT "fk_platform_sessions_platform_user_id_2"
@@ -2855,8 +2914,11 @@ CREATE INDEX "idx_cm_outbox_org" ON "cm_outbox" ("organization_id");
 CREATE INDEX "idx_cm_outbox_pending" ON "cm_outbox" ("connection_id", "kind") WHERE sent_at IS NULL AND claimed_at IS NULL;
 CREATE INDEX "idx_cm_sends_connection" ON "cm_sends" ("connection_id", "sent_at");
 CREATE INDEX "idx_cm_sends_org" ON "cm_sends" ("organization_id");
+CREATE UNIQUE INDEX "idx_companies_debtor_no" ON "companies" ("organization_id", "debtor_no") WHERE debtor_no IS NOT NULL ;
 CREATE INDEX "idx_companies_org" ON "companies" ("organization_id", "name");
 CREATE UNIQUE INDEX "idx_companies_org_business_id" ON "companies" ("organization_id", "business_id") WHERE business_id IS NOT NULL;
+CREATE INDEX "idx_consent_texts_org" ON "consent_texts" ("organization_id");
+CREATE UNIQUE INDEX "idx_consent_texts_org_kind_version" ON "consent_texts" ("organization_id", "consent_kind", "version", "locale");
 CREATE INDEX "idx_ct_hash" ON "content_translations" ("text_hash");
 CREATE INDEX "idx_ct_lang" ON "content_translations" ("text_hash", "lang");
 CREATE INDEX "idx_coupons_org" ON "coupons" ("organization_id");
@@ -2888,6 +2950,7 @@ CREATE INDEX "idx_fin_folio_items_invoice" ON "fin_folio_items" ("invoice_id");
 CREATE INDEX "idx_fin_folio_items_order" ON "fin_folio_items" ("service_order_id");
 CREATE INDEX "idx_fin_folio_payments_folio" ON "fin_folio_payments" ("folio_id");
 CREATE INDEX "idx_fin_folio_payments_org" ON "fin_folio_payments" ("organization_id", "paid_at");
+CREATE INDEX "idx_fin_folios_company" ON "fin_folios" ("organization_id", "company_id");
 CREATE INDEX "idx_fin_folios_org" ON "fin_folios" ("organization_id", "status");
 CREATE INDEX "idx_fin_folios_res" ON "fin_folios" ("reservation_id");
 CREATE INDEX "idx_fin_invoice_lines_invoice" ON "fin_invoice_lines" ("invoice_id", "position");
@@ -2937,7 +3000,10 @@ CREATE UNIQUE INDEX "idx_gift_cards_code" ON "gift_cards" ("code");
 CREATE INDEX "idx_gift_cards_org" ON "gift_cards" ("organization_id");
 CREATE INDEX "idx_gift_cards_property" ON "gift_cards" ("property_id");
 CREATE INDEX "idx_gift_cards_status" ON "gift_cards" ("status");
+CREATE INDEX "idx_guest_consents_guest" ON "guest_consents" ("organization_id", "guest_id", "consent_kind");
+CREATE INDEX "idx_guest_consents_org" ON "guest_consents" ("organization_id");
 CREATE UNIQUE INDEX "idx_guest_page_sections_row" ON "guest_page_sections" ("property_id", "section");
+CREATE INDEX "idx_guests_merged_into" ON "guests" ("organization_id") WHERE merged_into IS NULL;
 CREATE INDEX "idx_guests_name" ON "guests" ("last_name", "first_name");
 CREATE INDEX "idx_guests_org" ON "guests" ("organization_id");
 CREATE INDEX "idx_ical_channels_org" ON "ical_channels" ("organization_id");
@@ -2954,6 +3020,7 @@ CREATE INDEX "idx_invoices_reservation" ON "invoices" ("reservation_id");
 CREATE INDEX "idx_org_currencies_org" ON "organization_currencies" ("organization_id");
 CREATE INDEX "idx_partner_reports_period" ON "partner_reports" ("organization_id", "period");
 CREATE INDEX "idx_platform_audit_org" ON "platform_audit" ("organization_id", "at");
+CREATE INDEX "idx_platform_memberships_user" ON "platform_memberships" ("platform_user_id");
 CREATE INDEX "idx_platform_sessions_user" ON "platform_sessions" ("platform_user_id");
 CREATE INDEX "idx_price_cal_date" ON "price_calendar" ("date");
 CREATE INDEX "idx_price_cal_rate_plan" ON "price_calendar" ("rate_plan_id");
@@ -3045,6 +3112,7 @@ CREATE INDEX IF NOT EXISTS "idx_cm_mappings_org" ON "cm_mappings" ("organization
 CREATE INDEX IF NOT EXISTS "idx_cm_outbox_org" ON "cm_outbox" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_cm_sends_org" ON "cm_sends" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_companies_org" ON "companies" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_consent_texts_org" ON "consent_texts" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_coupons_org" ON "coupons" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_event_addons_org" ON "event_addons" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_event_bookings_org" ON "event_bookings" ("organization_id");
@@ -3075,6 +3143,7 @@ CREATE INDEX IF NOT EXISTS "idx_gift_card_automation_rules_org" ON "gift_card_au
 CREATE INDEX IF NOT EXISTS "idx_gift_card_bundles_org" ON "gift_card_bundles" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_gift_card_templates_org" ON "gift_card_templates" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_gift_cards_org" ON "gift_cards" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_guest_consents_org" ON "guest_consents" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_guest_page_sections_org" ON "guest_page_sections" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_guests_org" ON "guests" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_ical_channels_org" ON "ical_channels" ("organization_id");
@@ -3087,6 +3156,7 @@ CREATE INDEX IF NOT EXISTS "idx_organization_features_org" ON "organization_feat
 CREATE INDEX IF NOT EXISTS "idx_organization_invoicing_org" ON "organization_invoicing" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_partner_reports_org" ON "partner_reports" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_platform_audit_org" ON "platform_audit" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_platform_memberships_org" ON "platform_memberships" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_price_los_tiers_org" ON "price_los_tiers" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_price_occupancy_org" ON "price_occupancy" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_price_rules_org" ON "price_rules" ("organization_id");
@@ -3160,6 +3230,8 @@ ALTER TABLE "cm_sends" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "companies" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "consent_texts" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "coupons" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "event_addons" ALTER COLUMN "organization_id"
@@ -3219,6 +3291,8 @@ ALTER TABLE "gift_card_bundles" ALTER COLUMN "organization_id"
 ALTER TABLE "gift_card_templates" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "gift_cards" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "guest_consents" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "guest_page_sections" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -3460,6 +3534,12 @@ CREATE POLICY "companies_tenant" ON "companies"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
+ALTER TABLE "consent_texts" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "consent_texts" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "consent_texts_tenant" ON "consent_texts"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
 ALTER TABLE "coupons" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "coupons" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "coupons_tenant" ON "coupons"
@@ -3667,6 +3747,12 @@ CREATE POLICY "gift_card_templates_tenant" ON "gift_card_templates"
 ALTER TABLE "gift_cards" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "gift_cards" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "gift_cards_tenant" ON "gift_cards"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "guest_consents" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "guest_consents" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "guest_consents_tenant" ON "guest_consents"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
@@ -4015,6 +4101,7 @@ CREATE POLICY "winhotel_staging_tenant" ON "winhotel_staging"
 -- Identity: read before the tenant is known, so a policy here would not
 -- restrict these queries, it would break them. Scoped by the application.
 --   organizations
+--   platform_memberships
 --   sessions
 
 -- Reference data, identical for every customer: no policy by design.

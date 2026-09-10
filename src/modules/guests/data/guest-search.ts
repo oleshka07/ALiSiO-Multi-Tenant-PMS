@@ -28,6 +28,9 @@ export async function searchGuests(term: string, organizationId: string): Promis
     SELECT id, first_name, last_name, email, phone, country
     FROM guests
     WHERE organization_id = ?
+      -- Злитий рядок — слід від людини, а не людина (INC-300). Показати його
+      -- портьє означає дати обрати мертвий рядок і відродити дублікат.
+      AND merged_into IS NULL
       AND (
         ${like('first_name')}
         OR ${like('last_name')}

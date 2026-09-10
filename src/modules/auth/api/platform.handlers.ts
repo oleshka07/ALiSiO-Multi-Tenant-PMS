@@ -15,6 +15,7 @@ import {
   PLATFORM_COOKIE,
   createPlatformSession,
   deletePlatformSession,
+  accountsFor,
   enterOrganization,
   getPlatformSession,
   leaveOrganization,
@@ -77,7 +78,12 @@ export async function platformLogin(request: Request) {
     failures.delete(ip);
 
     const sessionId = await createPlatformSession(user.id);
-    const response = NextResponse.json({ success: true, email: user.email, full_name: user.full_name });
+    // Рід їде у відповідь, бо від нього залежить, який екран показати: вибір
+    // своїх готелів (готельєр) чи панель клієнтів (постачальник). Прав він не
+    // дає — їх дає перелік у базі, і кожен маршрут питає базу сам.
+    const response = NextResponse.json({
+      success: true, email: user.email, full_name: user.full_name, kind: user.kind,
+    });
     response.cookies.set(PLATFORM_COOKIE, sessionId, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -112,7 +118,7 @@ export async function platformMe() {
     const org: any = await sql.row<any>('SELECT id, name FROM organizations WHERE id = ?', [session.actingOrganizationId]);
     if (org) acting = { id: org.id, name: org.name };
   }
-  return NextResponse.json({ email: session.email, full_name: session.fullName, acting });
+  return NextResponse.json({ email: session.email, full_name: session.fullName, kind: session.kind, acting });
 }
 
 // ─── GET /api/platform/organizations ───────────────────────────────────────
@@ -142,11 +148,23 @@ export async function platformOrganizations() {
   if (!session) return unauthorized();
 
   const sql = getSql();
-  const orgs = await sql.rows<any>(`
-    SELECT o.id, o.name, o.slug, o.language, o.default_currency, o.created_at
-    FROM organizations o
-    ORDER BY o.name
-  `);
+  // Перелік — з тих самих дверей, що й перевірка входу (`accountsFor`), і це
+  // не економія рядка: список, ширший за перелік, це витік навіть тоді, коли
+  // увійти в зайвий рядок не можна (П21, межа 2).
+  const orgs = await accountsFor(session);
+
+  // Готельєру — назви його рахунків, і на цьому все. Лічильники поруч
+  // (обʼєкти, користувачі, OTA, сайт, Setup progress) — це панель
+  // ПОСТАЧАЛЬНИКА, якою він дивиться на своїх клієнтів; готельєр бачить те
+  // саме про свій готель на власних екранах, увійшовши в нього. Межа проходить
+  // не по чутливості даних, а по ролі: готельєр не стає постачальником.
+  if (session.kind === 'hotelier') {
+    return NextResponse.json(orgs.map((o) => ({
+      id: o.id, name: o.name, slug: o.slug, language: o.language,
+      default_currency: o.default_currency, created_at: o.created_at,
+    })));
+  }
+
   const rows = [];
   for (const o of orgs) {
     const detail = await runWithOrganization(String(o.id), async () => {

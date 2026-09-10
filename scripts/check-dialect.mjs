@@ -71,7 +71,7 @@ const RULES = [
   // application's Postgres role owns nothing and may not. Three of them —
   // an index on every Hostex sync, a table on every handshake, a column on
   // every service order — each took a route down on the first real run.
-  { id: 'runtime-ddl', re: /(CREATE\s+(TABLE|INDEX)|ALTER\s+TABLE|DROP\s+(TABLE|INDEX))/gi, quiet: false,
+  { id: 'runtime-ddl', re: /\b(CREATE\s+(TABLE|INDEX)|ALTER\s+TABLE|DROP\s+(TABLE|INDEX))\b/gi, quiet: false,
     fix: 'schema belongs in the boot migration and in db/postgres/schema.sql, not in a handler' },
   { id: 'pragma', re: /PRAGMA\s+\w+/gi, quiet: false,
     fix: 'information_schema on Postgres — these are schema introspection, mostly in migrations' },
