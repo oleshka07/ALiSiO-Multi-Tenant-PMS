@@ -284,3 +284,97 @@ Received "noch nicht angesprochen"`. Спец переведено: «скоро
 `IMPORT-PLAN.md` §2.1, `notes.md`, ARCHITECTURE (розділ Winhotel), DECISIONS З26,
 шапка `convert.mjs`, коментарі SQL сутностей.
 
+
+---
+
+# Задача 7 — §2: Частина Б (імпорт у ядро)
+
+**Коміт:** `98d21685` — код, схема, UI, i18n і документи одним; звіт — окремим комітом після нього. Гілка `claude/winhotel-import`.
+**CI гілки** — дивитись запуск після пушу; «зроблено» — лише із зеленим `check:pg`
+(політики 0144 доводяться тільки там) і зеленим Playwright.
+
+## Б.1 Що зроблено — по пунктах §2.5–2.6 і уточненнях власника
+
+| Пункт | Де | Що |
+|---|---|---|
+| 0144 `winhotel_refs`, `winhotel_staging` | `db/postgres/migrations/0144-…sql`, `src/lib/db.ts migrateWinhotelImport`, `db/postgres/schema.sql` (+53 рядки, рівно дві таблиці — зі СВІЖОЇ SQLite: `ALISIO_DATA_DIR` у тимчасову теку → `apps.check.ts` мігрує → `wal_checkpoint(TRUNCATE)` → `DB_PATH` генератору) | обидві з `organization_id` NOT NULL, `DEFAULT NULLIF(current_setting(…))`, FK на `organizations` за ОЗНАЧЕННЯМ (`pg_get_constraintdef … LIKE 'FOREIGN KEY (organization_id)…'`), UNIQUE (організація, сутність, LNR) табличним констрейнтом, індекс по `organization_id`, RLS `USING`+`WITH CHECK`. `payload_json` — JSONB на Postgres, TEXT у SQLite; читає його поки ніхто (UI показує лічильники), тож різниця форми ще не коштує |
+| памʼять імпорту | `data/refs.repo.ts` | `refsOf`/`findRef`/`putRef` (UPDATE-потім-INSERT, без `ON CONFLICT` — SQLite-дзеркало без відповідного індексу), `stage` (той самий upsert), `stagingCounts`, `fingerprintOf` (стабільний JSON із сортованими ключами → sha256/32) |
+| довідники — ЗВІРКА, не створення | `import/importer.ts verifyDictionaries` | категорія ↔ `unit_types.code` (без регістру), номер ↔ `units.code` (псевдо `ZINR ≥ 9000` і `STOCK = 99` не звіряються), послуга ↔ `additional_services.name` (без регістру; послуги груп проживання/сніданку з `BETRAG 0` — не потребують), `STS` ↔ `fin_tax_rates.code`; хоч один незнайдений → `refuse(409)` з ПЕРЕЛІКОМ і нуль записів. **AP 111/112** (уточнення власника) — звичайна категорія: у готелі має бути `unit_types.code = 'AP'`, інакше відмова її назве. **STOCK** як поверх не переноситься нікуди |
+| адреси | крок 2–3 | `DEBI_NR > 0` → `createCompanyForTests` (`@companies/kernel`; це єдині двері модуля без HTTP, назва — справа модуля, З29) з `business_id = DEBI_NR`; решта → `findOrCreateGuest` (`@guests`): дедуплікація — правило фасаду (З32), не `SUCHNAME+PLZ+GEBDAT`; стать (`GESCHLECHT`/`ANREDE`), мова (`SPRACHE`), примітки (`BEMERK`, `BEMERK2`, `WUNSCH_ZI`) — лише в порожнє (`COALESCE`). Банк, картки, пароль — не приходять узагалі (міст їх не вибирає, З26) |
+| брони | крок 4 | `GASTKONT` → `reservations`: майбутні (заїзд > дати знімка) усі, минулі — із `since` (дефолт 2025-01-01, поле дати на картці, тіло `{since}`); категорія — `RESV_KATE_LNR` або `LNR_KATE`; номер — за кодом, псевдо → `unit_id NULL`; статус — `bookingStatus` (TA ≥ 1000 → cancelled, CI 2 → checked_out, CI 1 → checked_in, BUCH 100 → tentative); гість — перша з `GASTNR_1..3`, що є гостем; фірмова бронь без гостя → гість «представник фірми» (`NAME2`/`NAME1`); `MARKSEG` → `booking_sources` за назвою, інакше `direct`; `total_price` = Σ `BUCHKONT.GBETRAG` броні; депозит `ANZA_BETRAG`; `INSERT … external_uid = 'winhotel:GASTKONT:<LNR>'` під `insertingStay` (`@bookings/overlap`; перетин → staging `overlap`) + `noteAvailabilityChanged` (`@channels/outbox`); три адреси → `reservation_guests` з `guest_id`, супутник і діти з `ADRESSEN` за прапорцями `BEGLEITOK`/`KIND1OK…`; `VERK_NR ≠ LNR` → `parent_id` другим проходом |
+| рядки рахунків | крок 5 | `BUCHKONT` → `addCharges` (`@invoicing/kernel`) у фоліо броні (`ensureReservationFolio`); `kind` за `LEISTUNG.WG`, ставка — `pickRate` за датою послуги (інваріант 18), кількість×ціна — `lineQuantity` (ME/TAGE/E_PREIS, інакше 1×GBETRAG); рядок, виставлений дебітору (`RECHNUNGSPOS.M_DEBIRECHN` → `BK_LNR`), — в окреме фоліо платника-компанії (`openFolio`, «Sammelrechnung (Winhotel)») |
+| оплати | крок 6 | `ZAHLUNGEN` → `recordReservationPayment`; `DEVISEN` → чотири класи (`paymentMethod`: gutschein → voucher; bar/kasse → cash; ec/karte/visa/… → card_terminal; debitor/überweisung/bank/paypal/online/**unzer** → transfer — уточнення власника: Unzer лише назва); без класу → staging `method_unmapped`; **готівка/картка на обʼєкті DE без `fiscal_de` → staging `fiscal_guard`** (З31); потім `recalcPaymentStatusFromFolio` |
+| фактури | крок 7 | усі `RECHNUNG` + `RECHNUNGSPOS` + `RECHNUNGSDRUCK` → staging `frozen` / `frozen_sammelrechnung` цілим JSON; у `invoices` нічого (чужа нумерація не імітується, §1 задачі) |
+| сальдо, GDPR, каса | крок 8 | вісім чисел `aggregates.json` → staging `balance` (LNR = порядковий, причина = ключ агрегату); `ZUSTIMMUNGEN` → `consent`, `KASSENBUCH` → `cash_book` |
+| Kurtaxe | — | немає (уточнення власника): жодної мапи на `fees_taxes` |
+| ідемпотентність | усі кроки | ref + відбиток після кожного рядка; той самий знімок → нуль змін (Б3); новіший → бронь `UPDATE` з обома вікнами дат у outbox (Б4), гість дописується, рядок/оплата без дверей на зміну → `changed`; зникла бронь → `cancelled`, ніколи `DELETE` (Б5, З33) |
+| `counts_json` | `snapshots.repo.ts markImporting/markImported/markImportFailed` | `import: {phase:'importing', startedAt}` під час роботи (стан лишається `extracted` — CHECK статусів без «importing»); після — звіт: `entities{winhotel, imported, updated, staged, skipped{…}}`, `staging[]`, `reconcile{mustMatch[10], explained[6]}`, `mismatch`, `refs`, `since`, `durationMs`; відмова → `error` знімка, стан `extracted`, `import` прибрано |
+| звірка (IMPORT-PLAN §5) | крок 9 | **мусить зійтись:** категорії, номери, ставки, `reservations` = GASTKONT у вікні − staging, майбутні живі, `fin_folio_items` кількість і сума, платежі кількість і сума (у фоліо + staging), фактури = RECHNUNG у staging. **Пояснене:** гостей ≤ адрес (злиті дублікати), компанії, брони до дати «з», брони у staging, фіскальна варта, псевдо-номери. Хоч одне не зійшлось → `mismatch:true`, картка червоним з назвами й числами |
+| маршрут | `api/snapshots.handlers.ts importSnapshot` | 202 і робота у фоні (50 тис. броней не влазять у HTTP-запит); повторний натиск → 409 «вже триває»; `importSnapshotNow` — той самий код для гейта |
+| картка | `settings/apps/page.tsx` | бейдж «імпорт триває», рядок «у ядрі: брони N+M · гості · рядки · оплати · з <дата>», «відкладено N: <причина> n …» (словник `STAGING_REASON` ↔ NAMING.md), «Числа не зійшлись: …» червоним, поле дати «з», «Імпортувати знову» для `imported`; 28 нових рядків у каталозі (3565 → 3593 — зрушення числа, не стеля, §3.2 сьомий випадок), de/cs 100 % |
+
+## Б.2 Гейт — червоним першим, цитати
+
+Сцени Б1–Б6 (`winhotel-import.check.ts`), фікстура — `fixture/extracted/*.jsonl` (те, що
+міст робить зі стаба; з Firebird у системі сцена 11 ще й звіряє, що живий витяг стаба дає
+ті самі лічильники, що закомічений). Готель A сіється рівно тим, що імпорт має ЗНАЙТИ.
+
+| Сцена | Твердження |
+|---|---|
+| Б1 | категорії «SD» немає → `409`, текст називає «категорія «SD»», нуль броней і гостей, стан `extracted`, текст у `error` |
+| Б2 | 5 броней (4 живі + сторно з датою), 3 гості + 1 компанія, 3 `reservation_guests` броні 101 з `guest_id` і «Müller-Stub», `141.000 × 3 → 423`, депозит 50, «Späte Anreise», бронь 101 на номері 102, 102 `checked_out` + `partial` (ваучер 100 із 327), 104 `cancelled`, 106 на псевдо 9999 → без `unit_id`, 105 (видалена без дати) не імпортована; 5 рядків, 1 оплата у фоліо, 3 у staging `fiscal_guard`, 3 фактури у staging (1 `frozen_sammelrechnung`); `counts_json.import.mismatch === false` і числа |
+| Б3 | той самий знімок удруге: `imported + updated === 0` по бронях, рядках, оплатах, гостях; лічильники `reservations`, `guests`, `winhotel_refs` ті самі |
+| Б4 | `BISAUFH` 101 → 2027-03-14: `updated === 1`, `imported === 0`, `check_out` і `nights = 4` нові, броней стільки ж |
+| Б5 | бронь 102 зникла зі знімка: `skipped.cancelled_missing_in_snapshot === 1`, статус `cancelled`, рядків стільки ж |
+| Б6 | B не знаходить ref адреси A; у B нуль гостей; під Postgres — голий `COUNT(*)` по `winhotel_refs`/`winhotel_staging` з B дає 0 |
+
+Червоним — трьома зломами `importer.ts` (кожен відновлено, `diff -q` порожній):
+
+```
+злам 1: `known.fingerprint === fp` → `false` (повтор пише знову)
+AssertionError: повтор: {"winhotel":5,"imported":0,"updated":5,"skipped":{},"staged":0}
+5 !== 0
+
+злам 2: UPDATE … status = 'cancelled' → DELETE FROM reservations
+AssertionError: бронь, якої немає в новому знімку, не cancelled
+
+злам 3: total_price / 1000 (клас §1 цієї задачі)
+AssertionError: total_price 141.000 × 3 → 0.423
+0.423 !== 423
+```
+
+Зелений: SQLite і `DB_DRIVER=pglite` (форма SQL і JSONB); політики 0144 — лише `check:pg` у
+CI (`alisio_app`). Один хибний очікуваний: перша редакція Б2 чекала 4 гостей — у стабі 4
+адреси, з них одна компанія; виправлено твердження, не код.
+
+## Б.3 Що пішло в staging на стабі і чому
+
+| Сутність | Причина | n | Чому не в ядрі |
+|---|---|---|---|
+| `payment` | `fiscal_guard` | 3 | готівка і картка на обʼєкті DE без `fiscal_de` — варта `folio-payments.repo` відмовляє свідомо (З31) |
+| `invoice` | `frozen` | 2 | чужа нумерація; ядро не імітується (§1) |
+| `invoice` | `frozen_sammelrechnung` | 1 | те саме, виставлена дебітору |
+| `balance` | ключ агрегату | 8 | сальдо числом; у ядрі немає «відкритого сальдо гостя» окремо від фоліо |
+| `consent` | `core_gap_gdpr_journal` | 2 | CORE-GAPS 6 |
+| `cash_book` | `core_gap_cash_book` | 1 | CORE-GAPS 9 |
+
+## Б.4 Відхилення від задачі — названі
+
+- **Транзакції на сутність немає** (§2.5 п. 9): фасади беруть `getSql()` самі, на Postgres у
+  `sql.tx` це інше зʼєднання — обгортка прикидалась би. Замість неї ref одразу після рядка
+  (З30). Ціна: падіння посередині лишає частину сутності імпортованою — але наступний прогін
+  продовжує без дублів, і саме це гейт Б3 стверджує.
+- **Компанія — через `createCompanyForTests`**: інших дверей у `@companies/kernel` без HTTP
+  немає; писати в `companies` своїм SQL — пробій межі (гейт `check-boundaries`).
+- **Дедуплікація гостей — правило `@guests`**, не IMPORT-PLAN §2.2 (З32).
+- **`payload_json`** — JSONB на Postgres, TEXT у SQLite; поки читають лише лічильники.
+- **`check-property-scope --strict`** зловив 4 читання без осі обʼєкта — названо
+  `ALL_PROPERTIES` з причиною (знімок належить рахунку, звірка рахує всі обʼєкти).
+- **Живого імпорту не було** — лише стаб. Перший живий: `bridge-local.sh` на `.fbk` готелю →
+  довідники під коди Winhotel на беті → «Імпортувати знімок» → `reconcile` очима.
+
+## Б.5 Документи
+
+ARCHITECTURE (розділ Winhotel — таблиця кроків частини Б, рядок застосунку, рядок гейта,
+«Лишається»), NAMING (`winhotel_refs.entity`, `winhotel_staging.reason`), DECISIONS З29–З33,
+`schema.sql` перегенеровано. `check-docs-current`, `check-decisions-registry` — чисто.
