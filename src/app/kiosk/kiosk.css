@@ -30,13 +30,23 @@
 .kiosk-title { font-size: 4.2vh; font-weight: 700; margin: 0 0 1vh; }
 .kiosk-subtitle { font-size: 2.4vh; opacity: 0.75; margin: 0; }
 
-/* ── Робоча смуга: усе, що натискають ───────────────────────────────────── */
+/* ── Робоча смуга: усе, що натискають ─────────────────────────────────────
+ *
+ * Положення ставить `bandStyle()` — `position:absolute` від верху ЕКРАНА
+ * (див. коментар там). Тут лише те, як вміст лягає всередині смуги.
+ *
+ * `justify-content: safe center` — не косметика. Звичайний `center` при
+ * переповненні обрізає вміст з ОБОХ боків, і верх стає недосяжним навіть
+ * прокруткою: саме так зникало поле «Nachname». `safe` каже браузеру
+ * центрувати, доки вміст уміщається, і притискати до початку, коли ні.
+ * Прокрутка лишається запасним виходом, але гість у холі не прокручує —
+ * розміри нижче підібрані так, щоб екран пошуку вміщався без неї.
+ */
 .kiosk-band {
-  flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 2vh;
+  justify-content: safe center;
+  gap: 1.6vh;
   padding: 0 6vw;
   overflow-y: auto;
 }
@@ -44,12 +54,12 @@
 .kiosk-choice {
   display: flex;
   flex-direction: column;
-  gap: 2.5vh;
+  gap: 2vh;
 }
 .kiosk-big {
-  font-size: 3.4vh;
+  font-size: 3vh;
   font-weight: 650;
-  padding: 4vh 3vw;
+  padding: 3vh 3vw;
   border-radius: 2vh;
   border: 0.3vh solid #1e293b;
   background: #111c31;
@@ -59,12 +69,12 @@
 .kiosk-big:active { background: #16233d; }
 .kiosk-big[data-primary='true'] { background: #1d4ed8; border-color: #1d4ed8; }
 
-.kiosk-field { display: flex; flex-direction: column; gap: 0.8vh; }
-.kiosk-label { font-size: 2vh; opacity: 0.7; }
+.kiosk-field { display: flex; flex-direction: column; gap: 0.5vh; }
+.kiosk-label { font-size: 1.8vh; opacity: 0.7; }
 .kiosk-value {
-  min-height: 6vh;
-  font-size: 3vh;
-  padding: 1vh 2vw;
+  min-height: 4.5vh;
+  font-size: 2.6vh;
+  padding: 0.8vh 2vw;
   border-radius: 1.2vh;
   border: 0.3vh solid #1e293b;
   background: #0f172a;
@@ -74,12 +84,12 @@
 .kiosk-value[data-active='true'] { border-color: #3b82f6; }
 
 /* ── Клавіатура ─────────────────────────────────────────────────────────── */
-.kiosk-keyboard { display: flex; flex-direction: column; gap: 1vh; padding: 1vh 0 2vh; }
-.kiosk-keyboard-row { display: flex; gap: 1vw; justify-content: center; }
+.kiosk-keyboard { display: flex; flex-direction: column; gap: 0.7vh; padding: 0.5vh 0 0; }
+.kiosk-keyboard-row { display: flex; gap: 0.8vw; justify-content: center; }
 .kiosk-key {
   flex: 1;
-  min-height: 7vh;
-  font-size: 2.8vh;
+  min-height: 5.2vh;
+  font-size: 2.4vh;
   border-radius: 1vh;
   border: 0.2vh solid #1e293b;
   background: #16233d;
@@ -90,7 +100,7 @@
 .kiosk-key-wide { flex: 1.6; }
 .kiosk-key-space { flex: 4; }
 .kiosk-key-done { flex: 2; background: #1d4ed8; border-color: #1d4ed8; }
-.kiosk-keyboard[data-mode='digits'] .kiosk-key { min-height: 9vh; font-size: 4vh; }
+.kiosk-keyboard[data-mode='digits'] .kiosk-key { min-height: 7vh; font-size: 3.4vh; }
 
 /* ── Підпис пальцем ─────────────────────────────────────────────────────── */
 .kiosk-signature {
@@ -102,11 +112,20 @@
   touch-action: none;
 }
 
-/* ── Рецепція: на кожному екрані (КІ9) ──────────────────────────────────── */
+/* ── Рецепція: на кожному екрані (КІ9) ────────────────────────────────────
+ *
+ * Притиснута до низу екрана, а не до кінця потоку: смуга тепер absolute, і
+ * рецепція в звичайному потоці опинилася б ПІД нею — виміряно, «Weiter»
+ * ховався за «Rezeption anrufen» (кнопка y = 1723…1857, рецепція від 1691).
+ */
 .kiosk-reception {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
   gap: 2vw;
-  padding: 2vh 6vw 3vh;
+  padding: 1.5vh 6vw 2vh;
   justify-content: center;
 }
 .kiosk-reception a, .kiosk-reception button {

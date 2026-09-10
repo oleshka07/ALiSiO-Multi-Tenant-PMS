@@ -7,7 +7,7 @@
  * бути в запиті, а не покладатись на контекст (AGENTS §7).
  */
 import { getSql } from '@core/db/async';
-import { inWindow, type SearchInput } from '../domain/search';
+import { inWindow, phoneDigits, PHONE_MIN_DIGITS, type SearchInput } from '../domain/search';
 
 export interface StayRow {
   id: string;
@@ -68,23 +68,20 @@ export async function findStays(input: {
   if (clean(s.lastName)) { where.push('LOWER(g.last_name) = LOWER(?)'); params.push(clean(s.lastName)); }
   if (clean(s.checkIn)) { where.push('SUBSTR(r.check_in, 1, 10) = ?'); params.push(clean(s.checkIn).slice(0, 10)); }
   if (clean(s.email)) { where.push('LOWER(g.email) = LOWER(?)'); params.push(clean(s.email)); }
-  if (clean(s.phone)) {
-    // Телефон звіряється за ХВОСТОМ, і в базі теж без розділювачів: гість
-    // друкує «+49 170 …», а в рядку лежить «0170-…» — той самий номер, інша
-    // форма, і рівність не збіглася б жодного разу. Вісім цифр з кінця — це
-    // вже не збіг, а сам номер; менше восьми цифр введено — чинник не
-    // рахується (інакше «49» знайшло б пів готелю).
-    const digits = clean(s.phone).replace(/\D/g, '');
-    if (digits.length >= 8) {
-      where.push(
-        "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(g.phone, ''), ' ', ''), '-', ''), '(', ''), ')', ''), '+', '') LIKE ?");
-      params.push(`%${digits.slice(-8)}`);
-    } else {
-      // Названо, але непридатне: шукати з таким «чинником» означало б
-      // шукати без нього. Умова, яка не збігається ні з чим, — чесніша за
-      // мовчазне ігнорування (інваріант 13).
-      where.push('1 = 0');
-    }
+  // Телефон звіряється за ХВОСТОМ, і в базі теж без розділювачів: гість
+  // друкує «+49 170 …», а в рядку лежить «0170-…» — той самий номер, інша
+  // форма, і рівність не збіглася б жодного разу.
+  //
+  // Чи це взагалі чинник, вирішує ДОМЕН (`namedFactors` → `PHONE_MIN_DIGITS`),
+  // і сюди короткий номер не доходить: хендлер відмовляє 400 раніше. Тому тут
+  // немає гілки «занадто короткий» — вона була, і саме вона ховала дефект:
+  // запит чесно не знаходив нічого, а гість читав «не знайдено» замість
+  // «введіть ще одне поле».
+  const digits = phoneDigits(s.phone);
+  if (digits.length >= PHONE_MIN_DIGITS) {
+    where.push(
+      "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(g.phone, ''), ' ', ''), '-', ''), '(', ''), ')', ''), '+', '') LIKE ?");
+    params.push(`%${digits.slice(-PHONE_MIN_DIGITS)}`);
   }
   if (clean(s.confirmation)) {
     // Номер підтвердження — наш id АБО ключ походження з чужої системи

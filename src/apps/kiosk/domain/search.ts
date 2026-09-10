@@ -53,14 +53,41 @@ export interface SearchInput {
 
 const clean = (v: unknown): string => String(v ?? '').trim();
 
-/** Які чинники справді названі. Порожній рядок — не чинник. */
+/**
+ * Скільки цифр телефону — це вже телефон, а не початок телефону.
+ *
+ * Вісім: код країни й оператора спільні для півміста, і «49» або «170»
+ * звузили б пошук до половини готелю. Вісім цифр з кінця — це вже сам номер.
+ */
+export const PHONE_MIN_DIGITS = 8;
+
+/** Самі цифри номера: гість друкує «+49 170 …», у базі «0170-…». */
+export function phoneDigits(value: unknown): string {
+  return clean(value).replace(/\D/g, '');
+}
+
+/**
+ * Які чинники справді названі. Порожній рядок — не чинник.
+ *
+ * ── Телефон, коротший за номер, — теж не чинник ─────────────────────────
+ *
+ * Тут це і вирішується, а не в SQL. Перша редакція рахувала будь-який
+ * непорожній телефон чинником, а відкидала його вже запит (`1 = 0`), — і
+ * пара «прізвище + 12» проходила `enoughFactors` як ДВА чинники, лишаючись
+ * одним. Гість діставав «не знайдено» замість «введіть ще одне поле», тобто
+ * відповідь про чужу бронь замість відповіді про власний ввід.
+ *
+ * Знайдено рецензією Б: її мутація `>= 8` → `>= 1` у репозиторії лишила
+ * гейт зеленим — бо жодна сцена не стверджувала того, що правило взагалі
+ * там живе. Правило одне, і воно тут.
+ */
 export function namedFactors(input: SearchInput): SearchFactor[] {
   const out: SearchFactor[] = [];
   if (clean(input.token)) out.push('token');
   if (clean(input.lastName)) out.push('lastName');
   if (clean(input.checkIn)) out.push('checkIn');
   if (clean(input.confirmation)) out.push('confirmation');
-  if (clean(input.phone)) out.push('phone');
+  if (phoneDigits(input.phone).length >= PHONE_MIN_DIGITS) out.push('phone');
   if (clean(input.email)) out.push('email');
   return out;
 }

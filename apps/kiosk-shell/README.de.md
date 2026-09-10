@@ -54,6 +54,15 @@ Einstellungen → System → Netzbetrieb und Energiesparen:
 Zusätzlich in `chrome://settings/system` „Fortsetzen der Ausführung von
 Hintergrund-Apps“ aktiviert lassen.
 
+## 4a. Schriftart ohne Internet
+
+Die Oberfläche lädt eine Schriftart von Google Fonts. Steht das Terminal ohne
+Internetzugang, ist das **kein Fehler**: der Browser nimmt dann die
+System-Schrift (Segoe UI). Der Bildschirm bleibt vollständig bedienbar, nur
+das Schriftbild ist ein anderes. Wer das Aussehen fixieren will, blockiert
+`fonts.googleapis.com` bewusst — dann lädt gar nichts erst und die Seite baut
+sich ohne Verzögerung auf.
+
 ## 5. Terminal koppeln
 
 Beim ersten Start fragt der Bildschirm nach einem **sechsstelligen Code**.
