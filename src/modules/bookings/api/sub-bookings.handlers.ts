@@ -7,6 +7,10 @@ import { getSql } from '@core/db/async';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
 import { ownedReservation, ownedUnit } from '../data/owned.repo';
+import { insertingStay, UnitOverlap } from './overlap';
+
+/** Одна відмова на одну причину — див. `reservations.handlers.ts` (INC-045). */
+const ALREADY_BOOKED = 'Цей юніт вже зайнятий на ці дати';
 
 /**
  * Sub-bookings: several parties, several rooms, one master reservation.
@@ -119,12 +123,16 @@ export const createSubBooking = withPermission('manage_bookings', async (request
         LIMIT 1
       `, [unitId, master.check_out, master.check_in]);
       if (overlap) {
-        return NextResponse.json({ error: 'Цей юніт вже зайнятий на ці дати' }, { status: 409 });
+        return NextResponse.json({ error: ALREADY_BOOKED }, { status: 409 });
       }
 
       childReservationId = `r_${Date.now()}_child`;
       const childToken = generateGuestToken();
-      await sql.run(`
+      // Двері INC-045: між перевіркою вище і цим рядком лежить генерація
+      // токена, а писачів у `reservations` шість. Ловимо названу відмову і
+      // відповідаємо ТИМ САМИМ текстом, що перевірка.
+      try {
+      await insertingStay(() => sql.run(`
         -- organization_id, named rather than left to the column DEFAULT: that
         -- DEFAULT is a Postgres mechanism (migration 0005) and on SQLite the
         -- row landed with a NULL tenant. From the master booking, so a
@@ -139,7 +147,15 @@ export const createSubBooking = withPermission('manage_bookings', async (request
       `, [childReservationId, master.property_id, master.property_id, unitId, master.guest_id, master.id,
         master.check_in, master.check_out, master.nights, adults, children, infants,
         master.status, master.payment_status, master.source, subtotal, master.currency,
-        childToken, `Sub-booking: ${label}`]);
+        childToken, `Sub-booking: ${label}`]),
+      { unitId: String(unitId), checkIn: String(master.check_in), checkOut: String(master.check_out),
+        reservationId: childReservationId });
+      } catch (e) {
+        if (e instanceof UnitOverlap) {
+          return NextResponse.json({ error: ALREADY_BOOKED }, { status: 409 });
+        }
+        throw e;
+      }
       // Канали: ночі дочірньої броні зайняті — тип від номера, дати від головної.
       await noteStay(sql, { property_id: master.property_id, unit_id: unitId, check_in: master.check_in, check_out: master.check_out });
     }
