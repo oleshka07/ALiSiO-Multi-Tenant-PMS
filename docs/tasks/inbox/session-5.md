@@ -1,70 +1,70 @@
-TASK: 3
+TASK: 4
 
-# Сесія 5 (дослідження Winhotel) — задача 3: план імпорту і дірки ядра
+# Сесія 5 — задача 4: файл готелю `hotels/schlossberghotel.json` звірити з базою
 
-Задачу 2 прийнято — `docs/tasks/2026-09-10-review-winhotel-2.md` на
-`origin/claude/controller-2`. Гілка та сама, пишеш лише в `docs/research/winhotel/**` і у
-свій звіт. Бази немає і не буде в цій задачі; усе — з `extract-out/`, `MAPPING.md` і коду
-ALiSiO (читати можна все, змінювати — нічого поза `docs/research/winhotel/`).
+Задачу 3 прийнято — `docs/tasks/2026-09-10-review-winhotel-3.md` на
+`origin/claude/controller-2`. Дослідження вичерпано; тепер його перший прикладний плід.
+Гілка та сама. **Дозволено писати** в `docs/research/winhotel/**`, звіт і — вперше —
+`hotels/schlossberghotel.json`. Більше нікуди (не `src/**`, не схема, не `hotels/README.md`).
 
-## 1. Імена колонок — дослівно
+## Навіщо
 
-Рішення контролера: імена таблиць і колонок вендора — не персональні дані. Поверни
-дослівні `PLZ_STRASSE`, `STRASSE`, `IBAN` тощо в `TABLES.md`, `notes.md`, `MAPPING.md`,
-де вони були скорочені. PII-grep у `REFERENCE-SAMPLES.md` і в `extract.sh` перепиши так,
-щоб він виключав відомі імена колонок **словом**, а не текою: наприклад
-`grep -riE "iban|@|strasse|str\." docs/research/winhotel/ | grep -vE
-"PLZ_STRASSE|\.STRASSE|B_STRASSE|ADRESSEN\.IBAN|Musterstr"` — і щоб цей самий рядок стояв
-у README як команда приймання. Після правки він має бути порожнім.
+`hotels/schlossberghotel.json` — стан, до якого готель приводиться на беті й проді
+(`hotels/README.md`, `scripts/apply-hotel.mjs`). Він писався зі скріншотів до того, як була
+база. Тепер є `extract-out/main/samples.txt` (KATESTAM, ZIMMSTAM, STEUSTAM, WARENGRU,
+LEISTSTA, PREISLIST) — файл треба звірити з базою і привести до неї. Рішення власника
+(не перепитувати): номерів **31**; серія фактур — **як на останній фактурі Winhotel
+`22.591`**: один наскрізний лічильник, без префікса, без року, крапка — роздільник тисяч
+у друці; лічильник у день перемикання продовжується з останнього номера Winhotel.
 
-## 2. `IMPORT-PLAN.md` — як `winhotel-import` переносить дані
+## Обсяг
 
-Один документ для того, хто писатиме застосунок. Не код. Розділи:
+1. **Номери** — рівно ті 31, що в `ZIMMSTAM` з `ZINR < 9000`: коди, поверх з `STOCK`,
+   тип з `LNR_KATE → KATESTAM.KATEGORIE`. Діапазони `from…to` у файлі розгорни або
+   перевір, що вони дають саме цей перелік (105–106, 202–206, 208–209 тощо — звір
+   кожен). Псевдо (9001, 95xx, 9999) — не номери. Тип `AP` з номерами 111/112 у базі
+   **відсутній** (ані в `ZIMMSTAM`, ані в `KATESTAM`) — з файла не видаляти (README:
+   «нічого не видаляється»), але в `HOTEL-FILE-DIFF.md` назвати як питання власнику.
+2. **Категорії** — назви з `KATESTAM.BEMERK1` (`Doppelzimmer "Design"` тощо), місткість з
+   `ANZ_ERW`/`ANZ_K1`/`ANZ_BETTEN` проти `maxAdults`/`maxOccupancy`; розбіжності — у
+   DIFF, у файлі — за базою, якщо база не суперечить прайсу 2027 (Suite до 4 осіб з
+   Aufbettung, Vierbett 4).
+3. **Ставки ПДВ** — `taxRates` за `STEUSTAM`: коди `reduced`/`standard`/`zero` з історією
+   `validFrom` (2020-07-01 5 %/16 %, 2021-01-01 7 %/19 %) — README каже, що ключ —
+   `code + validFrom`; перевір у `scripts/apply-hotel.mjs`, чи він приймає кілька рядків на
+   код, і якщо ні — лише чинні, а історію в DIFF.
+4. **Послуги** — з `LEISTSTA` ті, що готель справді продає (Logis не послуга; сніданок
+   Speisen/Getränke, Lunchpaket, Haustier, Tiefgarage, Aufbettung/Zustellbett, Kuchen,
+   Gutschein-послуги, Stornogebühren, No-Show, Nachlass — усе, що є в зразку з `WG` і
+   `STS`): назва, ціна з `BETRAG`/1000 або з прайсу 2027 (Frühstück 15 = 12 + 3, Haustier
+   10, Tiefgarage 10, Aufbettung 19), `vatCode` з `STS` (2 → reduced, 3 → standard,
+   1 → zero), категорія з `WARENGRU`. Те, що у файлі є, а в базі немає, — лишити, у DIFF.
+5. **Серія фактур** — за рішенням власника: формат без префікса й року; подивись
+   грамматику `numberFormat` у `src/modules/invoicing/domain/invoice-number-format.ts` і
+   гейт `invoice-number-format.check.ts`, обери формат, який дає `22591` / `22.591` у
+   друці; стартовий лічильник **не** вигадувати — у DIFF: «поставити в день X з
+   `MAX(RECHNUNG.RECHNR)` (є ще `RECHNR_ALPHA`)».
+6. **Ціни** — 2027 у файлі вже є; звір із `PREISLIST` 2025 лише структуру: сезони
+   (`SAISSTAM`: NS 01.01–28.02, HS 01.03–31.12), `MATCHC ÜF_1/2` = 1/2 особи, LOS. Числа
+   2025 у файл не переносити (застарілі); розбіжності структури — у DIFF.
+7. **`acceptance`** — перерахувати очікувані суми під чинні ціни у файлі (дати сценаріїв
+   у майбутньому, 2027), щоб `scripts/check-hotels.mjs` і `apply-hotel --dry-run` були
+   зелені.
+8. **`docs/research/winhotel/HOTEL-FILE-DIFF.md`** — таблиця «файл ↔ база»: що змінено,
+   що лишено, що спитати власника (AP 111/112; послуги з ціною 0; Komfortzimmer).
 
-- **Порядок сутностей** з `MAPPING.md` і чому такий (довідники → адреси → фірми → брони →
-  послуги → фактури → оплати; що від чого залежить за FK і за нашою схемою).
-- **Правила перетворення на сутність**: ключ у Winhotel → наш ключ (`external_ref`),
-  фільтр `TA_STATUS < 1000`, мапа станів (`BUCH_STATUS`, `CI_STATUS` → наші статуси броні
-  — як гіпотеза з літералів процедур, з позначкою «звірити агрегатами»), дати з
-  `1899-12-30` → NULL, суми `BIGINT / 1000`, CP1252 → UTF-8, `MATCHC ÜF_n` →
-  `price_occupancy`, ставка ПДВ за датою з `STEUSTAM` → `fin_tax_rates`, псевдо-номери
-  (`PSEUDO`, `ZINR ≥ 9000`) — що з ними (не імпортувати / окремий тип юніта), дублікати
-  адрес — ключ злиття `SUCHNAME+PLZ+GEBDAT` і що робити з сумнівними.
-- **Що імпортується сальдо, а не історією**: ваучери, відкриті дебіторські, депозити —
-  з номерами таблиць і SQL сальдо.
-- **Два способи доставки даних і рекомендація сесії** з аргументами: (а) готель кладе
-  щоденний `gbak`-бекап (він у них уже є) у теку/завантажує в ALiSiO, сервер відновлює
-  Firebird 3 в контейнері й імпортує (перевірений шлях: так зроблено 10.09); (б) агент
-  на сервері готелю читає `WINHOTEL.FDB` напряму (потрібен Firebird-клієнт на Windows,
-  доступ до сервера, ODS). Рішення — власника (чекпоінт); твоя справа — порівняти чесно:
-  свіжість даних, що треба ставити в готелі, ризик для їхньої бази, обсяг коду.
-- **Звірка після імпорту**: які числа з `COUNTS-2025-03.md`/`aggregates.txt` мусять
-  зійтися один в один, які — з поясненою різницею (сторно, псевдо).
-
-## 3. `CORE-GAPS.md` — дірки ядра ALiSiO, показані базою
-
-Для кожного пункту з дорожньої карти 1.3 (фірмові тарифи; дебітор + `offener Betrag` +
-Sammelrechnung; `Zimmer FIX`; три вікові групи; знижка успадковує ПДВ) — що саме є в
-Winhotel (таблиця, колонки, зразок із `extract-out`), що є в нашій схемі (`db/postgres/
-schema.sql`, `src/modules/**` — файл:рядок), і чого бракує: колонка, таблиця, правило
-або лише UI. Плюс усе, що ти побачив у базі і чого в нас немає взагалі (наприклад,
-`ADR_DATENSCHUTZ` як журнал згод, `DEVISEN` 24 способи оплати, `SEGMSTAM`, `TAG_ABS`
-денні закриття) — з оцінкою «ядро / модуль / застосунок / не потрібно» за
-`docs/ARCHITECTURE.md` і трирівневою моделлю. Це вхід для задач іншим сесіям — пиши
-так, щоб з кожного пункту можна було зробити задачу.
-
-## Чого не робити
-
-Не чіпати `extract-out/**`, не писати код, не чіпати `src/**` і схему. Не завантажувати
-базу. Питань власнику не ставити — варіанти доставки описати, а не обирати за нього.
+Жодних компаній, дебіторів, гостей у файлі — вони прийдуть імпортом. Жодних
+персональних даних.
 
 ## Приймання і звіт
 
-`npm run check` зелений (`check-no-tenant-names`, `check-docs-current`); PII-grep за новим
-правилом порожній; `TABLES.md` містить усі 258 імен дослівно. Звіт — розділ «Задача 3» у
-`docs/tasks/2026-09-09-winhotel-schema.report.md`: коміти, рекомендація щодо доставки одним
-абзацом, пʼять найбільших дірок ядра. Потім цикл очікування, `MINE=3`:
+`node scripts/apply-hotel.mjs hotels/schlossberghotel.json --dry-run` без відмов;
+`node scripts/check-hotels.mjs` зелений; `npm run check` зелений; PII-grep за правилом
+README порожній; кількість номерів у файлі після розгортання діапазонів = 31 (+ AP, якщо
+лишено, — назвати). Звіт — розділ «Задача 4»: коміти, що змінено у файлі числом
+(номерів/послуг/ставок), три головні розбіжності з базою. Потім цикл очікування,
+`MINE=4`:
 
 ```
-MINE=3; while :; do git fetch -q origin; N=$(git show origin/claude/controller-2:docs/tasks/inbox/session-5.md 2>/dev/null | head -1 | sed 's/TASK: //'); [ "${N:-0}" -gt "$MINE" ] && { git show origin/claude/controller-2:docs/tasks/inbox/session-5.md; break; }; sleep 300; done
+MINE=4; while :; do git fetch -q origin; N=$(git show origin/claude/controller-2:docs/tasks/inbox/session-5.md 2>/dev/null | head -1 | sed 's/TASK: //'); [ "${N:-0}" -gt "$MINE" ] && { git show origin/claude/controller-2:docs/tasks/inbox/session-5.md; break; }; sleep 300; done
 ```
