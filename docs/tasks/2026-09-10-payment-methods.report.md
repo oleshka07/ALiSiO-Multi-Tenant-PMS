@@ -363,6 +363,17 @@ invoice_series.reset_yearly — 0011 каже BOOLEAN, schema.sql каже BIGIN
 | `npm run check:pg` роллю `alisio_app` на стенді, зібраному ПІСЛЯ перегенерації | зелено, **79** |
 | `check-schema-drift` | збігаються — 133 таблиць, 1689 колонок, 457 індексів, 401 обмеження |
 
-**Про CI я більше не пишу з памʼяті.** Дочекаюсь прогону на цій голові й
-скажу його номер і висновок; якщо не дочекаюсь — скажу прямо, що не
-дочекалась, як велить правило.
+**Про CI я більше не пишу з памʼяті.** Дочекалась прогону на цій голові:
+
+```
+checks #886 · 826663d6 · conclusion: success
+  types, self-checks, build                        — success
+  hotel onboarding on the engine prod actually runs — success
+      (зокрема «schema.sql and the migrations describe one database»)
+  onboarding and tenant isolation                  — success
+      (зокрема «queue and transaction checks on the pool» — той самий крок,
+       на якому падали #874 і #878)
+```
+
+Тобто дефект закрито доказом того ж роду, яким його знайшли, а не локальною
+зеленню.
