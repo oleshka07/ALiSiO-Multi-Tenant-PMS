@@ -7366,6 +7366,42 @@ function runMigrations(database: any) {
     console.error('[DB] companies migration:', e.message);
   }
 
+  // --- 0200: тариф, який бачить лише своя фірма (INC-205) ---
+  //
+  // Звʼязок «фірма → тариф», якого не було ніде: `price_rules` умов «для
+  // компанії» не мають, `rate_plans` про компанії не знає.
+  //
+  // ТАБЛИЦЯ, а не колонка на `rate_plans`, і причина виміряна на базі Ґрайца
+  // (MAPPING §125–129): `PREISCODE 3 Firmenpreise` — ОДИН прайс-код на ВСІХ
+  // корпоративних гостей, а 8 і 10 — по одному на конкретну фірму. Колонка
+  // виражає лише другий випадок; перший довелося б розмножити по разу на
+  // кожну з 12 фірм готелю. Повне обґрунтування — у самій міграції 0200 і в
+  // К22.
+  //
+  // `organization_id` на рядку (інваріант 2), бо `rate_plans` свого не має —
+  // вона тенантна через `property_id → properties`, і політика без цієї
+  // колонки ходила б двома джойнами. UNIQUE з організацією (інваріант 3).
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS company_rate_plans (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        company_id      TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        rate_plan_id    TEXT NOT NULL REFERENCES rate_plans(id) ON DELETE CASCADE,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        -- Усередині CREATE, а не окремим унікальним індексом: генератор
+        -- Postgres-схеми з окремого індексу робить І табличний UNIQUE, І
+        -- індекс — два обмеження на ту саму пару під двома іменами. Той
+        -- самий клас, про який AGENTS §4 попереджає на констрейнтах.
+        UNIQUE(organization_id, company_id, rate_plan_id)
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_company_rate_plans_org ON company_rate_plans(organization_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_company_rate_plans_plan ON company_rate_plans(rate_plan_id)');
+  } catch (e: any) {
+    console.error('[DB] company_rate_plans migration:', e.message);
+  }
+
   // --- 0094: payment_status приймає 'partial' ---
   //
   // Колонка мала CHECK на чотири значення, а ДВА писачі роками ставили пʼяте:
