@@ -1,0 +1,162 @@
+{
+  "snapshot": {
+    "file": ".stub.fbk",
+    "mode": "gbak"
+  },
+  "extractedAt": "2026-09-10T14:56:48.659Z",
+  "entities": {
+    "address_types": 2,
+    "addresses": 5,
+    "age_bands": 3,
+    "booking_refs": 2,
+    "bookings": 6,
+    "cash_book": 1,
+    "consent_types": 2,
+    "consents": 2,
+    "day_closings": 2,
+    "folio_lines": 7,
+    "invoice_ledger": 2,
+    "invoice_lines": 3,
+    "invoices": 3,
+    "mandant": 1,
+    "occupancy": 5,
+    "payment_methods": 5,
+    "payments": 4,
+    "price_splits": 1,
+    "prices": 3,
+    "rate_codes": 3,
+    "seasons": 2,
+    "segments": 2,
+    "service_groups": 6,
+    "services": 10,
+    "tax_codes": 3,
+    "unit_types": 3,
+    "units": 4
+  },
+  "numbers": {
+    "snapshot_max_invoice_at": {
+      "label": "знімок: max RECHNUNG.DATUM_ZEIT",
+      "value": "2026-09-09 08:11:00.0000"
+    },
+    "snapshot_max_booking_created": {
+      "label": "знімок: max GASTKONT.ERF_DATUM",
+      "value": "2026-09-09"
+    },
+    "invoice_no_generator": {
+      "label": "остання Rechnung-Nr (генератор)",
+      "value": "22591"
+    },
+    "invoice_no_max_live": {
+      "label": "остання Rechnung-Nr (max, живі), кількість",
+      "value": "22591 2"
+    },
+    "invoices_in_snapshot_year": {
+      "label": "фактур у році знімка (живі)",
+      "value": "1"
+    },
+    "invoices_storno": {
+      "label": "фактур сторнованих",
+      "value": "1"
+    },
+    "bookings_live": {
+      "label": "броней (GASTKONT) живих",
+      "value": "5"
+    },
+    "bookings_future": {
+      "label": "броней із заїздом після знімка",
+      "value": "3"
+    },
+    "bookings_in_snapshot_year": {
+      "label": "броней із заїздом у році знімка",
+      "value": "0"
+    },
+    "booking_status_mix": {
+      "label": "стани броней BUCH/CI/TA (код×N)",
+      "value": "0 0 0 2 0 2 0 2 0 0 1000 2 100 0 0 1"
+    },
+    "occupancy_junk_dates": {
+      "label": "BELEGUNG сміттєвих дат (<1900)",
+      "value": "1"
+    },
+    "addresses_live": {
+      "label": "адрес живих",
+      "value": "5"
+    },
+    "addresses_with_debtor_no": {
+      "label": "адрес з номером дебітора (N, min, max)",
+      "value": "2 10001 10002"
+    },
+    "addresses_by_type": {
+      "label": "адрес за типом ADR_WAHL (код×N)",
+      "value": "0 4 1 1"
+    },
+    "addresses_anonymised": {
+      "label": "адрес анонімізованих (DS_VORGENOMMEN×N)",
+      "value": "0 6"
+    },
+    "units_real_pseudo": {
+      "label": "номерів справжніх / псевдо",
+      "value": "3 1"
+    },
+    "unit_types_real_pseudo": {
+      "label": "категорій справжніх / псевдо",
+      "value": "2 1"
+    },
+    "folio_lines_live": {
+      "label": "рядків рахунку (BUCHKONT) живих, сума",
+      "value": "7 1070.000"
+    },
+    "payments_live": {
+      "label": "платежів живих, сума",
+      "value": "4 375.500"
+    },
+    "payments_debtor": {
+      "label": "платежів дебіторських (M_DEBITOR>0), сума",
+      "value": "0 <null>"
+    },
+    "open_guest_balances": {
+      "label": "відкриті позиції по рахунках гостей (виїхали, offen<>0): N, сума",
+      "value": "2 321.500"
+    },
+    "invoice_ledger_by_status": {
+      "label": "книга вихідних рахунків за DB_STATUS (код×N×сума)",
+      "value": "0 1 282.000 1 1 179.000"
+    },
+    "vouchers_sold": {
+      "label": "ваучерів продано (послуги 7/55/95): N, сума",
+      "value": "1 100.000"
+    },
+    "vouchers_redeemed": {
+      "label": "ваучерів погашено (спосіб оплати Gutschein): N, сума",
+      "value": "1 100.000"
+    },
+    "deposits_on_bookings": {
+      "label": "депозити на бронях (ANZA_BETRAG>0): N, сума",
+      "value": "1 50.000"
+    },
+    "deposits_on_future_bookings": {
+      "label": "депозити на майбутніх бронях: N, сума",
+      "value": "1 50.000"
+    },
+    "last_day_closing": {
+      "label": "останнє денне закриття: дата, сальдо",
+      "value": "2026-09-08 750.000"
+    },
+    "seasons_in_snapshot_year": {
+      "label": "сезонів на рік знімка",
+      "value": "2"
+    },
+    "prices_live": {
+      "label": "цінових рядків живих",
+      "value": "3"
+    },
+    "tax_codes_live": {
+      "label": "ставок ПДВ живих",
+      "value": "3"
+    },
+    "payment_methods_live": {
+      "label": "способів оплати живих",
+      "value": "4"
+    }
+  }
+}

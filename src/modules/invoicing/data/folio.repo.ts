@@ -149,6 +149,9 @@ export async function recordReservationPayment(input: {
   amount: number;
   method: string;
   paidAt?: string | null;
+  /** Імпорт із попередньої системи — повз фіскальну варту, з походженням (З34, `recordPayment`). */
+  source?: 'import' | null;
+  origin?: string | null;
 }): Promise<{ paymentId: string; folioId: string }> {
   const organizationId = await requireOrganizationId();
   const sql = getSql();
@@ -159,6 +162,7 @@ export async function recordReservationPayment(input: {
   try {
     const paymentId = await recordPayment({
       folioId, amount: input.amount, method: input.method, paidAt: input.paidAt ?? null,
+      source: input.source ?? null, origin: input.origin ?? null,
     });
     return { paymentId, folioId };
   } catch (e) {

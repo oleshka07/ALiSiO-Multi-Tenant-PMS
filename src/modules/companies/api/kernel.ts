@@ -6,6 +6,7 @@
  * його не імпортує.
  */
 import { getCompany, createCompany, listCompanies } from '../data/companies.repo';
+export { adoptDebtorNo, type AdoptDebtorNoResult } from '../data/companies.repo';
 import { normalizeCompany, payerSnapshot, payerAddressLine, type PayerSnapshot } from '../domain/company';
 
 export type { PayerSnapshot } from '../domain/company';

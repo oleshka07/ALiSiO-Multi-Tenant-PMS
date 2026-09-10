@@ -43,6 +43,48 @@ interface HealthRow {
   key: string; label: string; property_id: string | null; status: string;
   last_ok_at: string | null; last_error_at: string | null; last_error: string | null;
 }
+/** Знімок Winhotel — рядок `winhotel_snapshots` (застосунок winhotel_import, §2.4). */
+interface WinhotelSnapshot {
+  id: string; taken_at: string | null; mode: string; sha256: string; size_bytes: number; status: string;
+  error: string | null; counts_json: string | null; received_at: string; imported_at: string | null;
+}
+interface WinhotelCard { hasToken: boolean; last: WinhotelSnapshot | null; snapshots: WinhotelSnapshot[] }
+/** `counts_json.import` — фаза («триває») або звіт частини Б (§2.6): числа, staging, звірка. */
+interface WinhotelImport {
+  phase?: 'importing' | 'done';
+  mode?: 'full' | 'delta';
+  window?: { from: string; to: string } | null;
+  since?: string;
+  entities?: Record<string, { winhotel: number; imported: number; updated: number; staged: number }>;
+  staging?: Array<{ entity: string; reason: string; n: number }>;
+  reconcile?: { mustMatch: Array<{ name: string; winhotel: number | string; ours: number | string; ok: boolean }> };
+  mismatch?: boolean;
+  durationMs?: number;
+}
+/** Причина staging — словом оператору; ключі — словник NAMING.md. */
+const STAGING_REASON: Record<string, string> = {
+  frozen: 'заморожені фактури', frozen_sammelrechnung: 'збірні фактури', fiscal_guard: 'готівка/картка до TSE',
+  method_unmapped: 'спосіб оплати поза класами', overlap: 'бронь поверх зайнятого номера', no_guest: 'бронь без гостя',
+  no_unit_type: 'бронь без типу номера', changed: 'змінено після імпорту', refused_by_core: 'ядро відмовило',
+  cash_article: 'касові статті (не фоліо гостя)', debtor_no_pending: 'дебіторський номер фірми до колонки',
+  core_gap_gdpr_journal: 'згоди GDPR', core_gap_cash_book: 'касова книга',
+  open_guest_balances: 'відкриті сальдо', invoice_ledger_by_status: 'журнал фактур', vouchers_sold: 'продані ваучери',
+  vouchers_redeemed: 'погашені ваучери', deposits_on_bookings: 'депозити броней', deposits_on_future_bookings: 'депозити майбутніх броней',
+  last_day_closing: 'останнє закриття дня', payments_debtor: 'оплати дебіторів',
+};
+
+/** Стан знімка Winhotel — словом і кольором; `imported` і `failed` — крайні. */
+const SNAPSHOT_STATUS: Record<string, { word: string; badge: string }> = {
+  received: { word: 'прийнято', badge: 'badge-info' },
+  extracting: { word: 'витягається', badge: 'badge-warning' },
+  extracted: { word: 'витягнуто', badge: 'badge-primary' },
+  imported: { word: 'імпортовано', badge: 'badge-success' },
+  failed: { word: 'відмова', badge: 'badge-danger' },
+};
+const SNAPSHOT_MODE: Record<string, string> = {
+  backup: 'готовий бекап', gbak: 'gbak', copy: 'копія файла', delta: 'дельта дня',
+};
+const mb = (bytes: number) => `${(Number(bytes) / 1048576).toFixed(1)} MB`;
 
 /** Слово і колір стану — одна мапа на картки й на здоровʼя. */
 const STATUS: Record<string, { word: string; badge: string }> = {
@@ -77,6 +119,10 @@ export default function AppsSettingsPage() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
   const [saved, setSaved] = useState('');
+  const [winhotel, setWinhotel] = useState<WinhotelCard | null>(null);
+  const [agentToken, setAgentToken] = useState('');
+  const [importNote, setImportNote] = useState('');
+  const [importSince, setImportSince] = useState('2025-01-01');
 
   const load = useCallback(async () => {
     const res = await fetch('/api/settings/apps');
@@ -88,6 +134,16 @@ export default function AppsSettingsPage() {
     setCards(d.cards);
     setHealth(d.health);
     setFiscalProperties(d.fiscalProperties ?? []);
+    // Картка Winhotel читає свої знімки окремим запитом: він ще й звіряє
+    // маркери мосту на томі, і робити це на кожне відкриття екрана для
+    // готелів без Winhotel не треба.
+    const wh = (d.cards as Card[]).find((c) => c.id === 'winhotel_import');
+    if (wh && wh.live && wh.enabled) {
+      const r = await fetch('/api/settings/apps/winhotel-import/snapshots');
+      setWinhotel(r.ok ? await r.json() : null);
+    } else {
+      setWinhotel(null);
+    }
   }, [t]);
 
   useEffect(() => {
@@ -159,6 +215,37 @@ export default function AppsSettingsPage() {
       const d = await res.json().catch(() => ({}));
       if (!res.ok) { setError(d.error || t('Не вдалося підключити TSE')); await load(); return; }
       setTseResult(`${t('підключено')} · TSS ${d.tss}`);
+      await load();
+    } finally {
+      setBusy('');
+    }
+  };
+
+  // «Токен агента»: створити або замінити; значення показується один раз.
+  const issueToken = async () => {
+    setBusy('winhotel_import');
+    setError('');
+    try {
+      const res = await fetch('/api/settings/apps/winhotel-import/token', { method: 'POST' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setError(d.error || t('Не вдалося створити токен')); return; }
+      setAgentToken(d.token);
+      await load();
+    } finally {
+      setBusy('');
+    }
+  };
+
+  // «Імпортувати знімок»: відповідь читається завжди — успіх і відмова показуються словами.
+  const importSnapshot = async (id: string) => {
+    setBusy('winhotel_import');
+    setImportNote('');
+    try {
+      const res = await fetch(`/api/settings/apps/winhotel-import/snapshots/${encodeURIComponent(id)}/import`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ since: importSince }),
+      });
+      const d = await res.json().catch(() => ({}));
+      setImportNote(res.ok ? t('Імпорт запущено') : (d.error || t('Не вдалося імпортувати')));
       await load();
     } finally {
       setBusy('');
@@ -240,6 +327,120 @@ export default function AppsSettingsPage() {
                           {t('остання помилка')}: {c.last_error} · {fmt(c.last_error_at)}
                         </div>
                       ))}
+                    </div>
+                  )}
+
+                  {card.id === 'winhotel_import' && card.live && card.enabled && (
+                    <div data-testid="winhotel-card" style={{ padding: '12px 18px 16px 18px', borderTop: line, fontSize: 12 }}>
+                      <div style={{ color: 'var(--text-secondary)', marginBottom: 8 }}>
+                        {winhotel?.last ? (
+                          <>
+                            {t('Останній знімок')}: {fmt(winhotel.last.taken_at ?? winhotel.last.received_at)} · {t(SNAPSHOT_MODE[winhotel.last.mode] ?? winhotel.last.mode)} · {mb(winhotel.last.size_bytes)} ·{' '}
+                            <span className={`badge ${(SNAPSHOT_STATUS[winhotel.last.status] ?? SNAPSHOT_STATUS.received).badge}`} data-testid="winhotel-last-status">
+                              {t((SNAPSHOT_STATUS[winhotel.last.status] ?? SNAPSHOT_STATUS.received).word)}
+                            </span>
+                          </>
+                        ) : t('Знімків ще немає: агент на сервері готелю ще не приносив бази')}
+                      </div>
+                      {winhotel && !winhotel.hasToken && (
+                        <div style={{ color: 'var(--warning)', marginBottom: 8 }}>{t('Токена агента ще немає — без нього агент нічого не завантажить')}</div>
+                      )}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+                        <button className="btn btn-secondary" style={{ fontSize: 13 }} data-testid="winhotel-token" disabled={busy === card.id} onClick={issueToken}>
+                          {winhotel?.hasToken ? t('Замінити токен агента') : t('Створити токен агента')}
+                        </button>
+                        <span style={{ color: 'var(--text-tertiary)' }}>{t('Агент і інструкція')}: apps/winhotel-agent/README.de.md</span>
+                      </div>
+                      {agentToken && (
+                        <div style={{ marginBottom: 10 }} data-testid="winhotel-token-value">
+                          <div style={{ color: 'var(--danger)', marginBottom: 4 }}>{t('Скопіюйте токен зараз — удруге він не покажеться. Старий токен уже не діє.')}</div>
+                          <input readOnly value={agentToken} onFocus={(e) => e.currentTarget.select()} style={{ width: '100%', padding: '8px 10px', fontSize: 12, fontFamily: 'monospace', borderRadius: 6, border: line, background: 'var(--bg-secondary)', color: 'var(--text-primary)' }} />
+                        </div>
+                      )}
+                      {importNote && <div data-testid="winhotel-import-note" style={{ color: 'var(--text-secondary)', marginBottom: 8 }}>{importNote}</div>}
+                      {winhotel && winhotel.snapshots.length > 0 && (
+                        <div style={{ overflowX: 'auto' }}>
+                          <table className="table" data-testid="winhotel-snapshots" style={{ width: '100%', fontSize: 12 }}>
+                            <thead>
+                              <tr>
+                                <th>{t('Знімок')}</th>
+                                <th>{t('Режим')}</th>
+                                <th>{t('Розмір')}</th>
+                                <th>{t('Стан')}</th>
+                                <th>{t('Звірка')}</th>
+                                <th />
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {winhotel.snapshots.map((snap) => {
+                                const ss = SNAPSHOT_STATUS[snap.status] ?? SNAPSHOT_STATUS.received;
+                                let counts: Record<string, number> = {};
+                                let imp: WinhotelImport | undefined;
+                                try {
+                                  const parsed = JSON.parse(snap.counts_json ?? '{}') as { winhotel?: Record<string, number>; import?: WinhotelImport };
+                                  counts = parsed.winhotel ?? {};
+                                  imp = parsed.import;
+                                } catch { counts = {}; }
+                                const importing = imp?.phase === 'importing';
+                                const ent = imp?.entities ?? {};
+                                const stagedTotal = (imp?.staging ?? []).reduce((a, x) => a + Number(x.n), 0);
+                                const failedMatch = (imp?.reconcile?.mustMatch ?? []).filter((m) => !m.ok);
+                                return (
+                                  <tr key={snap.id} data-testid={`winhotel-snapshot-${snap.id}`}>
+                                    <td title={snap.id}>{fmt(snap.taken_at ?? snap.received_at)}</td>
+                                    <td>{t(SNAPSHOT_MODE[snap.mode] ?? snap.mode)}</td>
+                                    <td>{mb(snap.size_bytes)}</td>
+                                    <td>
+                                      {importing
+                                        ? <span className="badge badge-warning" data-testid={`winhotel-importing-${snap.id}`}>{t('імпорт триває')}</span>
+                                        : <span className={`badge ${ss.badge}`}>{t(ss.word)}</span>}
+                                      {snap.error && <div style={{ color: 'var(--danger)', marginTop: 4 }}>{snap.error}</div>}
+                                      {imp?.mismatch && (
+                                        <div style={{ color: 'var(--danger)', marginTop: 4 }} data-testid={`winhotel-mismatch-${snap.id}`}>
+                                          {t('Числа не зійшлись')}: {failedMatch.map((m) => `${m.name} ${m.winhotel} ≠ ${m.ours}`).join(' · ')}
+                                        </div>
+                                      )}
+                                    </td>
+                                    <td style={{ color: 'var(--text-tertiary)' }}>
+                                      {Object.keys(counts).length
+                                        ? `${t('брони')} ${counts.bookings ?? '—'} · ${t('адреси')} ${counts.addresses ?? '—'} · ${t('фактури')} ${counts.invoices ?? '—'}`
+                                        : '—'}
+                                      {imp?.phase === 'done' && (
+                                        <div style={{ marginTop: 4, color: 'var(--text-secondary)' }} data-testid={`winhotel-imported-${snap.id}`}>
+                                          {t('у ядрі')}: {t('брони')} {ent.reservation?.imported ?? 0}+{ent.reservation?.updated ?? 0} · {t('гості')} {ent.guest?.imported ?? 0} ·{' '}
+                                          {t('рядки')} {ent.folio_line?.imported ?? 0} · {t('оплати')} {ent.payment?.imported ?? 0}
+                                          {imp?.mode === 'delta' && imp.window
+                                            ? <span> · {t('вікно')} {imp.window.from}…{imp.window.to}</span>
+                                            : imp?.since && <span> · {t('з')} {imp.since}</span>}
+                                          {stagedTotal > 0 && (
+                                            <div data-testid={`winhotel-staged-${snap.id}`}>
+                                              {t('відкладено')} {stagedTotal}:{' '}
+                                              {(imp?.staging ?? []).map((x) => (
+                                                <span key={`${x.entity}/${x.reason}`} style={{ marginRight: 8 }}>{t(STAGING_REASON[x.reason] ?? x.reason)} {x.n}</span>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </td>
+                                    <td>
+                                      {(snap.status === 'extracted' || snap.status === 'imported') && !importing && (
+                                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                                          <input type="date" className="input" style={{ fontSize: 12, width: 140 }} value={importSince} title={t('Минулі брони — з цієї дати заїзду; майбутні — всі')}
+                                            data-testid={`winhotel-since-${snap.id}`} onChange={(e) => setImportSince(e.target.value)} />
+                                          <button className="btn btn-primary btn-sm" data-testid={`winhotel-import-${snap.id}`} disabled={busy === card.id} onClick={() => importSnapshot(snap.id)}>
+                                            {snap.status === 'imported' ? t('Імпортувати знову') : t('Імпортувати знімок')}
+                                          </button>
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </div>
                   )}
 

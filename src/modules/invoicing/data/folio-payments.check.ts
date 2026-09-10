@@ -67,6 +67,32 @@ try {
       /old till system/, 'карта на рецепції — теж касовий оборот, теж відмова');
     console.log('  ok  DE без фіскального модуля: готівка і термінал відмовлені');
 
+    // ── З34: оплата, перенесена з попередньої системи, — не наш касовий оборот ──
+    // Вона йде повз варту ЛИШЕ з позначкою походження; слово «import» без
+    // походження — це обхід варти, і воно відмовляється. Варта для рецепції
+    // (сцена вище) лишається як була.
+    await assert.rejects(
+      recordPayment({ folioId: deFolio, amount: 100, method: 'cash', source: 'import' }),
+      /must name its origin/, 'імпортна оплата без походження мала бути відмовлена');
+    await assert.rejects(
+      recordPayment({ folioId: deFolio, amount: 100, method: 'cash', source: 'import', origin: 'kasse' }),
+      /must name its origin/, 'походження не виду winhotel:<LNR> — теж відмова');
+    await assert.rejects(
+      recordPayment({ folioId: deFolio, amount: 100, method: 'cash', origin: 'winhotel:7' }),
+      /only for imported/, 'походження без source=import — відмова: позначка не заміняє слово');
+    const importedId = await recordPayment({ folioId: deFolio, amount: 100, method: 'cash', source: 'import', origin: 'winhotel:4711' });
+    const importedRow = (await listPayments(deFolio)).find((p) => p.id === importedId)!;
+    assert.strictEqual(importedRow.source, 'import');
+    assert.strictEqual(importedRow.origin, 'winhotel:4711');
+    assert.strictEqual((importedRow as any).tse_status ?? null, null, 'імпортна оплата не підписується і не «tse_failed»');
+    // І після імпортної — рецепційна готівка на DE без fiscal_de відмовляється так само.
+    await assert.rejects(
+      recordPayment({ folioId: deFolio, amount: 100, method: 'cash' }),
+      /old till system/, 'варта для рецепції мусить лишитись після імпортної оплати');
+    await reverseFolioPayment(importedId).catch(() => undefined);
+    await sql.run('DELETE FROM fin_folio_payments WHERE folio_id = ? AND (origin = ? OR origin IS NULL AND method = ? AND amount = ?)', [deFolio, 'winhotel:4711', 'cash', -100]);
+    console.log('  ok  З34: імпортна готівка на DE проходить лише з походженням winhotel:<LNR>, без підпису; без походження — відмова; рецепція — варта як була');
+
     // A bank transfer is not a till movement — §146a AO has nothing to sign.
     const transferId = await recordPayment({ folioId: deFolio, amount: 154, method: 'transfer' });
     assert.ok(transferId, 'переказ мусить проходити і без TSE');
