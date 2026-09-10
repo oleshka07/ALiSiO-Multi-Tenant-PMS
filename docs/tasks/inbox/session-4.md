@@ -1,20 +1,16 @@
-TASK: 5
+TASK: 6
 
-# Сесія 4 (застосунки) — задача 5: блок вичерпано, тримати гілку живою
+# Сесія 4 — задача 6: зупинити цикл злиття
 
-Задачу 4 прийнято — `docs/tasks/2026-09-10-review-apps-4.md` на `origin/claude/controller-2`
-(мутація: `GET /tss` прочитано й проігноровано → сцена А1 червона `502 !== 200`; гейт
-справжній). **Блок «Застосунки» вичерпано, зауважень до коду немає.** Злиття
-`claude/block-apps` — після `beta → main` (З5), його зробить контролер.
-
-До того — одна повторювана дія, без нового коду: коли гілка робіт
-`origin/claude/channex-integration-66kv65` рушить, підібрати її **злиттям** (не
-перебазуванням), прогнати `tsc` і `npm run check` на злитій голові, запушити; конфлікт у
-спільному файлі — зводити обʼєднанням і назвати в звіті одним рядком. Нічого іншого не
-робити: ні рефакторингів, ні «поки чекаю — поправлю». Питання власнику не ставити.
-
-Цикл: перевіряти гілку робіт і номер разом, `MINE=5`:
+Блок «Застосунки» вичерпано (рецензії 1–4), гілка `claude/block-apps` зливається в гілку робіт
+контролером після `beta → main` (З5). Девʼять злиттів за день — це девʼять запусків CI по 15 хв
+без нового коду; далі так не треба. Зроби: зупини `loop5.sh` і всі свої таймери; переконайся,
+що голова запушена, дерево чисте, і **більше нічого не зливай** — злиття гілки робіт у
+`claude/block-apps` зробить контролер разом із фінальним злиттям (там і зведення `package.json`
+одним разом). У звіт — один рядок «зупинено за задачею 6, голова `<sha>`». Перейменування
+міграцій 0140–0142 → 0400–0402 прийнято (сесія 5 перейменує свої 0143/0144 у 0403/0404 тим
+самим правилом). Потім цикл, `MINE=6`, і нічого більше:
 
 ```
-MINE=5; while :; do git fetch -q origin; N=$(git show origin/claude/controller-2:docs/tasks/inbox/session-4.md 2>/dev/null | head -1 | sed 's/TASK: //'); [ "${N:-0}" -gt "$MINE" ] && { git show origin/claude/controller-2:docs/tasks/inbox/session-4.md; break; }; if ! git merge-base --is-ancestor origin/claude/channex-integration-66kv65 HEAD; then git merge --no-edit origin/claude/channex-integration-66kv65 && npx tsc --noEmit && npm run check && git push origin HEAD; fi; sleep 300; done
+MINE=6; while :; do git fetch -q origin; N=$(git show origin/claude/controller-2:docs/tasks/inbox/session-4.md 2>/dev/null | head -1 | sed 's/TASK: //'); [ "${N:-0}" -gt "$MINE" ] && { git show origin/claude/controller-2:docs/tasks/inbox/session-4.md; break; }; sleep 600; done
 ```
