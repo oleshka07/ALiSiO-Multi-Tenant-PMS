@@ -50,6 +50,9 @@ const EXPECTED_DEFAULT: Record<Key, boolean> = {
   booking_engine: true,
   fiscal_de: false,
   online_payments: false,
+  // OFF (10.09.2026): вмикає лише готель, який переїжджає з Winhotel; поки
+  // вимкнено, приймальний маршрут знімка відповідає 404.
+  winhotel_import: false,
   // OFF від 05.09.2026 (П15): платний модуль. Наявні готелі мають явний
   // рядок enabled = TRUE, поставлений міграцією 0065.
   tasks: false,
@@ -118,6 +121,10 @@ const INTEGRATIONS: Partial<Record<Key, string>> = {
   // називає `online_payments`; збереження ключа питає цю мапу.
   online_payments: 'src/core/apps.ts',
   channels: 'src/modules/channels/api/pull-cron.handlers.ts',
+  // Приймання знімка — публічний маршрут за токеном агента: сесії немає, тож
+  // варта ключа стоїть у хендлері (`hasFeature`, 404 на вимкненому), а не в
+  // `withModule`.
+  winhotel_import: 'src/apps/winhotel-import/api/snapshots.handlers.ts',
 };
 for (const [key, file] of Object.entries(INTEGRATIONS)) {
   assert.ok(fs.existsSync(file!), `інтеграція «${key}»: файл варти ${file} зник`);
@@ -165,7 +172,7 @@ console.log(`  ok  ${MODULES.length} модулів ховаються з мен
 // обгортка своя (`withOwnedSite`), варта — `hasFeature(…, '<ключ>')` з
 // відмовою; форма інша, питання те саме.
 const OWNERS: Record<Key, string[]> = {
-  booking_engine: [], fiscal_de: [], online_payments: [], channels: [],
+  booking_engine: [], fiscal_de: [], online_payments: [], channels: [], winhotel_import: [],
   tasks: [
     'src/app/api/tasks/route.ts',
     'src/app/api/tasks/[id]/route.ts',

@@ -33,6 +33,9 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 /** The methods that count toward the till — the ones §146a AO signs. */
 export const TILL_METHODS: ReadonlySet<PaymentMethod> = new Set(['cash', 'card_terminal']);
 
+/** Походження імпортованої оплати: система і її LNR. Інших джерел імпорту поки немає. */
+export const IMPORT_ORIGIN = /^winhotel:\d+$/;
+
 export interface FolioPayment {
   id: string;
   folio_id: string;
@@ -42,6 +45,9 @@ export interface FolioPayment {
   method: PaymentMethod;
   paid_at: string;
   received_by: string | null;
+  /** `'import'` — перенесена з попередньої системи (З34); інакше null — наша каса. */
+  source: 'import' | null;
+  origin: string | null;
 }
 
 /**
@@ -62,6 +68,15 @@ export async function recordPayment(input: {
   invoiceId?: string | null;
   paidAt?: string | null;
   receivedBy?: string | null;
+  /**
+   * `'import'` — оплата, перенесена з попередньої системи готелю (З34). Вона
+   * вже підписана ТІЄЮ касою і в нашій не відбувалась, тому йде повз
+   * фіскальну варту і не підписується — але лише з позначкою походження
+   * `origin` виду `winhotel:<LNR>`: імпортна оплата без походження відмовляється,
+   * інакше слово «import» стало б обхідним шляхом для будь-кого.
+   */
+  source?: 'import' | null;
+  origin?: string | null;
 }, deps?: { device?: FiscalDevice }): Promise<string> {
   const organizationId = await requireOrganizationId();
   const sql = getSql();
@@ -91,6 +106,12 @@ export async function recordPayment(input: {
   if (!PAYMENT_METHODS.includes(method as PaymentMethod)) {
     throw new Error(`method must be one of ${PAYMENT_METHODS.join(', ')}`);
   }
+  const imported = input.source === 'import';
+  if (input.source != null && !imported) throw new Error("source must be 'import' or absent");
+  if (imported && !IMPORT_ORIGIN.test(String(input.origin ?? ''))) {
+    throw new Error('An imported payment must name its origin (winhotel:<LNR>) — without it the import label would bypass the till guard');
+  }
+  if (!imported && input.origin) throw new Error('origin is only for imported payments');
   const amount = Number(input.amount);
   // Zero is not a payment; negative IS one — cash handed back is a till
   // movement with its sign, not a deleted row.
@@ -110,7 +131,10 @@ export async function recordPayment(input: {
   if (!folio) throw new Error('Folio not found');
 
   let mustSign = false;
-  if (TILL_METHODS.has(method as PaymentMethod)) {
+  // Дві правки одного рядка, і обидві чинні: імпортована оплата — не наш
+  // касовий оборот (варту й підпис не проходить), а КЛАС береться з рядка
+  // довідника (Д61), не з поля запиту.
+  if (!imported && TILL_METHODS.has(method as PaymentMethod)) {
     // Cash belongs to a till and a till belongs to a property — that is
     // where §146a AO looks. A folio that does not know its property cannot
     // prove its till is NOT German, so it fails closed: organizations do not
@@ -181,13 +205,14 @@ export async function recordPayment(input: {
   const id = crypto.randomUUID();
   await sql.run(
     `INSERT INTO fin_folio_payments
-       (id, organization_id, property_id, folio_id, invoice_id, amount, method, method_id, paid_at, received_by,
+       (id, organization_id, property_id, folio_id, invoice_id, amount, method, method_id, paid_at, received_by, source, origin,
         tse_status, tse_serial, tse_tx_number, tse_signature_counter, tse_signature,
         tse_start_time, tse_end_time, tse_qr_payload, tse_client_id, tse_process_type, tse_process_data)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [id, organizationId, folio.property_id ?? null, input.folioId,
      input.invoiceId ?? null, amount, method, methodId,
      input.paidAt ?? null, input.receivedBy ?? null,
+     imported ? 'import' : null, imported ? String(input.origin) : null,
      tseStatus,
      signature?.tseSerial ?? null, signature?.txNumber ?? null,
      signature?.signatureCounter ?? null, signature?.signature ?? null,

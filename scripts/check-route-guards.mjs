@@ -154,6 +154,9 @@ const PUBLIC = new RegExp([
   '/api/payments/webhook',
   '/api/platform/',
   '/api/ical-export/',
+  // Прийом знімка Winhotel — за токеном агента, без сесії (proxy.ts). Рівно
+  // цей шлях: решта `/api/apps/…`, якщо зʼявиться, лишається під вартою.
+  '/api/apps/winhotel-import/snapshots\\b',
 ].join('|'));
 
 // Read the alias table with a regex rather than JSON.parse: tsconfig.json is

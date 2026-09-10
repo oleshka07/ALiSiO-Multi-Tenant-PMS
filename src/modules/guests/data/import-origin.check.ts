@@ -22,6 +22,8 @@
  *   той самий ключ у ЧУЖОМУ рахунку — проходить (унікальність із орендарем,
  *     інваріант 3): два готелі можуть імпортувати з двох різних Winhotel, і
  *     `ADRESSEN.LNR = 1` є в обох;
+ *   гроші й документи: другий примірник фактури або платежу — те, за чим
+ *     звертається аудитор; форма ключа та сама, що в гостей і броней;
  *   БЕЗ ключа — скільки завгодно рядків: гість, заведений рецепцією,
  *     походження не має. Це твердження про ПОВЕДІНКУ, і воно навмисно не
  *     розрізняє, чи є в індексі предикат: виміряно, що два NULL проходять і
@@ -117,6 +119,33 @@ const row = await inOurs(() => sql.row<{ external_ref: string; external_uid: str
   'SELECT external_ref, external_uid FROM reservations WHERE id = ?', ['io_r1']));
 say(row?.external_ref === 'winhotel:gastkont:77' && row?.external_uid === 'ical-abc',
   'походження імпорту і ключ каналу живуть поруч і не затирають одне одного');
+
+// ── 5. Гроші й документи — та сама заборона (INC-307) ───────────────────────
+//
+// Найдорожчий випадок: другий прогін імпорту не просто перезаписав би довідник,
+// а створив би ДРУГИЙ примірник фактури й другий платіж. Форма ключа навмисно
+// та сама, що в гостей і броней: цей ключ читатиме імпортер, і однаковість
+// для нього важливіша за витонченість.
+const twiceInto = async (table: string, insert: () => Promise<unknown>) => {
+  await insert();
+  const second = await tried(insert);
+  say(second !== null, `${table}: другий імпорт того самого рядка відхилено базою`);
+};
+
+await twiceInto('companies', () => {
+  const n = Math.random().toString(36).slice(2, 8);
+  return inOurs(() => sql.run(
+    `INSERT INTO companies (id, organization_id, name, external_ref)
+     VALUES (?, ?, 'Firma Stub GmbH', 'winhotel:adressen:10001')`, [`io_co_${n}`, ORG]));
+});
+
+// Пара: сусідній рахунок імпортує компанію з тим самим чужим номером.
+const neighbourCompany = await tried(() => inTheirs(() => sql.run(
+  `INSERT INTO companies (id, organization_id, name, external_ref)
+   VALUES ('io_co_theirs', ?, 'Чужа фірма', 'winhotel:adressen:10001')`,
+  [neighbour.organizationId])));
+say(neighbourCompany === null,
+  'компанія сусіда з тим самим чужим номером проходить — унікальність із орендарем');
 
 if (process.env.DB_DRIVER !== 'postgres') fs.rmSync(tmp, { recursive: true, force: true });
 assert.deepStrictEqual(fails, [], `не виконано: ${fails.join('; ')}`);

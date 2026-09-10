@@ -167,6 +167,54 @@ export async function updateCompany(organizationId: string, id: string, patch: P
   }
 }
 
+/** Та сама відмова унікальності — за номером дебітора (`idx_companies_debtor_no`, 0140). */
+function isDuplicateDebtorNo(e: unknown): boolean {
+  const msg = String((e as any)?.message ?? '');
+  const detail = `${msg} ${String((e as any)?.constraint ?? '')} ${String((e as any)?.detail ?? '')}`;
+  const code = String((e as any)?.code ?? '');
+  const unique = code === '23505' || /UNIQUE constraint failed|duplicate key/i.test(msg);
+  return unique && /debtor_no/i.test(detail);
+}
+
+export type AdoptDebtorNoResult = 'adopted' | 'already' | 'taken' | 'not_found';
+
+/**
+ * Прийняти номер дебітора з ПОПЕРЕДНЬОЇ системи готелю (імпорт Winhotel, З37).
+ *
+ * `createCompany` видає номер із лічильника рахунку (Д56) — для фірми, яка
+ * приїхала зі своєю книгою дебіторів, це чужий номер: бухгалтерія знає її під
+ * тим, що стоїть у Winhotel. Ці двері ставлять той номер замість виданого і
+ * зсувають лічильник ЗА нього, щоб наступна фірма, заведена вже в нас, не
+ * сіла в картку, яку бухгалтерія тримає за кимось із перенесених.
+ *
+ * Відмова за унікальністю (номер уже в іншої фірми цього рахунку) — не
+ * виняток, а відповідь `taken`: викликач вирішує, куди подіти число (імпорт
+ * кладе його в staging). Чужа або неіснуюча компанія — `not_found`
+ * (інваріант 5).
+ */
+export async function adoptDebtorNo(organizationId: string, id: string, debtorNo: number): Promise<AdoptDebtorNoResult> {
+  if (!Number.isInteger(debtorNo) || debtorNo <= 0) throw new Error('debtorNo must be a positive integer');
+  const sql = getSql();
+  const current = await getCompany(organizationId, id);
+  if (!current) return 'not_found';
+  if (current.debtor_no !== null && Number(current.debtor_no) === debtorNo) return 'already';
+  try {
+    const r = await sql.run(
+      'UPDATE companies SET debtor_no = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND organization_id = ?',
+      [debtorNo, id, organizationId]);
+    if ((r?.changes ?? 0) === 0) return 'not_found';
+  } catch (e) {
+    if (isDuplicateDebtorNo(e)) return 'taken';
+    throw e;
+  }
+  // Лічильник — не менший за прийнятий номер + 1; форма без GREATEST, бо
+  // SQLite її не знає.
+  await sql.run(
+    'UPDATE organizations SET next_debtor_no = CASE WHEN next_debtor_no <= ? THEN ? ELSE next_debtor_no END WHERE id = ?',
+    [debtorNo, debtorNo + 1, organizationId]);
+  return 'adopted';
+}
+
 /** В архів або назад. Архівна компанія випадає зі списку вибору, броні лишаються. */
 export async function setCompanyArchived(organizationId: string, id: string, archived: boolean): Promise<boolean> {
   const r = await getSql().run(

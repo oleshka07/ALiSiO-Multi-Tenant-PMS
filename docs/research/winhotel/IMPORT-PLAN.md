@@ -32,7 +32,7 @@
 | 4 | Послуги | `LEISTSTA` (+ `WARENGRU`) → каталог послуг (`additional_services`/`service_addons` з `vat_code`) | 2 | 132 → ~40 живих |
 | 5 | Тарифи й ціни | `PREISCODE` → `rate_plans`; `SAISSTAM` → `seasons`; `PREISLIST` → `season_prices` + `price_occupancy`; `MIN_TAGE` → `price_los_tiers`; Aufbettung → `extra_occupancy_rules` | 3 | 10 / 23 / 341 |
 | 6 | Джерела/сегменти | `SEGMSTAM` → `booking_sources` | 1 | 10 |
-| 7 | Адреси: компанії | `ADRESSEN` з `DEBI_NR > 0` (або тип «фірма» з `ADR_AUSWAHL`) → `companies` | 1 | ~2,6 тис. (діапазон 10000–12599) |
+| 7 | Адреси: компанії | `ADRESSEN` з **`ADR_WAHL = 1`** («Firma»; не `DEBI_NR` — його має кожен, хто отримував рахунок, 15 421 приватних із 17 461; рецензія Б) → `companies` | 1 | 2 143 на живому |
 | 8 | Адреси: гості | решта `ADRESSEN` → `guests` (з дедуплікацією) | 1 | ≤ 37 088 |
 | 9 | Брони | `GASTKONT` (+ `BELEGUNG` для переселень, `GASTKREF` для референсів) → `reservations` (+ `reservation_sub_bookings` по `VERK_NR`) + `reservation_guests` (`GASTNR_2/3`, супутник, діти) | 3, 5, 6, 7, 8 | 52 941 |
 | 10 | Рядки рахунків | `BUCHKONT` → `fin_folios` (один на бронь; другий `payer_kind = company`, якщо є `M_DEBIRECHN`) + `fin_folio_items` | 4, 9 | 195 303 |
@@ -61,7 +61,7 @@
 |---|---|
 | Ключ | `winhotel:<TABLE>:<LNR>` → `external_ref`; `MAND_NR = 1` (перевірити, що другий мандант порожній) |
 | Живий/видалений | `TA_STATUS < 1000` — живий; `>= 1000` — не імпортувати, крім фактур зі `STORNO_KZ` (стають `invoices.status = 'storno'`) |
-| Суми | `BIGINT / 1000` → `NUMERIC(14,2)` через `money()` (інваріант 9); `NUMERIC(12,3)` домени — так само |
+| Суми | домени `NUMERIC(12,3)`/`(12,2)`/`DECIMAL(12,4)` читаються як десяткові **як є** (isql віддає `141.000`; ділити на 1000 не можна — рецензія А 10.09) → `NUMERIC(14,2)` через `money()` (інваріант 9) |
 | Текст | байти → `windows-1252` → UTF-8; перевірити на першому прізвищі з умлаутом |
 | Дати | `DATE`/`TIMESTAMP` як є; `1899-12-30` і будь-що `< 1900-01-01` → `NULL`; `2050-12-31` у `BIS` довідників = «без кінця» → `NULL` |
 | Прапорці | Winhotel `SMALLINT 0/1` (і `-1` = true у `ZIMMERART`) → `BOOLEAN`; писати `TRUE`/`FALSE` (інваріант 12) |
@@ -172,7 +172,7 @@
 | `GASTNR_1` | `guest_id` (через мапу злиття) | замовник |
 | `GASTNR_2`, `GASTNR_3` | `reservation_guests` (з `guest_id`) | гість/платник — порядок звірити на прогоні через `PROC_GET_GK3_ADR` |
 | `PERSZAHL`, `ANZKINDER` (+`ANZKINDER2`), `ANZKLEINKIND` | `adults`, `children`, `infants` | `ANZJUGEND` → у `children` (у нас підлітки — вилка дітей) |
-| `MARKSEG` → `SEGMSTAM.SEGMCODE` | `source` (код `booking_sources`) | 10 сегментів |
+| `GASTKREF.TEXT1..5` / `EXT_SOURCE` за словом каналу (не `MARKSEG` — сегмент, на живому порожній; `EXT_SOURCE` — число) | `source` (код `booking_sources` за назвою; без пари — `direct`), номер каналу → `hostex_reservation_code` | розподіл і колонка з назвою — у `reconcile.explained` живого проходу |
 | `PR_CODE` | `rate_plan_id` | 0/NULL → Standard |
 | `ANZA_BETRAG`/`ANZA_DATUM` | `deposit_amount`, `deposit_status = 'paid'` + `deposit_paid_at` | якщо є платіж `LEIST 114` |
 | `BUCH_STATUS`, `CI_STATUS`, `TA_STATUS` | `status` — **гіпотеза з літералів процедур, звірити агрегатами**: `CI_STATUS 2` → `checked_out`; `1` → `checked_in`; `0` і `BUCH_STATUS 0` → `confirmed`; `0` і `BUCH_STATUS 100` → `tentative` (Option/Angebot); `ANG_LNR > 0` без `BUCH_STATUS 100` → `confirmed` з приміткою «з пропозиції»; `TA_STATUS >= 1000` + `STORNO_DATUM` → `cancelled`; `LEIST 12 NOSHOW` у рядках → `no_show` | Gastbestätigung/Reservierung з екрана — обидва `confirmed`, різниця в `TEXTE`, не в стані |

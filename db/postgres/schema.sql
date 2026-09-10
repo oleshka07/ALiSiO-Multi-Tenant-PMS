@@ -534,6 +534,7 @@ CREATE TABLE "companies" (
   "archived_at" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "external_ref" TEXT,
   PRIMARY KEY ("id")
 );
 
@@ -847,6 +848,7 @@ CREATE TABLE "fin_folio_items" (
   "invoice_id" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "discount_of_item_id" TEXT,
+  "external_ref" TEXT,
   PRIMARY KEY ("id"),
   CHECK (kind IN ('lodging','service','fee','city_tax','manual')),
   CHECK (source IN ('nightly','ota_split','manual','restaurant','import','service'))
@@ -875,6 +877,9 @@ CREATE TABLE "fin_folio_payments" (
   "tse_process_type" TEXT,
   "tse_process_data" TEXT,
   "method_id" TEXT,
+  "source" TEXT,
+  "origin" TEXT,
+  "external_ref" TEXT,
   PRIMARY KEY ("id"),
   CHECK (method IN ('cash','card_terminal','transfer','voucher'))
 );
@@ -917,6 +922,7 @@ CREATE TABLE "fin_invoice_lines" (
   "vat_rate" DOUBLE PRECISION DEFAULT 0 NOT NULL,
   "source_item_id" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "external_ref" TEXT,
   PRIMARY KEY ("id")
 );
 
@@ -929,6 +935,7 @@ CREATE TABLE "fin_invoice_tax_totals" (
   "gross_amount" NUMERIC(14,2) DEFAULT 0 NOT NULL,
   "net_amount" NUMERIC(14,2) DEFAULT 0 NOT NULL,
   "tax_amount" NUMERIC(14,2) DEFAULT 0 NOT NULL,
+  "external_ref" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("invoice_id", "vat_rate")
 );
@@ -1463,6 +1470,7 @@ CREATE TABLE "invoices" (
   "custom_email" TEXT,
   "corrects_invoice_id" TEXT,
   "folio_id" TEXT,
+  "external_ref" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("organization_id", "invoice_number"),
   CHECK (status IN ('issued', 'cancelled', 'storno', 'corrected'))
@@ -2323,6 +2331,52 @@ CREATE TABLE "widget_price_list" (
   UNIQUE ("organization_id", "item_code")
 );
 
+CREATE TABLE "winhotel_refs" (
+  "id" TEXT NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "entity" TEXT NOT NULL,
+  "winhotel_lnr" BIGINT NOT NULL,
+  "our_id" TEXT NOT NULL,
+  "fingerprint" TEXT,
+  "source_taken_at" TIMESTAMPTZ,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  UNIQUE ("organization_id", "entity", "winhotel_lnr")
+);
+
+CREATE TABLE "winhotel_snapshots" (
+  "id" TEXT NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "taken_at" TIMESTAMPTZ,
+  "mode" TEXT NOT NULL,
+  "sha256" TEXT NOT NULL,
+  "size_bytes" BIGINT NOT NULL,
+  "status" TEXT DEFAULT 'received' NOT NULL,
+  "error" TEXT,
+  "counts_json" JSONB,
+  "received_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "imported_at" TIMESTAMPTZ,
+  PRIMARY KEY ("id"),
+  UNIQUE ("organization_id", "sha256"),
+  CHECK (mode IN ('backup', 'gbak', 'copy', 'delta')),
+  CHECK (status IN ('received', 'extracting', 'extracted', 'imported', 'failed'))
+);
+
+CREATE TABLE "winhotel_staging" (
+  "id" TEXT NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "snapshot_id" TEXT,
+  "entity" TEXT NOT NULL,
+  "winhotel_lnr" BIGINT NOT NULL,
+  "reason" TEXT NOT NULL,
+  "payload_json" JSONB,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  UNIQUE ("organization_id", "entity", "winhotel_lnr")
+);
+
 -- ── Foreign keys ────────────────────────────────────────────────────────
 
 ALTER TABLE "accruals" ADD CONSTRAINT "fk_accruals_fin_operation_id_1"
@@ -2863,6 +2917,12 @@ ALTER TABLE "widget_handshakes" ADD CONSTRAINT "fk_widget_handshakes_organizatio
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "widget_price_list" ADD CONSTRAINT "fk_widget_price_list_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "winhotel_refs" ADD CONSTRAINT "fk_winhotel_refs_organization_id_1"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "winhotel_snapshots" ADD CONSTRAINT "fk_winhotel_snapshots_organization_id_1"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "winhotel_staging" ADD CONSTRAINT "fk_winhotel_staging_organization_id_1"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 
 -- ── Constraints SQLite cannot express ───────────────────────────────────
 --
@@ -2928,6 +2988,7 @@ CREATE INDEX "idx_cm_outbox_pending" ON "cm_outbox" ("connection_id", "kind") WH
 CREATE INDEX "idx_cm_sends_connection" ON "cm_sends" ("connection_id", "sent_at");
 CREATE INDEX "idx_cm_sends_org" ON "cm_sends" ("organization_id");
 CREATE UNIQUE INDEX "idx_companies_debtor_no" ON "companies" ("organization_id", "debtor_no") WHERE debtor_no IS NOT NULL ;
+CREATE UNIQUE INDEX "idx_companies_external_ref" ON "companies" ("organization_id", "external_ref") WHERE external_ref IS NOT NULL;
 CREATE INDEX "idx_companies_org" ON "companies" ("organization_id", "name");
 CREATE UNIQUE INDEX "idx_companies_org_business_id" ON "companies" ("organization_id", "business_id") WHERE business_id IS NOT NULL;
 CREATE INDEX "idx_company_rate_plans_org" ON "company_rate_plans" ("organization_id");
@@ -2961,16 +3022,20 @@ CREATE INDEX "idx_fin_fiscal_settings_org" ON "fin_fiscal_settings" ("organizati
 CREATE UNIQUE INDEX "idx_fin_fiscal_settings_row" ON "fin_fiscal_settings" ("property_id");
 CREATE INDEX "idx_fin_folio_items_date" ON "fin_folio_items" ("organization_id", "service_date");
 CREATE INDEX "idx_fin_folio_items_discount_of" ON "fin_folio_items" ("discount_of_item_id");
+CREATE UNIQUE INDEX "idx_fin_folio_items_external_ref" ON "fin_folio_items" ("organization_id", "external_ref") WHERE external_ref IS NOT NULL;
 CREATE INDEX "idx_fin_folio_items_folio" ON "fin_folio_items" ("folio_id");
 CREATE INDEX "idx_fin_folio_items_invoice" ON "fin_folio_items" ("invoice_id");
 CREATE INDEX "idx_fin_folio_items_order" ON "fin_folio_items" ("service_order_id");
+CREATE UNIQUE INDEX "idx_fin_folio_payments_external_ref" ON "fin_folio_payments" ("organization_id", "external_ref") WHERE external_ref IS NOT NULL;
 CREATE INDEX "idx_fin_folio_payments_folio" ON "fin_folio_payments" ("folio_id");
 CREATE INDEX "idx_fin_folio_payments_method" ON "fin_folio_payments" ("method_id");
 CREATE INDEX "idx_fin_folio_payments_org" ON "fin_folio_payments" ("organization_id", "paid_at");
 CREATE INDEX "idx_fin_folios_company" ON "fin_folios" ("organization_id", "company_id");
 CREATE INDEX "idx_fin_folios_org" ON "fin_folios" ("organization_id", "status");
 CREATE INDEX "idx_fin_folios_res" ON "fin_folios" ("reservation_id");
+CREATE UNIQUE INDEX "idx_fin_invoice_lines_external_ref" ON "fin_invoice_lines" ("organization_id", "external_ref") WHERE external_ref IS NOT NULL;
 CREATE INDEX "idx_fin_invoice_lines_invoice" ON "fin_invoice_lines" ("invoice_id", "position");
+CREATE UNIQUE INDEX "idx_fin_invoice_tax_totals_external_ref" ON "fin_invoice_tax_totals" ("organization_id", "external_ref") WHERE external_ref IS NOT NULL;
 CREATE UNIQUE INDEX "idx_fin_invoice_tax_totals_rate" ON "fin_invoice_tax_totals" ("invoice_id", "vat_rate");
 CREATE INDEX "idx_attach_op" ON "fin_operation_attachments" ("operation_id");
 CREATE INDEX "idx_attach_org" ON "fin_operation_attachments" ("organization_id");
@@ -3034,6 +3099,7 @@ CREATE INDEX "idx_invoice_series_channel" ON "invoice_series" ("organization_id"
 CREATE INDEX "idx_invoice_series_property" ON "invoice_series" ("organization_id", "property_id");
 CREATE UNIQUE INDEX "idx_invoice_series_row" ON "invoice_series" (organization_id, (COALESCE(property_id, '')), code);
 CREATE INDEX "idx_invoices_corrects" ON "invoices" ("corrects_invoice_id");
+CREATE UNIQUE INDEX "idx_invoices_external_ref" ON "invoices" ("organization_id", "external_ref") WHERE external_ref IS NOT NULL;
 CREATE INDEX "idx_invoices_folio" ON "invoices" ("folio_id");
 CREATE INDEX "idx_invoices_issued" ON "invoices" ("issued_at");
 CREATE INDEX "idx_invoices_number" ON "invoices" ("organization_id", "invoice_number");
@@ -3103,6 +3169,12 @@ CREATE INDEX "idx_we_site" ON "widget_events" ("site_id");
 CREATE INDEX "idx_we_type" ON "widget_events" ("event_type");
 CREATE INDEX "idx_widget_handshakes_org" ON "widget_handshakes" ("organization_id");
 CREATE INDEX "idx_widget_price_list_org" ON "widget_price_list" ("organization_id");
+CREATE INDEX "idx_winhotel_refs_org" ON "winhotel_refs" ("organization_id");
+CREATE INDEX "idx_winhotel_refs_our" ON "winhotel_refs" ("organization_id", "entity", "our_id");
+CREATE INDEX "idx_winhotel_snapshots_org" ON "winhotel_snapshots" ("organization_id");
+CREATE INDEX "idx_winhotel_snapshots_received" ON "winhotel_snapshots" ("organization_id", "received_at");
+CREATE INDEX "idx_winhotel_staging_entity" ON "winhotel_staging" ("organization_id", "entity", "reason");
+CREATE INDEX "idx_winhotel_staging_org" ON "winhotel_staging" ("organization_id");
 
 -- Indexes the row-level security predicates depend on.
 CREATE INDEX IF NOT EXISTS "idx_accruals_org" ON "accruals" ("organization_id");
@@ -3193,6 +3265,9 @@ CREATE INDEX IF NOT EXISTS "idx_unit_cleaning_log_org" ON "unit_cleaning_log" ("
 CREATE INDEX IF NOT EXISTS "idx_unit_type_amenities_org" ON "unit_type_amenities" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_widget_handshakes_org" ON "widget_handshakes" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_widget_price_list_org" ON "widget_price_list" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_winhotel_refs_org" ON "winhotel_refs" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_winhotel_snapshots_org" ON "winhotel_snapshots" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_winhotel_staging_org" ON "winhotel_staging" ("organization_id");
 
 -- ── The tenant an inserted row belongs to ───────────────────────────────
 --
@@ -3373,6 +3448,12 @@ ALTER TABLE "unit_type_amenities" ALTER COLUMN "organization_id"
 ALTER TABLE "widget_handshakes" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "widget_price_list" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "winhotel_refs" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "winhotel_snapshots" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "winhotel_staging" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 
 -- ── Row-level security ──────────────────────────────────────────────────
@@ -4111,6 +4192,24 @@ CREATE POLICY "widget_handshakes_tenant" ON "widget_handshakes"
 ALTER TABLE "widget_price_list" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "widget_price_list" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "widget_price_list_tenant" ON "widget_price_list"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "winhotel_refs" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "winhotel_refs" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "winhotel_refs_tenant" ON "winhotel_refs"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "winhotel_snapshots" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "winhotel_snapshots" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "winhotel_snapshots_tenant" ON "winhotel_snapshots"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "winhotel_staging" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "winhotel_staging" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "winhotel_staging_tenant" ON "winhotel_staging"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 

@@ -17,6 +17,13 @@ const PUBLIC_PREFIXES = [
   // is read from the body: the signal wakes a feed pull, the feed is the
   // truth (modules/channels/api/webhook.handlers.ts, DECISIONS Ц20).
   '/api/webhooks/',
+  // Знімок бази Winhotel від агента на сервері готелю. Сесії немає за
+  // визначенням — це планувальник Windows о третій ночі; право доводить
+  // токен агента в заголовку (`<організація>.<секрет>`, хеш у
+  // channel_credentials): невідомий токен 401, застосунок вимкнено 404, і
+  // жоден байт не лягає на диск до цієї відповіді. Лише цей один шлях, не
+  // `/api/apps/` цілком (src/apps/winhotel-import/api/snapshots.handlers.ts).
+  '/api/apps/winhotel-import/snapshots',
   '/api/widget', // widget-* endpoints (public embed)
   // '/api/file-upload' is deliberately absent. It was public for the retired
   // /book wizard; every caller is now a dashboard screen, and an open upload
