@@ -21,10 +21,14 @@ export async function GET(request: NextRequest) {
     const failed = result.failedOrganizations > 0;
     return NextResponse.json({
       success: !failed,
-      message: `Kiosk day mail: sent ${result.sent}, skipped ${result.skipped} property(ies) without an address`
+      message: `Kiosk day mail: sent ${result.sent}, skipped ${result.skipped} property(ies) with no live terminal`
+        + (result.withoutAddress > 0
+          ? `; ${result.withoutAddress} property(ies) HAVE a terminal but no e-mail address — nobody is reading the day`
+          : '')
         + (failed ? `; ${result.failedOrganizations} organization(s) failed — see server log.` : '.'),
       sent: result.sent,
       skipped: result.skipped,
+      withoutAddress: result.withoutAddress,
       failedOrganizations: result.failedOrganizations,
     }, { status: failed ? 500 : 200 });
   } catch (error: any) {

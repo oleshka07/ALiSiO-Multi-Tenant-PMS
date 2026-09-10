@@ -32,7 +32,23 @@ import { kioskDay, type KioskDay } from './today.repo';
 import { readSystemOfRecord } from '@bookings/kernel';
 
 /**
- * Заголовки й підписи листа — двома мовами юрисдикцій, які в нас є.
+ * Заголовки й підписи листа — мовами юрисдикцій, які в нас є, і англійська.
+ *
+ * ── Юрисдикція поза словником падає на АНГЛІЙСЬКУ, не на німецьку ───────
+ *
+ * Так само, як решта документів цього продукту: `localeForLanguage()`
+ * (`invoicing/domain/invoice-document.ts`) віддає `de-DE`, `cs-CZ`, а на все
+ * інше — `en-GB`, і причина там написана словами: «надрукувати вигадану
+ * форму гірше, ніж надрукувати англійською».
+ *
+ * Мовчазний `de` тут був би саме вигаданою формою: австрійський готель ще
+ * прочитав би, а польський чи французький отримав би лист чужою мовою і
+ * вирішив би, що це помилка адреси. Англійська — не «краща мова», це
+ * ЗІЗНАННЯ, що своєї в нас для цієї юрисдикції ще немає.
+ *
+ * Названої ВІДМОВИ тут немає навмисно: відмовитись означало б не надіслати
+ * листа зовсім, тобто рецепція не побачила б списку виїздів. Мова листа —
+ * гірший бік вибору, ніж його відсутність.
  *
  * Тип названий ЯВНО, а не виведений із `as const`: інакше друга мова мусила б
  * мати ті самі рядки-літерали, що перша, і TypeScript вимагав би від чеської
@@ -48,7 +64,7 @@ interface Words {
   none: string;
 }
 
-const WORDS: Record<'de' | 'cs', Words> = {
+const WORDS: Record<'de' | 'cs' | 'en', Words> = {
   de: {
     subject: (day: string, name: string) => `Kiosk ${day} — ${name}`,
     checkedIn: 'Selbst eingecheckt',
@@ -67,10 +83,27 @@ const WORDS: Record<'de' | 'cs', Words> = {
     invoiceList: 'Vystavit fakturu ve starém systému',
     none: 'Žádné události.',
   },
+  en: {
+    subject: (day: string, name: string) => `Kiosk ${day} — ${name}`,
+    checkedIn: 'Self check-ins',
+    registered: 'Registered',
+    checkedOut: 'Departures',
+    errors: 'Failed attempts at the terminal',
+    invoiceList: 'Issue the invoice in the previous system',
+    none: 'No activity.',
+  },
 };
 
-function words(language: string): Words {
-  return language === 'cs' ? WORDS.cs : WORDS.de;
+/**
+ * Слова для мови документа. Невідома юрисдикція → англійська (див. шапку).
+ *
+ * Експортована, щоб сцена гейта питала ТУ САМУ функцію, а не свою копію
+ * правила: копія доводила б, що правильна копія правильна.
+ */
+export function words(language: string): Words {
+  if (language === 'cs') return WORDS.cs;
+  if (language === 'de') return WORDS.de;
+  return WORDS.en;
 }
 
 export function renderKioskDay(day: KioskDay, w: Words, propertyName: string, phase: string): { subject: string; html: string; text: string } {
@@ -111,7 +144,22 @@ export function renderKioskDay(day: KioskDay, w: Words, propertyName: string, ph
 
 export interface KioskMailRun {
   sent: number;
+  /** Обʼєкти без ЖИВОГО термінала: застосунку там немає, і це не проблема. */
   skipped: number;
+  /**
+   * Обʼєкти, де термінал Є, а адреси немає.
+   *
+   * Окремо від `skipped`, і це не педантизм: перша редакція рахувала обидва
+   * випадки одним числом, і крон відповідав `sent: 0, failed: 0` — тобто
+   * «відпрацював» — для готелю, який щодня заселяє гостей через термінал і
+   * жодного разу не отримав списку. Клас INC-014: функція не зламалась, вона
+   * зникла, і ніхто цього не почув.
+   *
+   * Провалом прогону це НЕ робить: незаповнена адреса — прогалина
+   * налаштування, а не відмова крона, і червоніти щоночі через неї означало б
+   * навчити ігнорувати червоне. Але число видно в тілі відповіді й у лозі.
+   */
+  withoutAddress: number;
   failedOrganizations: number;
 }
 
@@ -127,7 +175,7 @@ export interface KioskMailRun {
  */
 export async function sendKioskDayMails(day?: string | null): Promise<KioskMailRun> {
   const sql = getSql();
-  const result: KioskMailRun = { sent: 0, skipped: 0, failedOrganizations: 0 };
+  const result: KioskMailRun = { sent: 0, skipped: 0, withoutAddress: 0, failedOrganizations: 0 };
   const orgs = (await sql.rows<{ id: string }>('SELECT id FROM organizations')) as { id: string }[];
 
   for (const org of orgs) {
@@ -140,7 +188,6 @@ export async function sendKioskDayMails(day?: string | null): Promise<KioskMailR
           [org.id])) as { id: string; name: string; email: string | null; system_of_record: string | null }[];
 
         for (const property of properties) {
-          if (!property.email) { result.skipped += 1; continue; }
           // Термінали ЦЬОГО будинку — окремим запитом, названим по осі
           // обʼєкта. Перша редакція питала їх підзапитом `EXISTS (… d.property_id
           // = p.id …)`: правильно за змістом, але вісь там зчеплена з `p.id`,
@@ -155,6 +202,9 @@ export async function sendKioskDayMails(day?: string | null): Promise<KioskMailR
           // «нуль подій» від застосунку, якого в цьому будинку немає, — це те,
           // що навчаються не читати.
           if (!Number(live?.n)) { result.skipped += 1; continue; }
+          // Термінал є, адреси немає — це видно числом, а не мовчазним
+          // пропуском (див. `withoutAddress`).
+          if (!property.email) { result.withoutAddress += 1; continue; }
           const dayData = await kioskDay({
             organizationId: org.id, scope: oneProperty(property.id), day,
           });

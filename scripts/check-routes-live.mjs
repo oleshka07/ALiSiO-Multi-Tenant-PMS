@@ -81,6 +81,7 @@
 import assert from 'node:assert';
 import { readFile } from 'node:fs/promises';
 import { getSql } from '../src/core/db/async.ts';
+import { runWithOrganization } from '../src/core/auth/tenant-context.ts';
 import { nameResolver, missingFrom, isUnresolvedObject } from './lib/db-names.mjs';
 
 const BASE = process.env.BASE_URL || 'http://localhost:3000';
@@ -192,7 +193,26 @@ const sweepEach = async (tables, column, value) => {
   }
 };
 
+/**
+ * Засів і прибирання — ПІД ОРЕНДАРЕМ.
+ *
+ * На SQLite політик немає, і голий `sql.run` працював. На справжньому
+ * Postgres під роллю `alisio_app` той самий рядок відхиляється політикою:
+ * `new row violates row-level security policy for table "app_users"` — гейт
+ * обривався на власній фікстурі, ще не діставшись до жодного маршруту.
+ *
+ * Тобто «зелено» тут означало «зелено на SQLite», і про другий рушій гейт не
+ * стверджував нічого. `organizations` лишається поза обгорткою навмисно: це
+ * сама таблиця орендарів, у неї немає `organization_id`, і політики на ній
+ * немає (`pg-schema.mjs`, `rlsIdentity`).
+ */
+const asTenant = (fn) => runWithOrganization(ORG, fn);
+
 async function cleanup() {
+  return asTenant(() => cleanupInner());
+}
+
+async function cleanupInner() {
   const props = (await sql.rows('SELECT id FROM properties WHERE organization_id = ?', [ORG])).map((r) => r.id);
   for (const pid of props) {
     const resIds = (await sql.rows('SELECT id FROM reservations WHERE property_id = ?', [pid])).map((r) => r.id);
@@ -212,6 +232,8 @@ async function cleanup() {
   await sql.run('DELETE FROM properties WHERE organization_id = ?', [ORG]);
   await sql.run('DELETE FROM sessions WHERE user_id = ?', [USER]);
   await sql.run('DELETE FROM app_users WHERE organization_id = ?', [ORG]);
+  // `organizations` — сама таблиця орендарів: політики на ній немає
+  // (`rlsIdentity`), тож контекст навколо їй байдужий.
   await sql.run('DELETE FROM organizations WHERE id = ?', [ORG]);
 }
 
@@ -351,17 +373,17 @@ async function main() {
   await cleanup();
   await sql.run('INSERT INTO organizations (id, name, slug, default_currency, language) VALUES (?, ?, ?, ?, ?)',
     [ORG, 'Routes probe', `${TAG}org`, 'EUR', 'uk']);
-  await sql.run(
+  await asTenant(() => sql.run(
     'INSERT INTO app_users (id, organization_id, email, full_name, role, password_hash) VALUES (?, ?, ?, ?, ?, ?)',
-    [USER, ORG, 'routes@probe.test', 'Routes probe', 'owner', PROBE_HASH]);
+    [USER, ORG, 'routes@probe.test', 'Routes probe', 'owner', PROBE_HASH]));
   // Модулі, вимкнені за замовчуванням (П15): гейт перевіряє МАРШРУТИ, а не
   // право на модуль — 403 «не куплено» тут означав би, що ми нічого не
   // спитали.
   for (const feature of ['guest_page', 'channels', 'invoicing', 'accounting', 'booking_engine', 'reports', 'day_sheets', 'kiosk']) {
-    await sql.run(
+    await asTenant(() => sql.run(
       `INSERT INTO organization_features (organization_id, feature, enabled) VALUES (?, ?, TRUE)
        ON CONFLICT(organization_id, feature) DO UPDATE SET enabled = TRUE`,
-      [ORG, feature]);
+      [ORG, feature]));
   }
 
   try {
@@ -496,7 +518,13 @@ async function main() {
       //
       // Рівно та сторінка, яка не відкривалась півтора місяця. Токен береться
       // з бази, бо його видає створення броні — так само, як лист гостю.
-      const tokenRow = await sql.row('SELECT guest_page_token FROM reservations WHERE id = ?', [booking.id]);
+      // ПІД ОРЕНДАРЕМ, як і решта читань фікстури: на Postgres голий `sql.row`
+      // повертає `undefined` — політика `reservations` не бачить рядка без
+      // орендаря, і гейт доповідав «бронь не отримала токена» про бронь, у
+      // якої токен є. Дефект гейта, не продукту, і саме той рід, від якого
+      // «зелено на SQLite» виглядає доказом.
+      const tokenRow = await asTenant(() =>
+        sql.row('SELECT guest_page_token FROM reservations WHERE id = ?', [booking.id]));
       const token = tokenRow?.guest_page_token;
       if (claim('гостьовий портал', !!token, 'бронь отримала гостьовий токен')) {
         const guestRes = await fetch(`${BASE}/api/guest/${token}`);
@@ -564,10 +592,10 @@ async function main() {
     // (немає ключа → 409), а не про 500: маршрут, який падає, і маршрут,
     // який каже «ключа немає», для екрана — різні речі.
     const connId = `${TAG}conn`;
-    await sql.run(
+    await asTenant(() => sql.run(
       `INSERT INTO cm_connections (id, organization_id, property_id, provider, environment, webhook_token, webhook_secret, is_enabled)
        VALUES (?, ?, ?, 'channex', 'staging', ?, ?, TRUE)`,
-      [connId, ORG, property.id, `${TAG}tok`, `${TAG}secret`]);
+      [connId, ORG, property.id, `${TAG}tok`, `${TAG}secret`]));
 
     const connRes = await call(cookie, '/api/channels/connections');
     const conns = await body(connRes);
@@ -621,10 +649,10 @@ async function main() {
     // Тому тут стверджується не «маршрут відповів», а «відповів валютою
     // ЦЬОГО готелю»: EUR, як його заведено, і жодного запасного значення.
     const siteId = `${TAG}site`;
-    await sql.run(
+    await asTenant(() => sql.run(
       `INSERT INTO booking_sites (id, organization_id, property_id, name, slug, type, currency, status)
        VALUES (?, ?, ?, ?, ?, 'widget', 'EUR', 'active')`,
-      [siteId, ORG, property.id, 'Routes probe site', `${TAG}site`]);
+      [siteId, ORG, property.id, 'Routes probe site', `${TAG}site`]));
 
     const wcRes = await fetch(`${BASE}/api/widget/config?propertyId=${property.id}`);
     const wc = await body(wcRes);
@@ -774,7 +802,17 @@ async function main() {
       });
       const claimed = await body(claimRes);
       const paired = claimRes.status === 200 && typeof claimed?.token === 'string';
-      claim('кіоск', paired, `код обміняно на токен без сесії (${claimRes.status})`);
+      // 500 на цій ланці майже завжди означає не кіоск, а порожній
+      // `APP_SECRET_KEY` на СЕРВЕРІ: `pairDevice` відмовляється класти секрет
+      // пристрою в базу відкритим (`seal()`), і відмова виходить назовні
+      // пʼятисоткою. У CI ключ стоїть у кроці `start`; на стенді його треба
+      // передати руками. Твердження лишається ЧЕРВОНИМ — конфіг сервера це
+      // теж частина «маршрут відповідає», — але читач бачить, куди дивитись,
+      // замість того щоб три години шукати ваду в самому паруванні.
+      const hint = claimRes.status === 500
+        ? ' — перевірте APP_SECRET_KEY на сервері: без нього sealing відмовляє'
+        : '';
+      claim('кіоск', paired, `код обміняно на токен без сесії (${claimRes.status})${hint}`);
       claim('кіоск', claimed?.propertyId === property.id,
         'токен привʼязаний до того будинку, на який виписано код');
 

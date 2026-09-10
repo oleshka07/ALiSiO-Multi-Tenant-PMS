@@ -66,7 +66,24 @@ export async function findStays(input: {
 
   if (clean(s.token)) { where.push('r.guest_page_token = ?'); params.push(clean(s.token)); }
   if (clean(s.lastName)) { where.push('LOWER(g.last_name) = LOWER(?)'); params.push(clean(s.lastName)); }
-  if (clean(s.checkIn)) { where.push('SUBSTR(r.check_in, 1, 10) = ?'); params.push(clean(s.checkIn).slice(0, 10)); }
+  if (clean(s.checkIn)) {
+    // Доба ПІВІНТЕРВАЛОМ, не `SUBSTR(check_in, 1, 10) = ?`.
+    //
+    // Перша редакція різала рядок: на SQLite `check_in` це TEXT, і працювало.
+    // На Postgres це DATE, і `substr(date, integer, integer)` не існує — маршрут
+    // пошуку відповідав 500 на КОЖЕН запит гостя. Спіймано першим же прогоном
+    // гейта роллю `alisio_app` на справжньому рушії (AGENTS §7: «SQL — це
+    // рядок, і `tsc` його не бачить»).
+    //
+    // Півінтервал розуміють обидва: на Postgres параметр приводиться до дати,
+    // на SQLite порівнюються рядки — і `'2026-09-11 14:00'` теж потрапляє в
+    // `['2026-09-11', '2026-09-12')`, чого рівність із обрізаним рядком
+    // досягала лише випадково.
+    const from = clean(s.checkIn).slice(0, 10);
+    const to = new Date(new Date(`${from}T00:00:00Z`).getTime() + 86_400_000).toISOString().slice(0, 10);
+    where.push('r.check_in >= ? AND r.check_in < ?');
+    params.push(from, to);
+  }
   if (clean(s.email)) { where.push('LOWER(g.email) = LOWER(?)'); params.push(clean(s.email)); }
   // Телефон звіряється за ХВОСТОМ, і в базі теж без розділювачів: гість
   // друкує «+49 170 …», а в рядку лежить «0170-…» — той самий номер, інша

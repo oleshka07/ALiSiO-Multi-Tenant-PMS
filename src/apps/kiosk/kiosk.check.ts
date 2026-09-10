@@ -55,6 +55,7 @@ const stay = await import('./api/stay.handlers.ts');
 const today = await import('./data/today.repo.ts');
 const dayMail = await import('./data/today-mail.ts');
 const { oneProperty, ALL_PROPERTIES } = await import('@core/property-scope.ts');
+const { documentLanguage } = await import('@core/i18n/resolve.ts');
 const walkin = await import('./api/walkin.handlers.ts');
 const search = await import('./domain/search.ts');
 
@@ -98,17 +99,36 @@ async function seedProperty(org: string, propertyId: string) {
     [`${propertyId}_cat`, propertyId]);
   await sql.run("INSERT INTO unit_types (id, property_id, category_id, name, code) VALUES (?, ?, ?, 'Doppel', 'DBL')",
     [`${propertyId}_ut`, propertyId, `${propertyId}_cat`]);
+  // ДРУГИЙ тип із власними номерами — для сцен пошуку.
+  //
+  // Не охайність: на Postgres стоїть `no_double_booking` (EXCLUDE, 0133), і
+  // дві броні на один номер в одні ночі відхиляє САМА БАЗА. На SQLite цього
+  // обмеження немає, тож фікстура, у якій перебування ділять номер, роками
+  // виглядала б цілою — і падала б лише на живому рушії. Сцени пошуку живуть
+  // на своєму типі ще й тому, що сцена 6 рахує ЄМНІСТЬ типу: чужа бронь у
+  // тому самому типі зробила б її твердження про «вільних немає» випадковим.
+  await sql.run("INSERT INTO unit_types (id, property_id, category_id, name, code) VALUES (?, ?, ?, 'Einzel', 'SGL')",
+    [`${propertyId}_ut2`, propertyId, `${propertyId}_cat`]);
   for (const n of [1, 2]) {
     await sql.run(`
       INSERT INTO units (id, unit_type_id, property_id, category_id, name, code, lock_code, cleaning_status, sort_order)
       VALUES (?, ?, ?, ?, ?, ?, ?, 'clean', ?)
     `, [`${propertyId}_u${n}`, `${propertyId}_ut`, propertyId, `${propertyId}_cat`, `21${n}`, `21${n}`, `487${n}`, n]);
   }
+  for (const n of [3, 4]) {
+    await sql.run(`
+      INSERT INTO units (id, unit_type_id, property_id, category_id, name, code, lock_code, cleaning_status, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'clean', ?)
+    `, [`${propertyId}_u${n}`, `${propertyId}_ut2`, propertyId, `${propertyId}_cat`, `21${n}`, `21${n}`, `487${n}`, n]);
+  }
 }
 
 /** Бронь на завтра. `unitId` = null — номер ще не призначений. */
 async function seedStay(org: string, propertyId: string, id: string, opts: {
   unitId?: string | null; paymentStatus?: string; registered?: boolean;
+  /** Зсув ночей від сьогодні; за замовчуванням завтра→післязавтра. */
+  from?: number; to?: number;
+  unitTypeId?: string;
 } = {}) {
   await sql.run("INSERT INTO guests (id, organization_id, first_name, last_name) VALUES (?, ?, 'Max', 'Muster')",
     [`${id}_g`, org]);
@@ -119,12 +139,12 @@ async function seedStay(org: string, propertyId: string, id: string, opts: {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 2, 'confirmed', ?, ?, 200, 'EUR')
   `, [
     id, org, propertyId, opts.unitId === undefined ? `${propertyId}_u1` : opts.unitId,
-    `${propertyId}_ut`, `${id}_g`, day(1), day(2),
+    opts.unitTypeId ?? `${propertyId}_ut`, `${id}_g`, day(opts.from ?? 1), day(opts.to ?? 2),
     opts.paymentStatus ?? 'unpaid', opts.registered === false ? 'not_registered' : 'registered',
   ]);
   await sql.run(`
     INSERT INTO guest_registrations (id, reservation_id, guest_id, is_primary, reg_status)
-    VALUES (?, ?, ?, 1, 'completed')
+    VALUES (?, ?, ?, TRUE, 'completed')
   `, [`${id}_gr`, id, `${id}_g`]);
 }
 
@@ -255,7 +275,7 @@ try {
   console.log('  ok  4. заселення без реєстрації — відмова і терміналу, і рецепції');
 
   // ── 5. Брудний номер: терміналу відмова, рецепції попередження ───────────
-  await runWithOrganization(A, () => seedStay(A, P1, 'kc_dirty', { unitId: `${P1}_u2` }));
+  await runWithOrganization(A, () => seedStay(A, P1, 'kc_dirty', { unitId: `${P1}_u2`, from: 3, to: 4 }));
   await runWithOrganization(A, () => clean(`${P1}_u2`, 'dirty'));
   got = await runWithOrganization(A, () => checkIn('kc_dirty', { actor: deviceActor(A, P1) }));
   assert.deepStrictEqual(got, { ok: false, refusal: 'unit_dirty' }, `брудний номер терміналу: ${JSON.stringify(got)}`);
@@ -401,7 +421,7 @@ try {
     });
 
   // Бронь на СЬОГОДНІ — щоб вона потрапляла у вікно ±1 день.
-  await runWithOrganization(A, () => seedStay(A, P1, 'kc_find', { unitId: `${P1}_u1`, paymentStatus: 'paid' }));
+  await runWithOrganization(A, () => seedStay(A, P1, 'kc_find', { unitId: `${P1}_u3`, unitTypeId: `${P1}_ut2`, paymentStatus: 'paid', from: 5, to: 6 }));
   await runWithOrganization(A, () => sql.run(
     'UPDATE reservations SET check_in = ?, check_out = ? WHERE id = ?', [day(0), day(1), 'kc_find']));
   // Своє прізвище: решта засіву теж «Muster», і сцена вікна перевіряла б
@@ -461,7 +481,7 @@ try {
   // ── 15. Два збіги → третій чинник, і скільки їх — не кажеться ───────────
   await runWithOrganization(A, () => sql.run(
     'UPDATE reservations SET check_in = ?, check_out = ? WHERE id = ?', [day(0), day(1), 'kc_find']));
-  await runWithOrganization(A, () => seedStay(A, P1, 'kc_twin', { unitId: `${P1}_u2`, paymentStatus: 'paid' }));
+  await runWithOrganization(A, () => seedStay(A, P1, 'kc_twin', { unitId: `${P1}_u4`, unitTypeId: `${P1}_ut2`, paymentStatus: 'paid', from: 5, to: 6 }));
   await runWithOrganization(A, () => sql.run(
     'UPDATE reservations SET check_in = ?, check_out = ? WHERE id = ?', [day(0), day(1), 'kc_twin']));
   await runWithOrganization(A, () => sql.run(
@@ -491,7 +511,7 @@ try {
   ci = await stay.checkInStay(post('checkin', { reservationId: 'kc_twin' }));
   assert.strictEqual(ci.status, 200, 'повторне заселення відмовило');
   const key2 = await ci.json() as { unitName: string | null; lockCode: string | null };
-  assert.strictEqual(key2.lockCode, '4872', `код скриньки: ${JSON.stringify(key2)}`);
+  assert.strictEqual(key2.lockCode, '4874', `код скриньки: ${JSON.stringify(key2)}`);
   assert.strictEqual(await eventCount(A), first,
     `повторне «заселити» дописало подію: було ${first}, стало ${await eventCount(A)}`);
   assert.ok(first > eventsBefore, 'перше заселення події не написало — сцена нічого не доводить');
@@ -615,7 +635,28 @@ try {
       checkedOut: 'CO', errors: 'E', invoiceList: 'INV', none: 'NONE' },
     propRow!.name, 'alisio');
   assert.ok(emptyLetter.text.includes('NONE'), `порожня доба без слова: ${emptyLetter.text}`);
-  console.log('  ok  21. лист: підсумок доби, список рецепції лише в external, порожня доба сказана словом');
+  // Юрисдикція поза словником — англійська, а не мовчазна німецька.
+  //
+  // Той самий закон, що в решти документів (`localeForLanguage`): своя мова
+  // там, де вона є, англійська там, де немає. Мовчазний `de` дав би
+  // французькому готелю лист чужою мовою, і він вирішив би, що це помилка
+  // адреси. Перевіряється ТА САМА функція, яку кличе крон.
+  assert.strictEqual(dayMail.words('de').checkedIn, 'Selbst eingecheckt', 'німецька зникла');
+  assert.strictEqual(dayMail.words('cs').checkedIn, 'Samoobslužné ubytování', 'чеська зникла');
+  for (const other of ['fr', 'pl', 'uk', 'en', '', 'zz']) {
+    assert.strictEqual(dayMail.words(other).checkedIn, 'Self check-ins',
+      `мова «${other}» дала не англійську: ${dayMail.words(other).checkedIn}`);
+  }
+  // І це доходить до самого листа, а не лише до словника: обʼєкт із чужою
+  // юрисдикцією читається `documentLanguage()` і складається англійською.
+  await runWithOrganization(A, () => sql.run("UPDATE properties SET country = 'FR' WHERE id = ?", [P1]));
+  const frLetter = dayMail.renderKioskDay(
+    dayA, dayMail.words(await runWithOrganization(A, () => documentLanguage(P1))),
+    propRow!.name, 'alisio');
+  assert.ok(frLetter.text.includes('Self check-ins'),
+    `лист для FR-юрисдикції не англійською: ${frLetter.text.slice(0, 120)}`);
+  await runWithOrganization(A, () => sql.run("UPDATE properties SET country = 'DE' WHERE id = ?", [P1]));
+  console.log('  ok  21. лист: підсумок доби, список рецепції лише в external, порожня доба словом; юрисдикція поза словником — англійська');
 
   // ── 22. Картка: чужий термінал — 404; повторне відкликання — одна подія ─
   // Хендлери картки загорнуті у `withOwner`, а він читає куку — під голим
@@ -643,7 +684,20 @@ try {
   assert.strictEqual(revoke1, true, 'перше відкликання не спрацювало');
   assert.strictEqual(revoke2, false, 'повторне відкликання «спрацювало» вдруге');
   assert.strictEqual(await eventCount(A), beforeRevoke, 'відкликання дописало подію в журнал');
-  console.log('  ok  22. чужий термінал — не свій; повторне відкликання не рахується вдруге');
+  // Крон: обʼєкт із терміналом і БЕЗ адреси видно числом, а не мовчки.
+  //
+  // Клас INC-014: перша редакція рахувала «немає адреси» і «немає термінала»
+  // одним числом, і крон відповідав «відпрацював» готелю, який щодня заселяє
+  // гостей через екран і жодного разу не отримав списку.
+  const mailRun = await dayMail.sendKioskDayMails();
+  assert.ok(mailRun.withoutAddress >= 1,
+    `обʼєкт із терміналом без адреси не порахований: ${JSON.stringify(mailRun)}`);
+  assert.strictEqual(mailRun.sent, 0, 'пошти в перевірці немає, а лист «пішов»');
+  // Друга вісь: обʼєкт БЕЗ термінала не рахується ні тим, ні тим — він просто
+  // не в справі, і мовчазний пропуск тут правильний.
+  assert.ok(mailRun.skipped >= 1,
+    `обʼєкт без термінала має бути пропущений мовчки: ${JSON.stringify(mailRun)}`);
+  console.log('  ok  22. чужий термінал — не свій; повторне відкликання не вдруге; «є термінал, немає адреси» видно числом');
 
   // ── 23. Робоча смуга поза [0,100] — дефолт, а не порожній екран ─────────
   // NaN тут не випадковий: `JSON.stringify` перетворює його на `null`, а
