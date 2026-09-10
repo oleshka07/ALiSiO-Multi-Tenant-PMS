@@ -1,0 +1,20 @@
+ISQL Version: LI-V3.0.11.33703 Firebird 3.0
+Server version:
+Firebird/Linux/AMD/Intel/x64 (access method), version "LI-V3.0.11.33703 Firebird 3.0"
+on disk structure version 12.0
+Database: /tmp/winhotel-extract/winhotel.fdb
+        Owner: SYSDBA                         
+PAGE_SIZE 8192
+Number of DB pages allocated = 1142
+Number of DB pages used = 1128
+Number of DB pages free = 14
+Sweep interval = 20000
+Forced Writes are ON
+Transaction - oldest = 13
+Transaction - oldest active = 14
+Transaction - oldest snapshot = 14
+Transaction - Next = 18
+ODS = 12.0
+Database not encrypted
+Creation date: Sep 10, 2026 7:03:46
+Default Character set: NONE
