@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { requireFinanceAccess } from '@core/security/route-guard';
 import type { Actor } from '@core/auth/session';
-import { isPeriodLocked, deleteInvoicesWhere } from '@invoicing';
+import { isPeriodLocked, deleteInvoicesWhere, invoicePropertyId } from '@invoicing';
 import { serverError } from '@core/http/errors';
 
 export const GET = getInvoiceHtml;
@@ -61,7 +61,10 @@ async function _DELETE(
     }
 
     const period = inv.period || null;
-    if (period && await isPeriodLocked(sql, actor.organizationId, inv.series || 'HOUSE', period)) {
+    // Будинок документа, не будинок запиту: замок місяця належить книзі, у якій
+    // цей номер виданий (INC-038, Д54).
+    const invProperty = await invoicePropertyId(sql, actor.organizationId, id);
+    if (period && await isPeriodLocked(sql, actor.organizationId, invProperty, inv.series || 'HOUSE', period)) {
       return NextResponse.json(
         { error: `Період ${period} закрито. Помилковий документ виправляють сторно, а не видаленням.` },
         { status: 409 },

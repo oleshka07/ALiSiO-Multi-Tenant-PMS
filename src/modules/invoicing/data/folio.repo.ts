@@ -13,8 +13,31 @@ import type { Sql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { propertyOrSharedFilter, type PropertyScope } from '@core/property-scope';
 import { recordPayment } from './folio-payments.repo';
-import { allocateInvoiceNumber, isPeriodLocked, seriesForChannel } from '../domain/invoice-numbering';
+import { allocateInvoiceNumber, isPeriodLocked, seriesForChannel, invoicePropertyId } from '../domain/invoice-numbering';
 import { buildSnapshot, buildStorno, type FolioItem } from '../domain/invoice-snapshot';
+
+/**
+ * Будинок документа: бронь, а якщо її немає — сам рахунок (INC-038).
+ *
+ * Порядок той самий, що в `INVOICE_PROPERTY` нумератора, і це не збіг: два
+ * місця, які відповідають на те саме питання по-різному, дають серію при
+ * виписуванні і ІНШУ серію при закритті місяця. `fin_folios.property_id`
+ * заповнюють лише рахункам без броні (подія, компанія) — у решти будинок
+ * приходить із броні.
+ */
+async function folioProperty(
+  sql: Sql,
+  organizationId: string,
+  folio: { reservation_id?: string | null; property_id?: string | null },
+): Promise<string | null> {
+  if (folio.reservation_id) {
+    const res = await sql.row<{ property_id: string | null }>(
+      'SELECT property_id FROM reservations WHERE id = ? AND organization_id = ?',
+      [folio.reservation_id, organizationId]);
+    if (res?.property_id) return res.property_id;
+  }
+  return folio.property_id ?? null;
+}
 
 export interface Folio {
   id: string;
@@ -405,8 +428,12 @@ export async function issueInvoice(input: {
   const items = await openCharges(input.folioId);
   if (items.length === 0) throw new Error('Nothing to invoice on this folio');
 
+  // Будинок документа — до першого питання про серію: і серія, і замок місяця
+  // тепер належать обʼєктові (INC-038, Д54).
+  const property = await folioProperty(sql, organizationId, folio);
+
   const { series } = seriesForChannel(input.channel);
-  if (await isPeriodLocked(sql, organizationId, series, month)) {
+  if (await isPeriodLocked(sql, organizationId, property, series, month)) {
     throw new Error(`The accounting month ${month} is closed — issue a storno instead`);
   }
 
@@ -421,7 +448,7 @@ export async function issueInvoice(input: {
   let allocatedSeries = '';
 
   await sql.tx(async (t) => {
-    const allocated = await allocateInvoiceNumber(t, organizationId, input.channel ?? 'house', year);
+    const allocated = await allocateInvoiceNumber(t, organizationId, property, input.channel ?? 'house', year);
     number = allocated.invoiceNumber;
     allocatedSeries = allocated.series;
 
@@ -525,8 +552,12 @@ export async function stornoInvoice(input: {
   let number = '';
   let series = '';
 
+  // Сторно належить будинкові того документа, який воно скасовує: інша серія
+  // тут означала б виправлення, що не сходиться з виправленим.
+  const property = await invoicePropertyId(sql, organizationId, input.invoiceId);
+
   await sql.tx(async (t) => {
-    const allocated = await allocateInvoiceNumber(t, organizationId, input.channel ?? 'house', year);
+    const allocated = await allocateInvoiceNumber(t, organizationId, property, input.channel ?? 'house', year);
     number = allocated.invoiceNumber;
     series = allocated.series;
 

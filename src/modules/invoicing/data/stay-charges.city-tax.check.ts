@@ -143,6 +143,13 @@ try {
 
     await sql.run('INSERT INTO properties(id, organization_id, name, slug, country) VALUES (?,?,?,?,?)',
       ['ctax_p2', ORG, 'Dům', 'dum', 'CZ']);
+    // І СВОЇ ставки чеському будинку (INC-038, Д54). Спільний набір цього
+    // рахунку — німецький, а німецька ставка на чеському документі це та сама
+    // вада, від якої вісь заводили: до правки цей рядок був не потрібен, бо
+    // 7 % їхали в чеську фактуру мовчки. Тепер без нього нарахування ВІДМОВИТЬ
+    // поіменно — і саме так воно й має поводитись.
+    await sql.run('INSERT INTO fin_tax_rates(id, organization_id, property_id, code, rate, valid_from) VALUES (?,?,?,?,?,?)',
+      ['ctax_r_cz', ORG, 'ctax_p2', 'reduced', 12, '2020-01-01']);
     const cz = await post('ctax_cz', 300, 60, 0, 'ctax_p2');
     assert.ok(!('reason' in cz), `нарахування відмовило: ${JSON.stringify(cz)}`);
     const czTax = (await rows('ctax_cz')).find((r) => r.kind === 'city_tax');

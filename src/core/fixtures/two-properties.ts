@@ -40,6 +40,7 @@
  * розрахована на порожню базу свого `.check.ts`, а не на підмішування в чужу.
  */
 import { getSql } from '../db/async.ts';
+import { runWithOrganization } from '../auth/tenant-context';
 
 /** Один обʼєкт фікстури — усе, що на ньому висить. */
 export interface FixtureProperty {
@@ -116,10 +117,91 @@ const PLAN = [
  * явно всюди, де колонка є (інваріант 12), валюту — теж (підзапитом від
  * організації), бо фікстура, яка сама порушує інваріанти, вчить їх обходити.
  */
-export async function seedTwoProperties(): Promise<TwoProperties> {
+
+/**
+ * Прибрати за собою ПЕРЕД засівом.
+ *
+ * На SQLite кожна сцена бере свою тимчасову теку, тож питання не стоїть. На
+ * Postgres база одна на всі сцени `check:pg`, і друга сцена падала б на
+ * `duplicate key value violates unique constraint "organizations_pkey"` —
+ * саме це й сталося при першому прогоні всіх 29 сцен під `alisio_app`.
+ *
+ * Чому цикл, а не список у правильному порядку: між таблицями орендаря є свої
+ * звʼязки (`reservation_line_items` → `reservation_sub_bookings` → …), і
+ * порядок, виписаний рукою, розійдеться з наступною міграцією мовчки. Цикл
+ * питає базу, що саме зараз не дає видалити, і повторює, доки просувається.
+ * Коли просування нема — лишились таблиці без `organization_id`, і їх знімає
+ * каскад від `properties`.
+ *
+ * `TRUNCATE` тут не можна свідомо: `.claude/hooks/guard.sh` його блокує, і
+ * правильно — незворотна зміна бази повз журнал міграцій.
+ */
+async function forgetFixtureTenant(sql: ReturnType<typeof getSql>, org: string): Promise<void> {
+  const tables = (await sql.rows<{ name: string }>(sql.dialect.tables()))
+    .map((t) => String(t.name))
+    .filter((t) => t !== 'organizations' && t !== 'properties' && t !== 'schema_migrations');
+
+  let left = tables;
+  for (let pass = 0; pass < 6 && left.length; pass++) {
+    const stuck: string[] = [];
+    for (const table of left) {
+      try {
+        await sql.run(`DELETE FROM ${table} WHERE organization_id = ?`, [org]);
+      } catch {
+        // Або колонки немає, або на рядок ще хтось посилається. Перше зникне
+        // само (таблиця випаде зі списку наступним проходом лише якщо вдалось),
+        // друге — після того, як приберуть посилача.
+        stuck.push(table);
+      }
+    }
+    if (stuck.length === left.length) break;
+    left = stuck;
+  }
+
+  await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]);
+}
+
+/** Обидва орендарі фікстури — і поза контекстом лишається тільки сам рахунок. */
+async function forgetFixture(sql: ReturnType<typeof getSql>): Promise<void> {
+  for (const org of [ORG, '__two_props__neighbour']) {
+    await runWithOrganization(org, () => forgetFixtureTenant(sql, org));
+    await sql.run('DELETE FROM organizations WHERE id = ?', [org]);
+  }
+}
+
+export async function seedTwoProperties(
+  alsoSeed?: (fx: TwoProperties) => Promise<void>,
+): Promise<TwoProperties> {
   const sql = getSql();
 
+  await forgetFixture(sql);
+
+  // `organizations` — єдина таблиця без RLS: створення рахунку за означенням
+  // відбувається поза орендарем (AGENTS §7). Усе інше — вже під контекстом.
   await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [ORG, 'Two Properties', ORG]);
+
+  const fixture = await runWithOrganization(ORG, () => seedInsideTenant(sql, alsoSeed));
+
+  return fixture;
+}
+
+/**
+ * Тіло засіву — виконується ЛИШЕ під `runWithOrganization`.
+ *
+ * До 10.09.2026 воно стояло просто в `seedTwoProperties`, і на SQLite це
+ * працювало: політик там немає. На Postgres під роллю `alisio_app` (без
+ * суперправ) кожен `INSERT` відхилявся політикою —
+ * `new row violates row-level security policy for table "guests"` — і сім
+ * сцен, які цю фікстуру беруть, не входили в `check:pg` ВЗАГАЛІ.
+ *
+ * Тобто фікстура вчила писати повз контекст, і сцени так і писали. Сама
+ * обгортка цього не забороняє — заборона в тому, що ці сцени тепер бігають
+ * під `alisio_app`, де RLS відмовляє негайно.
+ */
+async function seedInsideTenant(
+  sql: ReturnType<typeof getSql>,
+  alsoSeed?: (fx: TwoProperties) => Promise<void>,
+): Promise<TwoProperties> {
   await sql.run(
     'INSERT INTO guests (id, organization_id, first_name, last_name) VALUES (?, ?, ?, ?)',
     ['__two_props__guest', ORG, 'Scope', 'Guest'],
@@ -203,6 +285,10 @@ export async function seedTwoProperties(): Promise<TwoProperties> {
   };
 
   assertNotDegenerate(fixture);
+  // Рядки сцени сіються ТУТ — усередині того самого контексту. Інакше сцена
+  // мусила б памʼятати про `runWithOrganization` сама, а те, що доводиться
+  // памʼятати, рано чи пізно забувають.
+  if (alsoSeed) await alsoSeed(fixture);
   return fixture;
 }
 
@@ -257,14 +343,25 @@ export interface NeighbourOrganization {
   unitIds: string[];
 }
 
-export async function seedNeighbourOrganization(): Promise<NeighbourOrganization> {
+export async function seedNeighbourOrganization(
+  alsoSeed?: (n: NeighbourOrganization) => Promise<void>,
+): Promise<NeighbourOrganization> {
   const sql = getSql();
   const org = '__two_props__neighbour';
+
+  await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [org, 'Neighbour', org]);
+  return runWithOrganization(org, () => seedNeighbourInsideTenant(sql, org, alsoSeed));
+}
+
+async function seedNeighbourInsideTenant(
+  sql: ReturnType<typeof getSql>,
+  org: string,
+  alsoSeed?: (n: NeighbourOrganization) => Promise<void>,
+): Promise<NeighbourOrganization> {
   const property = `${org}_prop`;
   const category = `${org}_cat`;
   const unitType = `${org}_type`;
 
-  await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [org, 'Neighbour', org]);
   await sql.run(
     'INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)',
     [property, org, 'Neighbour', property],
@@ -290,5 +387,7 @@ export async function seedNeighbourOrganization(): Promise<NeighbourOrganization
     );
   }
 
-  return { organizationId: org, propertyId: property, unitTypeId: unitType, unitIds };
+  const neighbour = { organizationId: org, propertyId: property, unitTypeId: unitType, unitIds };
+  if (alsoSeed) await alsoSeed(neighbour);
+  return neighbour;
 }

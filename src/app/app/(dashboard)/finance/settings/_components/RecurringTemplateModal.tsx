@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import type { RecurringTemplate } from './RecurringTemplatesTab';
 import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
 
 export interface TemplateFormValues {
   name: string;
@@ -31,6 +32,13 @@ interface Props {
 }
 
 export default function RecurringTemplateModal({ initial, onClose, onSave }: Props) {
+  // Обʼєкт із перемикача в шапці (INC-038, Д54): довідники фінансів належать
+  // БУДИНКУ — два обʼєкти під одним рахунком ведуть дві бухгалтерії. `?? 'all'`
+  // — це СКАЗАНЕ «усі обʼєкти», а не мовчання: на мовчання маршрут відповідає
+  // 400, і це навмисно (інваріант 8).
+  const { propertyId } = usePropertyScope();
+  const scopeParam = propertyId ?? 'all';
+
   const t = useT();
   const [name, setName] = useState(initial?.name || '');
   const [opType, setOpType] = useState<TemplateFormValues['op_type']>(initial?.op_type || 'expense');
@@ -69,7 +77,7 @@ export default function RecurringTemplateModal({ initial, onClose, onSave }: Pro
       fetch('/api/finance/accounts').then((r) => r.json()).catch(() => []),
       fetch(`/api/finance/categories?op_type=${opType}`).then((r) => r.json()).catch(() => []),
       fetch('/api/finance/projects').then((r) => r.json()).catch(() => []),
-      fetch('/api/finance/counterparties').then((r) => r.json()).catch(() => []),
+      fetch(`/api/finance/counterparties?property_id=${encodeURIComponent(scopeParam)}`).then((r) => r.json()).catch(() => []),
     ]).then(([accs, cats, pjs, cps]) => {
       setAccounts(Array.isArray(accs) ? accs : []);
       setCategories(Array.isArray(cats) ? cats : []);

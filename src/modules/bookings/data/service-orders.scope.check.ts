@@ -46,45 +46,56 @@ const sql = getSql();
 const fx = await seedTwoProperties();
 const neighbour = await seedNeighbourOrganization();
 
+/** Засів — під орендарем того рахунку, якому рядок належить (див. lists.scope). */
+const inOurs = <T>(fn: () => Promise<T>) => runWithOrganization(fx.organizationId, fn);
+const inTheirs = <T>(fn: () => Promise<T>) => runWithOrganization(neighbour.organizationId, fn);
+const forProperty = <T>(propertyId: string, fn: () => Promise<T>) =>
+  (propertyId === neighbour.propertyId ? inTheirs(fn) : inOurs(fn));
+const forOrg = <T>(organizationId: string, fn: () => Promise<T>) =>
+  runWithOrganization(organizationId, fn);
+
+
 const DAY = '2026-12-01';
 const win = { period: 'day', dateParam: DAY, dateTo: DAY };
 
-const service = async (id: string, propertyId: string) => sql.run(
+const service = async (id: string, propertyId: string) => forProperty(propertyId, () => sql.run(
   'INSERT INTO additional_services (id, property_id, name, price) VALUES (?, ?, ?, 100)',
-  [id, propertyId, id]);
+  [id, propertyId, id]));
 await service('sv_a', fx.a.id);
 await service('sv_b', fx.b.id);
 await service('sv_n', neighbour.propertyId);
 
-const guest = async (id: string, organizationId: string) => sql.run(
+const guest = async (id: string, organizationId: string) => forOrg(organizationId, () => sql.run(
   'INSERT INTO guests (id, organization_id, first_name, last_name) VALUES (?, ?, ?, ?)',
-  [id, organizationId, 'G', id]);
+  [id, organizationId, 'G', id]));
 await guest('so_guest', fx.organizationId);
 await guest('so_guest_n', neighbour.organizationId);
 
 const stay = async (id: string, organizationId: string, propertyId: string, unitId: string, guestId: string) =>
-  sql.run(
+  forOrg(organizationId, () => sql.run(
     `INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id,
                                check_in, check_out, nights, adults, currency)
      VALUES (?, ?, ?, ?, ?, ?, '2026-12-03', 2, 2,
              (SELECT default_currency FROM organizations WHERE id = ?))`,
-    [id, organizationId, propertyId, unitId, guestId, DAY, organizationId]);
+    [id, organizationId, propertyId, unitId, guestId, DAY, organizationId]));
 await stay('so_r_a', fx.organizationId, fx.a.id, fx.a.unitIds[0], 'so_guest');
 await stay('so_r_b', fx.organizationId, fx.b.id, fx.b.unitIds[0], 'so_guest');
 await stay('so_r_n', neighbour.organizationId, neighbour.propertyId, neighbour.unitIds[0], 'so_guest_n');
 
 /** Віджетне: якір — ПОСЛУГА, броні може не бути взагалі. */
-const widget = async (id: string, serviceId: string, reservationId: string | null) => sql.run(
+const widget = async (id: string, serviceId: string, reservationId: string | null) =>
+  forProperty(serviceId === 'sv_n' ? neighbour.propertyId : fx.a.id, () => sql.run(
   `INSERT INTO booking_service_orders (id, service_id, reservation_id, service_date,
                                        quantity, unit_price, total_price, status, payment_status)
    VALUES (?, ?, ?, ?, 1, 100, 100, 'pending', 'paid')`,
-  [id, serviceId, reservationId, DAY]);
+  [id, serviceId, reservationId, DAY]));
 /** Гостьове: якір — БРОНЬ, вона є завжди. */
-const fromGuestPage = async (id: string, serviceId: string, reservationId: string) => sql.run(
+const fromGuestPage = async (id: string, serviceId: string, reservationId: string) =>
+  forProperty(serviceId === 'sv_n' ? neighbour.propertyId : fx.a.id, () => sql.run(
   `INSERT INTO service_orders (id, reservation_id, service_id, service_date,
                                quantity, total_price, status, payment_status)
    VALUES (?, ?, ?, ?, 1, 100, 'pending', 'paid')`,
-  [id, reservationId, serviceId, DAY]);
+  [id, reservationId, serviceId, DAY]));
 
 // Віджетні 2/3, і одне з двох в А — БЕЗ броні (той самий заходень).
 await widget('w_a1', 'sv_a', 'so_r_a');

@@ -39,9 +39,25 @@ await import('@core/db/index.ts');
 const { getSql } = await import('@core/db/async.ts');
 const { seedTwoProperties, seedNeighbourOrganization } = await import('@core/fixtures/two-properties.ts');
 const { ALL_PROPERTIES, oneProperty } = await import('@core/property-scope.ts');
-const { listUnitTypes } = await import('./unit-types.repo.ts');
-const { listCategories } = await import('./categories.repo.ts');
-const { dirtyUnitsForShift } = await import('./cleaning.repo.ts');
+const { runWithOrganization } = await import('@core/auth/tenant-context.ts');
+const { listUnitTypes: rawListUnitTypes } = await import('./unit-types.repo.ts');
+const { listCategories: rawListCategories } = await import('./categories.repo.ts');
+const { dirtyUnitsForShift: rawDirtyUnitsForShift } = await import('./cleaning.repo.ts');
+
+/**
+ * Кожен виклик репозиторію — ПІД орендарем, якого йому передали.
+ *
+ * Сцена не має власного `runWithOrganization`: вона кличе читачів прямо в тілі
+ * модуля. На SQLite це працює, на Postgres під `alisio_app` політика віддає
+ * порожнє, і сцена падає з «очікували 5, отримали 0». Обгортка тут, а не
+ * двадцять `runWithOrganization` нижче: орендар у цих викликах і так уже
+ * перший аргумент.
+ */
+const underTenant = <F extends (org: string, ...rest: never[]) => unknown>(fn: F): F =>
+  ((org: string, ...rest: never[]) => runWithOrganization(org, () => fn(org, ...rest))) as F;
+const listUnitTypes = underTenant(rawListUnitTypes);
+const listCategories = underTenant(rawListCategories);
+const dirtyUnitsForShift = underTenant(rawDirtyUnitsForShift);
 
 const sql = getSql();
 const fx = await seedTwoProperties();
@@ -135,16 +151,20 @@ console.log('  ok  категорії: своя в кожній області, 
 // 2 і 4, не 3 і 3: сума 6 не дорівнює жодному обʼєкту, тож «забув вісь» не
 // сплутати з «урахував» (інваріант 26, друга половина).
 
-const dirty = async (unitIds: string[]) => {
+// Орендар — параметром, а не «завжди наш»: сусідові номери бруднить його
+// власний рахунок. Без контексту `UPDATE` на Postgres чіпає нуль рядків МОВЧКИ,
+// і сцена стверджувала б про бруд, якого ніхто не наводив.
+const dirty = async (unitIds: string[], org = fx.organizationId) => {
   for (const id of unitIds) {
-    await sql.run("UPDATE units SET cleaning_status = 'dirty' WHERE id = ?", [id]);
+    await runWithOrganization(org, () =>
+      sql.run("UPDATE units SET cleaning_status = 'dirty' WHERE id = ?", [id]));
   }
 };
 await dirty(fx.a.unitIds.slice(0, 2));
 await dirty(fx.b.unitIds.slice(0, 4));
 // Сусід теж має брудні номери — інакше «віддав лише свої» зелене й на коді,
 // який просто не бачить нікого, крім нашого рахунку.
-await dirty(neighbour.unitIds.slice(0, 3));
+await dirty(neighbour.unitIds.slice(0, 3), neighbour.organizationId);
 
 const dirtyA = await dirtyUnitsForShift(fx.organizationId, oneProperty(fx.a.id)) as { id: string }[];
 assert.strictEqual(dirtyA.length, 2, `очікували 2 брудні номери обʼєкта А, отримали ${dirtyA.length}`);
@@ -166,7 +186,9 @@ assert.strictEqual(
 );
 
 // Чистий номер у чеклісті не потрібен: фільтр стану лишається на місці.
-await sql.run("UPDATE units SET cleaning_status = 'clean' WHERE id = ?", [fx.a.unitIds[0]]);
+// Без контексту цей `UPDATE` на Postgres чіпає нуль рядків МОВЧКИ.
+await runWithOrganization(fx.organizationId, () =>
+  sql.run("UPDATE units SET cleaning_status = 'clean' WHERE id = ?", [fx.a.unitIds[0]]));
 assert.strictEqual(
   (await dirtyUnitsForShift(fx.organizationId, oneProperty(fx.a.id)) as unknown[]).length, 1,
   'прибраний номер лишився в чеклісті — фільтр стану зник разом із віссю',

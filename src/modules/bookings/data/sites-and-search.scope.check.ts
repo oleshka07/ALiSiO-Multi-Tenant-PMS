@@ -52,10 +52,19 @@ const sql = getSql();
 const fx = await seedTwoProperties();
 const neighbour = await seedNeighbourOrganization();
 
-const site = async (id: string, propertyId: string) => sql.run(
+/** Засів — під орендарем того рахунку, якому рядок належить (див. lists.scope). */
+const inOurs = <T>(fn: () => Promise<T>) => runWithOrganization(fx.organizationId, fn);
+const inTheirs = <T>(fn: () => Promise<T>) => runWithOrganization(neighbour.organizationId, fn);
+const forProperty = <T>(propertyId: string, fn: () => Promise<T>) =>
+  (propertyId === neighbour.propertyId ? inTheirs(fn) : inOurs(fn));
+const forOrg = <T>(organizationId: string, fn: () => Promise<T>) =>
+  runWithOrganization(organizationId, fn);
+
+
+const site = async (id: string, propertyId: string) => forProperty(propertyId, () => sql.run(
   `INSERT INTO booking_sites (id, organization_id, property_id, name, slug, status)
    VALUES (?, (SELECT organization_id FROM properties WHERE id = ?), ?, ?, ?, 'active')`,
-  [id, propertyId, propertyId, id, id]);
+  [id, propertyId, propertyId, id, id]));
 
 // Сайти 2/3 — і один видалений у Б, щоб «status != deleted» лишалось живим
 // твердженням, а не збігом.
@@ -65,26 +74,26 @@ await site('site_b1', fx.b.id);
 await site('site_b2', fx.b.id);
 await site('site_b3', fx.b.id);
 await site('site_n1', neighbour.propertyId);
-await sql.run(
+await inOurs(() => sql.run(
   `INSERT INTO booking_sites (id, organization_id, property_id, name, slug, status)
    VALUES (?, (SELECT organization_id FROM properties WHERE id = ?), ?, ?, ?, 'deleted')`,
-  ['site_b_dead', fx.b.id, fx.b.id, 'site_b_dead', 'site_b_dead']);
+  ['site_b_dead', fx.b.id, fx.b.id, 'site_b_dead', 'site_b_dead']));
 
 // ── Пошук: ОДНЕ прізвище у двох будинках ────────────────────────────────────
-const guest = async (id: string, organizationId: string, last: string) => sql.run(
+const guest = async (id: string, organizationId: string, last: string) => forOrg(organizationId, () => sql.run(
   'INSERT INTO guests (id, organization_id, first_name, last_name) VALUES (?, ?, ?, ?)',
-  [id, organizationId, 'Ева', last]);
+  [id, organizationId, 'Ева', last]));
 await guest('g_a', fx.organizationId, 'Новак');
 await guest('g_b', fx.organizationId, 'Новак');
 await guest('g_n', neighbour.organizationId, 'Новак');
 
 const stay = async (id: string, organizationId: string, propertyId: string, unitId: string, guestId: string) =>
-  sql.run(
+  forOrg(organizationId, () => sql.run(
     `INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id,
                                check_in, check_out, nights, adults, currency)
      VALUES (?, ?, ?, ?, ?, '2026-12-01', '2026-12-02', 1, 2,
              (SELECT default_currency FROM organizations WHERE id = ?))`,
-    [id, organizationId, propertyId, unitId, guestId, organizationId]);
+    [id, organizationId, propertyId, unitId, guestId, organizationId]));
 await stay('srch_a', fx.organizationId, fx.a.id, fx.a.unitIds[0], 'g_a');
 await stay('srch_b', fx.organizationId, fx.b.id, fx.b.unitIds[0], 'g_b');
 await stay('srch_n', neighbour.organizationId, neighbour.propertyId, neighbour.unitIds[0], 'g_n');

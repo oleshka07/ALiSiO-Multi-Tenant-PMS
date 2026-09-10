@@ -41,11 +41,20 @@ const sql = getSql();
 const fx = await seedTwoProperties();
 const neighbour = await seedNeighbourOrganization();
 
+/** Засів — під орендарем того рахунку, якому рядок належить (див. lists.scope). */
+const inOurs = <T>(fn: () => Promise<T>) => runWithOrganization(fx.organizationId, fn);
+const inTheirs = <T>(fn: () => Promise<T>) => runWithOrganization(neighbour.organizationId, fn);
+const forProperty = <T>(propertyId: string, fn: () => Promise<T>) =>
+  (propertyId === neighbour.propertyId ? inTheirs(fn) : inOurs(fn));
+const forOrg = <T>(organizationId: string, fn: () => Promise<T>) =>
+  runWithOrganization(organizationId, fn);
+
+
 const DAY = '2026-11-10';
 
 /** Гість сусідньої організації — інакше вісь орендаря не доведена. */
-await sql.run('INSERT INTO guests (id, organization_id, first_name, last_name) VALUES (?, ?, ?, ?)',
-  ['n_guest', neighbour.organizationId, 'N', 'N']);
+await inTheirs(() => sql.run('INSERT INTO guests (id, organization_id, first_name, last_name) VALUES (?, ?, ?, ?)',
+  ['n_guest', neighbour.organizationId, 'N', 'N']));
 
 /**
  * Проживання на добу `DAY`. Прямим SQL: репозиторій — це те, що перевіряють,
@@ -54,13 +63,13 @@ await sql.run('INSERT INTO guests (id, organization_id, first_name, last_name) V
  */
 const stay = async (id: string, organizationId: string, propertyId: string, unitId: string,
   guestId: string, checkIn: string, checkOut: string) =>
-  sql.run(
+  forOrg(organizationId, () => sql.run(
     `INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id,
                                check_in, check_out, nights, adults, status, currency)
      VALUES (?, ?, ?, ?, ?, ?, ?, 2, 2, 'confirmed',
              (SELECT default_currency FROM organizations WHERE id = ?))`,
     [id, organizationId, propertyId, unitId, guestId, checkIn, checkOut, organizationId],
-  );
+  ));
 
 // У домі 10-го: А — двоє, Б — троє. Заїжджає 10-го: А — один, Б — двоє.
 await stay('h_a1', fx.organizationId, fx.a.id, fx.a.unitIds[0], '__two_props__guest', '2026-11-09', '2026-11-12');

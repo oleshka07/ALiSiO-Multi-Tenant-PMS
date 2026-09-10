@@ -4,6 +4,7 @@ import { useT } from '@core/i18n/client';
 import { useEffect, useState } from 'react';
 import { X, Plus, Trash2 } from 'lucide-react';
 import type { AutoRule } from './AutoRulesTab';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
 
 export interface AutoRuleFormValues {
   name: string;
@@ -53,6 +54,13 @@ const NUM_OPS = [
 ];
 
 export default function AutoRuleModal({ initial, onClose, onSave }: Props) {
+  // Обʼєкт із перемикача в шапці (INC-038, Д54): довідники фінансів належать
+  // БУДИНКУ — два обʼєкти під одним рахунком ведуть дві бухгалтерії. `?? 'all'`
+  // — це СКАЗАНЕ «усі обʼєкти», а не мовчання: на мовчання маршрут відповідає
+  // 400, і це навмисно (інваріант 8).
+  const { propertyId } = usePropertyScope();
+  const scopeParam = propertyId ?? 'all';
+
   const tUi = useT();
   const [name, setName] = useState(initial?.name || '');
   const [opType, setOpType] = useState<'income' | 'expense' | 'any'>(initial?.op_type || 'any');
@@ -73,7 +81,7 @@ export default function AutoRuleModal({ initial, onClose, onSave }: Props) {
     Promise.all([
       fetch('/api/finance/categories').then((r) => r.json()).catch(() => []),
       fetch('/api/finance/projects').then((r) => r.json()).catch(() => []),
-      fetch('/api/finance/counterparties').then((r) => r.json()).catch(() => []),
+      fetch(`/api/finance/counterparties?property_id=${encodeURIComponent(scopeParam)}`).then((r) => r.json()).catch(() => []),
       fetch('/api/finance/tags').then((r) => r.json()).catch(() => []),
       fetch('/api/finance/accounts').then((r) => r.json()).catch(() => []),
     ]).then(([cats, pjs, cps, tgs, accs]) => {

@@ -2,6 +2,7 @@
 
 import { useT } from '@core/i18n/client';
 import { useEffect, useState, useCallback } from 'react';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import { useSearchParams } from 'next/navigation';
 import {
   FileText, Download, Eye, RefreshCw, Receipt,
@@ -117,6 +118,13 @@ interface Supplier {
 }
 
 export default function DocumentsPage() {
+  // Обʼєкт із перемикача в шапці (INC-038, Д54). Тут це не косметика: замок
+  // місяця і прогін номерів належать БУДИНКОВІ, тож «закрити січень» без
+  // сказаного обʼєкта — це питання без відповіді, а не «закрити всім».
+  // `?? 'all'` — сказане «усі обʼєкти» (рахунковий місяць), не мовчання.
+  const { propertyId } = usePropertyScope();
+  const scopeParam = propertyId ?? 'all';
+
   const tUi = useT();
   const searchParams = useSearchParams();
 
@@ -154,7 +162,7 @@ export default function DocumentsPage() {
     setLockBusy(true);
     setLockMsg(null);
     try {
-      const res = await fetch('/api/accounting/lock-period', {
+      const res = await fetch(`/api/accounting/lock-period?property_id=${encodeURIComponent(scopeParam)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ series: lockSeries, month: lockMonth, action }),
       });
@@ -378,7 +386,7 @@ export default function DocumentsPage() {
         if (customForm.buyerCity)    body.buyerCity    = customForm.buyerCity;
       }
       if (emailAfter && customForm.emailTo.trim()) body.emailTo = customForm.emailTo.trim();
-      const res = await fetch('/api/invoices/custom', {
+      const res = await fetch(`/api/invoices/custom?property_id=${encodeURIComponent(scopeParam)}`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(body),
@@ -513,7 +521,9 @@ export default function DocumentsPage() {
       const form = new FormData();
       form.append('file', file);
       form.append('channel', channel);
-      const res = await fetch('/api/accounting/invoice-batch', { method: 'POST', body: form });
+      const res = await fetch(
+        `/api/accounting/invoice-batch?property_id=${encodeURIComponent(scopeParam)}`,
+        { method: 'POST', body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Помилка завантаження');
       setStmtResult(data.invoices ?? []);

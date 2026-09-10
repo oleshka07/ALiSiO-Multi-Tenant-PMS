@@ -11,6 +11,7 @@
 
 import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import InvoiceBlank from './_components/InvoiceBlank';
 import { Plus, Trash2, X, Save, Loader2, ArrowLeft, Hash, Percent, Lock } from 'lucide-react';
 import Link from 'next/link';
@@ -75,18 +76,27 @@ export default function InvoicingSettingsPage() {
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3500); };
 
+  // Обʼєкт із перемикача в шапці (INC-038, Д54): ставки ПДВ і серії номерів
+  // тепер належать БУДИНКУ, бо два обʼєкти під одним рахунком ведуть дві
+  // бухгалтерії. `?? 'all'` — це СКАЗАНЕ «усі обʼєкти», а не мовчання: маршрут
+  // на мовчання відповідає 400, і саме так, бо мовчазне «всі» тут означало б
+  // заводити ставку в спільний набір, не спитавши.
+  const { propertyId } = usePropertyScope();
+  const scopeParam = propertyId ?? 'all';
+
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
+      const q = `?property_id=${encodeURIComponent(scopeParam)}`;
       const [r, s] = await Promise.all([
-        fetch('/api/finance/tax-rates').then((x) => x.json()),
-        fetch('/api/finance/invoice-series').then((x) => x.json()),
+        fetch(`/api/finance/tax-rates${q}`).then((x) => x.json()),
+        fetch(`/api/finance/invoice-series${q}`).then((x) => x.json()),
       ]);
       setRates(r.rates || []);
       setSeries(s.series || []);
     } catch (e) { console.error(e); }
     setLoading(false);
-  }, []);
+  }, [scopeParam]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -99,7 +109,7 @@ export default function InvoicingSettingsPage() {
   const saveRate = async () => {
     setSaving(true);
     try {
-      const res = await fetch('/api/finance/tax-rates', {
+      const res = await fetch(`/api/finance/tax-rates?property_id=${encodeURIComponent(scopeParam)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -147,7 +157,9 @@ export default function InvoicingSettingsPage() {
   const saveSeries = async () => {
     setSaving(true);
     try {
-      const url = editingSeries ? `/api/finance/invoice-series/${editingSeries.id}` : '/api/finance/invoice-series';
+      const url = editingSeries
+        ? `/api/finance/invoice-series/${editingSeries.id}?property_id=${encodeURIComponent(scopeParam)}`
+        : `/api/finance/invoice-series?property_id=${encodeURIComponent(scopeParam)}`;
       const res = await fetch(url, {
         method: editingSeries ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
