@@ -1500,6 +1500,16 @@ CREATE TABLE "platform_audit" (
   CHECK (action IN ('enter', 'leave'))
 );
 
+CREATE TABLE "platform_memberships" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "platform_user_id" TEXT NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "app_user_id" TEXT NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  UNIQUE ("platform_user_id", "organization_id")
+);
+
 CREATE TABLE "platform_sessions" (
   "id" TEXT NOT NULL,
   "platform_user_id" TEXT NOT NULL,
@@ -1514,12 +1524,14 @@ CREATE TABLE "platform_users" (
   "email" TEXT NOT NULL,
   "full_name" TEXT,
   "password_hash" TEXT NOT NULL,
+  "kind" TEXT DEFAULT 'hotelier' NOT NULL,
   "is_active" BOOLEAN DEFAULT true NOT NULL,
   "last_login" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
-  UNIQUE ("email")
+  UNIQUE ("email"),
+  CHECK (kind IN ('supplier', 'hotelier'))
 );
 
 CREATE TABLE "price_calendar" (
@@ -2564,6 +2576,12 @@ ALTER TABLE "platform_audit" ADD CONSTRAINT "fk_platform_audit_platform_user_id_
   FOREIGN KEY ("platform_user_id") REFERENCES "platform_users" ("id") ON DELETE SET NULL;
 ALTER TABLE "platform_audit" ADD CONSTRAINT "fk_platform_audit_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "platform_memberships" ADD CONSTRAINT "fk_platform_memberships_app_user_id_1"
+  FOREIGN KEY ("app_user_id") REFERENCES "app_users" ("id") ON DELETE CASCADE;
+ALTER TABLE "platform_memberships" ADD CONSTRAINT "fk_platform_memberships_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "platform_memberships" ADD CONSTRAINT "fk_platform_memberships_platform_user_id_3"
+  FOREIGN KEY ("platform_user_id") REFERENCES "platform_users" ("id") ON DELETE CASCADE;
 ALTER TABLE "platform_sessions" ADD CONSTRAINT "fk_platform_sessions_acting_organization_id_1"
   FOREIGN KEY ("acting_organization_id") REFERENCES "organizations" ("id") ON DELETE SET NULL;
 ALTER TABLE "platform_sessions" ADD CONSTRAINT "fk_platform_sessions_platform_user_id_2"
@@ -2903,6 +2921,7 @@ CREATE INDEX "idx_invoices_reservation" ON "invoices" ("reservation_id");
 CREATE INDEX "idx_org_currencies_org" ON "organization_currencies" ("organization_id");
 CREATE INDEX "idx_partner_reports_period" ON "partner_reports" ("organization_id", "period");
 CREATE INDEX "idx_platform_audit_org" ON "platform_audit" ("organization_id", "at");
+CREATE INDEX "idx_platform_memberships_user" ON "platform_memberships" ("platform_user_id");
 CREATE INDEX "idx_platform_sessions_user" ON "platform_sessions" ("platform_user_id");
 CREATE INDEX "idx_price_cal_date" ON "price_calendar" ("date");
 CREATE INDEX "idx_price_cal_rate_plan" ON "price_calendar" ("rate_plan_id");
@@ -3030,6 +3049,7 @@ CREATE INDEX IF NOT EXISTS "idx_organization_features_org" ON "organization_feat
 CREATE INDEX IF NOT EXISTS "idx_organization_invoicing_org" ON "organization_invoicing" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_partner_reports_org" ON "partner_reports" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_platform_audit_org" ON "platform_audit" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_platform_memberships_org" ON "platform_memberships" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_price_los_tiers_org" ON "price_los_tiers" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_price_occupancy_org" ON "price_occupancy" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_price_rules_org" ON "price_rules" ("organization_id");
@@ -3183,6 +3203,8 @@ ALTER TABLE "organization_invoicing" ALTER COLUMN "organization_id"
 ALTER TABLE "partner_reports" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "platform_audit" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "platform_memberships" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "price_los_tiers" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -3697,6 +3719,12 @@ CREATE POLICY "partner_reports_tenant" ON "partner_reports"
 ALTER TABLE "platform_audit" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "platform_audit" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "platform_audit_tenant" ON "platform_audit"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "platform_memberships" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "platform_memberships" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "platform_memberships_tenant" ON "platform_memberships"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
