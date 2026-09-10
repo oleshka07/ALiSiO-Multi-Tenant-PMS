@@ -41,15 +41,34 @@ const { seedTwoProperties, seedNeighbourOrganization } = await import('@core/fix
 const { ALL_PROPERTIES, oneProperty } = await import('@core/property-scope.ts');
 const { todayFor, shiftDays } = await import('@core/hotel-day.ts');
 const { getAlerts } = await import('./alerts.handlers.ts');
-const { housekeepingBoard, cleaningHistory } = await import('@properties/kernel.ts');
-const { housekeepingSummary } = await import('@properties/index.ts');
+const { housekeepingBoard: rawBoard, cleaningHistory: rawHistory } = await import('@properties/kernel.ts');
+const { housekeepingSummary: rawSummary } = await import('@properties/index.ts');
+/**
+ * Читачі прибирання — під орендарем, якого їм передали першим аргументом.
+ * Сцена кличе їх у тілі модуля, а на Postgres під `alisio_app` без контексту
+ * політика віддає порожнє: «борд обʼєкта А мав дати 5 номерів, отримали 0».
+ */
+const underTenant = <F extends (org: string, ...rest: never[]) => unknown>(fn: F): F =>
+  ((org: string, ...rest: never[]) => runWithOrganization(org, () => fn(org, ...rest))) as F;
+const housekeepingBoard = underTenant(rawBoard);
+const cleaningHistory = underTenant(rawHistory);
+const housekeepingSummary = underTenant(rawSummary);
 
 const sql = getSql();
 const fx = await seedTwoProperties();
 const neighbour = await seedNeighbourOrganization();
 
-await sql.run('INSERT INTO guests (id, organization_id, first_name, last_name) VALUES (?, ?, ?, ?)',
-  ['n_guest', neighbour.organizationId, 'N', 'N']);
+/** Засів — під орендарем того рахунку, якому рядок належить (див. lists.scope). */
+const inOurs = <T>(fn: () => Promise<T>) => runWithOrganization(fx.organizationId, fn);
+const inTheirs = <T>(fn: () => Promise<T>) => runWithOrganization(neighbour.organizationId, fn);
+const forProperty = <T>(propertyId: string, fn: () => Promise<T>) =>
+  (propertyId === neighbour.propertyId ? inTheirs(fn) : inOurs(fn));
+const forOrg = <T>(organizationId: string, fn: () => Promise<T>) =>
+  runWithOrganization(organizationId, fn);
+
+
+await inTheirs(() => sql.run('INSERT INTO guests (id, organization_id, first_name, last_name) VALUES (?, ?, ?, ?)',
+  ['n_guest', neighbour.organizationId, 'N', 'N']));
 
 const today = await todayFor(fx.organizationId);
 const yesterday = shiftDays(today, -1);
@@ -58,12 +77,12 @@ const longAgo = shiftDays(today, -30);
 
 const stay = async (id: string, organizationId: string, propertyId: string, unitId: string,
   guestId: string, checkIn: string, checkOut: string, status: string) =>
-  sql.run(
+  forOrg(organizationId, () => sql.run(
     `INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id,
                                check_in, check_out, nights, adults, status, currency)
      VALUES (?, ?, ?, ?, ?, ?, ?, 1, 2, ?, (SELECT default_currency FROM organizations WHERE id = ?))`,
     [id, organizationId, propertyId, unitId, guestId, checkIn, checkOut, status, organizationId],
-  );
+  ));
 
 // Прострочені заїзди (confirmed, заїзд у минулому, але не старіші за тиждень):
 // А — один, Б — двоє.
@@ -116,29 +135,29 @@ await runWithOrganization(fx.organizationId, async () => {
 // давня бронь обʼєкта Б теж мусить бути заархівована. Інакше архівація
 // другого будинку залежала б від того, з яким обʼєктом у шапці відкрили
 // дашборд, і не сталася б ніколи.
-const archived = await sql.rows<{ id: string }>(
+const archived = await inOurs(() => sql.rows<{ id: string }>(
   "SELECT id FROM reservations WHERE status = 'no_show' AND organization_id = ? ORDER BY id",
-  [fx.organizationId]);
+  [fx.organizationId]));
 assert.deepStrictEqual(archived.map((r) => r.id), ['old_a', 'old_b'],
   'авто-архів звузився областю — тоді давні броні сусіднього будинку не архівуються ніколи');
 // І не переліз через межу орендаря.
 assert.strictEqual(
-  (await sql.rows("SELECT id FROM reservations WHERE status = 'no_show' AND organization_id = ?",
-    [neighbour.organizationId])).length, 0,
+  (await inTheirs(() => sql.rows("SELECT id FROM reservations WHERE status = 'no_show' AND organization_id = ?",
+    [neighbour.organizationId]))).length, 0,
   'авто-архів дістав чужого орендаря');
 
 console.log('  ok  тривоги: прострочені 1/2/3, виїзди 2/1; авто-архів лишився по рахунку');
 
 // ─── Борд прибирання і його лічильники ──────────────────────────────────────
-for (const id of fx.a.unitIds.slice(0, 2)) {
-  await sql.run("UPDATE units SET cleaning_status = 'dirty' WHERE id = ?", [id]);
-}
-for (const id of fx.b.unitIds.slice(0, 4)) {
-  await sql.run("UPDATE units SET cleaning_status = 'dirty' WHERE id = ?", [id]);
-}
-for (const id of neighbour.unitIds.slice(0, 3)) {
-  await sql.run("UPDATE units SET cleaning_status = 'dirty' WHERE id = ?", [id]);
-}
+// `UPDATE` без контексту на Postgres не падає — він мовчки чіпає НУЛЬ рядків
+// (політика просто не бачить, що оновлювати). Тому кожне оновлення тут теж під
+// орендарем свого рахунку: інакше сцена стверджувала б про брудні номери,
+// яких ніхто не забруднив.
+const dirty = (org: string, id: string) =>
+  runWithOrganization(org, () => sql.run("UPDATE units SET cleaning_status = 'dirty' WHERE id = ?", [id]));
+for (const id of fx.a.unitIds.slice(0, 2)) await dirty(fx.organizationId, id);
+for (const id of fx.b.unitIds.slice(0, 4)) await dirty(fx.organizationId, id);
+for (const id of neighbour.unitIds.slice(0, 3)) await dirty(neighbour.organizationId, id);
 
 const boardA = await housekeepingBoard(fx.organizationId, oneProperty(fx.a.id));
 assert.strictEqual(boardA.units.length, 5, `борд обʼєкта А мав дати 5 номерів, отримали ${boardA.units.length}`);

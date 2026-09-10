@@ -51,30 +51,46 @@ const sql = getSql();
 const fx = await seedTwoProperties();
 const neighbour = await seedNeighbourOrganization();
 
-await sql.run('INSERT INTO guests (id, organization_id, first_name, last_name) VALUES (?, ?, ?, ?)',
-  ['n_guest', neighbour.organizationId, 'N', 'N']);
-await sql.run(
+/**
+ * Засів і читання — ПІД орендарем того рахунку, якому рядок належить.
+ *
+ * На SQLite політик немає, тож `sql.run(...)` у тілі сцени працює й без
+ * контексту; на Postgres під `alisio_app` він відхиляється політикою, а
+ * читання віддає порожнє. 10.09.2026 виміряно: 16 сцен ходили в базу до
+ * контексту, і через це жодна не входила в `check:pg`.
+ */
+const inOurs = <T>(fn: () => Promise<T>) => runWithOrganization(fx.organizationId, fn);
+const inTheirs = <T>(fn: () => Promise<T>) => runWithOrganization(neighbour.organizationId, fn);
+/** Рядок будинку — під його рахунком, хай навіть будинок сусідський. */
+const forProperty = <T>(propertyId: string, fn: () => Promise<T>) =>
+  (propertyId === neighbour.propertyId ? inTheirs(fn) : inOurs(fn));
+
+
+await inTheirs(() => sql.run('INSERT INTO guests (id, organization_id, first_name, last_name) VALUES (?, ?, ?, ?)',
+  ['n_guest', neighbour.organizationId, 'N', 'N']));
+await inTheirs(() => sql.run(
   `INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id,
                              check_in, check_out, nights, adults, currency)
    VALUES (?, ?, ?, ?, ?, '2026-12-01', '2026-12-02', 1, 2,
            (SELECT default_currency FROM organizations WHERE id = ?))`,
   ['n_res', neighbour.organizationId, neighbour.propertyId, neighbour.unitIds[0], 'n_guest',
     neighbour.organizationId],
-);
+));
 
 // `booking_sources` і `additional_services` НЕ мають `organization_id`: до
 // орендаря вони дістаються лише через `property_id`. Саме тому обидві осі тут
 // — це одна колонка, і сплутати їх найлегше.
-const source = async (id: string, propertyId: string) => sql.run(
+const source = async (id: string, propertyId: string) => forProperty(propertyId, () => sql.run(
   'INSERT INTO booking_sources (id, property_id, name, code) VALUES (?, ?, ?, ?)',
-  [id, propertyId, id, id]);
-const service = async (id: string, propertyId: string) => sql.run(
+  [id, propertyId, id, id]));
+const service = async (id: string, propertyId: string) => forProperty(propertyId, () => sql.run(
   'INSERT INTO additional_services (id, property_id, name, price) VALUES (?, ?, ?, 100)',
-  [id, propertyId, id]);
-const block = async (id: string, organizationId: string, unitId: string) => sql.run(
-  `INSERT INTO availability_blocks (id, organization_id, unit_id, date_from, date_to)
-   VALUES (?, ?, ?, '2026-12-01', '2026-12-05')`,
-  [id, organizationId, unitId]);
+  [id, propertyId, id]));
+const block = async (id: string, organizationId: string, unitId: string) =>
+  runWithOrganization(organizationId, () => sql.run(
+    `INSERT INTO availability_blocks (id, organization_id, unit_id, date_from, date_to)
+     VALUES (?, ?, ?, '2026-12-01', '2026-12-05')`,
+    [id, organizationId, unitId]));
 
 // Канали 1/2, послуги 2/1, закриття 1/3 — числа різні на кожній осі навмисно.
 await source('s_a1', fx.a.id);

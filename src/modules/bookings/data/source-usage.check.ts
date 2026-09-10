@@ -52,10 +52,19 @@ const sql = getSql();
 const fx = await seedTwoProperties();
 const neighbour = await seedNeighbourOrganization();
 
+/** Засів — під орендарем того рахунку, якому рядок належить (див. lists.scope). */
+const inOurs = <T>(fn: () => Promise<T>) => runWithOrganization(fx.organizationId, fn);
+const inTheirs = <T>(fn: () => Promise<T>) => runWithOrganization(neighbour.organizationId, fn);
+const forProperty = <T>(propertyId: string, fn: () => Promise<T>) =>
+  (propertyId === neighbour.propertyId ? inTheirs(fn) : inOurs(fn));
+const forOrg = <T>(organizationId: string, fn: () => Promise<T>) =>
+  runWithOrganization(organizationId, fn);
+
+
 // `booking_sources` НЕ має `organization_id`: до орендаря — лише через будинок.
-const source = async (id: string, propertyId: string, code: string) => sql.run(
+const source = async (id: string, propertyId: string, code: string) => forProperty(propertyId, () => sql.run(
   'INSERT INTO booking_sources (id, property_id, name, code) VALUES (?, ?, ?, ?)',
-  [id, propertyId, code, code]);
+  [id, propertyId, code, code]));
 await source('bs_a_direct', fx.a.id, 'direct');
 await source('bs_b_direct', fx.b.id, 'direct');   // ТОЙ САМИЙ код у другому будинку
 await source('bs_a_zeta', fx.a.id, 'ota_zeta');   // і ще один такий самий, ужитий лише в Б
@@ -63,19 +72,19 @@ await source('bs_b_zeta', fx.b.id, 'ota_zeta');
 await source('bs_a_web', fx.a.id, 'web');
 await source('bs_n_direct', neighbour.propertyId, 'direct');
 
-await sql.run('INSERT INTO guests (id, organization_id, first_name, last_name) VALUES (?, ?, ?, ?)',
-  ['su_guest', fx.organizationId, 'S', 'U']);
-await sql.run('INSERT INTO guests (id, organization_id, first_name, last_name) VALUES (?, ?, ?, ?)',
-  ['su_guest_n', neighbour.organizationId, 'N', 'N']);
+await inOurs(() => sql.run('INSERT INTO guests (id, organization_id, first_name, last_name) VALUES (?, ?, ?, ?)',
+  ['su_guest', fx.organizationId, 'S', 'U']));
+await inTheirs(() => sql.run('INSERT INTO guests (id, organization_id, first_name, last_name) VALUES (?, ?, ?, ?)',
+  ['su_guest_n', neighbour.organizationId, 'N', 'N']));
 
 const stay = async (id: string, organizationId: string, propertyId: string, unitId: string,
   guestId: string, src: string) =>
-  sql.run(
+  forOrg(organizationId, () => sql.run(
     `INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, source,
                                check_in, check_out, nights, adults, currency)
      VALUES (?, ?, ?, ?, ?, ?, '2026-12-01', '2026-12-02', 1, 2,
              (SELECT default_currency FROM organizations WHERE id = ?))`,
-    [id, organizationId, propertyId, unitId, guestId, src, organizationId]);
+    [id, organizationId, propertyId, unitId, guestId, src, organizationId]));
 
 // Фікстура вже дала 2 прямі броні в А і 3 в Б (DEFAULT 'direct'). Додаємо:
 // три `ota_zeta` у Б і жодної в А; дві `web` у А; три `direct` у Б.

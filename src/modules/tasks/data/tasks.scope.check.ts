@@ -51,17 +51,26 @@ const sql = getSql();
 const fx = await seedTwoProperties();
 const neighbour = await seedNeighbourOrganization();
 
+/** Засів — під орендарем того рахунку, якому рядок належить (див. lists.scope). */
+const inOurs = <T>(fn: () => Promise<T>) => runWithOrganization(fx.organizationId, fn);
+const inTheirs = <T>(fn: () => Promise<T>) => runWithOrganization(neighbour.organizationId, fn);
+const forProperty = <T>(propertyId: string, fn: () => Promise<T>) =>
+  (propertyId === neighbour.propertyId ? inTheirs(fn) : inOurs(fn));
+const forOrg = <T>(organizationId: string, fn: () => Promise<T>) =>
+  runWithOrganization(organizationId, fn);
+
+
 const task = async (id: string, organizationId: string, propertyId: string | null, extra = '') =>
-  sql.run(
+  forOrg(organizationId, () => sql.run(
     `INSERT INTO tasks (id, organization_id, property_id, title, status${extra ? ', due_date' : ''})
      VALUES (?, ?, ?, ?, 'todo'${extra ? ', ?' : ''})`,
     extra ? [id, organizationId, propertyId, id, extra] : [id, organizationId, propertyId, id],
-  );
+  ));
 const project = async (id: string, organizationId: string, propertyId: string | null) =>
-  sql.run(
+  forOrg(organizationId, () => sql.run(
     'INSERT INTO task_projects (id, organization_id, property_id, name) VALUES (?, ?, ?, ?)',
     [id, organizationId, propertyId, id],
-  );
+  ));
 
 // А — 2 задачі, Б — 3, і ДВІ спільні на весь рахунок (одна з них прострочена).
 await task('t_a1', fx.organizationId, fx.a.id);
