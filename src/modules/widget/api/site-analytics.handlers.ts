@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withModule, notFound, type Actor } from '@core/auth/session';
+import { ALL_PROPERTIES, oneProperty, propertyScopeFilter } from '@core/property-scope';
 
 function getToday(): string {
   return new Date().toISOString().split('T')[0];
@@ -45,35 +46,98 @@ async function ownsSite(organizationId: string, siteId: string): Promise<boolean
   `, [siteId, organizationId]);
 }
 
-/** Restrict an 'all' query to the caller's own properties. */
-async function ownPropertyIds(organizationId: string): Promise<string[]> {
-  const sql = getSql();
-  return (await sql.rows<any>('SELECT id FROM properties WHERE organization_id = ?', [organizationId]) as { id: string }[]).map((r) => r.id);
+/**
+ * Три осі одного фільтра: орендар, обʼєкт, ДЖЕРЕЛО.
+ *
+ * Девʼять запитів цього екрана фільтруються звідси, тож помилка тут — це
+ * помилка в кожному числі екрана одразу.
+ *
+ * ── Що було зламано: гілка «усі сайти» губила ДЖЕРЕЛО ───────────────────
+ *
+ * Для одного сайта фільтр був `property_id = ? AND source IN (…)`; для `all`
+ * — `property_id IN (…мої будинки…)` і **жодного слова про джерело**. Тобто
+ * «усі мої сайти» рахували КОЖНУ бронь готелю: телефонні, з рецепції, з
+ * Booking.com. Оператор читав «мій сайт заробив X», де в X сидів Booking, а
+ * сума по сайтах не сходилась із «усі сайти» — на різницю, якої ніде не
+ * видно. Намір був інший, і він був написаний тут-таки: «'all' means every
+ * site I own» — тобто про САЙТИ, не про всі броні.
+ *
+ * ── І чому орендар тепер із СЕСІЇ, а не списком будинків ────────────────
+ *
+ * Було `property_id IN (…)` зі списком, зібраним окремим запитом
+ * (`ownPropertyIds`). Це працювало, але означало, що вісь орендаря тримає
+ * ДОВЖИНА СПИСКУ: порожній давав `1=0`, а помилка в тому запиті мовчки
+ * змінила б кожне число екрана. Тепер орендар — колонка `organization_id`,
+ * як усюди, а вісь обʼєкта — двері `propertyScopeFilter` (INC-029), тобто її
+ * видно грепом і рецензією.
+ *
+ * ── Але НЕ гейтом, і це треба знати ─────────────────────────────────────
+ *
+ * `check-property-scope` рахує ці девʼять запитів «невизначено» і після
+ * правки. Причина не в них: гейт впізнає фрагмент області за ПРЯМИМ викликом
+ * `propertyScopeFilter` у `const`, а тут двері кличе складена функція
+ * поверхом вище. Та сама межа гейта вже коштувала двох правок у цьому блоці
+ * (обгортка `inHouse()` в INC-040, тернарник у `replayReservation`), і там
+ * її було дешево обійти — тут ні: скласти три осі на девʼяти місцях руками
+ * гірше за код, ніж лишити гейту «невизначено».
+ *
+ * Тобто стеля 16 лишається, і це НЕ шістнадцять дірок: вісь є, вона названа
+ * дверима, і те, чого гейт не бачить, доводить сцена
+ * `site-analytics.scope.check.ts` — числами 1000 / 19000 / 8000, кожне з
+ * яких червоніє від своєї мутації. Мовчання гейта тут не доведеність, і
+ * доведеність тут не від гейта.
+ */
+export function houseScope(
+  siteId: string,
+  propertyId: string | null,
+  organizationId: string,
+  alias = '',
+): { sql: string; params: unknown[] } {
+  // «Усі сайти» — це справді всі будинки рахунку, і сказано це дверима.
+  const scope = siteId === 'all' || !propertyId ? ALL_PROPERTIES : oneProperty(propertyId);
+  const house = propertyScopeFilter(scope, alias.replace(/\.$/, ''));
+  return {
+    sql: `${alias}organization_id = ? AND ${house.sql}`,
+    params: [organizationId, ...house.params],
+  };
 }
 
 /**
- * 'all' used to expand to `1=1` — every reservation on the server, not every
- * reservation of this hotel. With one organization that read the same; with
- * two it is another company's revenue. It now lists the caller's own
- * properties, so "all my sites" means exactly that.
+ * Те саме ПЛЮС джерело — для чисел, які описують САЙТ.
+ *
+ * Дві функції, а не прапорець, бо запитів двох родів. «Скільки заробив
+ * віджет» питає про джерело; «чи ця заявка стала бронню» — ні: заявка з
+ * сайта цілком може завершитись телефонною бронню, і саме це й є конверсія.
+ * Прапорець тут означав би, що читач мусить згадати, який із двох родів
+ * перед ним.
  */
-function getSourceFilter(siteId: string, propertyId: string | null, ownIds: string[], alias = '') {
-  if (siteId === 'all') {
-    if (!ownIds.length) return '1=0';
-    return `${alias}property_id IN (${ownIds.map(() => '?').join(',')})`;
-  }
-  const propFilter = propertyId ? `${alias}property_id = ? AND ` : '';
-  return `${propFilter}${alias}source IN (?, ?)`;
+export function sourceScope(
+  siteId: string,
+  propertyId: string | null,
+  organizationId: string,
+  alias = '',
+): { sql: string; params: unknown[] } {
+  const col = (name: string) => `${alias}${name}`;
+  const house = houseScope(siteId, propertyId, organizationId, alias);
+
+  // Джерело — В ОБОХ гілках. Один сайт впізнається своїм ключем; «усі» —
+  // будь-яким віджетним, бо саме це й означає «усі мої сайти».
+  const source = siteId === 'all'
+    ? `(${col('source')} = ? OR ${col('source')} LIKE ?)`
+    : `${col('source')} IN (?, ?)`;
+  const sourceParams = siteId === 'all'
+    ? ['widget', 'widget:%']
+    : [`widget:${siteId}`, 'widget'];
+
+  return {
+    sql: `${house.sql} AND ${source}`,
+    params: [...house.params, ...sourceParams],
+  };
 }
 
-function getSourceParams(siteId: string, propertyId: string | null, ownIds: string[]) {
-  if (siteId === 'all') return ownIds;
-  return propertyId ? [propertyId, `widget:${siteId}`, 'widget'] : [`widget:${siteId}`, 'widget'];
-}
-
-
-async function getReservationsStats(siteId: string, propertyId: string | null, ownIds: string[], from: string, to: string, dateType: string) {
+async function getReservationsStats(siteId: string, propertyId: string | null, organizationId: string, from: string, to: string, dateType: string) {
   const sql = getSql();
+  const scope = sourceScope(siteId, propertyId, organizationId);
   let statement = `
     SELECT 
       COUNT(*) as count,
@@ -81,9 +145,9 @@ async function getReservationsStats(siteId: string, propertyId: string | null, o
       COALESCE(SUM(CASE WHEN payment_status != 'paid' THEN (total_price - COALESCE(commission_amount, 0)) ELSE 0 END), 0) as unpaid_revenue,
       COALESCE(AVG(CASE WHEN payment_status = 'paid' THEN total_price ELSE NULL END), 0) as avg_check
     FROM reservations
-    WHERE ${getSourceFilter(siteId, propertyId, ownIds)} AND status != 'cancelled'
+    WHERE ${scope.sql} AND status != 'cancelled'
   `;
-  const params: any[] = getSourceParams(siteId, propertyId, ownIds);
+  const params: any[] = scope.params;
   if (dateType === 'check_in') {
     statement += ' AND check_in >= ? AND check_in <= ?';
     params.push(from, to);
@@ -102,18 +166,20 @@ async function getReservationsStats(siteId: string, propertyId: string | null, o
  * was always 0. Conversion, which divides by it, was therefore always 0 too:
  * the whole funnel read as if nobody had ever opened the widget.
  */
-async function getSessionsCount(siteId: string, ownIds: string[], from: string, to: string) {
+async function getSessionsCount(siteId: string, organizationId: string, from: string, to: string) {
   const sql = getSql();
   const lo = `${from}T00:00:00Z`;
   const hi = `${to}T23:59:59Z`;
   if (siteId === 'all') {
-    if (!ownIds.length) return 0;
-    const ph = ownIds.map(() => '?').join(',');
+    // Сесії лічаться по САЙТАХ рахунку — вісь та сама, що в грошах вище, і
+    // це важливо: конверсія ділить одне на друге, тож дві різні осі дали б
+    // відсоток, який не означає нічого.
+    const house = houseScope(siteId, null, organizationId, 'bs.');
     const statement = `SELECT COUNT(DISTINCT e.session_id) as count
                  FROM widget_events e
                  JOIN booking_sites bs ON e.site_id = bs.id
-                 WHERE bs.property_id IN (${ph}) AND e.created_at >= ? AND e.created_at <= ?`;
-    const row = await sql.row<any>(statement, [...ownIds, lo, hi]) as { count: number };
+                 WHERE ${house.sql} AND e.created_at >= ? AND e.created_at <= ?`;
+    const row = await sql.row<any>(statement, [...house.params, lo, hi]) as { count: number };
     return row ? row.count : 0;
   }
   const statement = `SELECT COUNT(DISTINCT session_id) as count FROM widget_events WHERE site_id = ? AND created_at >= ? AND created_at <= ?`;
@@ -131,17 +197,17 @@ export const getAnalyticsOverview = withModule('sites', 'nav:sites', async (
     const { id: siteId } = await params;
     const statement = getSql();
     if (!await ownsSite(actor.organizationId, siteId)) return notFound();
-    const ownIds = await ownPropertyIds(actor.organizationId);
     const { searchParams } = new URL(request.url);
     const propertyId = await getSitePropertyId(siteId);
+    const scope = sourceScope(siteId, propertyId, actor.organizationId);
 
     const dateFrom = searchParams.get('date_from') || getFirstDayOfMonth();
     const dateTo = searchParams.get('date_to') || getToday();
     const dateType = searchParams.get('date_type') || 'created_at';
 
     // Current period stats
-    const currentStats = await getReservationsStats(siteId, propertyId, ownIds, dateFrom, dateTo, dateType);
-    const currentSessions = await getSessionsCount(siteId, ownIds, dateFrom, dateTo);
+    const currentStats = await getReservationsStats(siteId, propertyId, actor.organizationId, dateFrom, dateTo, dateType);
+    const currentSessions = await getSessionsCount(siteId, actor.organizationId, dateFrom, dateTo);
     const currentConversion = currentSessions > 0 ? (currentStats.count / currentSessions) * 100 : 0;
 
     // Previous period dates
@@ -159,8 +225,8 @@ export const getAnalyticsOverview = withModule('sites', 'nav:sites', async (
     const prevTo = prevToDate.toISOString().split('T')[0];
 
     // Previous period stats
-    const prevStats = await getReservationsStats(siteId, propertyId, ownIds, prevFrom, prevTo, dateType);
-    const prevSessions = await getSessionsCount(siteId, ownIds, prevFrom, prevTo);
+    const prevStats = await getReservationsStats(siteId, propertyId, actor.organizationId, prevFrom, prevTo, dateType);
+    const prevSessions = await getSessionsCount(siteId, actor.organizationId, prevFrom, prevTo);
     const prevConversion = prevSessions > 0 ? (prevStats.count / prevSessions) * 100 : 0;
 
     return NextResponse.json({
@@ -204,9 +270,9 @@ export const getAnalyticsTraffic = withModule('sites', 'nav:sites', async (
     const { id: siteId } = await params;
     const statement = getSql();
     if (!await ownsSite(actor.organizationId, siteId)) return notFound();
-    const ownIds = await ownPropertyIds(actor.organizationId);
     const { searchParams } = new URL(request.url);
     const propertyId = await getSitePropertyId(siteId);
+    const scope = sourceScope(siteId, propertyId, actor.organizationId);
 
     const dateFrom = searchParams.get('date_from') || getFirstDayOfMonth();
     const dateTo = searchParams.get('date_to') || getToday();
@@ -241,9 +307,9 @@ export const getAnalyticsTraffic = withModule('sites', 'nav:sites', async (
         SUM(CASE WHEN payment_status = 'paid' THEN (total_price - COALESCE(commission_amount, 0)) ELSE 0 END) as revenue,
         SUM(CASE WHEN payment_status != 'paid' THEN (total_price - COALESCE(commission_amount, 0)) ELSE 0 END) as unpaid_revenue
       FROM reservations
-      WHERE ${getSourceFilter(siteId, propertyId, ownIds)} AND status != 'cancelled' AND utm_source IS NOT NULL
+      WHERE ${scope.sql} AND status != 'cancelled' AND utm_source IS NOT NULL
     `;
-    const bookingsParams: any[] = getSourceParams(siteId, propertyId, ownIds);
+    const bookingsParams: any[] = scope.params;
     if (dateType === 'check_in') {
       bookingsSql += ' AND check_in >= ? AND check_in <= ?';
       bookingsParams.push(dateFrom, dateTo);
@@ -320,9 +386,9 @@ export const getAnalyticsGeo = withModule('sites', 'nav:sites', async (
     const { id: siteId } = await params;
     const statement = getSql();
     if (!await ownsSite(actor.organizationId, siteId)) return notFound();
-    const ownIds = await ownPropertyIds(actor.organizationId);
     const { searchParams } = new URL(request.url);
     const propertyId = await getSitePropertyId(siteId);
+    const scope = sourceScope(siteId, propertyId, actor.organizationId);
 
     const dateFrom = searchParams.get('date_from') || getFirstDayOfMonth();
     const dateTo = searchParams.get('date_to') || getToday();
@@ -354,9 +420,9 @@ export const getAnalyticsGeo = withModule('sites', 'nav:sites', async (
         SUM(CASE WHEN payment_status = 'paid' THEN (total_price - COALESCE(commission_amount, 0)) ELSE 0 END) as revenue,
         SUM(CASE WHEN payment_status != 'paid' THEN (total_price - COALESCE(commission_amount, 0)) ELSE 0 END) as unpaid_revenue
       FROM reservations
-      WHERE ${getSourceFilter(siteId, propertyId, ownIds)} AND status != 'cancelled' AND booking_lang IS NOT NULL
+      WHERE ${scope.sql} AND status != 'cancelled' AND booking_lang IS NOT NULL
     `;
-    const langParams = [...getSourceParams(siteId, propertyId, ownIds)];
+    const langParams = [...scope.params];
     if (dateType === 'check_in') {
       langBookingsSql += ' AND check_in >= ? AND check_in <= ?';
       langParams.push(dateFrom, dateTo);
@@ -412,9 +478,9 @@ export const getAnalyticsGeo = withModule('sites', 'nav:sites', async (
         SUM(CASE WHEN payment_status = 'paid' THEN (total_price - COALESCE(commission_amount, 0)) ELSE 0 END) as revenue,
         SUM(CASE WHEN payment_status != 'paid' THEN (total_price - COALESCE(commission_amount, 0)) ELSE 0 END) as unpaid_revenue
       FROM reservations
-      WHERE ${getSourceFilter(siteId, propertyId, ownIds)} AND status != 'cancelled' AND country_code IS NOT NULL
+      WHERE ${scope.sql} AND status != 'cancelled' AND country_code IS NOT NULL
     `;
-    const countryParams = [...getSourceParams(siteId, propertyId, ownIds)];
+    const countryParams = [...scope.params];
     if (dateType === 'check_in') {
       countrySql += ' AND check_in >= ? AND check_in <= ?';
       countryParams.push(dateFrom, dateTo);
@@ -465,9 +531,10 @@ export const getAnalyticsListings = withModule('sites', 'nav:sites', async (
     const { id: siteId } = await params;
     const statement = getSql();
     if (!await ownsSite(actor.organizationId, siteId)) return notFound();
-    const ownIds = await ownPropertyIds(actor.organizationId);
     const { searchParams } = new URL(request.url);
     const propertyId = await getSitePropertyId(siteId);
+    const scope = sourceScope(siteId, propertyId, actor.organizationId);
+    const scopeR = sourceScope(siteId, propertyId, actor.organizationId, 'r.');
 
     const dateFrom = searchParams.get('date_from') || getFirstDayOfMonth();
     const dateTo = searchParams.get('date_to') || getToday();
@@ -488,9 +555,9 @@ export const getAnalyticsListings = withModule('sites', 'nav:sites', async (
       FROM reservations r
       LEFT JOIN units u ON r.unit_id = u.id
       LEFT JOIN unit_types ut ON u.unit_type_id = ut.id
-      WHERE ${getSourceFilter(siteId, propertyId, ownIds, 'r.')} AND r.status != 'cancelled'
+      WHERE ${scopeR.sql} AND r.status != 'cancelled'
     `;
-    const utParams: any[] = getSourceParams(siteId, propertyId, ownIds);
+    const utParams: any[] = scopeR.params;
     if (dateType === 'check_in') {
       utSql += ' AND r.check_in >= ? AND r.check_in <= ?';
       utParams.push(dateFrom, dateTo);
@@ -513,9 +580,9 @@ export const getAnalyticsListings = withModule('sites', 'nav:sites', async (
       FROM reservations r
       LEFT JOIN units u ON r.unit_id = u.id
       LEFT JOIN categories c ON u.category_id = c.id
-      WHERE ${getSourceFilter(siteId, propertyId, ownIds, 'r.')} AND r.status != 'cancelled'
+      WHERE ${scopeR.sql} AND r.status != 'cancelled'
     `;
-    const catParams: any[] = getSourceParams(siteId, propertyId, ownIds);
+    const catParams: any[] = scopeR.params;
     if (dateType === 'check_in') {
       catSql += ' AND r.check_in >= ? AND r.check_in <= ?';
       catParams.push(dateFrom, dateTo);
@@ -547,9 +614,9 @@ export const getAnalyticsCampaigns = withModule('sites', 'nav:sites', async (
     const { id: siteId } = await params;
     const statement = getSql();
     if (!await ownsSite(actor.organizationId, siteId)) return notFound();
-    const ownIds = await ownPropertyIds(actor.organizationId);
     const { searchParams } = new URL(request.url);
     const propertyId = await getSitePropertyId(siteId);
+    const scope = sourceScope(siteId, propertyId, actor.organizationId);
 
     const dateFrom = searchParams.get('date_from') || getFirstDayOfMonth();
     const dateTo = searchParams.get('date_to') || getToday();
@@ -594,9 +661,9 @@ export const getAnalyticsCampaigns = withModule('sites', 'nav:sites', async (
         SUM(CASE WHEN payment_status = 'paid' THEN (total_price - COALESCE(commission_amount, 0)) ELSE 0 END) as revenue,
         SUM(CASE WHEN payment_status != 'paid' THEN (total_price - COALESCE(commission_amount, 0)) ELSE 0 END) as unpaid_revenue
       FROM reservations
-      WHERE ${getSourceFilter(siteId, propertyId, ownIds)} AND status != 'cancelled'
+      WHERE ${scope.sql} AND status != 'cancelled'
     `;
-    const bookingsParams: any[] = getSourceParams(siteId, propertyId, ownIds);
+    const bookingsParams: any[] = scope.params;
     if (dateType === 'check_in') {
       bookingsSql += ' AND check_in >= ? AND check_in <= ?';
       bookingsParams.push(dateFrom, dateTo);
@@ -676,9 +743,9 @@ export const getAnalyticsFunnel = withModule('sites', 'nav:sites', async (
     const { id: siteId } = await params;
     const statement = getSql();
     if (!await ownsSite(actor.organizationId, siteId)) return notFound();
-    const ownIds = await ownPropertyIds(actor.organizationId);
     const { searchParams } = new URL(request.url);
     const propertyId = await getSitePropertyId(siteId);
+    const scope = sourceScope(siteId, propertyId, actor.organizationId);
 
     const dateFrom = searchParams.get('date_from') || getFirstDayOfMonth();
     const dateTo = searchParams.get('date_to') || getToday();
@@ -731,9 +798,9 @@ export const getAnalyticsFunnel = withModule('sites', 'nav:sites', async (
       let statement = `
         SELECT COUNT(*) as count 
         FROM reservations 
-        WHERE ${getSourceFilter(siteId, propertyId, ownIds)} AND status != 'cancelled'
+        WHERE ${scope.sql} AND status != 'cancelled'
       `;
-      const p = [...getSourceParams(siteId, propertyId, ownIds)];
+      const p = [...scope.params];
       
       if (statusFilter) {
         if (statusFilter === 'checked_in') {
@@ -827,14 +894,17 @@ export const getAnalyticsFunnel = withModule('sites', 'nav:sites', async (
         // by email or phone alone crosses tenants the moment the same person
         // writes to two hotels — and a guest who books elsewhere would be
         // counted as this hotel's conversion.
-        const propScope = ownIds.length ? `r.property_id IN (${ownIds.map(() => '?').join(',')})` : '1=0';
+        // БЕЗ фільтра джерела, і це навмисно: заявка з сайта цілком може
+        // завершитись телефонною бронню, і саме це й є конверсія заявки.
+        const leadScope = houseScope(siteId, propertyId, actor.organizationId, 'r.');
         const resSql = `
           SELECT DISTINCT r.id, r.status, r.payment_status 
           FROM reservations r
           JOIN guests g ON r.guest_id = g.id
-          WHERE (${guestCond}) AND ${propScope} AND r.created_at >= ? AND r.status != 'cancelled'
+          WHERE (${guestCond}) AND ${leadScope.sql} AND r.created_at >= ? AND r.status != 'cancelled'
         `;
-        const linkedReservations = await sql.rows<any>(resSql, [...ownIds, `${dateFrom} 00:00:00`]) as any[];
+        const linkedReservations = await sql.rows<any>(
+          resSql, [...leadScope.params, `${dateFrom} 00:00:00`]) as any[];
         
         leadsBooked = linkedReservations.length;
         leadsCheckedIn = linkedReservations.filter(r => r.status === 'checked_in' || r.status === 'checked_out').length;
