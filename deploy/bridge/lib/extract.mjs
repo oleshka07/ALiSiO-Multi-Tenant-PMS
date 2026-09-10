@@ -27,7 +27,7 @@ import zlib from 'node:zlib';
 import { spawn } from 'node:child_process';
 import { pipeline } from 'node:stream/promises';
 import { Transform } from 'node:stream';
-import { RECORD_SEP, convertRecord, parseColumns, parseHeader } from './convert.mjs';
+import { RECORD_SEP, convertOutput, convertRecord, parseColumns, parseHeader } from './convert.mjs';
 
 const GBAK = process.env.GBAK_BIN || 'gbak';
 const ISQL = process.env.ISQL_BIN || 'isql-fb';
@@ -210,4 +210,58 @@ export async function processSnapshot({ archive, mode, sqlDir, outDir, workDir, 
   } finally {
     fs.rmSync(workDir, { recursive: true, force: true });
   }
+}
+
+// ── Дельта агента (задача 8 §3) ─────────────────────────────────────────
+//
+// Агент на сервері готелю раз на 15 хв читає isql-ом лише броні з заїздом
+// або виїздом у вікні дат і шле СИРИЙ вивід одним gzip-пакетом: секції
+// розділені ASCII 29 (group separator), перший рядок секції — імʼя сутності,
+// далі — той самий формат, що й у повного витягу (поля ASCII 31, записи
+// ASCII 30). Колонки беруться з SQL-файла тієї самої сутності в ЦЬОМУ мосту:
+// шаблони агента (`apps/winhotel-agent/sql-delta/`) мають той самий рядок
+// `-- columns:`, і гейт це стереже. Бази тут немає — тільки перетворення.
+
+export const GROUP_SEP = 0x1d;
+
+/** Розкласти пакет дельти на секції {entity, bytes}. */
+export function splitDeltaBundle(buffer) {
+  const sections = [];
+  let start = 0;
+  while (start < buffer.length) {
+    if (buffer[start] !== GROUP_SEP) throw new Error(`секція дельти не починається з ASCII 29 (зміщення ${start})`);
+    let end = start + 1;
+    while (end < buffer.length && buffer[end] !== GROUP_SEP) end += 1;
+    const part = buffer.subarray(start + 1, end);
+    const nl = part.indexOf(0x0a);
+    const entity = (nl >= 0 ? part.subarray(0, nl) : part).toString('latin1').trim().replace(/\r$/, '');
+    if (!/^[a-z_]+$/.test(entity)) throw new Error(`імʼя сутності в дельті не годиться: «${entity.slice(0, 40)}»`);
+    sections.push({ entity, bytes: nl >= 0 ? part.subarray(nl + 1) : Buffer.alloc(0) });
+    start = end;
+  }
+  return sections;
+}
+
+/**
+ * Пакет дельти → `<out>/<entity>.jsonl` + `aggregates.json` з `mode: "delta"` і
+ * вікном. Без вікна — відмова: дельта без меж нічого не означає для імпорту.
+ */
+export async function processDelta({ archive, sqlDir, outDir, window, snapshot = null, log = () => {} }) {
+  if (!window || !window.from || !window.to) throw new Error('дельта без вікна дат (window.from/window.to) — імпортувати нема як');
+  fs.mkdirSync(outDir, { recursive: true });
+  const raw = archive.endsWith('.gz') ? zlib.gunzipSync(fs.readFileSync(archive)) : fs.readFileSync(archive);
+  const entities = {};
+  for (const { entity, bytes } of splitDeltaBundle(raw)) {
+    const sqlFile = path.join(sqlDir, `${entity}.sql`);
+    if (!fs.existsSync(sqlFile)) throw new Error(`дельта несе сутність «${entity}», якої міст не знає`);
+    const columns = parseColumns(fs.readFileSync(sqlFile, 'utf8'));
+    const rows = convertOutput(columns, bytes);
+    fs.writeFileSync(path.join(outDir, `${entity}.jsonl`), rows.map((r) => `${JSON.stringify(r)}\n`).join(''));
+    entities[entity] = rows.length;
+    log(`${entity}: ${rows.length} рядків (дельта)`);
+  }
+  if (!('bookings' in entities)) throw new Error('дельта без секції bookings — це не дельта броней');
+  const result = { snapshot, mode: 'delta', window, extractedAt: new Date().toISOString(), entities, numbers: {} };
+  fs.writeFileSync(path.join(outDir, 'aggregates.json'), `${JSON.stringify(result, null, 2)}\n`);
+  return result;
 }

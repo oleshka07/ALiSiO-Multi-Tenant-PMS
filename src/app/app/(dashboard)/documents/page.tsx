@@ -4,6 +4,11 @@ import { useT } from '@core/i18n/client';
 import { useEffect, useState, useCallback } from 'react';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import { useSearchParams } from 'next/navigation';
+// Вузькі двері, БЕЗ обробників: чиста арифметика строку, спільна з маршрутом.
+import { customInvoiceDue } from '@invoicing/terms';
+
+/** Сьогодні в ISO — одне місце, бо дату виписки й строк рахують від нього обидва поля. */
+const todayIso = () => new Date().toISOString().slice(0, 10);
 import {
   FileText, Download, Eye, RefreshCw, Receipt,
   CheckCircle, AlertCircle, Calendar, User,
@@ -364,10 +369,10 @@ export default function DocumentsPage() {
     setCustomGenerating(true);
     setCustomToast(null);
     try {
-      const defDue = customForm.dueDate || (() => {
-        const d = new Date(); d.setDate(d.getDate() + 14);
-        return d.toISOString().slice(0, 10);
-      })();
+      // Строк — тими самими дверима, що й у маршруту (`@invoicing/terms`).
+      // Раніше екран рахував «+14» тут і ще раз у полі нижче, а маршрут
+      // утретє: три обчислення одного факту, які розійдуться тихо.
+      const defDue = customInvoiceDue(customForm.dueDate, todayIso());
       const body: Record<string, unknown> = {
         items:         validItems,
         // Legacy single fields for backward compat
@@ -1608,7 +1613,7 @@ export default function DocumentsPage() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
                       <span style={{ minWidth: 128 }}>Datum splatnosti:</span>
                       <input type="date"
-                        value={customForm.dueDate || (() => { const d = new Date(); d.setDate(d.getDate() + 14); return d.toISOString().slice(0, 10); })()}
+                        value={customInvoiceDue(customForm.dueDate, todayIso())}
                         onChange={e => setCustomForm(f => ({ ...f, dueDate: e.target.value }))}
                         style={{ border: '0.5px solid #4f6ef7', padding: '2px 4px', fontSize: 11, fontWeight: 700, outline: 'none', background: 'rgba(79,110,247,0.05)', fontFamily: 'inherit' }}
                       />

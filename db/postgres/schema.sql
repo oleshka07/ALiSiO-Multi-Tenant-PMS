@@ -537,6 +537,16 @@ CREATE TABLE "companies" (
   PRIMARY KEY ("id")
 );
 
+CREATE TABLE "company_rate_plans" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "company_id" TEXT NOT NULL,
+  "rate_plan_id" TEXT NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  UNIQUE ("organization_id", "company_id", "rate_plan_id")
+);
+
 CREATE TABLE "consent_texts" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "organization_id" TEXT NOT NULL,
@@ -851,6 +861,8 @@ CREATE TABLE "fin_folio_payments" (
   "method" TEXT NOT NULL,
   "paid_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "received_by" TEXT,
+  "source" TEXT,
+  "origin" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "tse_status" TEXT,
   "tse_serial" TEXT,
@@ -1241,6 +1253,19 @@ CREATE TABLE "guest_consents" (
   PRIMARY KEY ("id")
 );
 
+CREATE TABLE "guest_not_duplicates" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "guest_low_id" TEXT NOT NULL,
+  "guest_high_id" TEXT NOT NULL,
+  "decided_by" TEXT,
+  "decided_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "note" TEXT,
+  PRIMARY KEY ("id"),
+  UNIQUE ("organization_id", "guest_low_id", "guest_high_id"),
+  CHECK (guest_low_id < guest_high_id)
+);
+
 CREATE TABLE "guest_page_config" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "unit_type_id" TEXT NOT NULL,
@@ -1314,6 +1339,8 @@ CREATE TABLE "guests" (
   "date_of_birth" TEXT,
   "notes" TEXT,
   "external_ref" TEXT,
+  "merged_at" TIMESTAMPTZ,
+  "merged_by" TEXT,
   "merged_into" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
@@ -2333,6 +2360,7 @@ CREATE TABLE "winhotel_refs" (
   "winhotel_lnr" BIGINT NOT NULL,
   "our_id" TEXT NOT NULL,
   "fingerprint" TEXT,
+  "source_taken_at" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
@@ -2353,7 +2381,7 @@ CREATE TABLE "winhotel_snapshots" (
   "imported_at" TIMESTAMPTZ,
   PRIMARY KEY ("id"),
   UNIQUE ("organization_id", "sha256"),
-  CHECK (mode IN ('backup', 'gbak', 'copy')),
+  CHECK (mode IN ('backup', 'gbak', 'copy', 'delta')),
   CHECK (status IN ('received', 'extracting', 'extracted', 'imported', 'failed'))
 );
 
@@ -2484,6 +2512,12 @@ ALTER TABLE "cm_sends" ADD CONSTRAINT "fk_cm_sends_connection_id_1"
 ALTER TABLE "cm_sends" ADD CONSTRAINT "fk_cm_sends_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "companies" ADD CONSTRAINT "fk_companies_organization_id_1"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "company_rate_plans" ADD CONSTRAINT "fk_company_rate_plans_rate_plan_id_1"
+  FOREIGN KEY ("rate_plan_id") REFERENCES "rate_plans" ("id") ON DELETE CASCADE;
+ALTER TABLE "company_rate_plans" ADD CONSTRAINT "fk_company_rate_plans_company_id_2"
+  FOREIGN KEY ("company_id") REFERENCES "companies" ("id") ON DELETE CASCADE;
+ALTER TABLE "company_rate_plans" ADD CONSTRAINT "fk_company_rate_plans_organization_id_3"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "consent_texts" ADD CONSTRAINT "fk_consent_texts_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
@@ -2654,6 +2688,12 @@ ALTER TABLE "gift_cards" ADD CONSTRAINT "fk_gift_cards_property_id_4"
 ALTER TABLE "guest_consents" ADD CONSTRAINT "fk_guest_consents_guest_id_1"
   FOREIGN KEY ("guest_id") REFERENCES "guests" ("id") ON DELETE CASCADE;
 ALTER TABLE "guest_consents" ADD CONSTRAINT "fk_guest_consents_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "guest_not_duplicates" ADD CONSTRAINT "fk_guest_not_duplicates_guest_high_id_1"
+  FOREIGN KEY ("guest_high_id") REFERENCES "guests" ("id") ON DELETE CASCADE;
+ALTER TABLE "guest_not_duplicates" ADD CONSTRAINT "fk_guest_not_duplicates_guest_low_id_2"
+  FOREIGN KEY ("guest_low_id") REFERENCES "guests" ("id") ON DELETE CASCADE;
+ALTER TABLE "guest_not_duplicates" ADD CONSTRAINT "fk_guest_not_duplicates_organization_id_3"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "guest_page_config" ADD CONSTRAINT "fk_guest_page_config_unit_type_id_1"
   FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id") ON DELETE CASCADE;
@@ -2978,6 +3018,8 @@ CREATE INDEX "idx_cm_sends_org" ON "cm_sends" ("organization_id");
 CREATE UNIQUE INDEX "idx_companies_debtor_no" ON "companies" ("organization_id", "debtor_no") WHERE debtor_no IS NOT NULL ;
 CREATE INDEX "idx_companies_org" ON "companies" ("organization_id", "name");
 CREATE UNIQUE INDEX "idx_companies_org_business_id" ON "companies" ("organization_id", "business_id") WHERE business_id IS NOT NULL;
+CREATE INDEX "idx_company_rate_plans_org" ON "company_rate_plans" ("organization_id");
+CREATE INDEX "idx_company_rate_plans_plan" ON "company_rate_plans" ("rate_plan_id");
 CREATE INDEX "idx_consent_texts_org" ON "consent_texts" ("organization_id");
 CREATE UNIQUE INDEX "idx_consent_texts_org_kind_version" ON "consent_texts" ("organization_id", "consent_kind", "version", "locale");
 CREATE INDEX "idx_ct_hash" ON "content_translations" ("text_hash");
@@ -3063,6 +3105,8 @@ CREATE INDEX "idx_gift_cards_property" ON "gift_cards" ("property_id");
 CREATE INDEX "idx_gift_cards_status" ON "gift_cards" ("status");
 CREATE INDEX "idx_guest_consents_guest" ON "guest_consents" ("organization_id", "guest_id", "consent_kind");
 CREATE INDEX "idx_guest_consents_org" ON "guest_consents" ("organization_id");
+CREATE INDEX "idx_guest_not_duplicates_org" ON "guest_not_duplicates" ("organization_id");
+CREATE UNIQUE INDEX "idx_guest_not_duplicates_pair" ON "guest_not_duplicates" ("organization_id", "guest_low_id", "guest_high_id");
 CREATE UNIQUE INDEX "idx_guest_page_sections_row" ON "guest_page_sections" ("property_id", "section");
 CREATE UNIQUE INDEX "idx_guests_external_ref" ON "guests" ("organization_id", "external_ref") WHERE external_ref IS NOT NULL;
 CREATE INDEX "idx_guests_merged_into" ON "guests" ("organization_id") WHERE merged_into IS NULL;
@@ -3181,6 +3225,7 @@ CREATE INDEX IF NOT EXISTS "idx_cm_mappings_org" ON "cm_mappings" ("organization
 CREATE INDEX IF NOT EXISTS "idx_cm_outbox_org" ON "cm_outbox" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_cm_sends_org" ON "cm_sends" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_companies_org" ON "companies" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_company_rate_plans_org" ON "company_rate_plans" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_consent_texts_org" ON "consent_texts" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_coupons_org" ON "coupons" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_event_addons_org" ON "event_addons" ("organization_id");
@@ -3213,6 +3258,7 @@ CREATE INDEX IF NOT EXISTS "idx_gift_card_bundles_org" ON "gift_card_bundles" ("
 CREATE INDEX IF NOT EXISTS "idx_gift_card_templates_org" ON "gift_card_templates" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_gift_cards_org" ON "gift_cards" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_guest_consents_org" ON "guest_consents" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_guest_not_duplicates_org" ON "guest_not_duplicates" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_guest_page_sections_org" ON "guest_page_sections" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_guests_org" ON "guests" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_ical_channels_org" ON "ical_channels" ("organization_id");
@@ -3302,6 +3348,8 @@ ALTER TABLE "cm_sends" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "companies" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "company_rate_plans" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "consent_texts" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "coupons" ALTER COLUMN "organization_id"
@@ -3365,6 +3413,8 @@ ALTER TABLE "gift_card_templates" ALTER COLUMN "organization_id"
 ALTER TABLE "gift_cards" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "guest_consents" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "guest_not_duplicates" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "guest_page_sections" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -3612,6 +3662,12 @@ CREATE POLICY "companies_tenant" ON "companies"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
+ALTER TABLE "company_rate_plans" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "company_rate_plans" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "company_rate_plans_tenant" ON "company_rate_plans"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
 ALTER TABLE "consent_texts" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "consent_texts" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "consent_texts_tenant" ON "consent_texts"
@@ -3831,6 +3887,12 @@ CREATE POLICY "gift_cards_tenant" ON "gift_cards"
 ALTER TABLE "guest_consents" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "guest_consents" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "guest_consents_tenant" ON "guest_consents"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "guest_not_duplicates" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "guest_not_duplicates" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "guest_not_duplicates_tenant" ON "guest_not_duplicates"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 

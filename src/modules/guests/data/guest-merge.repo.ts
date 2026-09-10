@@ -57,10 +57,13 @@ export const NOT_MOVED: Readonly<Record<string, string>> = {
 
 export interface MergeGuestsInput {
   organizationId: string;
-  /** Кого лишаємо. */
+  /** Кого лишаємо. Обирає ЛЮДИНА, не код: «лишаємо старшого» здається
+   *  очевидним і неправильне — у старшого може не бути документа. */
   keepId: string;
   /** Кого зливаємо. */
   dropId: string;
+  /** Хто зливає. Дія незворотна, тож у рядку лишається ім'я того, хто вирішив. */
+  decidedBy?: string | null;
 }
 
 export interface MergeGuestsResult {
@@ -114,8 +117,9 @@ export async function mergeGuests(input: MergeGuestsInput): Promise<MergeGuestsR
     // Слід. Разом із ним — ПЕРЕНАЦІЛЕННЯ старих посилань, щоб ланцюга не
     // виникло: усе, що вело на злитого, тепер веде на живого одним кроком.
     await t.run(
-      'UPDATE guests SET merged_into = ? WHERE id = ? AND organization_id = ?',
-      [keepId, dropId, organizationId]);
+      `UPDATE guests SET merged_into = ?, merged_at = CURRENT_TIMESTAMP, merged_by = ?
+        WHERE id = ? AND organization_id = ?`,
+      [keepId, input.decidedBy ?? null, dropId, organizationId]);
     await t.run(
       'UPDATE guests SET merged_into = ? WHERE merged_into = ? AND organization_id = ?',
       [keepId, dropId, organizationId]);
@@ -142,4 +146,75 @@ export async function mergeGuests(input: MergeGuestsInput): Promise<MergeGuestsR
   });
 
   return { keepId, dropId, moved };
+}
+
+/**
+ * Що САМЕ переїде, якщо злити — без жодного запису.
+ *
+ * Екран мусить показати це ДО того, як людина натисне: злиття незворотне, і
+ * «перенесено 14 рядків» після факту — не те саме, що «перенесеться 14» до
+ * нього. Ті самі таблиці, що й у злитті, тим самим списком — інакше перегляд
+ * і дія розійшлися б, і показане перестало б означати зроблене.
+ */
+export async function previewMerge(input: {
+  organizationId: string; keepId: string; dropId: string;
+}): Promise<Record<string, number>> {
+  await liveGuest(input.organizationId, input.keepId, 'кого лишаємо');
+  await liveGuest(input.organizationId, input.dropId, 'кого зливаємо');
+
+  const sql = getSql();
+  const moves: Record<string, number> = {};
+  for (const table of MOVED_TO_KEPT_GUEST) {
+    const row = await sql.row<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM ${table} WHERE guest_id = ?`, [input.dropId]);
+    moves[table] = Number(row?.n ?? 0);
+  }
+  return moves;
+}
+
+/**
+ * «Це різні люди» — рішення, яке мусить памʼятатись.
+ *
+ * Без нього та сама пара спливатиме щодня, портьє звикне натискати «різні» не
+ * дивлячись, і одного дня так закриє справжній дублікат.
+ *
+ * Пара впорядковується ТУТ, а `CHECK` у базі не дає покласти її навпаки: так
+ * відмова існує рівно в одному вигляді, і шукач не може показати пару, яку
+ * вже відхилили, лише тому, що спитав іншу її форму.
+ */
+export async function markNotDuplicates(input: {
+  organizationId: string; guestA: string; guestB: string;
+  decidedBy?: string | null; note?: string | null;
+}): Promise<void> {
+  if (input.guestA === input.guestB) {
+    refuse('Це той самий рядок — тут нема чого розрізняти', 400);
+  }
+  await liveGuest(input.organizationId, input.guestA, 'перший');
+  await liveGuest(input.organizationId, input.guestB, 'другий');
+
+  const [low, high] = input.guestA < input.guestB
+    ? [input.guestA, input.guestB] : [input.guestB, input.guestA];
+
+  const sql = getSql();
+  const already = await sql.row<{ id: string }>(
+    `SELECT id FROM guest_not_duplicates
+      WHERE organization_id = ? AND guest_low_id = ? AND guest_high_id = ?`,
+    [input.organizationId, low, high]);
+  if (already) return;   // рішення вже ухвалене; повтор — не помилка
+
+  await sql.run(
+    `INSERT INTO guest_not_duplicates
+       (id, organization_id, guest_low_id, guest_high_id, decided_by, note)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [`gnd_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      input.organizationId, low, high, input.decidedBy ?? null, input.note ?? null]);
+}
+
+/** Пари, які вже назвали різними людьми. Ключ — «низький|високий». */
+export async function notDuplicatePairs(organizationId: string): Promise<Set<string>> {
+  const sql = getSql();
+  const rows = await sql.rows<{ guest_low_id: string; guest_high_id: string }>(
+    'SELECT guest_low_id, guest_high_id FROM guest_not_duplicates WHERE organization_id = ?',
+    [organizationId]);
+  return new Set(rows.map((r) => `${r.guest_low_id}|${r.guest_high_id}`));
 }

@@ -73,6 +73,11 @@ export type { ConsentKind, ConsentSource, ConsentRow, RecordConsentInput }
 export { mergeGuests } from '../data/guest-merge.repo';
 export type { MergeGuestsInput, MergeGuestsResult } from '../data/guest-merge.repo';
 
+// Дублікати в руках портьє (INC-304): список пар із причиною, попередній
+// перегляд «що переїде» і рішення «та сама людина» / «різні люди».
+export { listDuplicates, previewDuplicateMerge, decideDuplicate } from './duplicates.handlers';
+export { previewMerge, markNotDuplicates } from '../data/guest-merge.repo';
+
 // «Схоже, це одна людина» — ПРОПОЗИЦІЯ злиття, ніколи не саме злиття
 // (INC-303). Пошта працює лише в парі з імʼям: сімʼя під однією поштою — не
 // одна людина, і правило IMPORT-PLAN §2.7 («однаковий E_MAIL → один гість»)
@@ -96,6 +101,12 @@ export { searchGuests } from '../data/guest-search';
 // Двері потрібні власнику таблиці `guest_page_config`: його перевірка рівнів
 // має кликати резолвер, не заглядаючи в нутрощі модуля.
 export { getGuestPageConfig } from '../data/guest-portal.repo';
+
+// Що ретенція робить із кожною таблицею, яка тримає дані гостя (INC-305).
+// Реєстр — дані, і повноту стереже `check-retention-tables`: нова таблиця
+// мусить бути названа, бо мовчазний пропуск — це персональні дані, які
+// пережили термін зберігання.
+export { RETENTION_ANONYMISED, RETENTION_DELETED, RETENTION_KEPT } from '../domain/retention-tables';
 
 export { anonymizeOldRegistrations } from '../data/registration.repo';
 export type { RetentionRunResult } from '../data/registration.repo';

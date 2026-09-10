@@ -170,6 +170,25 @@ if (onPostgres) {
   console.log('  ––  перегони НЕ перевірено: цей рушій не має одночасності (доказ — у check:pg)');
 }
 
+// ── Номер із попередньої системи (З37): прийняти замість виданого, лічильник — за ним ──
+{
+  const { adoptDebtorNo, createCompany: mkCompany, getCompany: readCompany } = await import('./companies.repo.ts');
+  const [c1, c2] = await runWithOrganization(ORG_A, async () => [
+    await mkCompany(ORG_A, { name: 'Übernommen GmbH' } as any),
+    await mkCompany(ORG_A, { name: 'Nachbar KG' } as any),
+  ]);
+  const issued = Number((await runWithOrganization(ORG_A, () => readCompany(ORG_A, c1)))!.debtor_no);
+  const wanted = issued + 5000;
+  say((await runWithOrganization(ORG_A, () => adoptDebtorNo(ORG_A, c1, wanted))) === 'adopted', 'номер із попередньої системи приймається');
+  say(Number((await runWithOrganization(ORG_A, () => readCompany(ORG_A, c1)))!.debtor_no) === wanted, `у картці — прийнятий номер ${wanted}, не виданий ${issued}`);
+  say((await runWithOrganization(ORG_A, () => adoptDebtorNo(ORG_A, c1, wanted))) === 'already', 'той самий номер удруге — already, без запису');
+  say((await runWithOrganization(ORG_A, () => adoptDebtorNo(ORG_A, c2, wanted))) === 'taken', 'номер, зайнятий іншою фірмою рахунку, — taken, не виняток');
+  say(Number((await runWithOrganization(ORG_A, () => readCompany(ORG_A, c2)))!.debtor_no) !== wanted, 'сусідка свого номера не втратила');
+  const next = Number((await sql.row<{ next_debtor_no: number }>('SELECT next_debtor_no FROM organizations WHERE id = ?', [ORG_A]))?.next_debtor_no);
+  say(next === wanted + 1, `лічильник рахунку рушив за прийнятим номером: next_debtor_no ${next}, чекали ${wanted + 1}`);
+  say((await runWithOrganization(ORG_A, () => adoptDebtorNo(ORG_A, 'no-such-company', 7))) === 'not_found', 'чужа або неіснуюча — not_found');
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 
 if (fails.length) {

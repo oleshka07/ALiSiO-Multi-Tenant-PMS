@@ -52,6 +52,8 @@ interface WinhotelCard { hasToken: boolean; last: WinhotelSnapshot | null; snaps
 /** `counts_json.import` — фаза («триває») або звіт частини Б (§2.6): числа, staging, звірка. */
 interface WinhotelImport {
   phase?: 'importing' | 'done';
+  mode?: 'full' | 'delta';
+  window?: { from: string; to: string } | null;
   since?: string;
   entities?: Record<string, { winhotel: number; imported: number; updated: number; staged: number }>;
   staging?: Array<{ entity: string; reason: string; n: number }>;
@@ -64,6 +66,7 @@ const STAGING_REASON: Record<string, string> = {
   frozen: 'заморожені фактури', frozen_sammelrechnung: 'збірні фактури', fiscal_guard: 'готівка/картка до TSE',
   method_unmapped: 'спосіб оплати поза класами', overlap: 'бронь поверх зайнятого номера', no_guest: 'бронь без гостя',
   no_unit_type: 'бронь без типу номера', changed: 'змінено після імпорту', refused_by_core: 'ядро відмовило',
+  cash_article: 'касові статті (не фоліо гостя)', debtor_no_pending: 'дебіторський номер фірми до колонки',
   core_gap_gdpr_journal: 'згоди GDPR', core_gap_cash_book: 'касова книга',
   open_guest_balances: 'відкриті сальдо', invoice_ledger_by_status: 'журнал фактур', vouchers_sold: 'продані ваучери',
   vouchers_redeemed: 'погашені ваучери', deposits_on_bookings: 'депозити броней', deposits_on_future_bookings: 'депозити майбутніх броней',
@@ -79,7 +82,7 @@ const SNAPSHOT_STATUS: Record<string, { word: string; badge: string }> = {
   failed: { word: 'відмова', badge: 'badge-danger' },
 };
 const SNAPSHOT_MODE: Record<string, string> = {
-  backup: 'готовий бекап', gbak: 'gbak', copy: 'копія файла',
+  backup: 'готовий бекап', gbak: 'gbak', copy: 'копія файла', delta: 'дельта дня',
 };
 const mb = (bytes: number) => `${(Number(bytes) / 1048576).toFixed(1)} MB`;
 
@@ -406,7 +409,9 @@ export default function AppsSettingsPage() {
                                         <div style={{ marginTop: 4, color: 'var(--text-secondary)' }} data-testid={`winhotel-imported-${snap.id}`}>
                                           {t('у ядрі')}: {t('брони')} {ent.reservation?.imported ?? 0}+{ent.reservation?.updated ?? 0} · {t('гості')} {ent.guest?.imported ?? 0} ·{' '}
                                           {t('рядки')} {ent.folio_line?.imported ?? 0} · {t('оплати')} {ent.payment?.imported ?? 0}
-                                          {imp?.since && <span> · {t('з')} {imp.since}</span>}
+                                          {imp?.mode === 'delta' && imp.window
+                                            ? <span> · {t('вікно')} {imp.window.from}…{imp.window.to}</span>
+                                            : imp?.since && <span> · {t('з')} {imp.since}</span>}
                                           {stagedTotal > 0 && (
                                             <div data-testid={`winhotel-staged-${snap.id}`}>
                                               {t('відкладено')} {stagedTotal}:{' '}

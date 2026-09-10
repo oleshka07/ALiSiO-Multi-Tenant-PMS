@@ -1,5 +1,5 @@
 /**
- * `winhotel_refs` і `winhotel_staging` (0144) — памʼять імпорту.
+ * `winhotel_refs` і `winhotel_staging` (0404) — памʼять імпорту.
  *
  * Refs — єдиний спосіб, яким повторний імпорт знаходить свій рядок: не за
  * імʼям, не за датами, а за (сутність, LNR). `fingerprint` — відбиток полів,
@@ -22,6 +22,8 @@ export interface RefRow {
   winhotel_lnr: number;
   our_id: string;
   fingerprint: string | null;
+  /** Час знімка, який останнім писав цей рядок (0405): старіший знімок його не перепише. */
+  source_taken_at: string | null;
 }
 
 /** Відбиток значень — стабільний JSON, sha256 у hex. */
@@ -34,32 +36,32 @@ export function fingerprintOf(value: unknown): string {
 
 export async function refsOf(organizationId: string, entity: string): Promise<Map<number, RefRow>> {
   const rows = await getSql().rows<RefRow>(
-    'SELECT entity, winhotel_lnr, our_id, fingerprint FROM winhotel_refs WHERE organization_id = ? AND entity = ?',
+    'SELECT entity, winhotel_lnr, our_id, fingerprint, source_taken_at FROM winhotel_refs WHERE organization_id = ? AND entity = ?',
     [organizationId, entity],
   );
-  return new Map(rows.map((r) => [Number(r.winhotel_lnr), { ...r, winhotel_lnr: Number(r.winhotel_lnr) }]));
+  return new Map(rows.map((r) => [Number(r.winhotel_lnr), { ...r, winhotel_lnr: Number(r.winhotel_lnr), source_taken_at: r.source_taken_at ? String(r.source_taken_at) : null }]));
 }
 
 export async function findRef(organizationId: string, entity: string, lnr: number): Promise<RefRow | undefined> {
   const row = await getSql().row<RefRow>(
-    'SELECT entity, winhotel_lnr, our_id, fingerprint FROM winhotel_refs WHERE organization_id = ? AND entity = ? AND winhotel_lnr = ?',
+    'SELECT entity, winhotel_lnr, our_id, fingerprint, source_taken_at FROM winhotel_refs WHERE organization_id = ? AND entity = ? AND winhotel_lnr = ?',
     [organizationId, entity, lnr],
   );
   return row ? { ...row, winhotel_lnr: Number(row.winhotel_lnr) } : undefined;
 }
 
-export async function putRef(organizationId: string, entity: string, lnr: number, ourId: string, fingerprint: string | null): Promise<void> {
+export async function putRef(organizationId: string, entity: string, lnr: number, ourId: string, fingerprint: string | null, sourceTakenAt: string | null = null): Promise<void> {
   const sql = getSql();
   const updated = await sql.run(
-    `UPDATE winhotel_refs SET our_id = ?, fingerprint = ?, updated_at = CURRENT_TIMESTAMP
+    `UPDATE winhotel_refs SET our_id = ?, fingerprint = ?, source_taken_at = ?, updated_at = CURRENT_TIMESTAMP
       WHERE organization_id = ? AND entity = ? AND winhotel_lnr = ?`,
-    [ourId, fingerprint, organizationId, entity, lnr],
+    [ourId, fingerprint, sourceTakenAt, organizationId, entity, lnr],
   );
   if (updated.changes > 0) return;
   await sql.run(
-    `INSERT INTO winhotel_refs (id, organization_id, entity, winhotel_lnr, our_id, fingerprint)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [`whr_${crypto.randomBytes(12).toString('hex')}`, organizationId, entity, lnr, ourId, fingerprint],
+    `INSERT INTO winhotel_refs (id, organization_id, entity, winhotel_lnr, our_id, fingerprint, source_taken_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [`whr_${crypto.randomBytes(12).toString('hex')}`, organizationId, entity, lnr, ourId, fingerprint, sourceTakenAt],
   );
 }
 

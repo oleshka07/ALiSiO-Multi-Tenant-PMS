@@ -2,3 +2,5 @@
 {"lnr":2,"mand_nr":1,"wgnr":200,"bezeichn":"Speisen","durchl":false,"ums_gr":2}
 {"lnr":3,"mand_nr":1,"wgnr":300,"bezeichn":"Getränke","durchl":false,"ums_gr":2}
 {"lnr":4,"mand_nr":1,"wgnr":600,"bezeichn":"Kurtaxe","durchl":true,"ums_gr":0}
+{"lnr":5,"mand_nr":1,"wgnr":700,"bezeichn":"Geldtransit","durchl":true,"ums_gr":0}
+{"lnr":6,"mand_nr":1,"wgnr":750,"bezeichn":"Ausgaben","durchl":false,"ums_gr":0}

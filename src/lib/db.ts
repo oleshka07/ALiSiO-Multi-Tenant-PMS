@@ -338,6 +338,11 @@ function buildSchema(database: any) {
       -- (INC-301, міграція 0301). Порожньо — завели в нас. Тримає повторний
       -- прогін імпорту від подвоєння, і тримає це UNIQUE-індекс, а не цикл.
       external_ref TEXT,
+      -- Хто злив і коли (INC-304, міграція 0302). Колонками, а не журналом:
+      -- це факт САМОГО рядка, буває рівно раз, і окремий журнал розділив би
+      -- одну правду на два місця, які розходяться при першій же чистці.
+      merged_at TEXT,
+      merged_by TEXT,
       -- Кого лишили, коли цей рядок злили дублікатом (INC-300, міграція 0300).
       -- Рядок злитого гостя НЕ ВИДАЛЯЄТЬСЯ: посилання на нього лежать у
       -- виданих документах і в чужих системах, і «такого гостя немає» — гірша
@@ -358,6 +363,27 @@ function buildSchema(database: any) {
     -- конфліктували між собою.
     CREATE UNIQUE INDEX IF NOT EXISTS idx_guests_external_ref
       ON guests (organization_id, external_ref) WHERE external_ref IS NOT NULL;
+
+    -- «Це різні люди» — рішення, яке мусить памʼятатись (INC-304, 0302).
+    --
+    -- Пара, а не напрямок: злиття має бік, відмова — ні. Порядок тримає
+    -- CHECK, а не домовленість у коді: інакше в таблиці зʼявились би (A,B) і
+    -- (B,A) як дві різні відмови, і шукач, що питає одну форму, показав би
+    -- пару, яку вже відхилили.
+    CREATE TABLE guest_not_duplicates (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      guest_low_id TEXT NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
+      guest_high_id TEXT NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
+      decided_by TEXT,
+      decided_at TEXT NOT NULL DEFAULT (datetime('now')),
+      note TEXT,
+      CHECK (guest_low_id < guest_high_id)
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_guest_not_duplicates_pair
+      ON guest_not_duplicates (organization_id, guest_low_id, guest_high_id);
+    CREATE INDEX IF NOT EXISTS idx_guest_not_duplicates_org
+      ON guest_not_duplicates (organization_id);
 
     -- Згоди GDPR живуть на ОСОБІ й переживають бронь (INC-300, міграція 0300).
     --
@@ -6506,6 +6532,8 @@ function runMigrations(database: any) {
         method          TEXT NOT NULL,
         paid_at         TEXT NOT NULL DEFAULT (datetime('now')),
         received_by     TEXT,
+        source          TEXT,
+        origin          TEXT,
         created_at      TEXT NOT NULL DEFAULT (datetime('now')),
         tse_status      TEXT,
         tse_serial      TEXT,
@@ -6527,9 +6555,10 @@ function runMigrations(database: any) {
     // guarded ALTER stands AFTER the CREATE on purpose (lesson of 086ec1d).
     {
       const payCols = (database.prepare('PRAGMA table_info(fin_folio_payments)').all() as any[]).map((c: any) => c.name);
+      // 0405: `source`/`origin` — оплата, перенесена з попередньої системи (З34).
       for (const col of ['tse_status', 'tse_serial', 'tse_tx_number', 'tse_signature_counter',
         'tse_signature', 'tse_start_time', 'tse_end_time', 'tse_qr_payload',
-        'tse_client_id', 'tse_process_type', 'tse_process_data']) {
+        'tse_client_id', 'tse_process_type', 'tse_process_data', 'source', 'origin']) {
         if (!payCols.includes(col)) database.exec(`ALTER TABLE fin_folio_payments ADD COLUMN ${col} TEXT`);
       }
     }
@@ -7422,6 +7451,42 @@ function runMigrations(database: any) {
     console.error('[DB] companies migration:', e.message);
   }
 
+  // --- 0200: тариф, який бачить лише своя фірма (INC-205) ---
+  //
+  // Звʼязок «фірма → тариф», якого не було ніде: `price_rules` умов «для
+  // компанії» не мають, `rate_plans` про компанії не знає.
+  //
+  // ТАБЛИЦЯ, а не колонка на `rate_plans`, і причина виміряна на базі Ґрайца
+  // (MAPPING §125–129): `PREISCODE 3 Firmenpreise` — ОДИН прайс-код на ВСІХ
+  // корпоративних гостей, а 8 і 10 — по одному на конкретну фірму. Колонка
+  // виражає лише другий випадок; перший довелося б розмножити по разу на
+  // кожну з 12 фірм готелю. Повне обґрунтування — у самій міграції 0200 і в
+  // К22.
+  //
+  // `organization_id` на рядку (інваріант 2), бо `rate_plans` свого не має —
+  // вона тенантна через `property_id → properties`, і політика без цієї
+  // колонки ходила б двома джойнами. UNIQUE з організацією (інваріант 3).
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS company_rate_plans (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        company_id      TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        rate_plan_id    TEXT NOT NULL REFERENCES rate_plans(id) ON DELETE CASCADE,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        -- Усередині CREATE, а не окремим унікальним індексом: генератор
+        -- Postgres-схеми з окремого індексу робить І табличний UNIQUE, І
+        -- індекс — два обмеження на ту саму пару під двома іменами. Той
+        -- самий клас, про який AGENTS §4 попереджає на констрейнтах.
+        UNIQUE(organization_id, company_id, rate_plan_id)
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_company_rate_plans_org ON company_rate_plans(organization_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_company_rate_plans_plan ON company_rate_plans(rate_plan_id)');
+  } catch (e: any) {
+    console.error('[DB] company_rate_plans migration:', e.message);
+  }
+
   // --- 0094: payment_status приймає 'partial' ---
   //
   // Колонка мала CHECK на чотири значення, а ДВА писачі роками ставили пʼяте:
@@ -7906,6 +7971,35 @@ function runMigrations(database: any) {
   // `tsc` або дасть видимий повтор у лозі — замість тиші.
   migrateOtaMirror(database);
 
+  // --- Migration: «різні люди» і хто злив (INC-304) ---
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS guest_not_duplicates (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        guest_low_id TEXT NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
+        guest_high_id TEXT NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
+        decided_by TEXT,
+        decided_at TEXT NOT NULL DEFAULT (datetime('now')),
+        note TEXT,
+        CHECK (guest_low_id < guest_high_id)
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_guest_not_duplicates_pair
+        ON guest_not_duplicates (organization_id, guest_low_id, guest_high_id);
+      CREATE INDEX IF NOT EXISTS idx_guest_not_duplicates_org
+        ON guest_not_duplicates (organization_id);
+    `);
+    const gc = database.prepare('PRAGMA table_info(guests)').all() as { name: string }[];
+    for (const col of ['merged_at', 'merged_by']) {
+      if (gc.length > 0 && !gc.some((c) => c.name === col)) {
+        database.exec(`ALTER TABLE guests ADD COLUMN ${col} TEXT`);
+        console.log(`[DB] guests: ${col} (INC-304)`);
+      }
+    }
+  } catch (e: any) {
+    console.log('[DB] not-duplicates migration note:', e.message);
+  }
+
   // --- Migration: ключ походження імпорту (INC-301) ---
   //
   // Пара до CREATE вище (AGENTS §4). Індекси — ПІСЛЯ колонок.
@@ -7930,13 +8024,8 @@ function runMigrations(database: any) {
   // 0400 — так само окремою функцією, з тієї самої причини.
   migrateApps(database);
 
-  // Застосунок winhotel_import: знімки бази Winhotel. Номер міграції тут не
-  // називається навмисно — сесія 5 їх зараз перенумеровує.
-  migrateWinhotelImport(database);
-
   // 0411 — застосунок kiosk: термінал у холі, код парування, журнал доби.
   migrateKiosk(database);
-
   // --- Migration: згоди на особі і слід злиття (INC-300) ---
   //
   // Пара до CREATE вище: «додаєш колонку — додай її і в CREATE, і в ALTER»
@@ -7985,6 +8074,8 @@ function runMigrations(database: any) {
   } catch (e: any) {
     console.log('[DB] guest consents migration note:', e.message);
   }
+  // 0403 — застосунок winhotel_import: знімки бази Winhotel.
+  migrateWinhotelImport(database);
 
   // --- Migration: is_pool_unit на броні (INC-045) ---
   //
@@ -8222,9 +8313,9 @@ function migrateApps(database: any) {
 }
 
 /**
- * Міграція 0143 — знімки бази Winhotel (застосунок `winhotel_import`,
+ * Міграція 0403 — знімки бази Winhotel (застосунок `winhotel_import`,
  * docs/tasks/2026-09-10-block-winhotel-import.md §2.2). Дзеркало
- * `db/postgres/migrations/0143-*.sql`: один рядок на прийнятий gbak-знімок —
+ * `db/postgres/migrations/0403-*.sql`: один рядок на прийнятий gbak-знімок —
  * коли знято, режим, sha256, розмір, стан і числа звірки. Файл лежить на
  * томі; тут — лише те, що про нього треба знати без файлу.
  */
@@ -8236,7 +8327,7 @@ function migrateWinhotelImport(database: any) {
         id              TEXT PRIMARY KEY,
         organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
         taken_at        TEXT,
-        mode            TEXT NOT NULL CHECK (mode IN ('backup', 'gbak', 'copy')),
+        mode            TEXT NOT NULL CHECK (mode IN ('backup', 'gbak', 'copy', 'delta')),
         sha256          TEXT NOT NULL,
         size_bytes      INTEGER NOT NULL,
         status          TEXT NOT NULL DEFAULT 'received' CHECK (status IN ('received', 'extracting', 'extracted', 'imported', 'failed')),
@@ -8249,11 +8340,40 @@ function migrateWinhotelImport(database: any) {
     `);
     database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_snapshots_org ON winhotel_snapshots(organization_id)');
     database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_snapshots_received ON winhotel_snapshots(organization_id, received_at)');
+    // 0405: режим `delta`. SQLite не вміє змінити CHECK — таблиця перебудовується,
+    // індекси знімаються до підміни й повертаються після (AGENTS §4).
+    const ddl = String((database.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'winhotel_snapshots'").get() as any)?.sql ?? '');
+    if (ddl && !ddl.includes("'delta'")) {
+      const indexes = (database.prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'winhotel_snapshots' AND sql IS NOT NULL").all() as any[]).map((r) => String(r.sql));
+      database.exec(`
+        CREATE TABLE winhotel_snapshots_new (
+          id              TEXT PRIMARY KEY,
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          taken_at        TEXT,
+          mode            TEXT NOT NULL CHECK (mode IN ('backup', 'gbak', 'copy', 'delta')),
+          sha256          TEXT NOT NULL,
+          size_bytes      INTEGER NOT NULL,
+          status          TEXT NOT NULL DEFAULT 'received' CHECK (status IN ('received', 'extracting', 'extracted', 'imported', 'failed')),
+          error           TEXT,
+          counts_json     TEXT,
+          received_at     TEXT NOT NULL DEFAULT (datetime('now')),
+          imported_at     TEXT,
+          UNIQUE(organization_id, sha256)
+        )
+      `);
+      database.exec(`INSERT INTO winhotel_snapshots_new (id, organization_id, taken_at, mode, sha256, size_bytes, status, error, counts_json, received_at, imported_at)
+                     SELECT id, organization_id, taken_at, mode, sha256, size_bytes, status, error, counts_json, received_at, imported_at FROM winhotel_snapshots`);
+      database.exec('DROP TABLE winhotel_snapshots');
+      database.exec('ALTER TABLE winhotel_snapshots_new RENAME TO winhotel_snapshots');
+      for (const sqlText of indexes) database.exec(sqlText);
+      const after = (database.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'index' AND tbl_name = 'winhotel_snapshots' AND sql IS NOT NULL").get() as any).n;
+      if (Number(after) !== indexes.length) console.error(`[DB] 0405 winhotel_snapshots: індексів було ${indexes.length}, стало ${after}`);
+    }
   } catch (e) {
-    console.error('[DB] 0143 winhotel_snapshots:', (e as Error).message);
+    console.error('[DB] 0403 winhotel_snapshots:', (e as Error).message);
   }
-  // 0144: відповідність «рядок Winhotel → наш рядок» і те, чого ядро не
-  // вміє (частина Б). Дзеркало db/postgres/migrations/0144-*.sql.
+  // 0404: відповідність «рядок Winhotel → наш рядок» і те, чого ядро не
+  // вміє (частина Б). Дзеркало db/postgres/migrations/0404-*.sql.
   try {
     database.exec(`
       CREATE TABLE IF NOT EXISTS winhotel_refs (
@@ -8263,11 +8383,17 @@ function migrateWinhotelImport(database: any) {
         winhotel_lnr    INTEGER NOT NULL,
         our_id          TEXT NOT NULL,
         fingerprint     TEXT,
+        source_taken_at TEXT,
         created_at      TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
         UNIQUE(organization_id, entity, winhotel_lnr)
       )
     `);
+    // 0405: час знімка, що писав рядок, — старіший знімок не перепише новіше (дельта).
+    {
+      const refCols = (database.prepare('PRAGMA table_info(winhotel_refs)').all() as any[]).map((c: any) => c.name);
+      if (!refCols.includes('source_taken_at')) database.exec('ALTER TABLE winhotel_refs ADD COLUMN source_taken_at TEXT');
+    }
     database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_refs_org ON winhotel_refs(organization_id)');
     database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_refs_our ON winhotel_refs(organization_id, entity, our_id)');
     database.exec(`
@@ -8287,7 +8413,7 @@ function migrateWinhotelImport(database: any) {
     database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_staging_org ON winhotel_staging(organization_id)');
     database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_staging_entity ON winhotel_staging(organization_id, entity, reason)');
   } catch (e) {
-    console.error('[DB] 0144 winhotel_refs/winhotel_staging:', (e as Error).message);
+    console.error('[DB] 0404 winhotel_refs/winhotel_staging:', (e as Error).message);
   }
 }
 

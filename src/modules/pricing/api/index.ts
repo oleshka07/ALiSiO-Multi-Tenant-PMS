@@ -3,7 +3,7 @@
 
 export { getPricing, updatePricing, setPricingMode } from './pricing.handlers';
 export { getBulkPricing, updateBulkPricing } from './bulk.handlers';
-export { listRatePlanSettings, createRatePlanSetting, updateRatePlanSetting, deleteRatePlanSetting } from './rate-plans.handlers';
+export { listRatePlanSettings, listRatePlansForPayer, createRatePlanSetting, updateRatePlanSetting, deleteRatePlanSetting } from './rate-plans.handlers';
 export { getQuote } from './quote.handlers';
 // Сезони (Блок 2 крок 1, Ц27): правило, яке рендериться в календар писачем
 // масового редактора — другого джерела ціни не зʼявляється.

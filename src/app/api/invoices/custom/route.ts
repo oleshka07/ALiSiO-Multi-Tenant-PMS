@@ -30,6 +30,8 @@ import { generateIsdocXml } from '@invoicing';
 import { sendEmail }           from '@core/mail/email';
 import { renderInvoiceHtml } from '@invoicing';
 import { allocateInvoiceNumber } from '@invoicing';
+import { customInvoiceDue } from '@invoicing/terms';
+import { companyPaymentTerms } from '@companies/kernel';
 import { requirePropertyScope, requestedPropertyParam, scopedPropertyId } from '@core/property-scope';
 import type { Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
@@ -52,7 +54,7 @@ async function _POST(req: NextRequest, _ctx: unknown, actor: Actor): Promise<Nex
     const body  = await req.json();
     const {
       description, amount, currency = 'CZK',
-      dueDate, paymentMethod,
+      dueDate, paymentMethod, companyId,
       buyerName, buyerIco, buyerDic, buyerAddress, buyerCity, buyerCountry,
       emailTo,
       action = 'pdf',
@@ -81,10 +83,19 @@ async function _POST(req: NextRequest, _ctx: unknown, actor: Actor): Promise<Nex
     }
 
     const today   = new Date().toISOString().slice(0, 10);
-    const due     = dueDate || (() => {
-      const d = new Date(); d.setDate(d.getDate() + 14);
-      return d.toISOString().slice(0, 10);
-    })();
+    // Строк — ОДНИМИ дверима (`@invoicing/terms`), не власним обчисленням.
+    // Те саме «+14» рахувалось тут і двічі на екрані документів; три
+    // обчислення одного факту розходяться тихо, і оператор бачив би в полі
+    // одну дату, а в документі іншу.
+    //
+    // `companyId` — рівно звʼязок «фірма вже названа»: коли покупця названо
+    // ІДЕНТИФІКАТОРОМ із довідника, документ бере ЇЇ строк, а не сталу.
+    // Покупець, введений текстом, фірмою не є, і зіставляти його з довідником
+    // за назвою чи реєстраційним номером не можна (Д60).
+    const terms = companyId
+      ? await companyPaymentTerms(actor.organizationId, String(companyId))
+      : null;
+    const due     = customInvoiceDue(dueDate, today, terms);
 
     const invoiceId     = `inv_custom_${Date.now()}`;
     // Вільний документ не висить на броні, тож будинок каже сам виклик —

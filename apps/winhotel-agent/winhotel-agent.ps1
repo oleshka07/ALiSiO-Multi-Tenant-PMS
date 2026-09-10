@@ -37,9 +37,21 @@
   Ordner mit gbak.exe. Standard: wird gesucht (Programme, Registry, Winhotel).
 .PARAMETER LogFile
   Protokoll. Standard: winhotel-agent.log neben dem Skript.
+.PARAMETER Mode
+  "Snapshot" (Standard, nächtlich) oder "Delta": alle 15 Minuten liest isql.exe
+  NUR die Buchungen mit An- oder Abreise im Fenster (heute −1 … +3 Tage) samt
+  Adressen, Belegung, Buchungszeilen und Zahlungen (sql-delta\*.sql neben dem
+  Skript) und sendet den rohen isql-Text als ein gzip-Paket (Modus "delta").
+  Die Datenbank wird dabei nur gelesen; es wird nichts kopiert und nichts gesichert.
+.PARAMETER DeltaDaysBefore
+  Fenster der Delta-Abfrage vor heute (Standard 1).
+.PARAMETER DeltaDaysAfter
+  Fenster der Delta-Abfrage nach heute (Standard 3).
 
 .EXAMPLE
   .\winhotel-agent.ps1 -AlisioUrl https://pms.example.com -BackupDir D:\Backup
+.EXAMPLE
+  .\winhotel-agent.ps1 -AlisioUrl https://pms.example.com -Mode Delta
 #>
 [CmdletBinding()]
 param(
@@ -49,7 +61,10 @@ param(
   [string]$BackupDir = '',
   [string]$Password = '',
   [string]$FirebirdDir = '',
-  [string]$LogFile = ''
+  [string]$LogFile = '',
+  [ValidateSet('Snapshot', 'Delta')][string]$Mode = 'Snapshot',
+  [int]$DeltaDaysBefore = 1,
+  [int]$DeltaDaysAfter = 3
 )
 
 Set-StrictMode -Version Latest
@@ -79,28 +94,153 @@ if (-not $Token) { Fail 'Kein Token: -Token angeben oder agent.token neben das S
 # Das Token selbst wird nie protokolliert.
 Write-Log ('Start; Token vorhanden (' + $Token.Length + ' Zeichen)')
 
-# ── gbak.exe finden ───────────────────────────────────────────────────────
-function Find-Gbak {
+# ── gbak.exe / isql.exe finden ────────────────────────────────────────────
+function Find-FirebirdTool {
+  param([string]$Exe)
   $candidates = @()
-  if ($FirebirdDir) { $candidates += (Join-Path $FirebirdDir 'gbak.exe') }
-  $candidates += 'C:\Program Files\Firebird\Firebird_3_0\gbak.exe'
-  $candidates += 'C:\Program Files (x86)\Firebird\Firebird_3_0\gbak.exe'
+  if ($FirebirdDir) { $candidates += (Join-Path $FirebirdDir $Exe) }
+  $candidates += ('C:\Program Files\Firebird\Firebird_3_0\' + $Exe)
+  $candidates += ('C:\Program Files (x86)\Firebird\Firebird_3_0\' + $Exe)
   foreach ($key in @('HKLM:\SOFTWARE\Firebird Project\Firebird Server\Instances',
                      'HKLM:\SOFTWARE\WOW6432Node\Firebird Project\Firebird Server\Instances')) {
     try {
       $root = (Get-ItemProperty -Path $key -ErrorAction Stop).DefaultInstance
-      if ($root) { $candidates += (Join-Path $root 'gbak.exe') }
+      if ($root) { $candidates += (Join-Path $root $Exe) }
     } catch { }
   }
-  $candidates += (Join-Path (Split-Path -Parent $Database) '..\gbak.exe')
-  $candidates += (Join-Path (Split-Path -Parent $Database) 'gbak.exe')
+  $candidates += (Join-Path (Split-Path -Parent $Database) ('..\' + $Exe))
+  $candidates += (Join-Path (Split-Path -Parent $Database) $Exe)
   foreach ($c in $candidates) { if ($c -and (Test-Path $c)) { return (Resolve-Path $c).Path } }
   return $null
+}
+function Find-Gbak { return (Find-FirebirdTool 'gbak.exe') }
+
+# Passwörter für den Firebird-Server, in der Reihenfolge des Versuchs.
+function Get-Passwords {
+  param([string]$ToolPath)
+  $list = @()
+  $pwFile = Join-Path (Split-Path -Parent $ToolPath) 'SYSDBA.password'
+  if (Test-Path $pwFile) {
+    $m = Select-String -Path $pwFile -Pattern 'ISC_PASSWORD\s*=\s*(\S+)' | Select-Object -First 1
+    if ($m) { $list += @{ Name = 'SYSDBA.password-Datei'; Value = $m.Matches[0].Groups[1].Value } }
+  }
+  if ($Password) { $list += @{ Name = '-Password'; Value = $Password } }
+  $list += @{ Name = 'Standardpasswort'; Value = 'masterkey' }
+  return $list
+}
+
+# ── Upload (beide Modi) ───────────────────────────────────────────────────
+function Send-Package {
+  param([string]$File, [string]$SendMode, [string]$Window = '')
+  $sha = (Get-FileHash -Path $File -Algorithm SHA256).Hash.ToLower()
+  $size = (Get-Item $File).Length
+  Write-Log ('gzip: ' + [math]::Round($size / 1KB) + ' KB, sha256 ' + $sha.Substring(0, 12) + '…')
+  $url = $AlisioUrl.TrimEnd('/') + '/api/apps/winhotel-import/snapshots'
+  $headers = @{
+    'Authorization'       = 'Bearer ' + $Token
+    'Content-Type'        = 'application/gzip'
+    'X-Winhotel-Sha256'   = $sha
+    'X-Winhotel-Mode'     = $SendMode
+    'X-Winhotel-Taken-At' = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+    'X-Winhotel-Hostname' = $env:COMPUTERNAME
+  }
+  if ($Window) { $headers['X-Winhotel-Window'] = $Window }
+  $attempt = 0
+  $done = $false
+  while (-not $done -and $attempt -lt 3) {
+    $attempt++
+    try {
+      [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+      $resp = Invoke-WebRequest -Uri $url -Method Post -Headers $headers -InFile $File -UseBasicParsing -TimeoutSec 900
+      $status = [int]$resp.StatusCode
+      if ($status -eq 201 -or $status -eq 200) {
+        Write-Log ('Upload OK (' + $status + '): ' + $resp.Content)
+        $done = $true
+      } else {
+        Write-Log ('Upload: unerwartete Antwort ' + $status + ': ' + $resp.Content)
+      }
+    } catch {
+      $detail = $_.Exception.Message
+      $code = ''
+      try { $code = [int]$_.Exception.Response.StatusCode } catch { }
+      try {
+        $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
+        $detail = $reader.ReadToEnd()
+      } catch { }
+      Write-Log ('Upload-Versuch ' + $attempt + ' fehlgeschlagen' + $(if ($code) { ' (' + $code + ')' } else { '' }) + ': ' + $detail)
+      # 401/404/400/409 sind Antworten, kein Netzfehler: erneut senden ändert nichts.
+      if ($code -in 400, 401, 404, 409) { break }
+      if ($attempt -lt 3) { Start-Sleep -Seconds (60 * $attempt) }
+    }
+  }
+  return $done
+}
+
+if (-not (Test-Path $Database)) { Fail ('Datenbank nicht gefunden: ' + $Database) 2 }
+
+# ── Modus Delta: isql liest das Fenster, roher Text als ein Paket ─────────
+if ($Mode -eq 'Delta') {
+  $Isql = Find-FirebirdTool 'isql.exe'
+  if (-not $Isql) { Fail 'isql.exe nicht gefunden (-FirebirdDir angeben).' 2 }
+  $SqlDir = Join-Path $ScriptDir 'sql-delta'
+  $templates = Get-ChildItem -Path $SqlDir -Filter '*.sql' -File -ErrorAction SilentlyContinue | Sort-Object Name
+  if (-not $templates) { Fail ('Keine Delta-SQL-Vorlagen in ' + $SqlDir) 2 }
+  $from = (Get-Date).AddDays(-$DeltaDaysBefore).ToString('yyyy-MM-dd')
+  $to = (Get-Date).AddDays($DeltaDaysAfter).ToString('yyyy-MM-dd')
+  $Work = Join-Path $env:TEMP ('winhotel-delta-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+  New-Item -ItemType Directory -Path $Work | Out-Null
+  try {
+    $bundle = Join-Path $Work 'delta.bin'
+    $out = [System.IO.File]::Create($bundle)
+    try {
+      $ok = $false
+      foreach ($pw in (Get-Passwords $Isql)) {
+        $out.SetLength(0)
+        $failed = $false
+        Write-Log ('Delta ' + $from + '..' + $to + ', Passwort aus ' + $pw.Name)
+        foreach ($t in $templates) {
+          $entity = [System.IO.Path]::GetFileNameWithoutExtension($t.Name)
+          $script = Join-Path $Work ($entity + '.sql')
+          (Get-Content -Path $t.FullName -Raw).Replace('{{FROM}}', $from).Replace('{{TO}}', $to) | Set-Content -Path $script -Encoding ASCII
+          $raw = Join-Path $Work ($entity + '.out')
+          $env:ISC_USER = 'SYSDBA'
+          $env:ISC_PASSWORD = $pw.Value
+          try {
+            $err = & $Isql -q -b -user SYSDBA -charset NONE -i $script -o $raw ('localhost:' + $Database) 2>&1
+            $code = $LASTEXITCODE
+          } finally {
+            Remove-Item Env:\ISC_PASSWORD -ErrorAction SilentlyContinue
+          }
+          if ($code -ne 0 -or -not (Test-Path $raw)) {
+            Write-Log ('isql ' + $entity + ' fehlgeschlagen (Exit ' + $code + '): ' + (($err | Select-Object -Last 2) -join ' | '))
+            $failed = $true
+            break
+          }
+          # Abschnitt: ASCII 29, Name der Entität, Zeilenumbruch, roher isql-Text.
+          $head = [System.Text.Encoding]::ASCII.GetBytes([char]29 + $entity + "`n")
+          $out.Write($head, 0, $head.Length)
+          $bytes = [System.IO.File]::ReadAllBytes($raw)
+          $out.Write($bytes, 0, $bytes.Length)
+        }
+        if (-not $failed) { $ok = $true; break }
+      }
+    } finally { $out.Dispose() }
+    if (-not $ok) { Fail 'Delta: isql konnte die Datenbank nicht lesen (Passwort? Firebird-Dienst?).' 3 }
+    $gz = $bundle + '.gz'
+    $in = [System.IO.File]::OpenRead($bundle)
+    $outStream = [System.IO.File]::Create($gz)
+    $gzip = New-Object System.IO.Compression.GZipStream($outStream, [System.IO.Compression.CompressionLevel]::Optimal)
+    try { $in.CopyTo($gzip) } finally { $gzip.Dispose(); $outStream.Dispose(); $in.Dispose() }
+    if (-not (Send-Package -File $gz -SendMode 'delta' -Window ($from + '..' + $to))) { Fail 'Upload nicht gelungen — siehe Protokoll.' 4 }
+    Write-Log 'Fertig (Delta).'
+    exit 0
+  } finally {
+    Remove-Item -Path $Work -Recurse -Force -ErrorAction SilentlyContinue
+  }
 }
 
 $Gbak = Find-Gbak
 if ($Gbak) { Write-Log ('gbak: ' + $Gbak) } else { Write-Log 'gbak.exe nicht gefunden — Modus (b) entfällt' }
-if (-not (Test-Path $Database)) { Fail ('Datenbank nicht gefunden: ' + $Database) 2 }
 
 # ── Arbeitsordner ─────────────────────────────────────────────────────────
 $Work = Join-Path $env:TEMP ('winhotel-agent-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
@@ -127,15 +267,7 @@ try {
 
   # ── (b) gbak -b mit Passwort ────────────────────────────────────────────
   if (-not $Snapshot -and $Gbak) {
-    $passwords = @()
-    $pwFile = Join-Path (Split-Path -Parent $Gbak) 'SYSDBA.password'
-    if (Test-Path $pwFile) {
-      $m = Select-String -Path $pwFile -Pattern 'ISC_PASSWORD\s*=\s*(\S+)' | Select-Object -First 1
-      if ($m) { $passwords += @{ Name = 'SYSDBA.password-Datei'; Value = $m.Matches[0].Groups[1].Value } }
-    }
-    if ($Password) { $passwords += @{ Name = '-Password'; Value = $Password } }
-    $passwords += @{ Name = 'Standardpasswort'; Value = 'masterkey' }
-    foreach ($pw in $passwords) {
+    foreach ($pw in (Get-Passwords $Gbak)) {
       $target = Join-Path $Work 'snapshot.fbk'
       Write-Log ('Modus (b): gbak -b, Passwort aus ' + $pw.Name)
       $env:ISC_USER = 'SYSDBA'
@@ -181,48 +313,7 @@ try {
   $gzip = New-Object System.IO.Compression.GZipStream($outStream, [System.IO.Compression.CompressionLevel]::Optimal)
   try { $in.CopyTo($gzip) } finally { $gzip.Dispose(); $outStream.Dispose(); $in.Dispose() }
   Remove-Item -Path $Snapshot -ErrorAction SilentlyContinue
-  $sha = (Get-FileHash -Path $gz -Algorithm SHA256).Hash.ToLower()
-  $size = (Get-Item $gz).Length
-  Write-Log ('gzip: ' + [math]::Round($size / 1MB, 1) + ' MB, sha256 ' + $sha.Substring(0, 12) + '…')
-
-  # ── Upload, 3 Versuche ──────────────────────────────────────────────────
-  $url = $AlisioUrl.TrimEnd('/') + '/api/apps/winhotel-import/snapshots'
-  $headers = @{
-    'Authorization'       = 'Bearer ' + $Token
-    'Content-Type'        = 'application/gzip'
-    'X-Winhotel-Sha256'   = $sha
-    'X-Winhotel-Mode'     = $Mode
-    'X-Winhotel-Taken-At' = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-    'X-Winhotel-Hostname' = $env:COMPUTERNAME
-  }
-  $attempt = 0
-  $done = $false
-  while (-not $done -and $attempt -lt 3) {
-    $attempt++
-    try {
-      [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-      $resp = Invoke-WebRequest -Uri $url -Method Post -Headers $headers -InFile $gz -UseBasicParsing -TimeoutSec 900
-      $status = [int]$resp.StatusCode
-      if ($status -eq 201 -or $status -eq 200) {
-        Write-Log ('Upload OK (' + $status + '): ' + $resp.Content)
-        $done = $true
-      } else {
-        Write-Log ('Upload: unerwartete Antwort ' + $status + ': ' + $resp.Content)
-      }
-    } catch {
-      $detail = $_.Exception.Message
-      $code = ''
-      try { $code = [int]$_.Exception.Response.StatusCode } catch { }
-      try {
-        $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
-        $detail = $reader.ReadToEnd()
-      } catch { }
-      Write-Log ('Upload-Versuch ' + $attempt + ' fehlgeschlagen' + $(if ($code) { ' (' + $code + ')' } else { '' }) + ': ' + $detail)
-      # 401/404/400/409 sind Antworten, kein Netzfehler: erneut senden ändert nichts.
-      if ($code -in 400, 401, 404, 409) { break }
-      if ($attempt -lt 3) { Start-Sleep -Seconds (60 * $attempt) }
-    }
-  }
+  $done = Send-Package -File $gz -SendMode $Mode
   if (-not $done) { Fail 'Upload nicht gelungen — siehe Protokoll.' 4 }
   Write-Log 'Fertig.'
   exit 0

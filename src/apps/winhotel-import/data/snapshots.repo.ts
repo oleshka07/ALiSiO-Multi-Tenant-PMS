@@ -1,5 +1,5 @@
 /**
- * Рядки `winhotel_snapshots` (0143) і читання маркерів мосту.
+ * Рядки `winhotel_snapshots` (0403) і читання маркерів мосту.
  *
  * Усе — під контекстом орендаря (`runWithOrganization` ставить приймальний
  * маршрут, `withOwner` — картка), і кожен запит ще й називає організацію
@@ -17,9 +17,12 @@ import { getSql } from '@core/db/async';
 import { snapshotPaths } from '../storage';
 
 export type SnapshotStatus = 'received' | 'extracting' | 'extracted' | 'imported' | 'failed';
-export type SnapshotMode = 'backup' | 'gbak' | 'copy';
+/** `delta` — денна дельта агента (0405): вікно дат замість бази, кожні 15 хв, без правила «один на добу». */
+export type SnapshotMode = 'backup' | 'gbak' | 'copy' | 'delta';
 
-export const SNAPSHOT_MODES: readonly SnapshotMode[] = ['backup', 'gbak', 'copy'];
+export const SNAPSHOT_MODES: readonly SnapshotMode[] = ['backup', 'gbak', 'copy', 'delta'];
+/** Режими, що несуть базу цілком — до них правило «один на добу» і міст із gbak. */
+export const FULL_MODES: readonly SnapshotMode[] = ['backup', 'gbak', 'copy'];
 
 export interface SnapshotRow {
   id: string;
@@ -72,16 +75,16 @@ export async function findSnapshot(organizationId: string, id: string): Promise<
 }
 
 /**
- * Знімки, прийняті від початку поточної доби (UTC). Правило «один на добу»
+ * ПОВНІ знімки, прийняті від початку поточної доби (UTC). Правило «один на добу»
  * рахує їх усі, крім тих, що впали: невдалий знімок не має блокувати
- * повторну спробу того ж дня.
+ * повторну спробу того ж дня. Дельти не рахуються — вони й мають іти кожні 15 хв.
  */
 export async function snapshotsReceivedToday(organizationId: string, now = new Date()): Promise<SnapshotRow[]> {
   const day = new Date(now);
   day.setUTCHours(0, 0, 0, 0);
   const since = day.toISOString().slice(0, 19).replace('T', ' ');
   return getSql().rows<SnapshotRow>(
-    `SELECT ${COLUMNS} FROM winhotel_snapshots WHERE organization_id = ? AND received_at >= ? AND status <> 'failed'`,
+    `SELECT ${COLUMNS} FROM winhotel_snapshots WHERE organization_id = ? AND received_at >= ? AND status <> 'failed' AND mode <> 'delta'`,
     [organizationId, since],
   );
 }
@@ -200,8 +203,8 @@ export async function syncMarkers(organizationId: string): Promise<number> {
  */
 function compactCounts(raw: string): string | null {
   try {
-    const parsed = JSON.parse(raw) as { entities?: unknown; numbers?: unknown; snapshot?: unknown };
-    return JSON.stringify({ winhotel: parsed.entities ?? {}, numbers: parsed.numbers ?? {}, snapshot: parsed.snapshot ?? null });
+    const parsed = JSON.parse(raw) as { entities?: unknown; numbers?: unknown; snapshot?: unknown; mode?: unknown; window?: unknown };
+    return JSON.stringify({ winhotel: parsed.entities ?? {}, numbers: parsed.numbers ?? {}, snapshot: parsed.snapshot ?? null, mode: parsed.mode ?? null, window: parsed.window ?? null });
   } catch {
     return null;
   }
