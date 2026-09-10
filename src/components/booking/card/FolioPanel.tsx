@@ -36,7 +36,20 @@ const METHODS = ['cash', 'card_terminal', 'transfer', 'voucher'] as const;
 /** Причини відмов сервера — словами для рецепції. Код лишається в `detail`. */
 function useReasonText() {
   const tUi = useT();
-  return (code: string): string => {
+  return (code: string, detail?: Record<string, unknown>): string => {
+    // INC-038: ставка ПДВ належить БУДИНКУ, і відмова мусить сказати ЯКОМУ.
+    // Без імені й країни оператор бачить «немає ставки» і йде заводити її в
+    // спільний набір — тобто рівно туди, звідки її й не можна брати.
+    if (code === 'no_tax_rate_for_property') {
+      // ОДНЕ речення в каталозі плюс дані ХВОСТОМ, а не два уламки навколо
+      // підстановки: `t()` інтерполяції не має, а розрізане речення в чеській
+      // і німецькій складеться в інший порядок слів і перекласти його чесно
+      // буде неможливо.
+      const house = String(detail?.property ?? '');
+      const country = String(detail?.country ?? '');
+      const where = house ? ` — «${house}»${country ? ` (${country})` : ''}` : '';
+      return tUi('Ставки ПДВ цього обʼєкта не задані, а спільні належать іншій країні — заведіть ставки обʼєкта в Налаштуваннях') + where;
+    }
     const map: Record<string, string> = {
       already_posted: tUi('Проживання вже нараховано'),
       no_amount: tUi('У броні немає суми — нараховувати нічого'),
@@ -102,7 +115,7 @@ export default function FolioPanel({ booking: b, compact, showToast, onBookingCh
       const res = await run();
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const text = data?.error ? reasonText(String(data.error)) : failMsg;
+        const text = data?.error ? reasonText(String(data.error), data?.detail) : failMsg;
         showToast(`❌ ${text}`);
         return null;
       }
