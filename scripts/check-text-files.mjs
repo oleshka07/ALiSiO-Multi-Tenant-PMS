@@ -53,6 +53,18 @@
  * нульових байтів у `reserve-idempotency.ts` (стан до правки, коміт
  * `c80c9ec3`) робить гейт червоним двома рядками з номерами рядків 109 і
  * 124. Прогін записано у звіті задачі 10.
+ *
+ * ── І чому дивимось не лише в індекс ────────────────────────────────────
+ *
+ * Перша редакція брала лише `git ls-files`, і цей самий гейт проїхав повз
+ * себе: він був НОВИЙ, тобто ще не в індексі, а в його власному коментарі
+ * сидів нульовий байт — рівно той, який він і ловить. `npm run check`
+ * пройшов зелено, і файл ліг у коміт бінарним.
+ *
+ * Тому джерел два: індекс і **невідстежені файли, які не в `.gitignore`**
+ * (`git ls-files -o --exclude-standard`). Інакше гейт бачить попередній
+ * стан дерева, а не той, який зараз комітять, — і найгірше саме там, де
+ * файл новий, бо нове ніхто ще не рецензував.
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -85,11 +97,14 @@ const NAMES = {
 };
 const name = (b) => NAMES[b] ?? `0x${b.toString(16).padStart(2, '0')}`;
 
+const listed = (args) => execFileSync('git', ['ls-files', '-z', ...args],
+  { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).split('\u0000').filter(Boolean);
+
 let files;
 try {
-  files = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
-    .split('\0')
-    .filter(Boolean);
+  // Індекс + невідстежене, що не в `.gitignore`: новий файл рецензують у тому
+  // ж коміті, у якому він народжується, тож бачити його треба вже зараз.
+  files = [...new Set([...listed([]), ...listed(['-o', '--exclude-standard'])])];
 } catch (e) {
   console.error('check-text-files: не вдалося прочитати git ls-files —', e.message);
   process.exit(strict ? 1 : 0);
