@@ -1,5 +1,6 @@
 import { getSql } from '@core/db/async';
 import { currentOrganizationId } from '@core/auth/tenant-context';
+import { ALL_PROPERTIES, propertyScopeFilter } from '@core/property-scope';
 import { connectionInTenant } from './connections.repo';
 
 /**
@@ -155,6 +156,24 @@ export async function channelsOf(connectionId: string): Promise<StoredChannel[]>
 }
 
 /**
+ * Вісь обʼєкта для читання САМОГО зʼєднання — навмисно `ALL_PROPERTIES`.
+ *
+ * Рідкісний випадок, коли «усі» — правда, а звуження було б неправдою.
+ * `cm_connections` має `property_id`, тож гейт осі рахує це читання як своє;
+ * але рядок, який ми читаємо, і Є носієм осі: зʼєднання належить рівно
+ * одному будинку, і саме воно каже якому. Звузити запит по будинку можна
+ * було б лише взявши будинок із цього ж рядка — тобто спитавши відповідь у
+ * питання.
+ *
+ * Виклик приходить із екрана, який уже обрав обʼєкт (`connectionForProperty`
+ * шукає ЗА `property_id`), або з крона, що обходить зʼєднання рахунку. Обидва
+ * дають сюди готовий `connectionId`; орендаря тримає `organization_id` у
+ * запиті, а чуже зʼєднання не існує для нас — це `connectionInTenant` у
+ * сусідніх дверях. Сказано словом, а не мовчанням.
+ */
+const CONNECTION_IS_THE_AXIS = propertyScopeFilter(ALL_PROPERTIES, '');
+
+/**
  * Коли дзеркало востаннє оновлювали. `null` — ще жодного разу.
  *
  * На це спирається лімітер «не частіше разу на годину»: перелік каналів не
@@ -167,8 +186,9 @@ export async function channelsSyncedAt(connectionId: string): Promise<string | n
 
   const sql = getSql();
   const row = await sql.row<any>(
-    'SELECT channels_synced_at FROM cm_connections WHERE id = ? AND organization_id = ?',
-    [connectionId, organizationId],
+    `SELECT channels_synced_at FROM cm_connections
+      WHERE id = ? AND organization_id = ? AND ${CONNECTION_IS_THE_AXIS.sql}`,
+    [connectionId, organizationId, ...CONNECTION_IS_THE_AXIS.params],
   ) as { channels_synced_at?: unknown } | undefined;
 
   return row?.channels_synced_at ? String(row.channels_synced_at) : null;

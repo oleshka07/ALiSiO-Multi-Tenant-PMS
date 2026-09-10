@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { withSite } from '@widget';
+import { ALL_PROPERTIES, oneProperty, propertyScopeFilter } from '@core/property-scope';
+import { withSite, type SiteRow } from '@widget';
 
 /**
  * GET /api/public/availability — які дати вже зайняті, для календаря віджета.
@@ -46,7 +47,39 @@ import { withSite } from '@widget';
  */
 const CORS = { 'Access-Control-Allow-Origin': '*' };
 
-async function bookedFor(req: NextRequest): Promise<NextResponse> {
+/**
+ * ── І чому самого орендаря мало ─────────────────────────────────────────
+ *
+ * Сайт належить ОБʼЄКТУ (`booking_sites.property_id` — `NOT NULL`), а `unit_id`
+ * і `unit_type_id` приходять із адреси, тобто від того, хто питає. Орендаря
+ * тримає `withSite`, а обʼєкт не тримало ніщо: віджет на сайті будинку А,
+ * підставивши номер будинку Б того самого рахунку, діставав його зайнятість —
+ * і бачив, коли в сусідньому готелі гості.
+ *
+ * Це друга половина INC-034: там сайт обʼєкта А ПРОДАВАВ номер обʼєкта Б, і
+ * запис уже закрито; читання лишалось відкритим. Календар — це те, з чого
+ * продаж починається, тож пів заборони тут не буває.
+ *
+ * ── Чому область береться з САЙТА, а не з адреси ────────────────────────
+ *
+ * Скрізь в екранах область каже оператор (`?property_id=…`) і `withOwner`
+ * доводить, що обʼєкт його. Тут питає гість, і питати його про обʼєкт нема
+ * сенсу: він не знає такого слова, а якби знав — це був би той самий
+ * ідентифікатор із адреси, тобто нічого не доводив би. Обʼєкт тут доведено
+ * ІНШИМ способом (інваріант 4, друге речення): ключем сайту, який уже назвав
+ * орендаря.
+ *
+ * `ALL_PROPERTIES` лишається рівно на одному шляху, і він старий: віджет,
+ * вбудований ДО того, як зʼявились сайти, шле запит без `site_id`, і
+ * `withSite` бере єдиний готель сервера (див. `site.repo.ts`). Сайту немає —
+ * немає й обʼєкта, який він назвав би; орендар при цьому тримається так само.
+ * Мовчазним дефолтом це не є: гілка написана словом і має свою причину.
+ *
+ * Невідомий номер відповідає порожнім календарем, а не 404: адреса публічна, і
+ * різниця між «немає такого номера» і «він вільний увесь рік» тут на користь
+ * того, хто питає, — вона не розкриває, що в сусіда взагалі є такий номер.
+ */
+async function bookedFor(req: NextRequest, site: SiteRow | undefined): Promise<NextResponse> {
   const url = new URL(req.url);
   const unit_id      = url.searchParams.get('unit_id');
   const unit_type_id = url.searchParams.get('unit_type_id');
@@ -61,31 +94,41 @@ async function bookedFor(req: NextRequest): Promise<NextResponse> {
   const toStr   = url.searchParams.get('to') || toDate.toISOString().split('T')[0];
 
   const sql = getSql();
+  // Обʼєкт САЙТА, не «якийсь із рахунку». Колонка `NOT NULL`, тож сайт є —
+  // обʼєкт названо; сайту немає — це той самий старий віджет, що вище.
+  const scope = site ? oneProperty(String(site.property_id)) : ALL_PROPERTIES;
+  const axisR = propertyScopeFilter(scope, 'r');
+  const axisU = propertyScopeFilter(scope, 'u');
 
   let rows: any[];
 
   try {
     if (unit_id) {
       rows = await sql.rows<any>(`
-        SELECT check_in, check_out FROM reservations
-        WHERE unit_id = ?
-          AND status NOT IN ('cancelled','no_show')
-          AND check_out > ? AND check_in < ?
-        ORDER BY check_in
-      `, [unit_id, fromStr, toStr]);
+        SELECT r.check_in, r.check_out FROM reservations r
+        WHERE r.unit_id = ? AND ${axisR.sql}
+          AND r.status NOT IN ('cancelled','no_show')
+          AND r.check_out > ? AND r.check_in < ?
+        ORDER BY r.check_in
+      `, [unit_id, ...axisR.params, fromStr, toStr]);
     } else {
       // All units of this unit_type
-      const units = await sql.rows<any>(`SELECT id FROM units WHERE unit_type_id = ?`, [unit_type_id!]);
+      const units = await sql.rows<any>(
+        `SELECT u.id FROM units u WHERE u.unit_type_id = ? AND ${axisU.sql}`,
+        [unit_type_id!, ...axisU.params]);
       if (units.length === 0) return NextResponse.json({ bookedRanges: [], bookedDates: [] }, { headers: CORS });
       const placeholders = units.map(() => '?').join(',');
       const ids = units.map((u: any) => u.id);
+      // Обʼєкт названо ВДРУГЕ, хоч номери вже відібрані попереднім запитом:
+      // твердження, яке тримається на сусідньому запиті, ламається тихо,
+      // щойно хтось перепише той запит. Тут воно коштує один параметр.
       rows = await sql.rows<any>(`
-        SELECT check_in, check_out FROM reservations
-        WHERE unit_id IN (${placeholders})
-          AND status NOT IN ('cancelled','no_show')
-          AND check_out > ? AND check_in < ?
-        ORDER BY check_in
-      `, [...ids, fromStr, toStr]);
+        SELECT r.check_in, r.check_out FROM reservations r
+        WHERE r.unit_id IN (${placeholders}) AND ${axisR.sql}
+          AND r.status NOT IN ('cancelled','no_show')
+          AND r.check_out > ? AND r.check_in < ?
+        ORDER BY r.check_in
+      `, [...ids, ...axisR.params, fromStr, toStr]);
     }
 
     // Expand ranges to individual booked dates
@@ -116,7 +159,7 @@ async function bookedFor(req: NextRequest): Promise<NextResponse> {
 
 export async function GET(req: NextRequest) {
   const key = new URL(req.url).searchParams.get('site_id');
-  const answer = await withSite(key, () => bookedFor(req));
+  const answer = await withSite(key, (site) => bookedFor(req, site));
   // null означає рівно одне: ключ не назвав жодного сайту (або його немає, а
   // готелів більше одного). Відповідь мусить нести CORS, інакше браузер
   // покаже віджету мережеву помилку замість 404 і причина загубиться.

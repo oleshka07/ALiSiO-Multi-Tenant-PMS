@@ -1,4 +1,5 @@
 import type { Sql } from '@core/db/async';
+import { ALL_PROPERTIES, oneProperty, propertyScopeFilter, type PropertyScopeFilter } from '@core/property-scope';
 import { connectionInTenant } from './connections.repo';
 import { noteAvailabilityChanged, lastNight } from './outbox-notes';
 import { recordBookingChange, bookingSnapshot, describeChanges, changesToText } from '@bookings/history';
@@ -100,6 +101,84 @@ export type ApplyOutcome =
   | { result: 'refused'; reason: string };
 
 /**
+ * Вісь обʼєкта цього проходу — і чому вона `oneProperty`, а не `ALL_PROPERTIES`.
+ *
+ * ── Вісь тут ВИЗНАЧЕНА, і визначає її зʼєднання ─────────────────────────
+ *
+ * `cm_connections.property_id` називає РІВНО ОДИН будинок, ставиться при
+ * заведенні зʼєднання і жоден писач `connections.repo.ts` його не міняє —
+ * колонка не зустрічається в жодному `UPDATE cm_connections`. Отже кожен
+ * рядок, до якого доходить ця ревізія, створений тут із
+ * `property_id = conn.propertyId`: три `INSERT INTO reservations` у цьому
+ * файлі беруть його звідти, а знайти чужу бронь нема звідки — журнал шукається
+ * за `connection_id`, і `cm_inbound_bookings.reservation_id` пише лише ця
+ * функція.
+ *
+ * Тому `ALL_PROPERTIES` тут був би **неправдою, набраною літерами**: він
+ * означає «цей читач НАВМИСНО дивиться на всі будинки рахунку» — так пишеться
+ * зведений звіт або крон, що обходить зʼєднання. Ревізія ж адресована одному
+ * будинку, і сказати про неї «усі» означало б лишити наступному читачеві
+ * рішення, якого ніхто не ухвалював (INC-029 починався саме з такого
+ * мовчазного «усі»).
+ *
+ * ── Навіщо писати те, що й так істинне ──────────────────────────────────
+ *
+ * Бо «істинне за побудовою» і «перевірене» — різні речі, і різницю видно рівно
+ * тоді, коли побудова зламалась: мапінг, заведений повз каталожний синк
+ * (`putMapping` питає лише про орендаря), бронь із відновленого дампа, ручна
+ * правка журналу. Без осі в запиті такий рядок не відмовляє — він мовчки
+ * править сусідній будинок, і побачить це рецепція сусіда через день, у
+ * шахматці.
+ *
+ * ── І чому двері кличуться щоразу, а не через свою обгортку ─────────────
+ *
+ * Перша редакція цієї правки мала тут `inHouse(propertyId, alias)` — на два
+ * рядки коротше і на один здогад дорожче. Гейт осі
+ * (`scripts/lib/property-scope-scan.mjs`) впізнає фрагмент за ДВЕРИМА зі
+ * списку `SCOPE_DOORS`, а не за підрядком у назві, і зробив це навмисно:
+ * «щоб треті двері не зʼявились непоміченими через збіг імені». Обгортка і є
+ * треті двері. Вимір показав це числом: одинадцять пар не опустились, а
+ * переїхали з «мовчить» у «невизначено», і стеля виросла 11 → 13. Гейт мав
+ * рацію — полагоджено код, а не гейт.
+ */
+
+/**
+ * Перший тип номера ревізії, що НЕ належить будинку цього зʼєднання, або
+ * `null`, якщо всі свої.
+ *
+ * Два поля, а не одне: одиничну бронь тип описує зверху (`rev.unitTypeId`),
+ * групу — кожна кімната своїм (`rev.rooms[].unitTypeId`). Перевірка лише
+ * верхнього лишила б групу відчиненою, а саме група — звичайний спосіб, яким
+ * канал приносить кілька типів однією ревізією.
+ *
+ * Тип у ревізії — це вже НАШ ідентифікатор: його поклав мапінг каналу
+ * (`mappingMirror`). Тобто чужий тут означає не «невідомий», а «мапінг
+ * зʼєднання показує на інший будинок» — і це поломка налаштування, яку треба
+ * назвати, а не бронь, яку треба створити.
+ */
+async function firstTypeOutsideHouse(
+  sql: Sql,
+  conn: { organizationId: string; propertyId: string },
+  rev: Revision,
+): Promise<string | null> {
+  const named = new Set<string>();
+  if (rev.unitTypeId) named.add(String(rev.unitTypeId));
+  for (const room of rev.rooms ?? []) if (room.unitTypeId) named.add(String(room.unitTypeId));
+  if (named.size === 0) return null;
+
+  const ofType = propertyScopeFilter(oneProperty(conn.propertyId), 'ut');
+  for (const unitTypeId of named) {
+    const own = await sql.row<any>(
+      `SELECT ut.id FROM unit_types ut
+         JOIN properties p ON p.id = ut.property_id
+        WHERE ut.id = ? AND p.organization_id = ? AND ${ofType.sql}`,
+      [unitTypeId, conn.organizationId, ...ofType.params]);
+    if (!own) return unitTypeId;
+  }
+  return null;
+}
+
+/**
  * Застосувати одну ревізію.
  *
  * Викликається ВСЕРЕДИНІ транзакції того, хто читає стрічку. Ack — після
@@ -123,6 +202,22 @@ export async function applyRevision(
   // лягає в НАШУ організацію. Клас INC-010.
   const conn = await connectionInTenant(connectionId);
   if (!conn) return { result: 'refused', reason: 'connection_not_found' };
+
+  // Вісь ОБʼЄКТА цього проходу. Далі вона стоїть у кожному запиті, і саме
+  // тому — не в коментарі: див. `house()` нижче.
+  const house = propertyScopeFilter(oneProperty(conn.propertyId), '');
+
+  // ── Крок 0: типи номерів ревізії належать будинку ЦЬОГО зʼєднання ───────
+  //
+  // Перед журналом, і це не стиль. Відмова ПІСЛЯ журналу лишає рядок, і на
+  // наступному проході стрічки та сама ревізія впізнається як `duplicate` —
+  // тобто буде ПІДТВЕРДЖЕНА, хоч не застосована ніколи (`pull-bookings.ts`
+  // ack-ає дублі навмисно). Тут відмова має бути такою, після якої ревізія
+  // приїде ще раз: до воріт або винятком, який відкотить транзакцію.
+  const alienType = await firstTypeOutsideHouse(sql, conn, rev);
+  if (alienType) {
+    return { result: 'refused', reason: `unit_type_not_in_property:${alienType}` };
+  }
 
   // ── Крок 1: журнал ПЕРШИМ. Це і є ворота ────────────────────────────────
   //
@@ -174,11 +269,37 @@ export async function applyRevision(
   let reservationId: string | null = prior?.reservation_id ?? null;
   let created = false;
 
+  // Журнал показує на бронь — але чи вона цього будинку?
+  //
+  // У здоровій базі інакше не буває: рядок пише лише ця функція, і пише те,
+  // що сама ж і створила з `conn.propertyId`. Розійтись це може лише ззовні —
+  // відновлення з дампа, ручна правка, перенесення. І саме тоді читач, який
+  // вірить журналу на слово, переписує дати й статус броні СУСІДНЬОГО
+  // будинку: рахунок той самий, політика пропускає, у лозі нічого.
+  //
+  // Тут — виняток, а не `refused`, і причина в порядку кроків: ворота журналу
+  // вже пройдено. `refused` повернувся б із транзакції нормально, тобто рядок
+  // журналу лишився б — і наступна доставка тієї самої ревізії впізналась би
+  // як `duplicate` та отримала ack (`pull-bookings.ts` ack-ає дублі
+  // навмисно). Виняток відкочує транзакцію разом із рядком, тож ревізія
+  // лишається непідтвердженою і приїде ще раз — як і має бути з тим, чого ми
+  // не застосували.
+  if (reservationId) {
+    const mine = await sql.row<any>(
+      `SELECT id FROM reservations WHERE id = ? AND organization_id = ? AND ${house.sql}`,
+      [reservationId, conn.organizationId, ...house.params]);
+    if (!mine) {
+      throw new Error(
+        `channels: журнал зʼєднання показує на бронь ${reservationId}, якої немає в обʼєкті ${conn.propertyId}`);
+    }
+  }
+
   // Канали дізнаються про ночі, які ця ревізія звільняє чи займає: стан ДО
   // (скасування, зміна) і ПІСЛЯ (зміна, нова). Тип — із броні: канал адресує
   // тип, а не номер (CP3).
   const stayOf = async (id: string) => sql.row<any>(
-    'SELECT property_id, unit_type_id, unit_id, check_in, check_out FROM reservations WHERE id = ?', [id]);
+    `SELECT property_id, unit_type_id, unit_id, check_in, check_out
+       FROM reservations WHERE id = ? AND ${house.sql}`, [id, ...house.params]);
   const noteStay = async (stay: any) => {
     if (!stay?.check_in || !stay?.check_out) return;
     const types = new Set<string>();
@@ -187,12 +308,19 @@ export async function applyRevision(
     // (канал змінив тип — Д9). Наявність рахує зайнятою кімнату, тож і її
     // тип має дізнатись, що вона звільнилась чи зайнялась.
     if (stay.unit_id) {
-      const u = await sql.row<any>('SELECT unit_type_id FROM units WHERE id = ?', [stay.unit_id]);
+      const u = await sql.row<any>(
+        `SELECT unit_type_id FROM units WHERE id = ? AND ${house.sql}`, [stay.unit_id, ...house.params]);
       if (u?.unit_type_id) types.add(String(u.unit_type_id));
     }
     for (const unitTypeId of types) {
+      // Будинок — зʼєднання, а не рядок. Раніше тут стояло
+      // `stay.property_id ?? conn.propertyId`, і запасне значення ховало б
+      // саме той випадок, задля якого воно писалось: рядок ІНШОГО будинку
+      // склав би пару «будинок Б × тип Б» у черзі каналу, підключеного до А.
+      // Тепер рядка іншого будинку сюди не доходить (`stayOf` звужений), тож
+      // запасне значення — єдине.
       await noteAvailabilityChanged(sql, {
-        propertyId: String(stay.property_id ?? conn.propertyId), unitTypeId,
+        propertyId: conn.propertyId, unitTypeId,
         from: String(stay.check_in).slice(0, 10), to: lastNight(String(stay.check_out).slice(0, 10)),
       });
     }
@@ -208,7 +336,7 @@ export async function applyRevision(
   // з однією живою. Розгорнути його назад в одиничну бронь означало б
   // переписати історію: скасована кімната була, і в звіті за минулий місяць
   // має лишитись.
-  const children = reservationId ? await childrenOf(sql, reservationId) : [];
+  const children = reservationId ? await childrenOf(sql, reservationId, house) : [];
   const isGroup = (rev.rooms?.length ?? 0) > 1 || children.length > 0;
 
   if (isGroup) {
@@ -255,7 +383,9 @@ export async function applyRevision(
     // рахують. Перераховується з того, що тепер у рядку, а не з ревізії:
     // ревізія могла принести лише одну з дат. Живе 03.09.2026 (Д8): зміна з
     // каналу 21→24.12 показувала «2 н.» на трьох ночах.
-    const dates = await sql.row<any>('SELECT check_in, check_out FROM reservations WHERE id = ?', [reservationId]);
+    const dates = await sql.row<any>(
+      `SELECT check_in, check_out FROM reservations WHERE id = ? AND ${house.sql}`,
+      [reservationId, ...house.params]);
     if (dates) {
       await sql.run('UPDATE reservations SET nights = ? WHERE id = ? AND organization_id = ?',
         [nightsBetween(isoDay(dates.check_in), isoDay(dates.check_out)),
@@ -272,9 +402,10 @@ export async function applyRevision(
                 last_name = COALESCE(?, last_name),
                 email = COALESCE(?, email),
                 updated_at = CURRENT_TIMESTAMP
-          WHERE id = (SELECT guest_id FROM reservations WHERE id = ? AND organization_id = ?)`,
+          WHERE id = (SELECT guest_id FROM reservations
+                       WHERE id = ? AND organization_id = ? AND ${house.sql})`,
         [rev.guestFirstName ?? null, rev.guestLastName ?? null, rev.guestEmail ?? null,
-         reservationId, conn.organizationId],
+         reservationId, conn.organizationId, ...house.params],
       );
     }
   } else {
@@ -359,15 +490,18 @@ export async function applyRevision(
  *
  * Читається за `parent_id`, а не за `external_uid LIKE`: батьківська бронь уже
  * знайдена в межах орендаря (через журнал і `connectionInTenant`), тож
- * `parent_id` — це вже перевірена межа. `external_uid` дочірньої несе ключ
+ * `parent_id` — це вже перевірена межа. Вісь ОБʼЄКТА при цьому називається
+ * окремо: `parent_id` доводить спорідненість, а не будинок, і дочірня бронь,
+ * що з якоїсь причини лежить в іншому обʼєкті, тут не потрібна ні для чого —
+ * канал адресує один будинок. `external_uid` дочірньої несе ключ
  * кімнати, і саме за ним вона впізнається в наступній редакції; читати за ним
  * НЕ можна — те поле ділиться з iCal-синком, і збіг там був би тихим.
  */
-async function childrenOf(sql: Sql, parentId: string): Promise<any[]> {
+async function childrenOf(sql: Sql, parentId: string, house: PropertyScopeFilter): Promise<any[]> {
   return await sql.rows<any>(
     `SELECT id, external_uid, unit_type_id, unit_id, check_in, check_out, status
-       FROM reservations WHERE parent_id = ? ORDER BY external_uid`,
-    [parentId],
+       FROM reservations WHERE parent_id = ? AND ${house.sql} ORDER BY external_uid`,
+    [parentId, ...house.params],
   ) as any[];
 }
 
@@ -428,6 +562,11 @@ async function applyGroup(
   stayOf: (id: string) => Promise<any>,
 ): Promise<void> {
   const cancelled = rev.status === 'cancelled';
+  // Та сама вісь, що у виклику, і виведена з того самого — зʼєднання. Не
+  // передається аргументом навмисно: фільтр, зібраний із `conn`, не може
+  // розійтися з будинком, від якого походить (той самий довід, що в
+  // інваріанті 12 про підзапит проти змінної).
+  const house = propertyScopeFilter(oneProperty(conn.propertyId), '');
   // Скасування кімнат не перелічує — воно гасить усю групу.
   const rooms = cancelled ? [] : (rev.rooms ?? []);
   const code = rev.otaReservationCode ?? rev.remoteBookingId;
@@ -457,7 +596,7 @@ async function applyGroup(
   const master = await sql.row<any>(
     `SELECT id, guest_id, status, payment_status, source, currency, property_id, external_uid,
             unit_type_id, unit_id, check_in, check_out, nights, adults, children, total_price
-       FROM reservations WHERE id = ?`, [parentId]) as any;
+       FROM reservations WHERE id = ? AND ${house.sql}`, [parentId, ...house.params]) as any;
   const byKey = new Map<string, any>(children.map((c) => [uidKey(c.external_uid), c]));
   const masterKey = uidKey(master.external_uid);
 
@@ -550,7 +689,9 @@ async function applyGroup(
         [cancelled ? 'cancelled' : 'confirmed', parentId, conn.organizationId]);
     }
     // Ночі — ЗБЕРЕЖЕНА колонка: перераховуються з того, що ТЕПЕР у рядку.
-    const dates = await sql.row<any>('SELECT check_in, check_out FROM reservations WHERE id = ?', [parentId]);
+    const dates = await sql.row<any>(
+      `SELECT check_in, check_out FROM reservations WHERE id = ? AND ${house.sql}`,
+      [parentId, ...house.params]);
     if (dates) {
       await sql.run('UPDATE reservations SET nights = ? WHERE id = ? AND organization_id = ?',
         [nightsBetween(isoDay(dates.check_in), isoDay(dates.check_out)),
@@ -563,16 +704,18 @@ async function applyGroup(
                 last_name = COALESCE(?, last_name),
                 email = COALESCE(?, email),
                 updated_at = CURRENT_TIMESTAMP
-          WHERE id = (SELECT guest_id FROM reservations WHERE id = ? AND organization_id = ?)`,
+          WHERE id = (SELECT guest_id FROM reservations
+                       WHERE id = ? AND organization_id = ? AND ${house.sql})`,
         [rev.guestFirstName ?? null, rev.guestLastName ?? null, rev.guestEmail ?? null,
-         parentId, conn.organizationId],
+         parentId, conn.organizationId, ...house.params],
       );
     }
   }
 
   const now = await sql.row<any>(
-    'SELECT guest_id, status, payment_status, source, currency FROM reservations WHERE id = ?',
-    [parentId]) as any;
+    `SELECT guest_id, status, payment_status, source, currency
+       FROM reservations WHERE id = ? AND ${house.sql}`,
+    [parentId, ...house.params]) as any;
 
   // ── Кімнати 2..n ─────────────────────────────────────────────────────────
   const childRooms = rooms.filter((r) => r !== masterRoom);
@@ -626,7 +769,9 @@ async function applyGroup(
       await sql.run('UPDATE reservations SET unit_id = NULL WHERE id = ? AND organization_id = ?',
         [existing.id, conn.organizationId]);
     }
-    const nights = await sql.row<any>('SELECT check_in, check_out FROM reservations WHERE id = ?', [existing.id]);
+    const nights = await sql.row<any>(
+      `SELECT check_in, check_out FROM reservations WHERE id = ? AND ${house.sql}`,
+      [existing.id, ...house.params]);
     if (nights) {
       await sql.run('UPDATE reservations SET nights = ? WHERE id = ? AND organization_id = ?',
         [nightsBetween(isoDay(nights.check_in), isoDay(nights.check_out)),
@@ -654,7 +799,7 @@ async function applyGroup(
   //
   // Скасування кімнат не несе, тож і склад групи воно не переписує: бронь
   // скасована статусом, а з чого вона складалась — лишається видно.
-  if (!cancelled) await syncGroupRooms(sql, conn.organizationId, parentId, live);
+  if (!cancelled) await syncGroupRooms(sql, conn, parentId, live);
 }
 
 /**
@@ -676,17 +821,20 @@ async function applyGroup(
  *   не має `ON DELETE`, тож без цього `DELETE` нижче падав, і через нього
  *   ревізія не підтверджувалась ніколи (Б2);
  *
- *   позиції фоліо (`reservation_line_items.sub_booking_id`) — `ON DELETE
- *   CASCADE`, тобто зникли б МОВЧКИ разом із рядком. Чи можна стирати
- *   виставлені позиції з волі каналу — питання власнику, і поки воно
- *   відкрите, рядок із позиціями лишається.
+ *   вписані позиції (`reservation_line_items.sub_booking_id`) — рядок
+ *   ЛИШАЄТЬСЯ. Канал володіє тим, що забронювали; готель — тим, що нарахували
+ *   і що вписала людина (рішення власника 09.09.2026, К18). Каскад на цьому
+ *   ключі знято міграцією 0131, тож правило тримає база: наступний `DELETE`
+ *   по рядку з позиціями відмовляє, а не нищить. Випадок іде рецепції
+ *   рішенням, а не тихим станом, — див. нижче по коду.
  */
 async function syncGroupRooms(
   sql: Sql,
-  organizationId: string,
+  conn: { organizationId: string; propertyId: string },
   parentId: string,
   live: Array<{ id: string | null; room: RevisionRoom }>,
 ): Promise<void> {
+  const organizationId = conn.organizationId;
   if (live.length === 0) return;
 
   const existing = await sql.rows<any>(
@@ -706,6 +854,13 @@ async function syncGroupRooms(
   //
   // Тип у ревізії — НАШ ідентифікатор: його поклав мапінг каналу. Якщо його
   // немає в цього орендаря, зламаний мапінг, а не назва.
+  //
+  // І вісь ОБʼЄКТА тут та сама, що у воротах ревізії: тип сусіднього будинку
+  // того самого рахунку дав би рядку групи назву кімнати, якої в цьому
+  // будинку немає, — рецепція прочитала б її як свою. Ворота вже відмовили б
+  // такій ревізії; тут це повторено, бо `syncGroupRooms` — окремі двері, і
+  // наступний виклик може прийти не звідти.
+  const ofType = propertyScopeFilter(oneProperty(conn.propertyId), 'ut');
   const names = new Map<string, string>();
   const nameOf = async (unitTypeId?: string | null): Promise<string> => {
     if (!unitTypeId) return '';
@@ -714,9 +869,12 @@ async function syncGroupRooms(
     const row = await sql.row<any>(
       `SELECT ut.name FROM unit_types ut
          JOIN properties p ON p.id = ut.property_id
-        WHERE ut.id = ? AND p.organization_id = ?`,
-      [unitTypeId, organizationId]) as any;
-    if (!row) throw new Error(`channels: тип номера ${unitTypeId} не належить цьому орендарю`);
+        WHERE ut.id = ? AND p.organization_id = ? AND ${ofType.sql}`,
+      [unitTypeId, organizationId, ...ofType.params]) as any;
+    if (!row) {
+      throw new Error(
+        `channels: тип номера ${unitTypeId} не належить обʼєкту ${conn.propertyId} цього зʼєднання`);
+    }
     const name = String(row.name ?? '');
     names.set(unitTypeId, name);
     return name;

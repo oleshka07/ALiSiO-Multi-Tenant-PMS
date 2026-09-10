@@ -22,6 +22,7 @@
 import { getSql } from '@core/db/async';
 import { generateReportToken } from '@core/db';
 import { runWithPublicToken, runWithOrganization, requireOrganizationId } from '@core/auth/tenant-context';
+import { propertyOrSharedFilter, type PropertyScope } from '@core/property-scope';
 
 export interface PartnerReport {
   id: string;
@@ -167,13 +168,25 @@ export async function publishReport(input: PublishInput): Promise<PartnerReportS
   };
 }
 
-/** Every report this hotel has published, newest first, without the documents. */
-export async function listReports(): Promise<PartnerReportSummary[]> {
+/**
+ * Звіти цього готелю, найновіші перші, без документів.
+ *
+ * Область обʼєкта тут не косметика: звіт ідентифікується парою «період ×
+ * обʼєкт» (Д45), тобто список — це список звітів ОБРАНОГО обʼєкта. Готель із
+ * двома будинками інакше бачить в одному списку вересень А і вересень Б поруч,
+ * із однаковими назвами й різними числами, і надсилає партнерові не той лінк.
+ *
+ * `propertyOrSharedFilter`, бо `partner_reports.property_id` НУЛЬОВИЙ:
+ * звіт по всьому рахунку існує законно (Д45), і звичайний фільтр викинув би
+ * його з КОЖНОГО списку — документ, якого не видно нікому (Д51).
+ */
+export async function listReports(scope: PropertyScope): Promise<PartnerReportSummary[]> {
   const organizationId = await requireOrganizationId();
+  const axis = propertyOrSharedFilter(scope, '');
   return getSql().rows<PartnerReportSummary>(
     `SELECT ${COLUMNS_WITHOUT_HTML} FROM partner_reports
-      WHERE organization_id = ? ORDER BY published_at DESC`,
-    [organizationId],
+      WHERE organization_id = ? AND ${axis.sql} ORDER BY published_at DESC`,
+    [organizationId, ...axis.params],
   );
 }
 

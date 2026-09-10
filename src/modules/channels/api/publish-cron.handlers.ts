@@ -4,6 +4,7 @@ import { hasFeature } from '@core/features';
 import { integrationCredentials } from '@core/integration-credentials';
 import { publishAllConnections, type PublishAllReport } from '../data/publish-all';
 import { ariPublisherFor } from '../providers';
+import { ALL_PROPERTIES, propertyScopeFilter } from '@core/property-scope';
 
 /**
  * Прохід крона розсилки наявності й цін — з боку модуля.
@@ -18,6 +19,15 @@ import { ariPublisherFor } from '../providers';
  * раз на хвилину і є та пауза. Застрягле (`needsAttention`) доповідається,
  * але крон від нього не червоніє: це справа екрана «Канал-менеджер».
  */
+/**
+ * Крон обходить УСІ будинки всіх рахунків — і це сказано дверима.
+ *
+ * `ALL_PROPERTIES` тут не поступка гейту, а опис роботи: планова робота не
+ * має ні сесії, ні обраного обʼєкта, і звужена до одного будинку вона
+ * перестала б бути кроном (INC-029, К19).
+ */
+const EVERY_HOUSE = propertyScopeFilter(ALL_PROPERTIES, '');
+
 export async function runChannelPublishCron(): Promise<PublishAllReport> {
   const sql = getSql();
 
@@ -37,8 +47,9 @@ export async function runChannelPublishCron(): Promise<PublishAllReport> {
     // однаково названо: політика прикриває лише Postgres.
     connections: async (organizationId) => {
       const rows = await sql.rows<{ id: string; provider: string; is_enabled: unknown }>(
-        'SELECT id, provider, is_enabled FROM cm_connections WHERE organization_id = ?',
-        [organizationId],
+        `SELECT id, provider, is_enabled FROM cm_connections
+          WHERE organization_id = ? AND ${EVERY_HOUSE.sql}`,
+        [organizationId, ...EVERY_HOUSE.params],
       );
       return rows.map((r) => ({
         id: r.id,

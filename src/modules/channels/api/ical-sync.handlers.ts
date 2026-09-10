@@ -7,6 +7,7 @@ import { getSql } from '@core/db/async';
 import { withPermission, type Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
 import { organizationTimezone } from '@core/hotel-day';
+import { ALL_PROPERTIES, oneProperty, propertyScopeFilter } from '@core/property-scope';
 
 /**
  * Pull one iCal feed into the hotel's calendar.
@@ -22,6 +23,17 @@ import { organizationTimezone } from '@core/hotel-day';
  * Two calls instead of a self-request also means one process, one transaction
  * boundary and no chance of the server refusing itself.
  */
+/**
+ * Ручний синк бере канали ВСЬОГО рахунку — і це сказано дверима.
+ *
+ * Не звужено до обраного будинку навмисно: кнопка «синхронізувати» тягне
+ * чужі фіди до себе, а не показує дані, тож ширший обхід нікому нічого не
+ * відкриває — і після INC-041 кожен канал замкнений у своєму будинку, тобто
+ * і записати не туди він більше не може. Звуження зробило б поведінку кнопки
+ * залежною від шапки, а крон робить те саме без шапки взагалі.
+ */
+const EVERY_HOUSE = propertyScopeFilter(ALL_PROPERTIES, 'ic');
+
 export const syncIcal = withPermission('manage_properties', async (request: NextRequest, _ctx: unknown, actor: Actor) => {
   try {
     const sql = getSql();
@@ -35,7 +47,8 @@ export const syncIcal = withPermission('manage_properties', async (request: Next
         SELECT ic.* FROM ical_channels ic
         JOIN properties p ON ic.property_id = p.id
         WHERE ic.id = ? AND ic.is_active = TRUE AND p.organization_id = ?
-      `, [channel_id, actor.organizationId]) as any;
+          AND ${EVERY_HOUSE.sql}
+      `, [channel_id, actor.organizationId, ...EVERY_HOUSE.params]) as any;
       if (!ch) return NextResponse.json({ error: 'Channel not found or inactive' }, { status: 404 });
       channels = [ch];
     } else {
@@ -43,7 +56,8 @@ export const syncIcal = withPermission('manage_properties', async (request: Next
         SELECT ic.* FROM ical_channels ic
         JOIN properties p ON ic.property_id = p.id
         WHERE ic.is_active = TRUE AND ic.ical_url IS NOT NULL AND p.organization_id = ?
-      `, [actor.organizationId]) as any[];
+          AND ${EVERY_HOUSE.sql}
+      `, [actor.organizationId, ...EVERY_HOUSE.params]) as any[];
     }
 
     const results: any[] = [];
@@ -62,6 +76,16 @@ export const syncIcal = withPermission('manage_properties', async (request: Next
 export async function syncChannel(channel: any, organizationId: string) {
   const sql = getSql();
   const logId = `isl_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+  // Вісь ОБʼЄКТА цього синку — будинок каналу, і вона визначена: у
+  // `ical_channels.property_id` рівно один обʼєкт. Не `ALL_PROPERTIES`: фід
+  // однієї OTA описує один номер одного будинку, і «усі» тут було б
+  // неправдою (INC-029, К19).
+  //
+  // До цього рядка запити нижче не мали НІ осі обʼєкта, ні орендаря взагалі —
+  // `WHERE external_uid = ?` і `WHERE id = ?` голими. На Postgres чуже ховала
+  // політика, на SQLite не ховало ніщо (рід INC-014).
+  const house = propertyScopeFilter(oneProperty(String(channel.property_id)), '');
 
   try {
     if (!channel.ical_url) throw new Error('No iCal URL configured');
@@ -84,11 +108,29 @@ export async function syncChannel(channel: any, organizationId: string) {
 
     const unitIds = await getChannelUnitIds(channel);
     if (unitIds.length === 0) throw new Error('No units found for this channel');
+    // Номер каналу мусить стояти в будинку каналу — і це ВІДМОВА, а не
+    // мовчазне «покладемо, куди номер показує» (інваріант 13).
+    //
+    // `createIcalChannel` бере `property_id` і `unit_id` окремими полями тіла
+    // і між собою їх не звіряв, а рядок броні нижче брав обʼєкт від НОМЕРА
+    // (`unit?.property_id`). Разом це означало, що канал будинку А
+    // наповнював календар будинку Б — без помилки, без сліду, і побачила б
+    // це рецепція сусіда. Тут перевірено ще раз, бо синк — окремі двері:
+    // рядки заведені до правди писача вже лежать у базі.
+    const outside = await unitsOutsideHouse(unitIds, house);
+    if (outside) {
+      throw new Error(
+        `Номер ${outside} не стоїть в обʼєкті ${channel.property_id}, до якого підключений цей канал. `
+        + 'Заведіть канал на номер свого обʼєкта — інакше броні з фіда лягали б у чужий календар.');
+    }
 
     const org = { id: organizationId };
     // Ночі броні як координата для каналів; тип — від номера (iCal знає номер).
     const stayOf = (id: string) => sql.row<any>(
-      'SELECT r.property_id, r.check_in, r.check_out, u.unit_type_id FROM reservations r LEFT JOIN units u ON u.id = r.unit_id WHERE r.id = ?', [id]);
+      `SELECT r.property_id, r.check_in, r.check_out, u.unit_type_id
+         FROM reservations r LEFT JOIN units u ON u.id = r.unit_id
+        WHERE r.id = ? AND r.organization_id = ? AND ${propertyScopeFilter(oneProperty(String(channel.property_id)), 'r').sql}`,
+      [id, organizationId, ...house.params]);
     const noteStayRow = async (stay: any) => {
       if (!stay?.check_in || !stay?.check_out || !stay.unit_type_id) return;
       await noteAvailabilityChanged(sql, {
@@ -99,7 +141,12 @@ export async function syncChannel(channel: any, organizationId: string) {
 
     for (const event of events) {
       const externalUid = `ical_${channel.id}_${event.uid}`;
-      const existing = await sql.row<any>('SELECT id, check_in, check_out FROM reservations WHERE external_uid = ?', [externalUid]) as any;
+      // `external_uid` — не ключ: його ділять iCal-синк і колишні імпорти, і
+      // збіг у сусідньому будинку означав би, що канал А міняє дати броні Б.
+      const existing = await sql.row<any>(
+        `SELECT id, check_in, check_out FROM reservations
+          WHERE external_uid = ? AND organization_id = ? AND ${house.sql}`,
+        [externalUid, organizationId, ...house.params]) as any;
 
       if (existing) {
         const nights = Math.max(1, Math.round(
@@ -109,8 +156,8 @@ export async function syncChannel(channel: any, organizationId: string) {
           const stayBefore = await stayOf(existing.id);
           await sql.run(`
             UPDATE reservations SET check_in = ?, check_out = ?, nights = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-          `, [event.dtstart, event.dtend, nights, existing.id]);
+            WHERE id = ? AND organization_id = ? AND ${house.sql}
+          `, [event.dtstart, event.dtend, nights, existing.id, organizationId, ...house.params]);
           eventsUpdated++;
           // Канали: старі ночі звільнились, нові зайняті.
           await noteStayRow(stayBefore);
@@ -130,11 +177,13 @@ export async function syncChannel(channel: any, organizationId: string) {
 
         const targetUnitId = channel.channel_type === 'unit'
           ? channel.unit_id
-          : await findAvailableUnit(unitIds, event.dtstart, event.dtend);
+          : await findAvailableUnit(unitIds, event.dtstart, event.dtend, house);
 
         const resId = `r_ical_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
         const guestPageToken = generateGuestToken();
-        const unit = await sql.row<any>('SELECT property_id FROM units WHERE id = ?', [targetUnitId]) as any;
+        const unit = await sql.row<any>(
+          `SELECT property_id FROM units WHERE id = ? AND ${house.sql}`,
+          [targetUnitId, ...house.params]) as any;
 
         await sql.run(`
           -- organization_id, named rather than left to the column DEFAULT: that
@@ -182,6 +231,27 @@ export async function syncChannel(channel: any, organizationId: string) {
   }
 }
 
+/**
+ * Перший номер, що НЕ стоїть у будинку каналу, або `null`, якщо всі свої.
+ *
+ * Окремою функцією, а не рядком у синку: те саме питання ставить писач
+ * (`createIcalChannel`), і два різні написання того самого твердження
+ * розійшлися б — як розійшлись `property_id` і `unit_id` у тілі запиту.
+ */
+export async function unitsOutsideHouse(
+  unitIds: string[],
+  house: { sql: string; params: string[] },
+): Promise<string | null> {
+  const sql = getSql();
+  for (const id of unitIds) {
+    if (!id) continue;
+    const own = await sql.row<any>(
+      `SELECT id FROM units WHERE id = ? AND ${house.sql}`, [id, ...house.params]);
+    if (!own) return id;
+  }
+  return null;
+}
+
 async function getChannelUnitIds(channel: any): Promise<string[]> {
   const sql = getSql();
   if (channel.channel_type === 'unit') return [channel.unit_id];
@@ -190,14 +260,17 @@ async function getChannelUnitIds(channel: any): Promise<string[]> {
   return units.map((u: any) => u.id);
 }
 
-async function findAvailableUnit(unitIds: string[], checkIn: string, checkOut: string): Promise<string> {
+async function findAvailableUnit(
+  unitIds: string[], checkIn: string, checkOut: string,
+  house: { sql: string; params: string[] },
+): Promise<string> {
   const sql = getSql();
   for (const uid of unitIds) {
     const overlap = await sql.row<any>(`
       SELECT id FROM reservations
       WHERE unit_id = ? AND status NOT IN ('cancelled', 'no_show')
-        AND check_in < ? AND check_out > ?
-    `, [uid, checkOut, checkIn]);
+        AND check_in < ? AND check_out > ? AND ${house.sql}
+    `, [uid, checkOut, checkIn, ...house.params]);
     if (!overlap) return uid;
   }
   return unitIds[0];

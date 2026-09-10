@@ -7,6 +7,25 @@
  * without either there is no rule at all — which means the amount is posted as
  * a single lodging line and nobody has guessed anything.
  *
+ * ── І друга вісь: БУДИНОК (INC-029, 09.09.2026) ─────────────────────────
+ *
+ * `channel_rate_rules.property_id` нульовий, а UNIQUE на «рахунок × канал»
+ * немає: два будинки одного готелю можуть мати кожен своє правило для
+ * `booking.com`. Доти вибір робив `rules.find()`, тобто ПОРЯДОК РЯДКІВ —
+ * рівно та вада, що INC-027, і в найдорожчому місці: правило вирішує ціну
+ * сніданку і ПОДАТКОВІ КОДИ трьох рядків рахунку.
+ *
+ * Тому старшинство назване двома щаблями, конкретніше першим:
+ *
+ *   1. правило ЦЬОГО будинку з іменем цього каналу;
+ *   2. правило рахунку (`property_id IS NULL`) з іменем цього каналу;
+ *   3. правило ЦЬОГО будинку без каналу — загальне для будинку;
+ *   4. правило рахунку без каналу.
+ *
+ * Це той самий порядок, яким цей модуль уже читає сніданок («three voices,
+ * most specific first»), тож нового рішення тут немає — є те саме, застосоване
+ * до осі, якої раніше не бачили.
+ *
  * Separate from ota-split.ts on purpose: that file does the arithmetic and
  * knows nothing about tables or channels; this one decides which numbers to
  * hand it.
@@ -16,6 +35,15 @@
 import { money } from '../../../core/money.ts';
 
 export interface ChannelRateRule {
+  /**
+   * Будинок, якому належить правило, або `null` — «на весь рахунок».
+   *
+   * `channel_rate_rules.property_id` НУЛЬОВИЙ, і обидва стани законні: готель
+   * з одним будинком пише одне правило й не думає про обʼєкти, готель із
+   * двома може мати різні домовленості з тим самим каналом — різні ціни
+   * сніданку і, що дорожче, різні ПОДАТКОВІ КОДИ.
+   */
+  property_id: string | null;
   channel: string | null;
   includes_breakfast: boolean;
   breakfast_food_price: number;
@@ -39,11 +67,22 @@ export function ruleFor(
   channel: string | null | undefined,
 ): ChannelRateRule | null {
   const wanted = normalize(channel);
+  // Чотири щаблі, конкретніше першим. `find` усередині кожного щабля лишається,
+  // але тепер він обирає СЕРЕД РІВНИХ: два правила того самого будинку для того
+  // самого каналу — це вже помилка налаштування, а не наша двозначність.
+  const steps: ((r: ChannelRateRule) => boolean)[] = [];
   if (wanted) {
-    const exact = rules.find((r) => normalize(r.channel) === wanted);
-    if (exact) return exact;
+    steps.push((r) => !!r.property_id && normalize(r.channel) === wanted);
+    steps.push((r) => !r.property_id && normalize(r.channel) === wanted);
   }
-  return rules.find((r) => !r.channel) ?? null;
+  steps.push((r) => !!r.property_id && !r.channel);
+  steps.push((r) => !r.property_id && !r.channel);
+
+  for (const step of steps) {
+    const hit = rules.find(step);
+    if (hit) return hit;
+  }
+  return null;
 }
 
 /**

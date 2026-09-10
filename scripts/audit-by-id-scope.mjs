@@ -104,7 +104,7 @@ const WRITE_BASELINE = {
   'src/modules/bookings/api/sub-bookings.handlers.ts': 2,
   'src/modules/bookings/data/reservation-write.repo.ts': 1,
   'src/modules/channels/api/ical-channel.handlers.ts': 2,
-  'src/modules/channels/api/ical-sync.handlers.ts': 2,
+  'src/modules/channels/api/ical-sync.handlers.ts': 1,
   'src/modules/finance/api/attachments.handlers.ts': 1,
   'src/modules/finance/api/categories.handlers.ts': 3,
   'src/modules/finance/api/counterparties.handlers.ts': 2,

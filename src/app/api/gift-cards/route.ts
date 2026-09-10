@@ -3,7 +3,10 @@ import { getDb } from '@core/db';
 import { getSql } from '@core/db/async';
 import { withPermission, type Actor } from '@core/auth/session';
 import { requirePropertyId } from '@core/auth/tenant-context';
+import { requestPropertyScope } from '@core/auth/property-scope';
+import { ALL_PROPERTIES, oneProperty, propertyScopeFilter, type PropertyScope } from '@core/property-scope';
 import { handleError } from '@core/http/errors';
+import { refuse } from '@core/http/refusal';
 import { buildGiftCode, getGiftCardTemplate, calcExpiresAt, listGiftCardTemplates } from '@/modules/widget/domain/gift-card-builder';
 import { organizationCurrency } from '@core/currency';
 
@@ -15,34 +18,74 @@ import { organizationCurrency } from '@core/currency';
  * and mint new ones against any property_id they cared to send. The list
  * started from `WHERE 1=1`, and the auto-expire sweep updated every hotel's
  * rows at once.
+ *
+ * ── Вісь ОБʼЄКТА, і чому її не було видно (INC-029, 09.09.2026) ─────────
+ *
+ * Коментар вище описує полагоджену половину — ОРЕНДАРЯ, — і саме тому друга
+ * половина прожила: `gift_cards.property_id` — `NOT NULL`, тобто ваучер
+ * заведено ПІД БУДИНОК, а список звіряв лише рахунок.
+ *
+ * Обмеження в коді БУЛО, і воно ж було шпариною: `propertyId` читався з адреси
+ * і вставлявся у фільтр без жодної перевірки власності. Чужий обʼєкт давав
+ * ПОРОЖНІЙ список замість 404 (інваріанти 5 і 13), а слово `all`, яким
+ * провайдер області пише «усі обʼєкти», приїхало б у фільтр як ідентифікатор
+ * і дало б порожньо теж (Д49). Плюс розкол імен: читалось `propertyId`, тоді
+ * як решта чотирнадцяти екранів шлють `property_id` (NAMING §8) — рівно той
+ * шов, через який правка INC-037 без маршруту нічого б не змінила.
  */
 
-// GET /api/gift-cards — список ваучерів
-export const GET = await withPermission('manage_bookings', async (req: Request, _ctx, actor: Actor) => {
+/**
+ * Область для списку: або сказана параметром, або взята від САЙТА.
+ *
+ * Два входи, бо екран ваучерів живе вкладкою сайта і питає `site_id`, а не
+ * `property_id`. Сайт належить одному будинку (`booking_sites.property_id` —
+ * `NOT NULL`), тож він називає обʼєкт точніше за перемикач у шапці; але
+ * називає лише тоді, коли доведено, що сайт наш. Раніше тут стояв підзапит
+ * `(SELECT property_id FROM booking_sites WHERE id = ?)` без орендаря: чужий
+ * сайт давав порожній список — не помилку, а «ваучерів немає».
+ */
+async function listScope(req: Request, actor: Actor): Promise<PropertyScope> {
+  const siteId = new URL(req.url).searchParams.get('site_id');
+  if (!siteId) return requestPropertyScope(req, actor.organizationId);
+
+  const site = await getSql().row<{ property_id: string }>(
+    'SELECT property_id FROM booking_sites WHERE id = ? AND organization_id = ?',
+    [siteId, actor.organizationId],
+  );
+  // 404, не порожній список: «такого сайту немає» і «ваучерів немає» — різні
+  // відповіді, і саме їх злиття робить вісь непомітною.
+  if (!site) refuse('Site not found', 404);
+  return oneProperty(site.property_id);
+}
+
+/**
+ * Тіло `GET` іменованою функцією — щоб його могла покликати сцена.
+ *
+ * Загорнутий маршрут із `.check.ts` недосяжний за побудовою: `withPermission`
+ * кличе `currentActor()`, той — `cookies()` з `next/headers`, і поза запитом
+ * Next це КИДАЄ. Той самий рух уже зроблено в `bookings/export-csv`,
+ * `invoices/export` і `accounting/invoices/list` — і робиться саме тому, що
+ * твердження про вісь мусить бути про МАРШРУТ, а не про запит, переписаний у
+ * перевірку з памʼяті.
+ */
+export async function listGiftCards(req: Request, _ctx: unknown, actor: Actor) {
   try {
     const sql = getSql();
     const url = new URL(req.url);
-    const propertyId = url.searchParams.get('propertyId') || url.searchParams.get('property_id');
-    const siteId = url.searchParams.get('site_id');
     const status = url.searchParams.get('status');
     const search = url.searchParams.get('search') || '';
+
+    const axis = propertyScopeFilter(await listScope(req, actor), 'v');
 
     let statement = `
       SELECT v.*,
              r.check_in, r.check_out, r.unit_id
       FROM gift_cards v
       LEFT JOIN reservations r ON v.reservation_id = r.id
-      WHERE v.organization_id = ?
+      WHERE v.organization_id = ? AND ${axis.sql}
     `;
-    const params: (string | number)[] = [actor.organizationId];
+    const params: (string | number)[] = [actor.organizationId, ...axis.params];
 
-    if (propertyId) {
-      statement += ' AND v.property_id = ?';
-      params.push(propertyId);
-    } else if (siteId) {
-      statement += ' AND v.property_id = (SELECT property_id FROM booking_sites WHERE id = ?)';
-      params.push(siteId);
-    }
     if (status && status !== 'all') {
       statement += ' AND v.status = ?';
       params.push(status);
@@ -59,6 +102,11 @@ export const GET = await withPermission('manage_bookings', async (req: Request, 
 
     // Auto-expire: оновити статус прострочених ваучерів
     // UTC, because that is what SQLite's date('now') returned here.
+    //
+    // Осі обʼєкта тут немає СВІДОМО: строк ваучера — властивість дати, а не
+    // будинку. Ваучер обʼєкта Б простроченим є й тоді, коли відкрито вкладку
+    // обʼєкта А, і звузити цей UPDATE означало б лишати прострочені рядки
+    // «активними» доти, доки хтось не гляне саме на їхній будинок.
     const today = new Date().toISOString().slice(0, 10);
     await sql.run(`
       UPDATE gift_cards SET status = 'expired', updated_at = CURRENT_TIMESTAMP
@@ -70,16 +118,26 @@ export const GET = await withPermission('manage_bookings', async (req: Request, 
 
     // Шаблони ЦЬОГО готелю. Раніше сюди йшла спільна константа, тобто прайс
     // одного кемпінгу віддавався кожному, хто відкриє екран.
+    //
+    // Ключ `giftCards`, а не `gift_cards`: решта родини (`POST`, `[id]`,
+    // `activate`) віддає `giftCard`, і ЄДИНИЙ читач цієї відповіді
+    // (`SiteGiftCardsTab.tsx:78`) читає `d.giftCards`. Тобто список ваучерів
+    // на вкладці сайта не показував НІЧОГО й ніколи — і лічильник на самій
+    // вкладці лишався нулем, бо `onCountChange` кличеться з тієї ж гілки.
+    // Знайдено при переведенні осі; `check-dead-fetch` цього роду не бачить —
+    // він стереже виклик без читача, а не читача, що бере не той ключ.
     return NextResponse.json({
-      gift_cards: giftCards,
+      giftCards,
       templates: await listGiftCardTemplates(actor.organizationId),
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('GET /api/gift-cards error:', message);
-    return NextResponse.json({ error: 'Failed to fetch gift cards' }, { status: 500 });
+    // `handleError`, а не глухий 500: `PropertyNotFound` і відмова «сайт не
+    // наш» — це названі 404, і вони мусять доїхати своїм статусом (Ц43).
+    return handleError('gift-cards GET', err, 'Failed to fetch gift cards');
   }
-});
+}
+
+export const GET = await withPermission('manage_bookings', listGiftCards);
 
 // POST /api/gift-cards — створити ваучер
 export const POST = await withPermission('manage_bookings', async (req: Request, _ctx, actor: Actor) => {
@@ -146,12 +204,19 @@ export const POST = await withPermission('manage_bookings', async (req: Request,
     // Генерація коду. It only has to be unique inside this organization —
     // a code is redeemed on one hotel's site, and two hotels may both issue
     // the same string.
+    //
+    // Але ПО ВСІХ ОБʼЄКТАХ рахунку, і це сказано словом, а не пропущено.
+    // Звузити перевірку будинком означало б дозволити двом будинкам одного
+    // готелю видати однаковий код: гість приносить його на рецепцію, а вона
+    // знаходить два ваучери з різними номіналами і не має як обрати. Унікальність
+    // тут — властивість рахунку, бо погашення шукає код саме по рахунку.
+    const ACROSS_PROPERTIES = propertyScopeFilter(ALL_PROPERTIES, 'v');
     let code = '';
     for (let attempt = 0; attempt < 5; attempt++) {
       const candidate = buildGiftCode();
       const existing = await sql.row(
-        'SELECT id FROM gift_cards WHERE code = ? AND organization_id = ?',
-        [candidate, actor.organizationId],
+        `SELECT v.id FROM gift_cards v WHERE v.code = ? AND v.organization_id = ? AND ${ACROSS_PROPERTIES.sql}`,
+        [candidate, actor.organizationId, ...ACROSS_PROPERTIES.params],
       );
       if (!existing) { code = candidate; break; }
     }

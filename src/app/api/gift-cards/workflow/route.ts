@@ -74,8 +74,7 @@ export const GET = withActor(async (req: NextRequest, _ctx: unknown, actor: Acto
 
     return NextResponse.json({ rules });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return serverError('app/api/gift-cards/workflow GET', err, 'Failed to list rules');
   }
 });
 
@@ -174,9 +173,7 @@ export const POST = withPermission('manage_sites', async (req: NextRequest, _ctx
     }, { status: 201 });
 
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Unknown error';
-    console.error('POST /api/gift-cards/workflow error:', msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return serverError('app/api/gift-cards/workflow POST', err, 'Failed to create the rule');
   }
 });
 
@@ -203,7 +200,6 @@ export const DELETE = withPermission('manage_sites', async (req: NextRequest, _c
 
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return serverError('app/api/gift-cards/workflow DELETE', err, 'Failed to delete the rule');
   }
 });

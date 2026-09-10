@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { generateIsdocXml, invoiceSettings } from '@invoicing';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { ALL_PROPERTIES, propertyOrSharedFilter } from '@core/property-scope';
 import type { InvoiceData } from '@invoicing';
 import { requirePermission } from '@core/security/route-guard';
 import { convertToCzkAuto, foreignNote } from '@invoicing';
@@ -17,17 +18,33 @@ import { showBuyerName, dueDateFor } from '@invoicing';
 // це крони» і вірив, що такий випадок буває. Прибрано, щоб у коді лишилось
 // рівно одне джерело валюти документа — сам рядок.
 
-export const GET = requirePermission('manage_documents', _GET);
-async function _GET(
+export const GET = requirePermission('manage_documents', invoiceIsdoc);
+// Тіло іменованим експортом — щоб сцена кликала МАРШРУТ (див. `invoice-pdf`).
+export async function invoiceIsdoc(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   // Правила бланка ЦЬОГО готеля — замість колишніх констант із чеського
   // закону. Організація вже на зʼєднанні: маршрут під вартою.
-  const rules = await invoiceSettings(await requireOrganizationId());
+  const rules = await invoiceSettings(await requireOrganizationId());  // орендар нижче — той самий
 
   try {
     const { id } = await params;
+  /**
+   * ── Орендар у цьому запиті (INC-043) ──────────────────────────────────
+   *
+   * Стояло голе `WHERE i.id = ?`. Ідентифікатор фактури приходить із адреси,
+   * тобто від того, хто питає; на Postgres чуже ховала політика, на SQLite не
+   * ховало ніщо. Це третій маршрут того самого інциденту поруч із пакетним ZIP
+   * і PDF — і всі три читають ОДНУ таблицю однією формою запиту.
+   *
+   * Вісь обʼєкта — `ALL_PROPERTIES` і це сказано: документ читається за
+   * первинним ключем, належність доводить орендар, а посилання стоїть у картці
+   * броні. `propertyOrSharedFilter`, а не звичайний: `invoices` не має
+   * `property_id`, і фактура без броні обʼєкта не має взагалі (Д51).
+   */
+  const organizationId = await requireOrganizationId();
+  const axis = propertyOrSharedFilter(ALL_PROPERTIES, 'r');
     const sql = getSql();
 
     // Full invoice data (same query as getInvoiceHtml)
@@ -60,9 +77,9 @@ async function _GET(
       ) rg ON rg.reservation_id = r.id
       LEFT JOIN fin_operations p
         ON p.reservation_id = r.id AND p.op_type = 'income' AND p.status = 'completed'
-      WHERE i.id = ?
+      WHERE i.id = ? AND i.organization_id = ? AND ${axis.sql}
       ORDER BY p.paid_at DESC LIMIT 1
-    `, [id]);
+    `, [id, organizationId, ...axis.params]);
 
     if (!data || !data.invoice_number) {
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });

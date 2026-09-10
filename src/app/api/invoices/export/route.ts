@@ -11,6 +11,7 @@ import { requireFinanceAccess } from '@core/security/route-guard';
 import type { Actor } from '@core/auth/session';
 import { requestPropertyScope } from '@core/auth/property-scope';
 import { propertyOrSharedFilter } from '@core/property-scope';
+import { serverError } from '@core/http/errors';
 
 export const GET = requireFinanceAccess(exportInvoices);
 
@@ -148,8 +149,6 @@ export async function exportInvoices(req: NextRequest, _ctx: unknown, actor: Act
     });
 
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error('[InvoiceExport] Error:', msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return serverError('app/api/invoices/export', e, 'Failed to export invoices');
   }
 }

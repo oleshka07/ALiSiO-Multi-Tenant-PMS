@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withPermission, type Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
+import { ALL_PROPERTIES, propertyScopeFilter } from '@core/property-scope';
 
 /**
  * One iCal channel, by id. Both handlers wrote `WHERE id = ?`; the tenant
@@ -11,13 +12,23 @@ import { serverError } from '@core/http/errors';
  * feeding it fabricated bookings that block its rooms — or delete the channel
  * outright. `ownedChannel` is that join, asked once.
  */
+/**
+ * Вісь обʼєкта — навмисно `ALL_PROPERTIES`: рядок каналу і Є носієм осі.
+ *
+ * Канал читається за первинним ключем, і саме він каже, якому будинку
+ * належить. Звузити цей запит по будинку можна було б лише взявши будинок із
+ * нього самого. Належність доводить `p.organization_id`, а правка й видалення
+ * нижче йдуть уже по знайденому рядку (INC-029, К19).
+ */
+const CHANNEL_IS_THE_AXIS = propertyScopeFilter(ALL_PROPERTIES, 'ic');
+
 async function ownedChannel(organizationId: string, id: string): Promise<any | undefined> {
   const sql = getSql();
   return await sql.row<any>(`
     SELECT ic.* FROM ical_channels ic
     JOIN properties p ON ic.property_id = p.id
-    WHERE ic.id = ? AND p.organization_id = ?
-  `, [id, organizationId]);
+    WHERE ic.id = ? AND p.organization_id = ? AND ${CHANNEL_IS_THE_AXIS.sql}
+  `, [id, organizationId, ...CHANNEL_IS_THE_AXIS.params]);
 }
 
 export const updateIcalChannel = withPermission('manage_properties', async (request: Request,
