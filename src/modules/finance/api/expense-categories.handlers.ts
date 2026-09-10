@@ -6,7 +6,7 @@ import { requireOrganizationId } from '@core/auth/tenant-context';
 import { serverError } from '@core/http/errors';
 import { AXIS_BY_STD_GROUP } from '@core/chart-of-accounts';
 import {
-  propertyOrSharedFilter, requirePropertyScope, requestedPropertyParam, scopedPropertyId,
+  propertyOrSharedFilter, requirePropertyScope, requestedPropertyParam, configPropertyId,
 } from '@core/property-scope';
 
 /**
@@ -54,7 +54,7 @@ export async function createExpenseCategory(request: Request): Promise<NextRespo
     // Same organization: an unqualified MAX() takes the highest sort_order on
     // the whole server, so a new category of a small hotel is created at
     // position 200 because somebody else has 199 of them.
-    const propertyId = scopedPropertyId(await scopeOf(request));
+    const propertyId = await configPropertyId(await scopeOf(request));
     // Порядок рахується в тому ж кошику, у якому стаття зʼявиться: своє плюс
     // спільне. Інакше нова стаття будинку сідала б за статтями сусіда.
     const orderAxis = propertyOrSharedFilter(await scopeOf(request), '');

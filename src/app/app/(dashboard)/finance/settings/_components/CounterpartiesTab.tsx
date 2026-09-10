@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, ChevronDown, ChevronRight } from 'lucide-react';
 import CounterpartyModal, { CounterpartyFormValues } from './CounterpartyModal';
 import CounterpartyTreeRow from './CounterpartyTreeRow';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
 
 export type Kind = 'client' | 'supplier' | 'employee' | 'other';
 
@@ -40,6 +41,13 @@ const KIND_FILTER_TABS: { id: Kind | 'all' | 'unspecified'; label: string; emoji
 ];
 
 export default function CounterpartiesTab() {
+  // Обʼєкт із перемикача в шапці (INC-038, Д54): довідники фінансів належать
+  // БУДИНКУ — два обʼєкти під одним рахунком ведуть дві бухгалтерії. `?? 'all'`
+  // — це СКАЗАНЕ «усі обʼєкти», а не мовчання: на мовчання маршрут відповідає
+  // 400, і це навмисно (інваріант 8).
+  const { propertyId } = usePropertyScope();
+  const scopeParam = propertyId ?? 'all';
+
   const tUi = useT();
   const [data, setData] = useState<TreeResponse>({ tree: [], byKind: {} });
   const [loading, setLoading] = useState(true);
@@ -51,7 +59,7 @@ export default function CounterpartiesTab() {
   const fetchTree = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/finance/counterparties/tree');
+      const res = await fetch(`/api/finance/counterparties/tree?property_id=${encodeURIComponent(scopeParam)}`);
       const json = await res.json();
       setData(json?.tree ? json : { tree: [], byKind: {} });
     } catch (e) {
@@ -85,7 +93,9 @@ export default function CounterpartiesTab() {
 
   async function handleSave(values: CounterpartyFormValues, existingId?: string) {
     const method = existingId ? 'PATCH' : 'POST';
-    const url = existingId ? `/api/finance/counterparties/${existingId}` : '/api/finance/counterparties';
+    const url = existingId
+      ? `/api/finance/counterparties/${existingId}`
+      : `/api/finance/counterparties?property_id=${encodeURIComponent(scopeParam)}`;
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },

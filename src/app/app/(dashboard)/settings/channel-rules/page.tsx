@@ -23,6 +23,7 @@ import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Trash2, X, Loader2, ArrowLeft, Coffee } from 'lucide-react';
 import Link from 'next/link';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -72,6 +73,13 @@ function Modal({ open, onClose, title, children, footer }: {
 }
 
 export default function ChannelRulesPage() {
+  // Обʼєкт із перемикача в шапці (INC-038, Д54): довідники фінансів належать
+  // БУДИНКУ — два обʼєкти під одним рахунком ведуть дві бухгалтерії. `?? 'all'`
+  // — це СКАЗАНЕ «усі обʼєкти», а не мовчання: на мовчання маршрут відповідає
+  // 400, і це навмисно (інваріант 8).
+  const { propertyId } = usePropertyScope();
+  const scopeParam = propertyId ?? 'all';
+
   const t = useT();
 
   const [rules, setRules] = useState<Rule[]>([]);
@@ -89,7 +97,7 @@ export default function ChannelRulesPage() {
     try {
       const [r, tx] = await Promise.all([
         fetch('/api/finance/channel-rules').then((x) => x.json()),
-        fetch('/api/finance/tax-rates').then((x) => x.json()),
+        fetch(`/api/finance/tax-rates?property_id=${encodeURIComponent(scopeParam)}`).then((x) => x.json()),
       ]);
       setRules(r.rules || []);
       setRates(tx.rates || []);

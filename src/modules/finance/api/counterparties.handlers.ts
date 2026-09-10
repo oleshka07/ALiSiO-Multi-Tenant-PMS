@@ -4,7 +4,7 @@ import { getSql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { serverError } from '@core/http/errors';
 import {
-  propertyOrSharedFilter, requirePropertyScope, requestedPropertyParam, scopedPropertyId,
+  propertyOrSharedFilter, requirePropertyScope, requestedPropertyParam, configPropertyId,
 } from '@core/property-scope';
 
 const KINDS = ['client', 'supplier', 'employee', 'other'] as const;
@@ -195,7 +195,7 @@ export async function createCounterparty(request: NextRequest): Promise<NextResp
       ? (await sql.row<{ property_id: string | null }>(
           'SELECT property_id FROM finance_counterparties WHERE id = ? AND organization_id = ?',
           [parent_id, orgId]))?.property_id ?? null
-      : scopedPropertyId(await scopeOf(request));
+      : await configPropertyId(await scopeOf(request));
     const orderAxis = propertyOrSharedFilter(await scopeOf(request), '');
     const maxOrder = await sql.row<any>(
       `SELECT COALESCE(MAX(sort_order), 0) AS mx FROM finance_counterparties

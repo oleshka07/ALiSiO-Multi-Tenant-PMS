@@ -39,7 +39,7 @@ import { getSql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { DEFAULT_TEMPLATE, formatInvoiceNumber } from '../domain/invoice-number-format';
 import {
-  propertyOrSharedFilter, requirePropertyScope, requestedPropertyParam, scopedPropertyId,
+  propertyOrSharedFilter, requirePropertyScope, requestedPropertyParam, configPropertyId,
 } from '@core/property-scope';
 
 /**
@@ -106,7 +106,7 @@ export const createTaxRate = async (request: Request) => {
   // machine runs, has no equivalent. Omitting it there wrote rows with a NULL
   // tenant: the INSERT answered 201 and the list came back empty.
   const organizationId = await requireOrganizationId();
-  const propertyId = scopedPropertyId(await scopeOf(request));
+  const propertyId = await configPropertyId(await scopeOf(request));
   const id = crypto.randomUUID();
   await getSql().run(
     `INSERT INTO fin_tax_rates (id, organization_id, property_id, code, rate, label, valid_from, valid_to)
@@ -229,7 +229,7 @@ export const createInvoiceSeries = async (request: Request) => {
   // Зіткнення коду — В МЕЖАХ БУДИНКУ, не рахунку (Д54). Саме заради цього і
   // знімався `UNIQUE (organization_id, code)`: два будинки з двома
   // бухгалтеріями можуть мати кожен свою серію під тим самим кодом.
-  const propertyId = scopedPropertyId(await scopeOf(request));
+  const propertyId = await configPropertyId(await scopeOf(request));
   const clash = await sql.row(
     `SELECT id FROM invoice_series
       WHERE organization_id = ? AND COALESCE(property_id, '') = ? AND code = ?`,
