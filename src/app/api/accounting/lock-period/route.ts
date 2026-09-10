@@ -10,15 +10,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireFinanceAccess } from '@core/security/route-guard';
 import { lockPeriod, unlockPeriod, seriesForChannel } from '@invoicing';
+import {
+  requirePropertyScope, requestedPropertyParam, scopedPropertyId, propertyOrSharedFilter,
+} from '@core/property-scope';
 import type { Actor } from '@core/auth/session';
 import { getSql } from '@core/db/async';
 import { serverError } from '@core/http/errors';
 
-export const GET = requireFinanceAccess(async (_request, _ctx, actor: Actor): Promise<NextResponse> => {
+export const GET = requireFinanceAccess(async (request: NextRequest, _ctx, actor: Actor): Promise<NextResponse> => {
   const sql = getSql();
+  // Місяці ОБРАНОГО обʼєкта плюс спільні (INC-038, Д54): два будинки під одним
+  // рахунком ведуть дві книги, і закритий місяць одного не є станом другого.
+  // `propertyOrSharedFilter`, бо `invoice_periods.property_id` нульовий —
+  // рахунковий місяць має бути видимим з обох будинків (Д51).
+  const axis = propertyOrSharedFilter(
+    await requirePropertyScope(requestedPropertyParam(request.url)), '');
   const periods = await sql.rows(
-    'SELECT series, month, status, locked_at FROM invoice_periods WHERE organization_id = ? ORDER BY month DESC, series',
-    [actor.organizationId],
+    `SELECT series, month, status, locked_at, property_id FROM invoice_periods
+      WHERE organization_id = ? AND ${axis.sql} ORDER BY month DESC, series`,
+    [actor.organizationId, ...axis.params],
   );
   // Also surface open (series, month) combos that have invoices but no explicit row yet.
   const derived = await sql.rows(`
@@ -37,11 +47,15 @@ export const POST = requireFinanceAccess(async (request: NextRequest, _ctx, acto
       return NextResponse.json({ error: 'series and month=YYYY-MM are required' }, { status: 400 });
     }
     const sql = getSql();
+    // Який будинок закривають — каже перемикач у шапці. «Усі обʼєкти» означає
+    // рахунковий місяць, а не місяць першого будинку.
+    const property = scopedPropertyId(
+      await requirePropertyScope(requestedPropertyParam(request.url)));
     if (action === 'unlock') {
-      await unlockPeriod(sql, actor.organizationId, resolvedSeries, month);
+      await unlockPeriod(sql, actor.organizationId, property, resolvedSeries, month);
       return NextResponse.json({ ok: true, series: resolvedSeries, month, status: 'open' });
     }
-    await lockPeriod(sql, actor.organizationId, resolvedSeries, month);
+    await lockPeriod(sql, actor.organizationId, property, resolvedSeries, month);
     return NextResponse.json({ ok: true, series: resolvedSeries, month, status: 'locked' });
   } catch (e: unknown) {
     // Текст винятку — у лог, клієнту речення (інваріант 6, Ц43). Тут раніше

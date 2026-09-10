@@ -8,6 +8,7 @@ import OperationModal from './_components/OperationModal';
 import AdvancedFilterModal from './_components/AdvancedFilterModal';
 import InlinePicker, { type InlinePickerOption } from './_components/InlinePicker';
 import ExportButton from '../_components/ExportButton';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
 
 type OpType = 'income' | 'expense' | 'transfer';
 
@@ -53,6 +54,13 @@ function formatMoney(n: number, currency: string): string {
 }
 
 export default function OperationsPage() {
+  // Обʼєкт із перемикача в шапці (INC-038, Д54): довідники фінансів належать
+  // БУДИНКУ — два обʼєкти під одним рахунком ведуть дві бухгалтерії. `?? 'all'`
+  // — це СКАЗАНЕ «усі обʼєкти», а не мовчання: на мовчання маршрут відповідає
+  // 400, і це навмисно (інваріант 8).
+  const { propertyId } = usePropertyScope();
+  const scopeParam = propertyId ?? 'all';
+
   const pluralUi = usePlural();
   const tUi = useT();
   const [ops, setOps] = useState<Operation[]>([]);
@@ -178,7 +186,7 @@ export default function OperationsPage() {
       const [cats, projs, cps, tgs] = await Promise.all([
         fetch('/api/finance/categories').then((r) => r.json()).catch(() => []),
         fetch('/api/finance/projects').then((r) => r.json()).catch(() => []),
-        fetch('/api/finance/counterparties').then((r) => r.json()).catch(() => []),
+        fetch(`/api/finance/counterparties?property_id=${encodeURIComponent(scopeParam)}`).then((r) => r.json()).catch(() => []),
         fetch('/api/finance/tags').then((r) => r.json()).catch(() => []),
       ]);
       setCategories(Array.isArray(cats) ? cats : []);

@@ -30,6 +30,7 @@ import { generateIsdocXml } from '@invoicing';
 import { sendEmail }           from '@core/mail/email';
 import { renderInvoiceHtml } from '@invoicing';
 import { allocateInvoiceNumber } from '@invoicing';
+import { requirePropertyScope, requestedPropertyParam, scopedPropertyId } from '@core/property-scope';
 import type { Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
 
@@ -86,7 +87,12 @@ async function _POST(req: NextRequest, _ctx: unknown, actor: Actor): Promise<Nex
     })();
 
     const invoiceId     = `inv_custom_${Date.now()}`;
-    const { invoiceNumber } = await allocateInvoiceNumber(sql, actor.organizationId, 'house', new Date().getFullYear());
+    // Вільний документ не висить на броні, тож будинок каже сам виклик —
+    // перемикач у шапці (INC-038, Д54). «Усі обʼєкти» означає серію рахунку:
+    // документ, який не належить жодному будинку, і не має брати його книгу.
+    const scope = await requirePropertyScope(requestedPropertyParam(req.url));
+    const { invoiceNumber } = await allocateInvoiceNumber(
+      sql, actor.organizationId, scopedPropertyId(scope), 'house', new Date().getFullYear());
 
     await sql.run(`
       INSERT INTO invoices

@@ -264,6 +264,7 @@ CREATE TABLE "booking_sources" (
 CREATE TABLE "business_units" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "organization_id" TEXT NOT NULL,
+  "property_id" TEXT,
   "name" TEXT NOT NULL,
   "unit_type" TEXT,
   "is_shared" BOOLEAN DEFAULT false NOT NULL,
@@ -391,9 +392,9 @@ CREATE TABLE "cm_connections" (
   "pricing_modifier_percent" NUMERIC(5,2) DEFAULT 0 NOT NULL,
   "last_full_sync_at" TIMESTAMPTZ,
   "catalog_synced_at" TIMESTAMPTZ,
+  "channels_synced_at" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "channels_synced_at" TIMESTAMPTZ,
   PRIMARY KEY ("id"),
   UNIQUE ("webhook_token"),
   UNIQUE ("organization_id", "property_id", "provider", "environment"),
@@ -611,6 +612,7 @@ CREATE TABLE "event_spaces" (
 CREATE TABLE "expense_categories" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "organization_id" TEXT NOT NULL,
+  "property_id" TEXT,
   "name" TEXT NOT NULL,
   "std_group" TEXT DEFAULT 'OPEX' NOT NULL,
   "pnl_line" TEXT NOT NULL,
@@ -685,9 +687,9 @@ CREATE TABLE "fin_auto_rules" (
   "is_active" BOOLEAN DEFAULT true NOT NULL,
   "stop_on_match" BIGINT DEFAULT 0 NOT NULL,
   "sort_order" BIGINT DEFAULT 0 NOT NULL,
+  "broken_fields" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "broken_fields" TEXT,
   PRIMARY KEY ("id"),
   CHECK (op_type IN ('income','expense','any'))
 );
@@ -967,12 +969,12 @@ CREATE TABLE "fin_recurring_templates" (
   "end_at" TIMESTAMPTZ,
   "last_run_at" TIMESTAMPTZ,
   "runs_created" BIGINT DEFAULT 0 NOT NULL,
-  "is_active" BOOLEAN DEFAULT true NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "failed_runs" BIGINT DEFAULT 0 NOT NULL,
   "last_error" TEXT,
   "last_error_at" TIMESTAMPTZ,
+  "is_active" BOOLEAN DEFAULT true NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
   CHECK (op_type IN ('income','expense','transfer')),
   CHECK (schedule IN ('daily','weekly','monthly','yearly'))
@@ -988,6 +990,7 @@ CREATE TABLE "fin_system_state" (
 CREATE TABLE "fin_tax_rates" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "organization_id" TEXT,
+  "property_id" TEXT,
   "code" TEXT NOT NULL,
   "rate" DOUBLE PRECISION NOT NULL,
   "label" TEXT,
@@ -1001,6 +1004,7 @@ CREATE TABLE "fin_tax_rates" (
 CREATE TABLE "finance_accounts" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "organization_id" TEXT NOT NULL,
+  "property_id" TEXT,
   "name" TEXT NOT NULL,
   "type" TEXT DEFAULT 'cash' NOT NULL,
   "currency" TEXT DEFAULT 'CZK' NOT NULL,
@@ -1018,6 +1022,7 @@ CREATE TABLE "finance_accounts" (
 CREATE TABLE "finance_counterparties" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "organization_id" TEXT NOT NULL,
+  "property_id" TEXT,
   "name" TEXT NOT NULL,
   "parent_id" TEXT,
   "kind" TEXT,
@@ -1294,25 +1299,26 @@ CREATE TABLE "ical_sync_log" (
 
 CREATE TABLE "invoice_counters" (
   "organization_id" TEXT NOT NULL,
+  "property_id" TEXT,
   "series" TEXT NOT NULL,
   "year" BIGINT NOT NULL,
-  "last_no" BIGINT DEFAULT 0 NOT NULL,
-  PRIMARY KEY ("organization_id", "series", "year")
+  "last_no" BIGINT DEFAULT 0 NOT NULL
 );
 
 CREATE TABLE "invoice_periods" (
   "organization_id" TEXT NOT NULL,
+  "property_id" TEXT,
   "series" TEXT NOT NULL,
   "month" TEXT NOT NULL,
   "status" TEXT DEFAULT 'open' NOT NULL,
   "locked_at" TIMESTAMPTZ,
-  PRIMARY KEY ("organization_id", "series", "month"),
   CHECK (status IN ('open','locked'))
 );
 
 CREATE TABLE "invoice_series" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "organization_id" TEXT,
+  "property_id" TEXT,
   "code" TEXT NOT NULL,
   "channel" TEXT,
   "prefix" TEXT DEFAULT '' NOT NULL,
@@ -1321,8 +1327,7 @@ CREATE TABLE "invoice_series" (
   "is_default" BOOLEAN DEFAULT false NOT NULL,
   "sort_order" BIGINT DEFAULT 0 NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id"),
-  UNIQUE ("organization_id", "code")
+  PRIMARY KEY ("id")
 );
 
 CREATE TABLE "invoices" (
@@ -2254,7 +2259,9 @@ ALTER TABLE "booking_sources" ADD CONSTRAINT "fk_booking_sources_property_id_1"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "business_units" ADD CONSTRAINT "fk_business_units_parent_id_1"
   FOREIGN KEY ("parent_id") REFERENCES "business_units" ("id");
-ALTER TABLE "business_units" ADD CONSTRAINT "fk_business_units_organization_id_2"
+ALTER TABLE "business_units" ADD CONSTRAINT "fk_business_units_property_id_2"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "business_units" ADD CONSTRAINT "fk_business_units_organization_id_3"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "capex_items" ADD CONSTRAINT "fk_capex_items_fin_operation_id_1"
   FOREIGN KEY ("fin_operation_id") REFERENCES "fin_operations" ("id");
@@ -2328,7 +2335,9 @@ ALTER TABLE "event_spaces" ADD CONSTRAINT "fk_event_spaces_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "expense_categories" ADD CONSTRAINT "fk_expense_categories_parent_id_1"
   FOREIGN KEY ("parent_id") REFERENCES "expense_categories" ("id");
-ALTER TABLE "expense_categories" ADD CONSTRAINT "fk_expense_categories_organization_id_2"
+ALTER TABLE "expense_categories" ADD CONSTRAINT "fk_expense_categories_property_id_2"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "expense_categories" ADD CONSTRAINT "fk_expense_categories_organization_id_3"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "extra_occupancy_rules" ADD CONSTRAINT "fk_extra_occupancy_rules_unit_type_id_1"
   FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id") ON DELETE CASCADE;
@@ -2430,13 +2439,19 @@ ALTER TABLE "fin_recurring_templates" ADD CONSTRAINT "fk_fin_recurring_templates
   FOREIGN KEY ("account_from_id") REFERENCES "finance_accounts" ("id");
 ALTER TABLE "fin_recurring_templates" ADD CONSTRAINT "fk_fin_recurring_templates_organization_id_6"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "fin_tax_rates" ADD CONSTRAINT "fk_fin_tax_rates_organization_id_1"
+ALTER TABLE "fin_tax_rates" ADD CONSTRAINT "fk_fin_tax_rates_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "fin_tax_rates" ADD CONSTRAINT "fk_fin_tax_rates_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "finance_accounts" ADD CONSTRAINT "fk_finance_accounts_organization_id_1"
+ALTER TABLE "finance_accounts" ADD CONSTRAINT "fk_finance_accounts_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "finance_accounts" ADD CONSTRAINT "fk_finance_accounts_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "finance_counterparties" ADD CONSTRAINT "fk_finance_counterparties_parent_id_1"
   FOREIGN KEY ("parent_id") REFERENCES "finance_counterparties" ("id");
-ALTER TABLE "finance_counterparties" ADD CONSTRAINT "fk_finance_counterparties_organization_id_2"
+ALTER TABLE "finance_counterparties" ADD CONSTRAINT "fk_finance_counterparties_property_id_2"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "finance_counterparties" ADD CONSTRAINT "fk_finance_counterparties_organization_id_3"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "finance_exchange_rates" ADD CONSTRAINT "fk_finance_exchange_rates_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
@@ -2480,11 +2495,17 @@ ALTER TABLE "ical_channels" ADD CONSTRAINT "fk_ical_channels_organization_id_3"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "ical_sync_log" ADD CONSTRAINT "fk_ical_sync_log_channel_id_1"
   FOREIGN KEY ("channel_id") REFERENCES "ical_channels" ("id") ON DELETE CASCADE;
-ALTER TABLE "invoice_counters" ADD CONSTRAINT "fk_invoice_counters_organization_id_1"
+ALTER TABLE "invoice_counters" ADD CONSTRAINT "fk_invoice_counters_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "invoice_counters" ADD CONSTRAINT "fk_invoice_counters_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "invoice_periods" ADD CONSTRAINT "fk_invoice_periods_organization_id_1"
+ALTER TABLE "invoice_periods" ADD CONSTRAINT "fk_invoice_periods_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "invoice_periods" ADD CONSTRAINT "fk_invoice_periods_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "invoice_series" ADD CONSTRAINT "fk_invoice_series_organization_id_1"
+ALTER TABLE "invoice_series" ADD CONSTRAINT "fk_invoice_series_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "invoice_series" ADD CONSTRAINT "fk_invoice_series_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "invoices" ADD CONSTRAINT "fk_invoices_fin_operation_id_1"
   FOREIGN KEY ("fin_operation_id") REFERENCES "fin_operations" ("id") ON DELETE SET NULL;
@@ -2706,6 +2727,7 @@ CREATE UNIQUE INDEX "idx_booking_sites_slug" ON "booking_sites" ("slug");
 CREATE INDEX "idx_booking_sites_status" ON "booking_sites" ("status");
 CREATE INDEX "idx_bu_parent" ON "business_units" ("parent_id");
 CREATE UNIQUE INDEX "idx_business_units_org_code" ON "business_units" ("organization_id", "code") WHERE code IS NOT NULL;
+CREATE INDEX "idx_business_units_property" ON "business_units" ("organization_id", "property_id");
 CREATE INDEX "idx_capex_bu" ON "capex_items" ("business_unit_id");
 CREATE INDEX "idx_capex_month" ON "capex_items" ("month");
 CREATE INDEX "idx_capex_org" ON "capex_items" ("organization_id");
@@ -2739,6 +2761,7 @@ CREATE INDEX "idx_event_bookings_day" ON "event_bookings" ("property_id", "space
 CREATE UNIQUE INDEX "idx_event_spaces_row" ON "event_spaces" ("property_id", "code");
 CREATE INDEX "idx_ec_parent" ON "expense_categories" ("parent_id");
 CREATE UNIQUE INDEX "idx_expense_categories_org_code" ON "expense_categories" ("organization_id", "code") WHERE code IS NOT NULL;
+CREATE INDEX "idx_expense_categories_property" ON "expense_categories" ("organization_id", "property_id");
 CREATE INDEX "idx_extra_occupancy_rules_org" ON "extra_occupancy_rules" ("organization_id");
 CREATE INDEX "idx_extra_occupancy_rules_property" ON "extra_occupancy_rules" ("property_id");
 CREATE INDEX "idx_arm_op" ON "fin_auto_rule_matches" ("operation_id");
@@ -2789,10 +2812,13 @@ CREATE INDEX "idx_fop_type" ON "fin_operations" ("op_type");
 CREATE INDEX "idx_rt_next_run" ON "fin_recurring_templates" ("next_run_at", "is_active");
 CREATE INDEX "idx_rt_org" ON "fin_recurring_templates" ("organization_id");
 CREATE INDEX "idx_fin_tax_rates_lookup" ON "fin_tax_rates" ("organization_id", "code", "valid_from");
+CREATE INDEX "idx_fin_tax_rates_property" ON "fin_tax_rates" ("organization_id", "property_id");
 CREATE INDEX "idx_fin_acct_iban" ON "finance_accounts" ("iban");
 CREATE INDEX "idx_fin_acct_org" ON "finance_accounts" ("organization_id");
+CREATE INDEX "idx_finance_accounts_property" ON "finance_accounts" ("organization_id", "property_id");
 CREATE INDEX "idx_cp_org" ON "finance_counterparties" ("organization_id");
 CREATE INDEX "idx_cp_parent" ON "finance_counterparties" ("parent_id");
+CREATE INDEX "idx_finance_counterparties_property" ON "finance_counterparties" ("organization_id", "property_id");
 CREATE INDEX "idx_fx_org" ON "finance_exchange_rates" ("organization_id");
 CREATE INDEX "idx_fx_pair" ON "finance_exchange_rates" ("from_currency", "to_currency", "effective_from");
 CREATE INDEX "idx_tags_org" ON "finance_tags" ("organization_id");
@@ -2811,8 +2837,11 @@ CREATE UNIQUE INDEX "idx_guest_page_sections_row" ON "guest_page_sections" ("pro
 CREATE INDEX "idx_guests_name" ON "guests" ("last_name", "first_name");
 CREATE INDEX "idx_guests_org" ON "guests" ("organization_id");
 CREATE INDEX "idx_ical_channels_org" ON "ical_channels" ("organization_id");
+CREATE UNIQUE INDEX "idx_invoice_counters_row" ON "invoice_counters" (organization_id, (COALESCE(property_id, '')), series, year);
+CREATE UNIQUE INDEX "idx_invoice_periods_row" ON "invoice_periods" (organization_id, (COALESCE(property_id, '')), series, month);
 CREATE INDEX "idx_invoice_series_channel" ON "invoice_series" ("organization_id", "channel");
-CREATE UNIQUE INDEX "idx_invoice_series_code" ON "invoice_series" ("organization_id", "code");
+CREATE INDEX "idx_invoice_series_property" ON "invoice_series" ("organization_id", "property_id");
+CREATE UNIQUE INDEX "idx_invoice_series_row" ON "invoice_series" (organization_id, (COALESCE(property_id, '')), code);
 CREATE INDEX "idx_invoices_corrects" ON "invoices" ("corrects_invoice_id");
 CREATE INDEX "idx_invoices_folio" ON "invoices" ("folio_id");
 CREATE INDEX "idx_invoices_issued" ON "invoices" ("issued_at");
