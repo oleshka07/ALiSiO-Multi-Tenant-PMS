@@ -23,7 +23,21 @@ function refuse(e: unknown) {
   const message = e instanceof Error ? e.message : 'Failed';
   // These are decisions, not faults: the caller asked for something the rules
   // do not allow, and the sentence explains which rule.
-  const expected = /not found|Nothing to invoice|is closed|already a reversal|already invoiced|is voided|different reservations|must be|old till system/i.test(message);
+  //
+  // ⚠ Це список ВІЗЕРУНКІВ, а не властивість (AGENTS §3.2.1), і він уже
+  // програв рівно тим способом, який там описаний: нова названа відмова
+  // «Charge belongs to another payer» (0140) не збіглась із жодним рядком
+  // списку, і екран показував «Failed» зі статусом 500 замість причини —
+  // тобто портьє бачив ПОЛОМКУ там, де було правило. Виміряно, не помічено
+  // очима: прогін тексту відмови через цей самий регулярний вираз.
+  //
+  // Правильна форма в проєкті вже є — `refuse(текст, статус)` при киданні і
+  // `handleError(scope, err)` у `catch` (`@core/http`, інваріант 6, Ц43):
+  // рід відмови називається НА МІСЦІ, і список тут стає непотрібним. Перехід
+  // на неї означає переписати всі 12 місць кидання в `folio.repo.ts` — це
+  // окрема зміна, і робиться вона цілком, а не по одному рядку. До того
+  // список поповнюється разом із кожною новою відмовою, і НЕ мовчки.
+  const expected = /not found|Nothing to invoice|is closed|already a reversal|already invoiced|is voided|different reservations|another payer|no payment terms|must be|old till system/i.test(message);
   if (!expected) console.error('[folio]', e);
   return NextResponse.json(
     { error: expected ? message : 'Failed' },

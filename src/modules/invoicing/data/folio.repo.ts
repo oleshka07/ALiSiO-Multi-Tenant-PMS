@@ -664,6 +664,26 @@ export async function stornoInvoice(input: {
  * Фірма береться від фоліо платника, а якщо це звичайне фоліо стою — від
  * броні. Гість без фірми строку не має: рахунок на виїзді оплачують на місці,
  * і «14 днів» там означало б відпустити гостя з боргом.
+ *
+ * ── Умов не названо: дві різні відповіді, і межа по РОДУ фоліо (Д59) ─────
+ *
+ * Інваріант 8 забороняє мовчазний дефолт, і тут він міг би зʼявитися двічі,
+ * але випадки різні за ціною помилки (інваріант 29):
+ *
+ * * **фоліо ПЛАТНИКА** існує рівно тому, що хтось назвав фірму платником —
+ *   тобто заводить її боржником. Боржник без строку оплати це недороблене
+ *   налаштування, а виписування — останній момент, коли на нього хтось
+ *   дивиться. Тому тут **названа відмова**, а не порожня графа: фактура на
+ *   борг без строку не має чого вимагати, і нагадування (Mahnung) потім
+ *   рахувало б прострочення від `NULL`;
+ * * **звичайне фоліо стою**, чия бронь має фірму без умов, — це «оплата на
+ *   місці», і воно НЕ блокується: портьє на виїзді не має впертись у
+ *   налаштування довідника. Строку немає, і це відсутність, а не дефолт.
+ *
+ * Підставити «14 днів» не можна в жодному з двох: вигаданий строк — це
+ * вимога грошей на дату, якої готель із фірмою не домовляв, а виправити
+ * виписаний документ можна лише сторно. Той самий довід, що в інваріанті 17:
+ * ціни, якої немає, не існує.
  */
 async function dueDateFor(
   sql: Sql,
@@ -671,6 +691,7 @@ async function dueDateFor(
   folio: { company_id?: string | null; reservation_id?: string | null },
   issueDate: string,
 ): Promise<string | null> {
+  const payerFolio = !folio.reservation_id && !!folio.company_id;
   let companyId = folio.company_id ?? null;
   if (!companyId && folio.reservation_id) {
     // Знову id з рядка, який уже в руках, — не з URL; осі обʼєкта не треба.
@@ -681,7 +702,12 @@ async function dueDateFor(
   }
   if (!companyId) return null;
   const days = await companyPaymentTerms(organizationId, companyId);
-  if (days === null || days === undefined) return null;
+  if (days === null || days === undefined) {
+    if (payerFolio) {
+      throw new Error('The company on this payer folio has no payment terms — set them before invoicing');
+    }
+    return null;
+  }
   const d = new Date(`${issueDate}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + Number(days));
   return d.toISOString().slice(0, 10);
@@ -696,6 +722,20 @@ export interface OpenInvoice {
   paid: number;
   open: number;
   currency: string;
+  /**
+   * Скільки днів фактура прострочена НА СЬОГОДНІ. `null` — строку немає
+   * (звичайне фоліо стою: оплата на місці), `0` — строк ще не минув.
+   *
+   * Це опора для модуля «дебіторка» (Mahnung), і навмисно рівно вона: рівні
+   * нагадувань, тексти й розклад — правила юрисдикції й самого готелю
+   * (інваріант 22), а «скільки днів прострочено» і «які фактури фірми
+   * відкриті» — читачі ЯДРА. Модуль, який не дістав би цього тут, поліз би
+   * рахувати сам по `invoices` — тобто в чужу таблицю повз двері.
+   *
+   * Колонки під це НЕ заведено: число похідне від `due_date` і сьогоднішньої
+   * дати, а збережене воно було б неправдою вже наступного ранку.
+   */
+  overdue_days: number | null;
 }
 
 /**
@@ -715,7 +755,21 @@ export interface OpenInvoice {
  * увесь — і, гірше, не побачити платіж, який ліг на фоліо сусіднього будинку,
  * тобто вимагати грошей, уже сплачених. Помилка в цей бік мовчить.
  */
-export async function openInvoicesOfCompany(companyId: string): Promise<OpenInvoice[]> {
+/**
+ * Днів прострочення на дату `today`. Рахується по КАЛЕНДАРНИХ датах у UTC, а
+ * не різницею часових міток: `due_date` це день, а не мить, і різниця
+ * міток дала б 0.9 доби там, де прострочення рівно один день.
+ */
+function overdueDays(dueDate: string | null, today: string): number | null {
+  if (!dueDate) return null;
+  const due = Date.parse(`${dueDate.slice(0, 10)}T00:00:00Z`);
+  const now = Date.parse(`${today.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(due) || Number.isNaN(now)) return null;
+  const days = Math.floor((now - due) / 86400000);
+  return days > 0 ? days : 0;
+}
+
+export async function openInvoicesOfCompany(companyId: string, asOf?: string): Promise<OpenInvoice[]> {
   const organizationId = await requireOrganizationId();
   const sql = getSql();
   const rows = await sql.rows<any>(
@@ -727,6 +781,7 @@ export async function openInvoicesOfCompany(companyId: string): Promise<OpenInvo
       WHERE i.organization_id = ? AND f.company_id = ? AND i.status = 'issued'
       ORDER BY i.issued_at, i.invoice_number`,
     [organizationId, companyId]);
+  const today = asOf ?? new Date().toISOString().slice(0, 10);
   return rows
     .map((r: any) => ({
       id: r.id,
@@ -737,6 +792,7 @@ export async function openInvoicesOfCompany(companyId: string): Promise<OpenInvo
       paid: Number(r.paid),
       open: Math.round((Number(r.amount) - Number(r.paid)) * 100) / 100,
       currency: r.currency,
+      overdue_days: overdueDays(r.due_date ?? null, today),
     }))
     .filter((r: OpenInvoice) => r.open > 0);
 }
