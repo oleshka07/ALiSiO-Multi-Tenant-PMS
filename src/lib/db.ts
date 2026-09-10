@@ -6502,12 +6502,33 @@ function runMigrations(database: any) {
         email         TEXT NOT NULL UNIQUE,
         full_name     TEXT,
         password_hash TEXT NOT NULL,
+        -- Рід входу (П21). Дефолт СЛАБШИЙ: рядок, створений без назви роду,
+        -- дістає перелік — тобто нічого, поки членство не заведено, — а не
+        -- ключі від сервера. Постачальник пишеться явно (інваріанти 8 і 13).
+        kind          TEXT NOT NULL DEFAULT 'hotelier' CHECK (kind IN ('supplier', 'hotelier')),
         is_active     INTEGER NOT NULL DEFAULT 1,
         last_login    TEXT,
         created_at    TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
+    // Перелік «у які рахунки ця людина може входити», і ким вона там є.
+    //
+    // `app_user_id` NOT NULL навмисно: без рядка `app_users` у людини немає ні
+    // ролі, ні прав, ні імені для аудиту, і код мусив би щось підставити — а
+    // саме те підставлене й було б вадою (рахунок бачив би «Підтримка ALiSiO»
+    // замість власного власника). Членство без відповіді «ким саме» не існує.
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS platform_memberships (
+        id               TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        platform_user_id TEXT NOT NULL REFERENCES platform_users(id) ON DELETE CASCADE,
+        organization_id  TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        app_user_id      TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+        created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (platform_user_id, organization_id)
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_platform_memberships_user ON platform_memberships(platform_user_id)');
     database.exec(`
       CREATE TABLE IF NOT EXISTS platform_sessions (
         id                     TEXT PRIMARY KEY,
@@ -6530,6 +6551,17 @@ function runMigrations(database: any) {
       )
     `);
     database.exec('CREATE INDEX IF NOT EXISTS idx_platform_audit_org ON platform_audit(organization_id, at)');
+
+    // База, яка вже жила: колонка роду в CREATE вище — для нового клієнта,
+    // ALTER тут — для наявної (AGENTS §4). Наявні рядки це наші власні записи
+    // підтримки, і постачальниками вони називаються ЯВНО: те, що дає доступ до
+    // всіх рахунків, пишеться руками, а не успадковується дефолтом.
+    const puCols = (database.prepare('PRAGMA table_info(platform_users)').all() as any[]).map((c: any) => c.name);
+    if (!puCols.includes('kind')) {
+      database.exec("ALTER TABLE platform_users ADD COLUMN kind TEXT NOT NULL DEFAULT 'hotelier'");
+      const n = database.prepare("UPDATE platform_users SET kind = 'supplier'").run().changes;
+      console.log(`[DB] platform_users: рід входу; ${n} наявних записів названо постачальниками (П21)`);
+    }
   } catch (e: any) {
     console.error('[DB] platform access migration:', e.message);
   }
