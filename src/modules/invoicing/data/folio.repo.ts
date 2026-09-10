@@ -11,6 +11,7 @@
 import { getSql } from '@core/db/async';
 import type { Sql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { money } from '@core/money';
 import { propertyOrSharedFilter, type PropertyScope } from '@core/property-scope';
 import { recordPayment } from './folio-payments.repo';
 import { allocateInvoiceNumber, isPeriodLocked, seriesForChannel, invoicePropertyId } from '../domain/invoice-numbering';
@@ -302,6 +303,95 @@ export async function addCharges(charges: readonly NewCharge[], t?: Sql): Promis
     );
   }
   return charges.length;
+}
+
+/**
+ * Знижка на рядок фоліо — окремий рядок, який УСПАДКОВУЄ ставку свого (Д62).
+ *
+ * ── Дві половини, і обидві обовʼязкові ──────────────────────────────────
+ *
+ * Сума фоліо мусить зменшитись рівно на знижку — інакше це не знижка. І
+ * ставка рядка знижки мусить дорівнювати ставці батьківського — інакше в
+ * документі держави сума за ставкою перестає дорівнювати сумі рядків цієї
+ * ставки, тобто ми віддаємо неправильний податок (інваріанти 8 і 22 разом).
+ *
+ * Друга половина — саме те, що тут легко втратити: «взяти якусь ставку»
+ * виглядає нешкідливо, бо загальна сума при цьому правильна. Для проживання
+ * цієї вади немає за побудовою (знижка береться після відділення сніданку і
+ * лишається в тому ж рядку), для послуг її не було чим уникнути.
+ *
+ * ── Чого знижка НЕ робить ───────────────────────────────────────────────
+ *
+ * Не ділиться пропорційно по ставках пакета (`PREISSPLITTING`) — пакетів у
+ * нас немає, і робити механізм під неіснуючу сутність означало б вгадувати
+ * її форму.
+ *
+ * Не перевищує батьківський рядок: знижка, більша за те, від чого вона, — це
+ * не знижка, а виплата, і вона мусить бути названа інакше.
+ */
+export async function discountCharge(input: {
+  itemId: string;
+  /** Відсоток від суми батьківського рядка. Або `amount`, але не обидва. */
+  percent?: number | null;
+  /** Сума знижки додатним числом; у рядок ляже відʼємною. */
+  amount?: number | null;
+  /** Причина — для опису; мова та сама, що в батьківського рядка (інваріант 19). */
+  reason?: string | null;
+}, t?: Sql): Promise<string> {
+  const organizationId = await requireOrganizationId();
+  const sql = t ?? getSql();
+
+  const parent = await sql.row<any>(
+    `SELECT id, folio_id, reservation_id, service_date, kind, description,
+            total_gross, vat_rate, invoice_id, voided_by_item_id, discount_of_item_id
+       FROM fin_folio_items WHERE id = ? AND organization_id = ?`,
+    [input.itemId, organizationId]);
+  // Не знайшли — відмовляємо, не «знижка ні на що» (інваріант 13).
+  if (!parent) throw new Error('Charge not found');
+  if (parent.invoice_id) throw new Error('Charge is already invoiced — storno the invoice first');
+  if (parent.voided_by_item_id) throw new Error('Charge is voided');
+  // Знижка на знижку — це друга знижка від першої, тобто число, якого ніхто
+  // не називав. Хай викликач знижує сам рядок.
+  if (parent.discount_of_item_id) throw new Error('This charge is itself a discount');
+
+  const gross = Number(parent.total_gross);
+  const hasPercent = input.percent !== null && input.percent !== undefined;
+  const hasAmount = input.amount !== null && input.amount !== undefined;
+  if (hasPercent === hasAmount) {
+    throw new Error('Name either a percent or an amount for the discount, not both and not neither');
+  }
+  const raw = hasPercent ? (gross * Number(input.percent)) / 100 : Number(input.amount);
+  if (!Number.isFinite(raw) || raw <= 0) throw new Error('Discount must be a positive number');
+  // Округлення ПЕРЕД записом і одними дверима (інваріант 9).
+  const value = money(raw);
+  if (value > money(gross)) {
+    throw new Error('A discount cannot exceed the charge it discounts');
+  }
+
+  // Опис — від батьківського рядка, тож мова документа зберігається сама
+  // (інваріант 19: `t()` тут був би мовою ОПЕРАТОРА, а не юрисдикції).
+  const suffix = hasPercent ? ` (−${Number(input.percent)} %)` : ` (−${value})`;
+  const description = `${String(parent.description)}${suffix}${input.reason ? ` · ${input.reason}` : ''}`;
+
+  const id = crypto.randomUUID();
+  await addCharges([{
+    id,
+    folioId: String(parent.folio_id),
+    reservationId: parent.reservation_id ?? null,
+    serviceDate: String(parent.service_date),
+    kind: parent.kind,
+    description,
+    quantity: 1,
+    unitPriceGross: -value,
+    totalGross: -value,
+    // ОСЬ ВОНО: ставка НЕ обирається, вона береться з рядка, від якого знижка.
+    vatRate: Number(parent.vat_rate),
+    source: 'manual',
+  }], sql);
+  await sql.run(
+    'UPDATE fin_folio_items SET discount_of_item_id = ? WHERE id = ? AND organization_id = ?',
+    [String(parent.id), id, organizationId]);
+  return id;
 }
 
 /** Charges on a folio that no invoice has taken yet. */

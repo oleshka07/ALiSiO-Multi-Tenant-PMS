@@ -867,6 +867,17 @@ SQL це рядок, — тож запит із неіснуючою колон�
   GRANT USAGE ON SCHEMA public TO alisio_app;
   GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO alisio_app;
   GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO alisio_app;
+  -- І ПРАВА НА МАЙБУТНІ ТАБЛИЦІ. `GRANT ... ON ALL TABLES` — це знімок, а не
+  -- правило: перша ж міграція, що заводить таблицю, лишає її недоступною для
+  -- `alisio_app`, і сцена червоніє «permission denied» — про стенд, а не про
+  -- код. У проді цього не буває, бо `deploy/to-postgres.sh` ставить саме ці
+  -- два рядки, а міграції накочує той самий власник; без них стенд
+  -- розходиться з продом рівно в той бік, який дає хибно-червоне
+  -- (10.09.2026, 0141).
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO alisio_app;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT USAGE, SELECT ON SEQUENCES TO alisio_app;
   SQL
 
   # застосунок — ЦІЄЮ роллю, не власником

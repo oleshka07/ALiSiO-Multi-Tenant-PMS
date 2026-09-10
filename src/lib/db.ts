@@ -6463,17 +6463,46 @@ function runMigrations(database: any) {
         source            TEXT NOT NULL DEFAULT 'manual'
                           CHECK (source IN ('nightly','ota_split','manual','restaurant','import','service')),
         voided_by_item_id TEXT,
+        -- Від чого ця знижка (0142, Д62). Факт, не текст опису: сторно
+        -- батьківського рядка інакше лишає знижку, яка вказує в нікуди.
+        discount_of_item_id TEXT REFERENCES fin_folio_items(id) ON DELETE CASCADE,
         invoice_id        TEXT,
         created_at        TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_items_folio ON fin_folio_items(folio_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_items_discount_of ON fin_folio_items(discount_of_item_id)');
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_items_date ON fin_folio_items(organization_id, service_date)');
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_items_invoice ON fin_folio_items(invoice_id)');
     // Same story as idx_event_bookings_day: this one was written only in the
     // ALTER branch that adds service_order_id, which never runs on a database
     // whose CREATE already has the column.
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_items_order ON fin_folio_items(service_order_id)');
+
+    // Довідник способів оплати (0141, Д61) — СПЕРШУ, бо платіжка нижче має
+    // на нього зовнішній ключ, а SQLite розбирає `REFERENCES` при створенні.
+    //
+    // Клас (`kind`) — ті самі чотири слова, що в CHECK платіжки: довідник
+    // стоїть НАД класом, а не замість нього. `name IS NULL` означає
+    // «стандартна назва класу»: засів не вигадує слів жодною мовою.
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS fin_payment_methods (
+        id                TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id   TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        code              TEXT NOT NULL,
+        name              TEXT,
+        kind              TEXT NOT NULL,
+        ledger_account    TEXT,
+        settles_to_debtor INTEGER NOT NULL DEFAULT 0,
+        is_active         INTEGER NOT NULL DEFAULT 1,
+        position          INTEGER NOT NULL DEFAULT 0,
+        created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (organization_id, code),
+        CHECK (kind IN ('cash','card_terminal','transfer','voucher'))
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_payment_methods_org ON fin_payment_methods(organization_id, position)');
 
     // How a folio was paid — first-class, because KassenSichV asks the
     // DOCUMENT whether it needs a TSE signature (cash / card at the desk:
@@ -6503,10 +6532,12 @@ function runMigrations(database: any) {
         tse_client_id   TEXT,
         tse_process_type TEXT,
         tse_process_data TEXT,
+        method_id       TEXT REFERENCES fin_payment_methods(id) ON DELETE RESTRICT,
         CHECK (method IN ('cash','card_terminal','transfer','voucher'))
       )
     `);
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_payments_folio ON fin_folio_payments(folio_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_payments_method ON fin_folio_payments(method_id)');
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_payments_org ON fin_folio_payments(organization_id, paid_at)');
     // Databases whose CREATE predates the TSE columns catch up here — the
     // guarded ALTER stands AFTER the CREATE on purpose (lesson of 086ec1d).
@@ -8177,6 +8208,72 @@ function runMigrations(database: any) {
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folios_company ON fin_folios(organization_id, company_id)');
   } catch (e: any) {
     console.error('[DB] debtor/payer folio migration:', e.message);
+  }
+
+  // ── Довідник способів оплати (0141, Д61) ────────────────────────────────
+  //
+  // І в CREATE вище, і тут. Засів чотирьох стандартних рядків КОЖНІЙ
+  // організації робить міграція, а не код при першому відкритті екрана:
+  // інакше готель, який туди ще не заходив, дістав би платіж, що вказує в
+  // нікуди. Назв засів не пише — `name IS NULL` означає «стандартна назва
+  // класу», і мову вибирає екран, а не міграція.
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS fin_payment_methods (
+        id                TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id   TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        code              TEXT NOT NULL,
+        name              TEXT,
+        kind              TEXT NOT NULL,
+        ledger_account    TEXT,
+        settles_to_debtor INTEGER NOT NULL DEFAULT 0,
+        is_active         INTEGER NOT NULL DEFAULT 1,
+        position          INTEGER NOT NULL DEFAULT 0,
+        created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (organization_id, code),
+        CHECK (kind IN ('cash','card_terminal','transfer','voucher'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_fin_payment_methods_org
+        ON fin_payment_methods(organization_id, position);
+    `);
+    const payCols = (database.prepare('PRAGMA table_info(fin_folio_payments)').all() as any[]).map((c: any) => c.name);
+    if (!payCols.includes('method_id')) {
+      database.exec('ALTER TABLE fin_folio_payments ADD COLUMN method_id TEXT REFERENCES fin_payment_methods(id) ON DELETE RESTRICT');
+      console.log('[DB] fin_folio_payments: спосіб оплати став рядком довідника');
+    }
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_payments_method ON fin_folio_payments(method_id)');
+    // Засів і зворотне заповнення — питанням до ДАНИХ, не до імені обмеження.
+    for (const [code, pos] of [['cash', 0], ['card_terminal', 1], ['transfer', 2], ['voucher', 3]] as const) {
+      database.prepare(`
+        INSERT INTO fin_payment_methods (id, organization_id, code, kind, position)
+        SELECT lower(hex(randomblob(16))), o.id, ?, ?, ?
+          FROM organizations o
+         WHERE NOT EXISTS (SELECT 1 FROM fin_payment_methods m
+                            WHERE m.organization_id = o.id AND m.code = ?)
+      `).run(code, code, pos, code);
+    }
+    database.exec(`
+      UPDATE fin_folio_payments
+         SET method_id = (SELECT m.id FROM fin_payment_methods m
+                           WHERE m.organization_id = fin_folio_payments.organization_id
+                             AND m.code = fin_folio_payments.method)
+       WHERE method_id IS NULL
+    `);
+  } catch (e: any) {
+    console.error('[DB] payment methods migration:', e.message);
+  }
+
+  // ── Знижка знає, від чого вона (0142, Д62) ──────────────────────────────
+  try {
+    const itemCols = (database.prepare('PRAGMA table_info(fin_folio_items)').all() as any[]).map((c: any) => c.name);
+    if (!itemCols.includes('discount_of_item_id')) {
+      database.exec('ALTER TABLE fin_folio_items ADD COLUMN discount_of_item_id TEXT REFERENCES fin_folio_items(id) ON DELETE CASCADE');
+      console.log('[DB] fin_folio_items: знижка знає, від чого вона');
+    }
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_items_discount_of ON fin_folio_items(discount_of_item_id)');
+  } catch (e: any) {
+    console.error('[DB] discount link migration:', e.message);
   }
 
   console.log('[DB] migrations complete');

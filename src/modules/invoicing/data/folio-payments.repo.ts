@@ -52,7 +52,13 @@ export interface FolioPayment {
 export async function recordPayment(input: {
   folioId: string;
   amount: number;
-  method: string;
+  /**
+   * Клас. Можна не називати, якщо названо `methodId`: тоді він БЕРЕТЬСЯ з
+   * рядка довідника, а не приймається поруч із ним.
+   */
+  method?: string;
+  /** Рядок довідника способів оплати (0141, Д61). */
+  methodId?: string | null;
   invoiceId?: string | null;
   paidAt?: string | null;
   receivedBy?: string | null;
@@ -60,7 +66,29 @@ export async function recordPayment(input: {
   const organizationId = await requireOrganizationId();
   const sql = getSql();
 
-  if (!PAYMENT_METHODS.includes(input.method as PaymentMethod)) {
+  // ── Клас іде З РЯДКА, а не поруч із ним (Д61) ──────────────────────────
+  //
+  // Якби `method` і `method_id` приймались незалежно, вони б розійшлися: рядок
+  // «Visa» з класом `card_terminal` і `method='transfer'` поруч дали б платіж,
+  // який каса не бачить, а бухгалтерія числить карткою. Тому названий
+  // `methodId` ВИЗНАЧАЄ клас, а `method` при ньому лише звіряється.
+  //
+  // Чужий або неіснуючий рядок — відмова, не мовчазний перехід на клас
+  // (інваріант 13: не знайшли — відмовляємо).
+  let method = String(input.method ?? '');
+  let methodId: string | null = input.methodId ? String(input.methodId) : null;
+  if (methodId) {
+    const row = await sql.row<{ kind: string; is_active: unknown }>(
+      'SELECT kind, is_active FROM fin_payment_methods WHERE id = ? AND organization_id = ?',
+      [methodId, organizationId]);
+    if (!row) throw new Error('Payment method not found');
+    if (input.method && String(input.method) !== String(row.kind)) {
+      throw new Error(`Payment method «${row.kind}» does not match the class «${input.method}» given beside it`);
+    }
+    method = String(row.kind);
+  }
+
+  if (!PAYMENT_METHODS.includes(method as PaymentMethod)) {
     throw new Error(`method must be one of ${PAYMENT_METHODS.join(', ')}`);
   }
   const amount = Number(input.amount);
@@ -82,7 +110,7 @@ export async function recordPayment(input: {
   if (!folio) throw new Error('Folio not found');
 
   let mustSign = false;
-  if (TILL_METHODS.has(input.method as PaymentMethod)) {
+  if (TILL_METHODS.has(method as PaymentMethod)) {
     // Cash belongs to a till and a till belongs to a property — that is
     // where §146a AO looks. A folio that does not know its property cannot
     // prove its till is NOT German, so it fails closed: organizations do not
@@ -137,7 +165,7 @@ export async function recordPayment(input: {
     try {
       const device = deps?.device ?? await resolveFiskaly(organizationId, folio.property_id);
       signature = await device.signReceipt({
-        amount, method: input.method as 'cash' | 'card_terminal', vatAmounts,
+        amount, method: method as 'cash' | 'card_terminal', vatAmounts,
       });
       tseStatus = 'signed';
     } catch (e) {
@@ -153,12 +181,12 @@ export async function recordPayment(input: {
   const id = crypto.randomUUID();
   await sql.run(
     `INSERT INTO fin_folio_payments
-       (id, organization_id, property_id, folio_id, invoice_id, amount, method, paid_at, received_by,
+       (id, organization_id, property_id, folio_id, invoice_id, amount, method, method_id, paid_at, received_by,
         tse_status, tse_serial, tse_tx_number, tse_signature_counter, tse_signature,
         tse_start_time, tse_end_time, tse_qr_payload, tse_client_id, tse_process_type, tse_process_data)
-     VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [id, organizationId, folio.property_id ?? null, input.folioId,
-     input.invoiceId ?? null, amount, input.method,
+     input.invoiceId ?? null, amount, method, methodId,
      input.paidAt ?? null, input.receivedBy ?? null,
      tseStatus,
      signature?.tseSerial ?? null, signature?.txNumber ?? null,
