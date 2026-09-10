@@ -38,7 +38,7 @@ interface Card {
   where: string; live: boolean; pricing: 'free' | 'paid' | 'included'; status: string; probeable: boolean;
   enabled: boolean | null; keys: Keys | null; connections: Connection[]; wished: boolean;
 }
-interface FiscalProperty { property_id: string; name: string; tss: string | null }
+interface FiscalProperty { property_id: string; name: string; tss: string | null; pending: string | null }
 interface HealthRow {
   key: string; label: string; property_id: string | null; status: string;
   last_ok_at: string | null; last_error_at: string | null; last_error: string | null;
@@ -315,7 +315,7 @@ export default function AppsSettingsPage() {
                           <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>{t('TSE обʼєкта')}</div>
                           {fiscalProperties.map((p) => (
                             <div key={p.property_id} style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 4 }} data-testid={`tse-property-${p.property_id}`}>
-                              {p.name} — {p.tss ? `${t('підключено')} · TSS ${p.tss}` : t('TSS не підключено')}
+                              {p.name} — {p.tss ? `${t('підключено')} · TSS ${p.tss}` : (p.pending ? `${t('підключення не завершено')} · TSS ${p.pending} — ${t('натисніть ще раз')}` : t('TSS не підключено'))}
                             </div>
                           ))}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>

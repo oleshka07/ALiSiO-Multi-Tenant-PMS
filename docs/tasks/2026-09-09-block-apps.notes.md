@@ -50,3 +50,12 @@
    хто матиме акаунт fiskaly (З18, інваріант 28): подивитись на тіла
    `PUT /tss` (`admin_puk`) і `PUT /client` очима, зберегти зразки як у
    `docs/vendor/channex/live/`.
+
+8. **Фасад `@invoicing` не завантажується голим node.**
+   `src/modules/invoicing/domain/invoice-pdf.ts:23` — `path.join(__dirname, …)`
+   у масиві кандидатів шрифту виконується на завантаженні модуля, а в ESM
+   `__dirname` немає: `ReferenceError` ще до першого запиту. У бандлі Next є
+   поліфіл, тому застосунок цього не бачить; бачить будь-яка перевірка, яка
+   імпортує `@invoicing` (жодна досі не імпортувала). Гейт блоку підставляє
+   `globalThis.__dirname` перед імпортом (З21). Правка — один рядок:
+   `path.dirname(fileURLToPath(import.meta.url))`; тека сесії 1.

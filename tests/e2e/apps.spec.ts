@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import fs from 'node:fs';
+import http from 'node:http';
 import path from 'node:path';
 
 /**
@@ -27,6 +28,35 @@ const OWNER_PASSWORD = process.env.E2E_OWNER_PASSWORD || 'ci-password-1234';
 const PLATFORM_EMAIL = process.env.E2E_PLATFORM_EMAIL || '';
 const PLATFORM_PASSWORD = process.env.E2E_PLATFORM_PASSWORD || '';
 const SHOTS = process.env.E2E_SCREENSHOT_DIR || '';
+/**
+ * Крок «Підключити TSE» — проти підставленого fiskaly (§6: без живого ключа).
+ * Сценарій сам піднімає стаб на цьому порту; сервер застосунку мусить бути
+ * запущений з `FISKALY_BASE_URL=http://127.0.0.1:<порт>/api/v2`. Порт не
+ * заданий — крок пропускається з анотацією (у CI сервер стартує без нього).
+ */
+const FISKALY_STUB_PORT = Number(process.env.E2E_FISKALY_STUB_PORT || 0);
+
+/** Стаб quickstart: ті самі тіла, що в `apps.check.ts`, — форма документації. */
+function startFiskalyStub(port: number): Promise<http.Server> {
+  const server = http.createServer((req, res) => {
+    let raw = '';
+    req.on('data', (c) => { raw += c; });
+    req.on('end', () => {
+      const p = (req.url ?? '').replace('/api/v2', '');
+      const body = raw ? JSON.parse(raw) : {};
+      const send = (code: number, obj: unknown) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+      if (p === '/auth') return send(200, { access_token: 'stub' });
+      if (req.method === 'PUT' && /^\/tss\/[0-9a-f-]+$/.test(p)) return send(200, { _id: p.split('/')[2], state: 'CREATED', admin_puk: 'PUK-E2E' });
+      if (req.method === 'PATCH' && /^\/tss\/[0-9a-f-]+$/.test(p)) return send(200, { state: body.state });
+      if (req.method === 'PATCH' && p.endsWith('/admin')) return send(200, {});
+      if (req.method === 'POST' && p.endsWith('/admin/auth')) return send(200, { access_token: 'admin' });
+      if (req.method === 'PUT' && /\/client\//.test(p)) return send(200, { serial_number: body.serial_number });
+      if (req.method === 'GET' && /^\/tss\/[0-9a-f-]+$/.test(p)) return send(200, { state: 'INITIALIZED', serial_number: 'SER-E2E' });
+      send(404, {});
+    });
+  });
+  return new Promise((r) => server.listen(port, '127.0.0.1', () => r(server)));
+}
 
 async function loginOwner(page: Page): Promise<boolean> {
   const res = await page.request.post('/api/auth/login', { data: { email: OWNER_EMAIL, password: OWNER_PASSWORD } });
@@ -116,6 +146,33 @@ test.describe('Застосунки', () => {
     await page.getByTestId('app-probe-smtp').click();
     await expect(page.getByTestId('app-status-smtp')).toHaveText(/помилка|Fehler|chyba|error/, { timeout: 30_000 });
     await expect(page.getByTestId('app-error-smtp').first()).toContainText(/ECONNREFUSED|ETIMEDOUT|ECONN|refused/);
+    // «Підключити TSE» (3.8) — проти стаба fiskaly; без порту — пропуск.
+    if (FISKALY_STUB_PORT) {
+      const stub = await startFiskalyStub(FISKALY_STUB_PORT);
+      try {
+        const keys = await api(page, 'PUT', '/api/settings/integration-credentials', {
+          channel: 'fiskaly', values: { clientId: 'test-api-key', clientSecret: 'test-api-secret' },
+        });
+        expect(keys.ok, `збереження ключів fiskaly відповіло ${keys.status}`).toBeTruthy();
+        await page.reload();
+        const select = page.getByTestId('tse-property-select');
+        await expect(select).toBeVisible();
+        const free = await select.locator('option:not([value=""])').first().getAttribute('value');
+        if (free) {
+          await select.selectOption(free);
+          await page.getByTestId('tse-connect').click();
+          await expect(page.getByTestId('tse-result')).toContainText(/TSS …[0-9a-f]{4}/, { timeout: 30_000 });
+          await expect(page.getByTestId(`tse-property-${free}`)).toContainText(/TSS …[0-9a-f]{4}/);
+          await expect(page.getByTestId('app-status-fiskaly')).toHaveText(/підключено|verbunden|připojeno|connected/);
+        } else {
+          test.info().annotations.push({ type: 'skipped-part', description: 'TSE вже підключено на всіх обʼєктах цього готелю' });
+        }
+      } finally {
+        await new Promise<void>((r) => stub.close(() => r()));
+      }
+    } else {
+      test.info().annotations.push({ type: 'skipped-part', description: 'крок «Підключити TSE» пропущено: E2E_FISKALY_STUB_PORT не задано' });
+    }
     await shot(page, 'settings-apps');
 
     // «Модулі» — лише модулі, без полів fiskaly.

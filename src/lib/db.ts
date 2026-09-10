@@ -7750,8 +7750,16 @@ function migrateApps(database: any) {
         console.log(`[DB] 0141: fin_fiscal_settings.${col} added`);
       }
     }
+    // 0142: недороблена TSS запамʼятовується (id + PUK з 0141), а не
+    // створюється вдруге; замок на час походу до вендора.
+    for (const col of ['tse_pending_tss_id', 'tse_connecting_at']) {
+      if (!cols.includes(col)) {
+        database.exec(`ALTER TABLE fin_fiscal_settings ADD COLUMN ${col} TEXT`);
+        console.log(`[DB] 0142: fin_fiscal_settings.${col} added`);
+      }
+    }
   } catch (e) {
-    console.error('[DB] 0141 fin_fiscal_settings pin/puk:', (e as Error).message);
+    console.error('[DB] 0141/0142 fin_fiscal_settings TSE columns:', (e as Error).message);
   }
 }
 

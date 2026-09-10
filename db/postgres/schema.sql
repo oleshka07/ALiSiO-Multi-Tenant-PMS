@@ -792,6 +792,8 @@ CREATE TABLE "fin_fiscal_settings" (
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "tse_admin_pin" TEXT,
   "tse_admin_puk" TEXT,
+  "tse_pending_tss_id" TEXT,
+  "tse_connecting_at" TIMESTAMPTZ,
   PRIMARY KEY ("id"),
   UNIQUE ("property_id"),
   UNIQUE ("property_id")

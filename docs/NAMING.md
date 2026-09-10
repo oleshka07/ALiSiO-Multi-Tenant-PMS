@@ -141,7 +141,9 @@ Charter описує, ЯК називати. Він не вимагає нега
     `app_connections` не буває — менеджер каналів читається з `cm_connections`
   - `fin_fiscal_settings.tse_admin_pin`, `tse_admin_puk` (0141) — секрети TSS
     під `seal()` (`enc1:`), як і секрети `channel_credentials`; поруч із
-    `tse_client_id` і `tss_id`, які секретами не є
+    `tse_client_id` і `tss_id`, які секретами не є; `tse_pending_tss_id`
+    (0142) — id TSS, створеної у вендора, але не завершеної (NULL = немає),
+    `tse_connecting_at` — замок на час походу до вендора (NULL = вільно)
   Новий статус = міграція + рядок тут + бейдж у UI. Статус, якого немає в
   мапі UI, — баг (`partial` у календарі був невидимим саме так).
 - **Без назв юрисдикцій у схемі** (AGENTS.md, інваріант 22): ні в таблиці, ні

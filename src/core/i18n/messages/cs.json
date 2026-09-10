@@ -3618,5 +3618,7 @@
   "TSS не підключено": "TSS nepřipojeno",
   "— оберіть обʼєкт —": "— vyberte objekt —",
   "Підключаю…": "Připojuji…",
-  "Підключити TSE": "Připojit TSE"
+  "Підключити TSE": "Připojit TSE",
+  "підключення не завершено": "připojení nedokončeno",
+  "натисніть ще раз": "stiskněte znovu"
 }

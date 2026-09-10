@@ -36,6 +36,13 @@ import { FEATURE_SPEC } from './features.ts';
 // тому вона ставиться тут, до першого імпорту. Ключ шифрування — щоб `seal()`
 // мав чим запечатати PIN/PUK; це ключ стенда, не секрет.
 const FISKALY_STUB_PORT = 45000 + Math.floor(Math.random() * 1000);
+// Фасад `@invoicing` тягне `domain/invoice-pdf.ts`, який на завантаженні
+// читає `__dirname` — у ESM голого node його немає, і фасад падає ще до
+// першого запиту. У бандлі Next `__dirname` є, тож застосунок цього не бачить.
+// Тут — підставка, щоб гейт міг зайти в модуль ДВЕРИМА, а не через `data/`
+// (check-boundaries). Правильна правка — `fileURLToPath(import.meta.url)` у
+// самому `invoice-pdf.ts` (чужа тека; записано в notes блоку).
+(globalThis as { __dirname?: string }).__dirname ??= process.cwd();
 process.env.FISKALY_BASE_URL = `http://127.0.0.1:${FISKALY_STUB_PORT}/api/v2`;
 process.env.APP_SECRET_KEY ||= '0'.repeat(64);
 
@@ -269,7 +276,7 @@ try {
   //
   // Дві осі (інваріант 26): успіх і відмова, і в кожній — два різні значення
   // на кожній осі (статус, мітка часу, текст).
-  const { fiskalyDevice } = await import('../modules/invoicing/data/fiskaly-sign-de.ts');
+  const { fiskalyDevice } = await import('@invoicing');
   const realFetch = globalThis.fetch;
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
   const okFiskaly = async (url: string, init?: RequestInit) => {
@@ -302,6 +309,31 @@ try {
   assert.ok(fk.last_error_at, 'після відмови last_error_at порожній');
   assert.strictEqual(fk.last_ok_at, okAt, 'відмова не має стирати час останнього успіху — він і є відповідь «коли востаннє працювало»');
   assert.strictEqual(rows.filter((r) => r.app === 'fiskaly').length, 1, 'успіх і відмова дали два рядки замість одного (upsert)');
+
+  // Проба «Перевірити звʼязок» fiskaly (Б3): auth + GET /tss — той самий
+  // `reported()`, без транзакції; успіх повертає connected, відмова — текст.
+  const { fiskalyProbe } = await import('@invoicing');
+  globalThis.fetch = okFiskaly as typeof fetch;
+  const probed = await runWithOrganization(A, () => fiskalyProbe({ apiKey: 'k', apiSecret: 's', tssId: `${A}_tss` }, PROP));
+  assert.strictEqual(probed.tssSerial, 'SER', 'проба не прочитала серійник TSS');
+  fk = (await runWithOrganization(A, () => listConnections(A))).find((r) => r.app === 'fiskaly');
+  assert.strictEqual(fk?.status, 'connected', 'успішна проба не повернула connected');
+  globalThis.fetch = (async () => new Response('invalid api key', { status: 401 })) as typeof fetch;
+  await assert.rejects(() => runWithOrganization(A, () => fiskalyProbe({ apiKey: 'k', apiSecret: 's', tssId: '' }, PROP)), /401/);
+  fk = (await runWithOrganization(A, () => listConnections(A))).find((r) => r.app === 'fiskaly');
+  assert.strictEqual(fk?.status, 'error');
+  assert.ok(/invalid api key/.test(fk?.last_error ?? ''), `проба не записала текст відмови: ${fk?.last_error}`);
+
+  // Третя вісь: НАША відмова — не відмова вендора. Чек без розбиття ПДВ
+  // відхиляється до першого мережевого виклику, і стан звʼязку від цього не
+  // рухається: рядок fiskaly лишається таким, яким був.
+  const beforeOurs = JSON.stringify((await runWithOrganization(A, () => listConnections(A))).find((r) => r.app === 'fiskaly'));
+  let fetches = 0;
+  globalThis.fetch = (async () => { fetches++; return json({}); }) as typeof fetch;
+  await assert.rejects(() => runWithOrganization(A, () => device.signReceipt({ ...receipt, vatAmounts: [] })), /VAT split/);
+  assert.strictEqual(fetches, 0, 'чек без розбиття ПДВ дійшов до мережі');
+  const afterOurs = JSON.stringify((await runWithOrganization(A, () => listConnections(A))).find((r) => r.app === 'fiskaly'));
+  assert.strictEqual(afterOurs, beforeOurs, 'наша відмова (чек без розбиття) записана як відмова fiskaly — картка збреше «помилка TSE»');
   globalThis.fetch = realFetch;
 
   // Пошта: транспорт підставляється замість nodemailer (CJS-обʼєкт спільний).
@@ -453,7 +485,7 @@ try {
   // app_connections на обʼєкт — connected; другий виклик — 409 і жодної
   // другої TSS; відмова вендора — error з текстом на тому ж обʼєкті.
   const calls: { method: string; path: string; body: any }[] = [];
-  let stubMode: 'ok' | 'refuse' = 'ok';
+  let stubMode: 'ok' | 'refuse' | 'refuse_admin' | 'slow' = 'ok';
   const stub = http.createServer((req, res) => {
     let raw = '';
     req.on('data', (c) => { raw += c; });
@@ -464,7 +496,15 @@ try {
       const send = (code: number, obj: unknown) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
       if (path === '/auth') return send(200, { access_token: 'stub-token' });
       if (stubMode === 'refuse') return send(402, { message: 'Payment required: TSS quota exhausted for this organisation' });
-      if (req.method === 'PUT' && /^\/tss\/[0-9a-f-]+$/.test(path)) return send(200, { _id: path.split('/')[2], state: 'CREATED', admin_puk: 'PUK-STUB-4242' });
+      // Часткова відмова: TSS уже створено, персоналізація впала.
+      if (stubMode === 'refuse_admin' && req.method === 'PATCH' && path.endsWith('/admin')) return send(500, { message: 'admin endpoint temporarily unavailable' });
+      if (req.method === 'PUT' && /^\/tss\/[0-9a-f-]+$/.test(path)) {
+        const body200 = { _id: path.split('/')[2], state: 'CREATED', admin_puk: 'PUK-STUB-4242' };
+        // «Повільна» TSS — щоб два натиски встигли накластись.
+        if (stubMode === 'slow') return void setTimeout(() => send(200, body200), 400);
+        return send(200, body200);
+      }
+      if (req.method === 'GET' && /^\/tss\/[0-9a-f-]+$/.test(path)) return send(200, { _id: path.split('/')[2], state: 'INITIALIZED', serial_number: 'SER-STUB' });
       if (req.method === 'PATCH' && /^\/tss\/[0-9a-f-]+$/.test(path)) return send(200, { state: body.state });
       if (req.method === 'PATCH' && path.endsWith('/admin')) return send(200, {});
       if (req.method === 'POST' && path.endsWith('/admin/auth')) return send(200, { access_token: 'admin-token' });
@@ -523,9 +563,56 @@ try {
     const aConn = (await runWithOrganization(A, () => listConnections(A))).find((c) => c.app === 'fiskaly' && c.property_id === PROP);
     assert.strictEqual(aConn?.status, 'error');
     assert.ok(/quota exhausted/.test(aConn?.last_error ?? ''), `текст відмови вендора не дійшов: ${aConn?.last_error}`);
-    const none = await runWithOrganization(A, () => sql.row<any>('SELECT id FROM fin_fiscal_settings WHERE property_id = ?', [PROP]));
-    assert.ok(!none, 'після відмови вендора рядок налаштувань усе ж записано');
+    const none = await runWithOrganization(A, () => sql.row<any>('SELECT id FROM fin_fiscal_settings WHERE property_id = ? AND tss_id IS NOT NULL', [PROP]));
+    assert.ok(!none, 'після відмови вендора рядок налаштувань усе ж записано з tss_id');
     console.log('  ok  3.8. TSE підключається кроками quickstart, PIN/PUK під seal(), друга TSS не створюється, відмова з текстом');
+
+    // ── А1. Сирітська TSS: PUT /tss пройшов, PATCH /admin упав ────────────
+    //
+    // TSS у fiskaly вже існує і коштує. Твердження: текст відмови називає її
+    // id; наступний натиск НЕ робить другого PUT /tss, а дограває кроки на
+    // тій самій TSS і завершує підключення.
+    stubMode = 'refuse_admin';
+    await runWithOrganization(A, () => sql.run('DELETE FROM fin_fiscal_settings WHERE property_id = ?', [PROP]));
+    calls.length = 0;
+    const partial = await runWithOrganization(A, () => connectTseForProperty(A, PROP, { apiKey: 'k', apiSecret: 's' }));
+    assert.strictEqual(partial.status, 502, `часткова відмова відповіла ${partial.status}`);
+    const createdId = calls.find((c) => c.method === 'PUT' && /^\/tss\/[0-9a-f-]+$/.test(c.path))?.path.split('/')[2];
+    assert.ok(createdId, 'у сцені часткової відмови PUT /tss не відбувся — сцена не про те');
+    const orphanConn = (await runWithOrganization(A, () => listConnections(A))).find((c) => c.app === 'fiskaly' && c.property_id === PROP);
+    assert.strictEqual(orphanConn?.status, 'error');
+    assert.ok((orphanConn?.last_error ?? '').includes(createdId), `текст відмови не називає створену TSS ${createdId}: ${orphanConn?.last_error}`);
+    const orphanRow = await runWithOrganization(A, () => sql.row<any>('SELECT * FROM fin_fiscal_settings WHERE property_id = ? AND organization_id = ?', [PROP, A]));
+    assert.ok(orphanRow && orphanRow.tss_id === null, 'після часткової відмови tss_id мусить лишитись порожнім — TSS не персоналізована');
+    assert.strictEqual(orphanRow.tse_pending_tss_id, createdId, 'створена, але не завершена TSS не запамʼятована на рядку обʼєкта');
+    assert.ok(isSealed(orphanRow.tse_admin_puk), 'PUK сирітської TSS не збережено — дограти буде нічим');
+
+    stubMode = 'ok';
+    calls.length = 0;
+    const resumed = await runWithOrganization(A, () => connectTseForProperty(A, PROP, { apiKey: 'k', apiSecret: 's' }));
+    assert.strictEqual(resumed.status, 200, `повторний натиск після часткової відмови відповів ${resumed.status}: ${await resumed.text()}`);
+    assert.strictEqual(calls.filter((c) => c.method === 'PUT' && /^\/tss\/[0-9a-f-]+$/.test(c.path)).length, 0,
+      'повторний натиск створив ДРУГУ TSS замість дограти першу');
+    assert.ok(calls.some((c) => c.path === `/tss/${createdId}/admin`), 'повторний натиск не дограв персоналізацію на тій самій TSS');
+    const resumedRow = await runWithOrganization(A, () => sql.row<any>('SELECT * FROM fin_fiscal_settings WHERE property_id = ? AND organization_id = ?', [PROP, A]));
+    assert.strictEqual(resumedRow.tss_id, createdId, 'після дограння tss_id — не та TSS, що була створена');
+    assert.strictEqual(resumedRow.tse_pending_tss_id, null, 'після успіху позначка «не завершено» мусить зникнути');
+    console.log('  ok  А1. сирітська TSS названа в тексті відмови і дограна повторним натиском, без другої TSS');
+
+    // ── А2. Два одночасні натиски → одна TSS ──────────────────────────────
+    stubMode = 'slow';
+    await runWithOrganization(A, () => sql.run('DELETE FROM fin_fiscal_settings WHERE property_id = ?', [PROP]));
+    calls.length = 0;
+    const [r1, r2] = await Promise.all([
+      runWithOrganization(A, () => connectTseForProperty(A, PROP, { apiKey: 'k', apiSecret: 's' })),
+      runWithOrganization(A, () => connectTseForProperty(A, PROP, { apiKey: 'k', apiSecret: 's' })),
+    ]);
+    const statuses = [r1.status, r2.status].sort();
+    assert.deepStrictEqual(statuses, [200, 409], `два одночасні натиски відповіли ${JSON.stringify(statuses)} — має бути один 200 і один 409`);
+    assert.strictEqual(calls.filter((c) => c.method === 'PUT' && /^\/tss\/[0-9a-f-]+$/.test(c.path)).length, 1,
+      'два одночасні натиски створили дві TSS');
+    console.log('  ok  А2. два одночасні натиски — одна TSS, другий дістає 409');
+    stubMode = 'ok';
   } finally {
     await new Promise<void>((r) => stub.close(() => r()));
   }

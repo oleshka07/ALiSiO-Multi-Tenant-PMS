@@ -15,6 +15,7 @@
 import { useT } from '@core/i18n/client';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 interface Org {
   id: string;
@@ -99,7 +100,10 @@ export default function PlatformHomePage() {
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700 }}>{t('Готелі')}</h1>
-        <button onClick={logout} className="btn btn-sm btn-ghost">{t('Вийти з платформи')}</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Link href="/app/platform/apps" className="btn btn-sm btn-ghost">{t('Застосунки')}</Link>
+          <button onClick={logout} className="btn btn-sm btn-ghost">{t('Вийти з платформи')}</button>
+        </div>
       </div>
       <p style={{ color: 'var(--text-tertiary)', fontSize: 13, marginBottom: 20 }}>
         {me?.email} · {t('вхід у готель записується в його журнал змін')}

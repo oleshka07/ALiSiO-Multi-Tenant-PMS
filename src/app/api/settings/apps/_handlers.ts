@@ -21,7 +21,8 @@ import { secretsConfigured } from '@core/security/secrets';
 import { getSql } from '@core/db/async';
 import { ALL_PROPERTIES, propertyScopeFilter } from '@core/property-scope';
 import { probeMail } from '@core/mail/email';
-import { fiskalyConnect } from '@/modules/invoicing/data/fiskaly-sign-de';
+import { fiskalyConnect, fiskalyProbe, FiskalyConnectError } from '@invoicing';
+import { unseal } from '@core/integration-credentials';
 import {
   channelManagerHealth,
   listConnections,
@@ -31,12 +32,11 @@ import {
 } from '@core/app-connections';
 
 /**
- * Застосунки, у яких є «Перевірити звʼязок». Лише пошта: її клієнт живе в
- * ядрі (`core/mail/email.ts`). Клієнт fiskaly — у `modules/invoicing/data`, і
- * дверей у фасаді `@invoicing` для проби немає; правильні двері — експорт у
- * фасаді, тека сесії 1 (звіт блоку, «потрібна зміна в чужій теці»).
+ * Застосунки, у яких є «Перевірити звʼязок»: пошта (`verify()` транспорту) і
+ * fiskaly (`auth` + `GET /tss/{id}`, через фасад `@invoicing`, без
+ * транзакції — вона коштує підпису).
  */
-const PROBEABLE = new Set<string>(['smtp']);
+const PROBEABLE = new Set<string>(['smtp', 'fiskaly']);
 
 export interface AppCard extends AppEntry {
   /** Є кнопка «Перевірити звʼязок». */
@@ -57,6 +57,8 @@ export interface FiscalProperty {
   name: string;
   /** Останні чотири символи `tss_id`; `null` — TSS не підключено. */
   tss: string | null;
+  /** Створена у fiskaly, але не завершена TSS (last4) — повторний натиск дограє (А1). */
+  pending: string | null;
 }
 
 export interface HealthRow {
@@ -161,11 +163,17 @@ export const getApps = withOwner(async (_req, _ctx, actor: Actor) => {
   const sql = getSql();
   const props = await sql.rows<{ id: string; name: string }>('SELECT id, name FROM properties WHERE organization_id = ? ORDER BY created_at, id', [org]);
   const everyProperty = propertyScopeFilter(ALL_PROPERTIES, '');
-  const settings = await sql.rows<{ property_id: string; tss_id: string | null }>(
-    `SELECT property_id, tss_id FROM fin_fiscal_settings WHERE organization_id = ? AND ${everyProperty.sql}`, [org, ...everyProperty.params]);
+  const settings = await sql.rows<{ property_id: string; tss_id: string | null; tse_pending_tss_id: string | null }>(
+    `SELECT property_id, tss_id, tse_pending_tss_id FROM fin_fiscal_settings WHERE organization_id = ? AND ${everyProperty.sql}`, [org, ...everyProperty.params]);
   const fiscalProperties: FiscalProperty[] = props.map((p) => {
-    const tss = settings.find((s) => s.property_id === p.id)?.tss_id ?? null;
-    return { property_id: String(p.id), name: String(p.name), tss: tss ? `…${tss.slice(-4)}` : null };
+    const row = settings.find((s) => s.property_id === p.id);
+    const tss = row?.tss_id ?? null;
+    const pending = row?.tse_pending_tss_id ?? null;
+    return {
+      property_id: String(p.id), name: String(p.name),
+      tss: tss ? `…${tss.slice(-4)}` : null,
+      pending: !tss && pending ? `…${pending.slice(-4)}` : null,
+    };
   });
 
   return NextResponse.json({ cards, health, fiscalProperties });
@@ -216,35 +224,73 @@ export async function connectTseForProperty(
   const sql = getSql();
   const property = await sql.row<{ id: string; slug: string }>('SELECT id, slug FROM properties WHERE id = ? AND organization_id = ?', [propertyId, org]);
   if (!property) return NextResponse.json({ error: 'Не знайдено' }, { status: 404 });
-  const existing = await sql.row<{ id: string; tss_id: string | null }>('SELECT id, tss_id FROM fin_fiscal_settings WHERE property_id = ? AND organization_id = ?', [propertyId, org]);
-  if (existing?.tss_id) {
+
+  // Рядок обʼєкта є завжди — він і є замок. Без нього два одночасні натиски
+  // читали б «TSS немає» обидва і створювали дві (А2).
+  const rowId = `fs_${propertyId}`.slice(0, 60);
+  await sql.run(
+    `INSERT INTO fin_fiscal_settings (id, organization_id, property_id)
+     SELECT ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM fin_fiscal_settings WHERE property_id = ? AND organization_id = ?)`,
+    [rowId, org, propertyId, propertyId, org]);
+  const existing = await sql.row<{ id: string; tss_id: string | null; tse_pending_tss_id: string | null; tse_admin_puk: string | null }>(
+    'SELECT id, tss_id, tse_pending_tss_id, tse_admin_puk FROM fin_fiscal_settings WHERE property_id = ? AND organization_id = ?', [propertyId, org]);
+  if (!existing) return NextResponse.json({ error: 'Не знайдено' }, { status: 404 });
+  if (existing.tss_id) {
     return NextResponse.json({ error: `TSS уже підключено до цього обʼєкта: …${existing.tss_id.slice(-4)}` }, { status: 409 });
   }
 
+  // Замок — одним UPDATE з умовою: узяв той, чий UPDATE змінив рядок. Замок,
+  // старший за десять хвилин, — покинутий (процес упав посеред кроків).
+  // Обидві мітки — з JS, в одному форматі (ISO): `CURRENT_TIMESTAMP` SQLite
+  // пише `'YYYY-MM-DD HH:MM:SS'`, і рядкове порівняння з ISO-межею робило
+  // свіжий замок «старим» (пробіл < 'T') — два одночасні натиски проходили
+  // обидва. Клас INC-011: текстова мітка проти TIMESTAMPTZ.
+  const STALE_MINUTES = 10;
+  const now = new Date();
+  const claimed = await sql.run(
+    `UPDATE fin_fiscal_settings SET tse_connecting_at = ?
+      WHERE id = ? AND organization_id = ? AND tss_id IS NULL
+        AND (tse_connecting_at IS NULL OR tse_connecting_at < ?)`,
+    [now.toISOString(), existing.id, org, new Date(now.getTime() - STALE_MINUTES * 60_000).toISOString()]);
+  if (claimed.changes === 0) {
+    return NextResponse.json({ error: 'Підключення TSE вже триває — зачекайте на його завершення' }, { status: 409 });
+  }
+  const release = () => sql.run('UPDATE fin_fiscal_settings SET tse_connecting_at = NULL WHERE id = ? AND organization_id = ?', [existing.id, org]);
+
   const serialNumber = `ALISIO-${String(property.slug)}`;
+  // Сирітська TSS (А1): створена раніше, не завершена — дограємо її, не
+  // створюємо другу. PUK для цього був збережений одразу після PUT /tss.
+  const pendingPuk = existing.tse_pending_tss_id ? unseal(existing.tse_admin_puk) : null;
+  const resume = existing.tse_pending_tss_id && pendingPuk ? { tssId: existing.tse_pending_tss_id, adminPuk: pendingPuk } : undefined;
+
   let tss;
   try {
-    tss = await fiskalyConnect(creds, { propertyId, serialNumber });
+    tss = await fiskalyConnect(creds, { propertyId, serialNumber }, {
+      resume,
+      onCreated: async (tssId, adminPuk) => {
+        // Щойно TSS існує у вендора — вона існує і в нас, ще до персоналізації:
+        // інакше падіння наступного кроку лишає TSS, про яку ніхто не знає.
+        await sql.run(
+          'UPDATE fin_fiscal_settings SET tse_pending_tss_id = ?, tse_admin_puk = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND organization_id = ?',
+          [tssId, seal(adminPuk), existing.id, org]);
+      },
+    });
   } catch (e) {
     // Відмова вендора вже лежить у app_connections із текстом (reported()) —
-    // її і показує картка. Клієнту — рід відмови, не e.message (інваріант 6).
+    // і з id створеної TSS, якщо вона є. Клієнту — рід відмови, не e.message
+    // (інваріант 6).
     console.error(`[apps] fiskaly connect @ ${org}/${propertyId}:`, e instanceof Error ? e.message : e);
-    return NextResponse.json({ error: 'fiskaly відмовив — текст на картці застосунку' }, { status: 502 });
+    await release();
+    const orphan = e instanceof FiskalyConnectError && e.tssId ? ` TSS …${e.tssId.slice(-4)} створено, повторний натиск дограє підключення.` : '';
+    return NextResponse.json({ error: `fiskaly відмовив — текст на картці застосунку.${orphan}` }, { status: 502 });
   }
 
-  const pin = seal(tss.adminPin);
-  const puk = seal(tss.adminPuk);
-  if (existing) {
-    await sql.run(
-      `UPDATE fin_fiscal_settings SET tss_id = ?, tse_client_id = ?, recording_system_serial = ?, tse_admin_pin = ?, tse_admin_puk = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND organization_id = ?`,
-      [tss.tssId, tss.clientId, serialNumber, pin, puk, existing.id, org]);
-  } else {
-    await sql.run(
-      `INSERT INTO fin_fiscal_settings (id, organization_id, property_id, tss_id, tse_client_id, recording_system_serial, tse_admin_pin, tse_admin_puk)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [`fs_${propertyId}`.slice(0, 60), org, propertyId, tss.tssId, tss.clientId, serialNumber, pin, puk]);
-  }
+  await sql.run(
+    `UPDATE fin_fiscal_settings
+        SET tss_id = ?, tse_client_id = ?, recording_system_serial = ?, tse_admin_pin = ?, tse_admin_puk = ?,
+            tse_pending_tss_id = NULL, tse_connecting_at = NULL, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND organization_id = ?`,
+    [tss.tssId, tss.clientId, serialNumber, seal(tss.adminPin), seal(tss.adminPuk), existing.id, org]);
   return NextResponse.json({ connected: true, propertyId, tss: `…${tss.tssId.slice(-4)}`, serialNumber });
 }
 
@@ -277,7 +323,24 @@ export const probeApp = withOwner(async (_req, ctx: { params: Promise<{ id: stri
     return NextResponse.json({ error: 'Цей застосунок не перевіряється кнопкою' }, { status: 409 });
   }
   try {
-    await probeMail(org);
+    if (id === 'smtp') {
+      await probeMail(org);
+    } else {
+      const creds = await integrationCredentials('fiskaly', org);
+      if (!creds?.clientId || !creds.clientSecret) {
+        return NextResponse.json({ error: 'Спочатку збережіть ключі fiskaly' }, { status: 409 });
+      }
+      // Підключення TSE — на обʼєкті (З11): обʼєкт із названою TSS, якщо є;
+      // інакше перший обʼєкт готелю — до TSS справа не дійде, але відповідь
+      // «ключі відхилено» належить конкретному готелю.
+      const sql = getSql();
+      const withTss = await sql.row<{ property_id: string; tss_id: string }>(
+        `SELECT property_id, tss_id FROM fin_fiscal_settings WHERE organization_id = ? AND tss_id IS NOT NULL AND ${propertyScopeFilter(ALL_PROPERTIES, '').sql} ORDER BY property_id LIMIT 1`, [org]);
+      const property = withTss?.property_id
+        ?? (await sql.row<{ id: string }>('SELECT id FROM properties WHERE organization_id = ? ORDER BY created_at, id LIMIT 1', [org]))?.id;
+      if (!property) return NextResponse.json({ error: 'У готелю немає жодного обʼєкта' }, { status: 409 });
+      await fiskalyProbe({ apiKey: creds.clientId, apiSecret: creds.clientSecret, tssId: withTss?.tss_id ?? '' }, String(property));
+    }
   } catch (e) {
     // Відмова транспорту — не помилка сервера: вона вже лежить у app_connections
     // з текстом, і саме її має побачити готель. У відповідь іде рядок стану, а
