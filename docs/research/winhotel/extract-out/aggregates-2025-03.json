@@ -1,0 +1,162 @@
+{
+  "snapshot": {
+    "file": "WINHOTEL.fbk",
+    "mode": "gbak"
+  },
+  "extractedAt": "2026-09-10T11:33:40.192Z",
+  "entities": {
+    "address_types": 2,
+    "addresses": 34795,
+    "age_bands": 2,
+    "booking_refs": 14353,
+    "bookings": 49282,
+    "cash_book": 206,
+    "consent_types": 3,
+    "consents": 1344,
+    "day_closings": 1386,
+    "folio_lines": 65425,
+    "invoice_ledger": 65396,
+    "invoice_lines": 32915,
+    "invoices": 33059,
+    "mandant": 1,
+    "occupancy": 21874,
+    "payment_methods": 24,
+    "payments": 26088,
+    "price_splits": 240,
+    "prices": 229,
+    "rate_codes": 10,
+    "seasons": 23,
+    "segments": 10,
+    "service_groups": 9,
+    "services": 132,
+    "tax_codes": 7,
+    "unit_types": 9,
+    "units": 36
+  },
+  "numbers": {
+    "snapshot_max_invoice_at": {
+      "label": "знімок: max RECHNUNG.DATUM_ZEIT",
+      "value": "2025-03-11 08:11:08.1440"
+    },
+    "snapshot_max_booking_created": {
+      "label": "знімок: max GASTKONT.ERF_DATUM",
+      "value": "2025-03-11"
+    },
+    "invoice_no_generator": {
+      "label": "остання Rechnung-Nr (генератор)",
+      "value": "18148"
+    },
+    "invoice_no_max_live": {
+      "label": "остання Rechnung-Nr (max, живі), кількість",
+      "value": "18148 33047"
+    },
+    "invoices_in_snapshot_year": {
+      "label": "фактур у році знімка (живі)",
+      "value": "568"
+    },
+    "invoices_storno": {
+      "label": "фактур сторнованих",
+      "value": "711"
+    },
+    "bookings_live": {
+      "label": "броней (GASTKONT) живих",
+      "value": "21857"
+    },
+    "bookings_future": {
+      "label": "броней із заїздом після знімка",
+      "value": "912"
+    },
+    "bookings_in_snapshot_year": {
+      "label": "броней із заїздом у році знімка",
+      "value": "1378"
+    },
+    "booking_status_mix": {
+      "label": "стани броней BUCH/CI/TA (код×N)",
+      "value": "0 0 1001 27423 0 2 500 20897 0 0 1000 1541 0 0 1500 1271 0 0 0 926 100 0 1001 497 0 1 1001 216 0 2 1000 63 100 0 1000 30 0 0 1111 29 100 0 0 15 0 1 0 10 100 2 500 9 0 1 1500 8 0 1 1111 5 0 1 1000 1"
+    },
+    "occupancy_junk_dates": {
+      "label": "BELEGUNG сміттєвих дат (<1900)",
+      "value": "1"
+    },
+    "addresses_live": {
+      "label": "адрес живих",
+      "value": "34795"
+    },
+    "addresses_with_debtor_no": {
+      "label": "адрес з номером дебітора (N, min, max)",
+      "value": "17461 1421 607172"
+    },
+    "addresses_by_type": {
+      "label": "адрес за типом ADR_WAHL (код×N)",
+      "value": "<null> 46 0 32606 1 2143"
+    },
+    "addresses_anonymised": {
+      "label": "адрес анонімізованих (DS_VORGENOMMEN×N)",
+      "value": "<null> 7180 0 28763 1 1145"
+    },
+    "units_real_pseudo": {
+      "label": "номерів справжніх / псевдо",
+      "value": "31 5"
+    },
+    "unit_types_real_pseudo": {
+      "label": "категорій справжніх / псевдо",
+      "value": "7 2"
+    },
+    "folio_lines_live": {
+      "label": "рядків рахунку (BUCHKONT) живих, сума",
+      "value": "65425 3317.2064"
+    },
+    "payments_live": {
+      "label": "платежів живих, сума",
+      "value": "26088 2872.9012"
+    },
+    "payments_debtor": {
+      "label": "платежів дебіторських (M_DEBITOR>0), сума",
+      "value": "10028 900.3294"
+    },
+    "open_guest_balances": {
+      "label": "відкриті позиції по рахунках гостей (виїхали, offen<>0): N, сума",
+      "value": "6350 3878.082"
+    },
+    "invoice_ledger_by_status": {
+      "label": "книга вихідних рахунків за DB_STATUS (код×N×сума)",
+      "value": "0 65396 3006.4223"
+    },
+    "vouchers_sold": {
+      "label": "ваучерів продано (послуги 7/55/95): N, сума",
+      "value": "16 2.1398"
+    },
+    "vouchers_redeemed": {
+      "label": "ваучерів погашено (спосіб оплати Gutschein): N, сума",
+      "value": "4 0.7370"
+    },
+    "deposits_on_bookings": {
+      "label": "депозити на бронях (ANZA_BETRAG>0): N, сума",
+      "value": "663 92.4300"
+    },
+    "deposits_on_future_bookings": {
+      "label": "депозити на майбутніх бронях: N, сума",
+      "value": "0 <null>"
+    },
+    "last_day_closing": {
+      "label": "останнє денне закриття: дата, сальдо",
+      "value": "2025-03-11 0.0000"
+    },
+    "seasons_in_snapshot_year": {
+      "label": "сезонів на рік знімка",
+      "value": "4"
+    },
+    "prices_live": {
+      "label": "цінових рядків живих",
+      "value": "229"
+    },
+    "tax_codes_live": {
+      "label": "ставок ПДВ живих",
+      "value": "7"
+    },
+    "payment_methods_live": {
+      "label": "способів оплати живих",
+      "value": "13"
+    }
+  }
+}
