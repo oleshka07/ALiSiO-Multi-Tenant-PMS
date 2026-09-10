@@ -440,7 +440,22 @@ function buildSchema(database: any) {
       infants INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'confirmed' CHECK (status IN ('draft', 'tentative', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show')),
       payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'payment_requested', 'partial', 'prepaid', 'paid')),
-      source TEXT NOT NULL DEFAULT 'direct' CHECK (source IN ('direct', 'phone', 'whatsapp', 'booking_com', 'airbnb', 'other_ota')),
+      -- kiosk_walkin — гість забронював сам у власному онлайн-модулі готелю і
+      -- назвався на терміналі; бронь попередня, її підхопить денна дельта.
+      --
+      -- Слово стоїть тут, хоч цього CHECK-у на живій базі НЕМАЄ: міграція
+      -- «remove CHECK constraint from reservations.source» нижче знімає його з
+      -- КОЖНОЇ бази — і з мігрованої, і зі свіжої, за секунду після цього
+      -- CREATE. Перевірено прогоном на порожній теці: у щойно народженої бази
+      -- CHECK-у на source немає. На Postgres його не було ніколи (жодна
+      -- міграція не додає, у schema.sql його теж немає).
+      --
+      -- Тобто перелік родів походження сьогодні тримає ПИСАЧ, а не база, — як
+      -- property_type (О9). Слово лишається в цьому рядку, щоб перелік читався
+      -- з одного місця; повертати сам CHECK — окреме рішення про живі дані,
+      -- і воно не побічний ефект блоку «Кіоск». Бектиків у коментарях цього
+      -- блоку немає навмисно: уся схема — один шаблонний рядок JS.
+      source TEXT NOT NULL DEFAULT 'direct' CHECK (source IN ('direct', 'phone', 'whatsapp', 'booking_com', 'airbnb', 'other_ota', 'kiosk_walkin')),
       total_price REAL NOT NULL DEFAULT 0,
       currency TEXT NOT NULL DEFAULT 'CZK',
       notes TEXT,

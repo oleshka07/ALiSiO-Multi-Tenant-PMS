@@ -51,6 +51,9 @@ const devices = await import('./data/devices.repo.ts');
 const tokens = await import('./data/device-token.ts');
 const pairing = await import('./api/pairing.handlers.ts');
 const session = await import('./api/session.handlers.ts');
+const stay = await import('./api/stay.handlers.ts');
+const walkin = await import('./api/walkin.handlers.ts');
+const search = await import('./domain/search.ts');
 
 const sql = getSql();
 const A = '__kiosk_check__a';
@@ -378,6 +381,157 @@ try {
   for (let i = 0; i < 125 && last === 200; i += 1) last = (await ask(rate.token)).status;
   assert.strictEqual(last, 429, `ліміт на пристрої не спрацював: останній статус ${last}`);
   console.log('  ok  12. 120 викликів на хвилину — далі 429, і рахується ПРИСТРІЙ');
+
+
+  // ── 13. Пошук: один чинник → 400, два → знаходить, поза вікном → «немає» ─
+  //
+  // Токен пристрою тут свій — попередній відкликано сценою 9, і сцена, яка
+  // цього не помітила б, доводила б рівно нічого.
+  const live = await runWithOrganization(A, () => devices.createPairing({ organizationId: A, propertyId: P1, name: 'Find' }));
+  res = await pair(live.code);
+  const dev = await res.json() as { token: string; deviceId: string };
+  const post = (path: string, payload: unknown, token = dev.token) =>
+    new Request(`http://alisio.test/api/apps/kiosk/${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify(payload),
+    });
+
+  // Бронь на СЬОГОДНІ — щоб вона потрапляла у вікно ±1 день.
+  await runWithOrganization(A, () => seedStay(A, P1, 'kc_find', { unitId: `${P1}_u1`, paymentStatus: 'paid' }));
+  await runWithOrganization(A, () => sql.run(
+    'UPDATE reservations SET check_in = ?, check_out = ? WHERE id = ?', [day(0), day(1), 'kc_find']));
+  // Своє прізвище: решта засіву теж «Muster», і сцена вікна перевіряла б
+  // випадкового сусіда замість тієї броні, яку рухає.
+  await runWithOrganization(A, () => sql.run(
+    "UPDATE guests SET last_name = 'Fenster' WHERE id = ?", ['kc_find_g']));
+
+  let found = await stay.findStay(post('find', { lastName: 'Fenster' }));
+  assert.strictEqual(found.status, 400, `один чинник: очікували 400, отримали ${found.status}`);
+  found = await stay.findStay(post('find', { lastName: 'Fenster', checkIn: day(0) }));
+  assert.strictEqual(found.status, 200, `два чинники: очікували 200, отримали ${found.status}`);
+  let body = await found.json() as { found: boolean; stay?: { reservationId: string; guest: string }; reason?: string };
+  assert.strictEqual(body.found, true, `два чинники не знайшли: ${JSON.stringify(body)}`);
+  assert.strictEqual(body.stay?.reservationId, 'kc_find', 'знайшлась не та бронь');
+  // Імʼя на екрані — маскою, і повного прізвища в відповіді немає ЗОВСІМ.
+  assert.strictEqual(body.stay?.guest, 'M… F…', `імʼя не замасковане: ${body.stay?.guest}`);
+  assert.ok(!JSON.stringify(body).includes('Fenster'), 'повне прізвище поїхало на екран');
+  console.log('  ok  13. один чинник — 400; два — знаходять; імʼя маскою, повного прізвища у відповіді немає');
+
+  // ── 14. Вікно ±1 день: бронь на майбутнє на терміналі не існує ───────────
+  await runWithOrganization(A, () => sql.run(
+    'UPDATE reservations SET check_in = ?, check_out = ? WHERE id = ?', [day(30), day(31), 'kc_find']));
+  found = await stay.findStay(post('find', { lastName: 'Fenster', checkIn: day(30) }));
+  body = await found.json() as any;
+  assert.strictEqual(body.found, false, `бронь за 30 днів знайшлась: ${JSON.stringify(body)}`);
+  assert.strictEqual(body.reason, 'not_found', `очікували not_found, отримали ${body.reason}`);
+  // І межа вікна — рівно доба: завтра знаходиться, післязавтра ні.
+  await runWithOrganization(A, () => sql.run(
+    'UPDATE reservations SET check_in = ?, check_out = ? WHERE id = ?', [day(1), day(2), 'kc_find']));
+  found = await stay.findStay(post('find', { lastName: 'Fenster', checkIn: day(1) }));
+  assert.strictEqual(((await found.json()) as any).found, true, 'заїзд завтра не знайшовся — вікно вужче за добу');
+  await runWithOrganization(A, () => sql.run(
+    'UPDATE reservations SET check_in = ?, check_out = ? WHERE id = ?', [day(2), day(3), 'kc_find']));
+  found = await stay.findStay(post('find', { lastName: 'Fenster', checkIn: day(2) }));
+  assert.strictEqual(((await found.json()) as any).found, false, 'заїзд післязавтра знайшовся — вікно ширше за добу');
+  console.log('  ok  14. вікно ±1 день: завтра знаходиться, післязавтра і за 30 днів — ні');
+
+  // ── 15. Два збіги → третій чинник, і скільки їх — не кажеться ───────────
+  await runWithOrganization(A, () => sql.run(
+    'UPDATE reservations SET check_in = ?, check_out = ? WHERE id = ?', [day(0), day(1), 'kc_find']));
+  await runWithOrganization(A, () => seedStay(A, P1, 'kc_twin', { unitId: `${P1}_u2`, paymentStatus: 'paid' }));
+  await runWithOrganization(A, () => sql.run(
+    'UPDATE reservations SET check_in = ?, check_out = ? WHERE id = ?', [day(0), day(1), 'kc_twin']));
+  await runWithOrganization(A, () => sql.run(
+    "UPDATE guests SET last_name = 'Fenster' WHERE id = ?", ['kc_twin_g']));
+  found = await stay.findStay(post('find', { lastName: 'Fenster', checkIn: day(0) }));
+  body = await found.json() as any;
+  assert.strictEqual(body.found, false, 'два збіги віддали одну бронь');
+  assert.strictEqual(body.reason, 'need_more', `очікували need_more, отримали ${body.reason}`);
+  assert.ok(!JSON.stringify(body).includes('kc_find') && !JSON.stringify(body).includes('kc_twin'),
+    'на два збіги поїхав список броней');
+  // Третій чинник розводить їх.
+  await runWithOrganization(A, () => sql.run(
+    "UPDATE guests SET email = 'twin@example.test' WHERE id = ?", ['kc_twin_g']));
+  found = await stay.findStay(post('find', { lastName: 'Fenster', checkIn: day(0), email: 'twin@example.test' }));
+  body = await found.json() as any;
+  assert.strictEqual(body.stay?.reservationId, 'kc_twin', `третій чинник не розвів: ${JSON.stringify(body)}`);
+  console.log('  ok  15. два збіги — need_more без списку; третій чинник розводить');
+
+  // ── 16. Заселення терміналом: одна подія на два натиски ─────────────────
+  await runWithOrganization(A, () => policy(P1, 'allow_pay_later'));
+  await runWithOrganization(A, () => clean(`${P1}_u2`, 'clean'));
+  const eventsBefore = await eventCount(A);
+  let ci = await stay.checkInStay(post('checkin', { reservationId: 'kc_twin' }));
+  text = await ci.text();
+  assert.strictEqual(ci.status, 200, `заселення: ${ci.status} ${text}`);
+  const first = await eventCount(A);
+  ci = await stay.checkInStay(post('checkin', { reservationId: 'kc_twin' }));
+  assert.strictEqual(ci.status, 200, 'повторне заселення відмовило');
+  const key2 = await ci.json() as { unitName: string | null; lockCode: string | null };
+  assert.strictEqual(key2.lockCode, '4872', `код скриньки: ${JSON.stringify(key2)}`);
+  assert.strictEqual(await eventCount(A), first,
+    `повторне «заселити» дописало подію: було ${first}, стало ${await eventCount(A)}`);
+  assert.ok(first > eventsBefore, 'перше заселення події не написало — сцена нічого не доводить');
+  console.log('  ok  16. заселення терміналом дає номер і код; друге натискання — та сама відповідь і ЖОДНОЇ нової події');
+
+  // ── 17. Виселення: фаза книги вирішує, що піде листом ───────────────────
+  await runWithOrganization(A, () => sql.run(
+    "UPDATE properties SET checkout_balance_policy = 'none', system_of_record = 'external' WHERE id = ?", [P1]));
+  let co = await stay.checkOutStay(post('checkout', { reservationId: 'kc_twin' }));
+  text = await co.text();
+  assert.strictEqual(co.status, 200, `виселення external: ${co.status} ${text}`);
+  let phaseOut = JSON.parse(text) as { phase: string; invoiceExpected: boolean };
+  assert.strictEqual(phaseOut.phase, 'external');
+  assert.strictEqual(phaseOut.invoiceExpected, false, 'у фазі external кіоск обіцяє фактуру');
+  const elsewhere = await runWithOrganization(A, () => sql.row<{ n: number }>(
+    "SELECT COUNT(*) AS n FROM kiosk_events WHERE organization_id = ? AND kind = 'invoice_elsewhere'", [A]));
+  assert.strictEqual(Number(elsewhere?.n), 1, 'рядка «виставити фактуру у чужій системі» немає');
+  // Друга вісь: у фазі `alisio` фактура очікується, і рядка для рецепції немає.
+  await runWithOrganization(A, () => sql.run(
+    "UPDATE properties SET system_of_record = 'alisio' WHERE id = ?", [P1]));
+  co = await stay.checkOutStay(post('checkout', { reservationId: 'kc_find' }));
+  phaseOut = await co.json() as any;
+  assert.strictEqual(phaseOut.phase, 'alisio');
+  assert.strictEqual(phaseOut.invoiceExpected, true, 'у фазі alisio фактури не буде');
+  const elsewhere2 = await runWithOrganization(A, () => sql.row<{ n: number }>(
+    "SELECT COUNT(*) AS n FROM kiosk_events WHERE organization_id = ? AND kind = 'invoice_elsewhere'", [A]));
+  assert.strictEqual(Number(elsewhere2?.n), 1, 'у фазі alisio теж зʼявився рядок для рецепції');
+  console.log('  ok  17. external — без фактури і з рядком рецепції; alisio — фактура, рядка немає');
+
+  // ── 18. Walk-in: та сама пара двічі → одна бронь; без номера → 400 ──────
+  let wi = await walkin.claimWalkin(post('walkin', { lastName: 'Neu', checkIn: day(0) }));
+  assert.strictEqual(wi.status, 400, `walk-in без номера підтвердження: очікували 400, отримали ${wi.status}`);
+  wi = await walkin.claimWalkin(post('walkin', { confirmation: '55123', lastName: 'Neu', checkIn: day(0) }));
+  text = await wi.text();
+  assert.strictEqual(wi.status, 200, `walk-in: ${wi.status} ${text}`);
+  const claimed = JSON.parse(text) as { reservationId: string; created: boolean };
+  assert.strictEqual(claimed.created, true, 'перший walk-in не створив броні');
+  wi = await walkin.claimWalkin(post('walkin', { confirmation: '55123', lastName: 'Neu', checkIn: day(0) }));
+  const again2 = await wi.json() as { reservationId: string; created: boolean };
+  assert.strictEqual(again2.created, false, 'друге натискання створило другу бронь');
+  assert.strictEqual(again2.reservationId, claimed.reservationId, 'друге натискання дало іншу бронь');
+  const walkinRows = await runWithOrganization(A, () => sql.row<{ n: number }>(
+    "SELECT COUNT(*) AS n FROM reservations WHERE organization_id = ? AND source = 'kiosk_walkin'", [A]));
+  assert.strictEqual(Number(walkinRows?.n), 1, `броней walk-in ${walkinRows?.n}, а має бути одна`);
+  const ref = await runWithOrganization(A, () => sql.row<{ external_ref: string; status: string }>(
+    'SELECT external_ref, status FROM reservations WHERE id = ?', [claimed.reservationId]));
+  assert.strictEqual(ref?.external_ref, 'winhotel-ob:55123', `ключ походження: ${ref?.external_ref}`);
+  assert.strictEqual(ref?.status, 'tentative', `walk-in бронь має статус ${ref?.status}`);
+  console.log('  ok  18. walk-in: без номера — 400; та сама пара двічі — одна бронь tentative з ключем чужої системи');
+
+  // ── 19. Чужий рахунок і чужий корпус — уже через ХЕНДЛЕРИ ───────────────
+  //
+  // Сцена 8 доводила це на фасадах. Тепер є код, який приймає id ззовні, і
+  // рецензія А просила показати її червоною ще раз саме на ньому.
+  const alienStay = await stay.stayCard(post('stay', { reservationId: 'kc_b_stay' }));
+  assert.strictEqual(alienStay.status, 404, `бронь B хендлером A: очікували 404, отримали ${alienStay.status}`);
+  const alienHouse = await stay.stayCard(post('stay', { reservationId: 'kc_other_house' }));
+  assert.strictEqual(alienHouse.status, 404, `бронь корпусу 2: очікували 404, отримали ${alienHouse.status}`);
+  const alienIn = await stay.checkInStay(post('checkin', { reservationId: 'kc_other_house' }));
+  assert.strictEqual(alienIn.status, 404, `заселення в корпусі 2: очікували 404, отримали ${alienIn.status}`);
+  assert.strictEqual(await eventCount(B), 0, 'у журналі B зʼявилась подія від термінала A');
+  console.log('  ok  19. хендлери: бронь чужого рахунку і чужого корпусу — 404, чужий журнал порожній');
 
   console.log('  ok  kiosk: термінал робить лише своє — свій рахунок, свій корпус, свою бронь');
 } finally {
