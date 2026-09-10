@@ -506,6 +506,8 @@ CREATE TABLE "companies" (
   "email" TEXT,
   "phone" TEXT,
   "notes" TEXT,
+  "debtor_no" BIGINT,
+  "payment_terms_days" BIGINT,
   "archived_at" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
@@ -848,6 +850,7 @@ CREATE TABLE "fin_folios" (
   "payer_address" TEXT,
   "payer_vat_no" TEXT,
   "payer_debtor_no" TEXT,
+  "company_id" TEXT,
   "property_id" TEXT,
   "status" TEXT DEFAULT 'open' NOT NULL,
   "label" TEXT,
@@ -1467,6 +1470,7 @@ CREATE TABLE "organizations" (
   "invoice_email" TEXT,
   "website" TEXT,
   "ocr_cloud_fallback" BIGINT DEFAULT 0 NOT NULL,
+  "next_debtor_no" BIGINT DEFAULT 1 NOT NULL,
   PRIMARY KEY ("id"),
   UNIQUE ("slug")
 );
@@ -2436,9 +2440,11 @@ ALTER TABLE "fin_folio_payments" ADD CONSTRAINT "fk_fin_folio_payments_property_
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE SET NULL;
 ALTER TABLE "fin_folio_payments" ADD CONSTRAINT "fk_fin_folio_payments_organization_id_4"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "fin_folios" ADD CONSTRAINT "fk_fin_folios_reservation_id_1"
+ALTER TABLE "fin_folios" ADD CONSTRAINT "fk_fin_folios_company_id_1"
+  FOREIGN KEY ("company_id") REFERENCES "companies" ("id") ON DELETE SET NULL;
+ALTER TABLE "fin_folios" ADD CONSTRAINT "fk_fin_folios_reservation_id_2"
   FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE SET NULL;
-ALTER TABLE "fin_folios" ADD CONSTRAINT "fk_fin_folios_organization_id_2"
+ALTER TABLE "fin_folios" ADD CONSTRAINT "fk_fin_folios_organization_id_3"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "fin_invoice_lines" ADD CONSTRAINT "fk_fin_invoice_lines_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
@@ -2821,6 +2827,7 @@ CREATE INDEX "idx_cm_outbox_org" ON "cm_outbox" ("organization_id");
 CREATE INDEX "idx_cm_outbox_pending" ON "cm_outbox" ("connection_id", "kind") WHERE sent_at IS NULL AND claimed_at IS NULL;
 CREATE INDEX "idx_cm_sends_connection" ON "cm_sends" ("connection_id", "sent_at");
 CREATE INDEX "idx_cm_sends_org" ON "cm_sends" ("organization_id");
+CREATE UNIQUE INDEX "idx_companies_debtor_no" ON "companies" ("organization_id", "debtor_no") WHERE debtor_no IS NOT NULL ;
 CREATE INDEX "idx_companies_org" ON "companies" ("organization_id", "name");
 CREATE UNIQUE INDEX "idx_companies_org_business_id" ON "companies" ("organization_id", "business_id") WHERE business_id IS NOT NULL;
 CREATE INDEX "idx_consent_texts_org" ON "consent_texts" ("organization_id");
@@ -2856,6 +2863,7 @@ CREATE INDEX "idx_fin_folio_items_invoice" ON "fin_folio_items" ("invoice_id");
 CREATE INDEX "idx_fin_folio_items_order" ON "fin_folio_items" ("service_order_id");
 CREATE INDEX "idx_fin_folio_payments_folio" ON "fin_folio_payments" ("folio_id");
 CREATE INDEX "idx_fin_folio_payments_org" ON "fin_folio_payments" ("organization_id", "paid_at");
+CREATE INDEX "idx_fin_folios_company" ON "fin_folios" ("organization_id", "company_id");
 CREATE INDEX "idx_fin_folios_org" ON "fin_folios" ("organization_id", "status");
 CREATE INDEX "idx_fin_folios_res" ON "fin_folios" ("reservation_id");
 CREATE INDEX "idx_fin_invoice_lines_invoice" ON "fin_invoice_lines" ("invoice_id", "position");

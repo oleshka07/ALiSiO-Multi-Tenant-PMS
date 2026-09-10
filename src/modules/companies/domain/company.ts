@@ -20,15 +20,22 @@ export interface CompanyFields {
   email: string | null;
   phone: string | null;
   notes: string | null;
+  /**
+   * Скільки днів фірмі на оплату. Звідси виводиться `due_date` фактури —
+   * саме виводиться, а не вводиться руками (Д58): введений строк розійшовся б
+   * з умовами, записаними на самій фірмі, і ніхто б цього не помітив до
+   * першого прострочення. `null` — умов не названо, і тоді строку немає.
+   */
+  payment_terms_days: number | null;
 }
 
 export const COMPANY_FIELDS = [
   'name', 'business_id', 'vat_id', 'registry_no',
   'address_street', 'address_city', 'address_zip', 'address_country',
-  'bank_name', 'iban', 'bic', 'email', 'phone', 'notes',
+  'bank_name', 'iban', 'bic', 'email', 'phone', 'notes', 'payment_terms_days',
 ] as const satisfies readonly (keyof CompanyFields)[];
 
-export type InvalidCompanyReason = 'name_required' | 'country_format';
+export type InvalidCompanyReason = 'name_required' | 'country_format' | 'payment_terms_days';
 
 // Без параметр-властивості в конструкторі: node у strip-only режимі (сцени
 // під голим node) такого синтаксису не приймає.
@@ -67,6 +74,18 @@ export function normalizeCompany(body: Record<string, unknown>, partial = false)
     if (key === 'name') {
       if (v === null) throw new InvalidCompany('name_required');
       out.name = v;
+      continue;
+    }
+    // Строк оплати — ЧИСЛО, і воно перевіряється тут, а не мовчки лягає
+    // рядком: `'тридцять'` у колонці днів дало б фактуру без строку і
+    // порожню графу в нагадуванні, а не помилку.
+    if (key === 'payment_terms_days') {
+      if (v === null) { out.payment_terms_days = null; continue; }
+      const days = Number(v);
+      if (!Number.isInteger(days) || days < 0 || days > 365) {
+        throw new InvalidCompany('payment_terms_days');
+      }
+      out.payment_terms_days = days;
       continue;
     }
     (out as Record<string, string | null>)[key] = v;

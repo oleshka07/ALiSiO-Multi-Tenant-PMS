@@ -94,8 +94,20 @@ try {
   assert.ok(await repo.setCompanyArchived(ORG_A, a2, false));
   assert.strictEqual((await repo.listCompanies(ORG_A)).length, 3, 'повернута з архіву');
   const payer = await companyPayer(ORG_A, a1);
-  assert.deepStrictEqual([payer!.payer_debtor_no, payer!.payer_vat_no, payer!.payer_address], ['12345678', null, 'Národní 1, 110 00 Praha, CZ']);
+  // Номер дебітора і реєстраційний номер — ДВА РІЗНІ числа під двома іменами
+  // (Д56). Фікстура це й розрізняє: `business_id` тут '12345678', а номер
+  // дебітора видав лічильник, тож жодне з двох тверджень не зелене від того,
+  // що поля переплутані. До 0140 тут стояв реєстраційний номер, і саме це
+  // твердження почервоніло, коли мапу виправили.
+  const issued = (await repo.getCompany(ORG_A, a1))!.debtor_no;
+  assert.strictEqual(typeof issued, 'number', 'номер дебітора виданий числом');
+  assert.notStrictEqual(String(issued), '12345678', 'і це НЕ реєстраційний номер');
+  assert.deepStrictEqual(
+    [payer!.payer_debtor_no, payer!.payer_vat_no, payer!.payer_address, payer!.invoice_company_ico],
+    [String(issued), null, 'Národní 1, 110 00 Praha, CZ', '12345678'],
+    'дебітор — виданий номер, реєстраційний їде своїм іменем');
   console.log('  ok  фільтри «є контакти / є банк», пошук за ID, архів ховає зі списку і не з платника');
+  console.log('  ok  платник: номер дебітора — виданий готелем, реєстраційний — окремим полем');
 
   await assert.rejects(repo.updateCompany(ORG_A, a3, { business_id: '12345678' }),
     (e: any) => e instanceof repo.DuplicateBusinessId, 'зміна ID на зайнятий — дубль');
