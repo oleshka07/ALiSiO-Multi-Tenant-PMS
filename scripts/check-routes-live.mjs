@@ -743,6 +743,18 @@ async function main() {
     // термінал обмінює його на токен → токен віддає сесію → сесія називає
     // будинок і смугу → пошук з одним чинником відмовляє, з двома відповідає.
     // Кожна ланка тут — окреме твердження, бо кожна ламається окремо.
+    // Сам ЕКРАН — 200, а не 307 на вхід оператора.
+    //
+    // Це не зайве твердження: саме так воно й було зламане до 10.09.2026.
+    // `/api/apps/kiosk/` стояв у публічному переліку `proxy.ts`, а сторінка
+    // `/kiosk` — ні, і термінал у холі показував би гостю форму входу. Жоден
+    // статичний гейт цього не бачить за побудовою: `check-public-routes` і
+    // `check-route-guards` читають `src/app/api`, СТОРІНОК вони не знають.
+    // Спіймав дим по живій збірці, тому твердження живе тут.
+    const screenRes = await fetch(`${BASE}/kiosk`, { redirect: 'manual' });
+    claim('кіоск', screenRes.status === 200,
+      `екран /kiosk віддається гостю без сесії (${screenRes.status}; 307 = перенаправлення на вхід оператора)`);
+
     const pairRes = await call(cookie, '/api/apps/kiosk/admin/pairings', {
       method: 'POST',
       body: JSON.stringify({ propertyId: property.id, name: 'Routes probe terminal' }),

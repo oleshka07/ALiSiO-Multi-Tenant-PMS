@@ -51,6 +51,19 @@ const PUBLIC_PREFIXES = [
   '/app/platform/login', // its login page
   '/app/login', // login page — the only public path under /app
   '/login', // legacy /login, redirects to /app/login
+  // Сам ЕКРАН термінала, а не лише його маршрути.
+  //
+  // Спіймано димом на живій збірці 10.09.2026: `/api/apps/kiosk/` тут уже
+  // стояв, а сторінка — ні, і `/kiosk` відповідав 307 на `/app/login`. Тобто
+  // термінал у холі показував би гостю форму входу оператора, а жоден гейт
+  // цього не бачить за побудовою: `check-public-routes` і `check-route-guards`
+  // читають `src/app/api`, сторінок вони не знають. Той самий клас, що
+  // `/widget/` нижче: там 307 на login віддавали embed-скрипти.
+  //
+  // Публічність тут — не поступка, а призначення: біля екрана стоїть ГІСТЬ,
+  // сесії немає за визначенням. Сама сторінка не читає нічого — усе, що вона
+  // показує, приходить із маршрутів за токеном пристрою.
+  '/kiosk',
   '/guest/', // guest portal page
   '/report/', // published partner report — the 64-hex token in the URL is the credential
   '/privacy', // the privacy policy — a legal page guests must reach without a login
