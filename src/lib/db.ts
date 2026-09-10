@@ -319,9 +319,59 @@ function buildSchema(database: any) {
       document_number TEXT,
       date_of_birth TEXT,
       notes TEXT,
+      -- Кого лишили, коли цей рядок злили дублікатом (INC-300, міграція 0300).
+      -- Рядок злитого гостя НЕ ВИДАЛЯЄТЬСЯ: посилання на нього лежать у
+      -- виданих документах і в чужих системах, і «такого гостя немає» — гірша
+      -- відповідь, ніж «це та сама людина». Ланцюгів не буває: злиття
+      -- перенацілює старі посилання, тож це завжди один крок до живого.
+      merged_into TEXT REFERENCES guests(id) ON DELETE SET NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    -- Списки гостей питають «живі, тобто не злиті» на кожному екрані.
+    CREATE INDEX IF NOT EXISTS idx_guests_merged_into
+      ON guests (organization_id) WHERE merged_into IS NULL;
+
+    -- Згоди GDPR живуть на ОСОБІ й переживають бронь (INC-300, міграція 0300).
+    --
+    -- Колонки consent_* у guest_registrations лишаються і значать ІНШЕ: згоду на
+    -- ЦЬОМУ перебуванні, частину Meldeschein. Ця пара таблиць — про особу:
+    -- «цій людині можна слати листи», і воно переживає всі її брони, включно
+    -- з нульом броней. Через місяць вони виглядатимуть як дублікати одне
+    -- одного — не зливайте: перше зруйнує Meldeschein, друге — доказ згоди.
+    CREATE TABLE consent_texts (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      consent_kind TEXT NOT NULL,
+      version TEXT NOT NULL,
+      locale TEXT NOT NULL,
+      body TEXT NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    -- Версію обирає людина, тож унікальність включає організацію (інваріант 3).
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_consent_texts_org_kind_version
+      ON consent_texts (organization_id, consent_kind, version, locale);
+    CREATE INDEX IF NOT EXISTS idx_consent_texts_org ON consent_texts (organization_id);
+
+    -- Журнал згод особи. Колонка revoked_at замість видалення рядка: наглядачеві
+    -- показують «згода була і її відкликали тоді-то», а рядка, якого немає,
+    -- не досить в ОБИДВА боки.
+    CREATE TABLE guest_consents (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      guest_id TEXT NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
+      consent_kind TEXT NOT NULL,
+      version TEXT NOT NULL,
+      source TEXT NOT NULL,
+      given_at TEXT NOT NULL DEFAULT (datetime('now')),
+      revoked_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_guest_consents_org ON guest_consents (organization_id);
+    CREATE INDEX IF NOT EXISTS idx_guest_consents_guest
+      ON guest_consents (organization_id, guest_id, consent_kind);
 
     -- Reservations
     CREATE TABLE reservations (
@@ -7769,6 +7819,55 @@ function runMigrations(database: any) {
   // туди, лишить визначення на місці, а виклик у чужому циклі впаде на
   // `tsc` або дасть видимий повтор у лозі — замість тиші.
   migrateOtaMirror(database);
+
+  // --- Migration: згоди на особі і слід злиття (INC-300) ---
+  //
+  // Пара до CREATE вище: «додаєш колонку — додай її і в CREATE, і в ALTER»
+  // (AGENTS §4). Таблиці — `IF NOT EXISTS`, колонка — з переглядом PRAGMA:
+  // на мігрованій базі це no-op, на свіжій усе вже створене вище.
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS consent_texts (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        consent_kind TEXT NOT NULL,
+        version TEXT NOT NULL,
+        locale TEXT NOT NULL,
+        body TEXT NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_consent_texts_org_kind_version
+        ON consent_texts (organization_id, consent_kind, version, locale);
+      CREATE INDEX IF NOT EXISTS idx_consent_texts_org ON consent_texts (organization_id);
+      CREATE TABLE IF NOT EXISTS guest_consents (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        guest_id TEXT NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
+        consent_kind TEXT NOT NULL,
+        version TEXT NOT NULL,
+        source TEXT NOT NULL,
+        given_at TEXT NOT NULL DEFAULT (datetime('now')),
+        revoked_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_guest_consents_org ON guest_consents (organization_id);
+      CREATE INDEX IF NOT EXISTS idx_guest_consents_guest
+        ON guest_consents (organization_id, guest_id, consent_kind);
+    `);
+    const guestCols = database.prepare('PRAGMA table_info(guests)').all() as { name: string }[];
+    if (guestCols.length > 0 && !guestCols.some((c) => c.name === 'merged_into')) {
+      database.exec('ALTER TABLE guests ADD COLUMN merged_into TEXT REFERENCES guests(id) ON DELETE SET NULL');
+      console.log('[DB] guests: merged_into (INC-300)');
+    }
+    // Частковий індекс — ПІСЛЯ колонки, і предикат тут не косметика: без нього
+    // це інший індекс, і `check-schema-drift` каже, що новий клієнт заводиться
+    // без того, що є в мігрованого (AGENTS §4).
+    database.exec(`CREATE INDEX IF NOT EXISTS idx_guests_merged_into
+      ON guests (organization_id) WHERE merged_into IS NULL`);
+  } catch (e: any) {
+    console.log('[DB] guest consents migration note:', e.message);
+  }
 
   // --- Migration: is_pool_unit на броні (INC-045) ---
   //
