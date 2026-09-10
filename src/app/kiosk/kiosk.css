@@ -1,0 +1,149 @@
+/*
+ * Екран у холі: великий, темний, з великими кнопками.
+ *
+ * Одиниці — `vh`/`vw`, а не пікселі: дисплей 86" 4K вертикально, і 16-піксельний
+ * шрифт на ньому — це шрифт, якого не видно з двох кроків. Розміри в частках
+ * екрана дають той самий вигляд і на стенді в браузері, і на самому дисплеї.
+ */
+
+.kiosk-root {
+  position: fixed;
+  inset: 0;
+  background: #0b1120;
+  color: #f8fafc;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  /* Виділення тексту пальцем на терміналі — випадкове, і воно лишає підсвічене
+     чуже прізвище на екрані. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ── Інформаційна зона: верх, куди не дотягуються пальцем ───────────────── */
+.kiosk-top {
+  padding: 3vh 4vw 0;
+  text-align: center;
+}
+.kiosk-title { font-size: 4.2vh; font-weight: 700; margin: 0 0 1vh; }
+.kiosk-subtitle { font-size: 2.4vh; opacity: 0.75; margin: 0; }
+
+/* ── Робоча смуга: усе, що натискають ───────────────────────────────────── */
+.kiosk-band {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2vh;
+  padding: 0 6vw;
+  overflow-y: auto;
+}
+
+.kiosk-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5vh;
+}
+.kiosk-big {
+  font-size: 3.4vh;
+  font-weight: 650;
+  padding: 4vh 3vw;
+  border-radius: 2vh;
+  border: 0.3vh solid #1e293b;
+  background: #111c31;
+  color: inherit;
+  cursor: pointer;
+}
+.kiosk-big:active { background: #16233d; }
+.kiosk-big[data-primary='true'] { background: #1d4ed8; border-color: #1d4ed8; }
+
+.kiosk-field { display: flex; flex-direction: column; gap: 0.8vh; }
+.kiosk-label { font-size: 2vh; opacity: 0.7; }
+.kiosk-value {
+  min-height: 6vh;
+  font-size: 3vh;
+  padding: 1vh 2vw;
+  border-radius: 1.2vh;
+  border: 0.3vh solid #1e293b;
+  background: #0f172a;
+  display: flex;
+  align-items: center;
+}
+.kiosk-value[data-active='true'] { border-color: #3b82f6; }
+
+/* ── Клавіатура ─────────────────────────────────────────────────────────── */
+.kiosk-keyboard { display: flex; flex-direction: column; gap: 1vh; padding: 1vh 0 2vh; }
+.kiosk-keyboard-row { display: flex; gap: 1vw; justify-content: center; }
+.kiosk-key {
+  flex: 1;
+  min-height: 7vh;
+  font-size: 2.8vh;
+  border-radius: 1vh;
+  border: 0.2vh solid #1e293b;
+  background: #16233d;
+  color: inherit;
+  cursor: pointer;
+}
+.kiosk-key:active { background: #24365c; }
+.kiosk-key-wide { flex: 1.6; }
+.kiosk-key-space { flex: 4; }
+.kiosk-key-done { flex: 2; background: #1d4ed8; border-color: #1d4ed8; }
+.kiosk-keyboard[data-mode='digits'] .kiosk-key { min-height: 9vh; font-size: 4vh; }
+
+/* ── Підпис пальцем ─────────────────────────────────────────────────────── */
+.kiosk-signature {
+  width: 100%;
+  height: 28vh;
+  border-radius: 1.5vh;
+  border: 0.3vh dashed #334155;
+  background: #f8fafc;
+  touch-action: none;
+}
+
+/* ── Рецепція: на кожному екрані (КІ9) ──────────────────────────────────── */
+.kiosk-reception {
+  display: flex;
+  gap: 2vw;
+  padding: 2vh 6vw 3vh;
+  justify-content: center;
+}
+.kiosk-reception a, .kiosk-reception button {
+  font-size: 2.2vh;
+  padding: 1.6vh 3vw;
+  border-radius: 1.2vh;
+  border: 0.2vh solid #334155;
+  background: transparent;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+/* ── Мова ───────────────────────────────────────────────────────────────── */
+.kiosk-langs { display: flex; gap: 1vw; justify-content: center; padding-top: 1.5vh; }
+.kiosk-lang {
+  font-size: 2vh;
+  padding: 1vh 2.5vw;
+  border-radius: 1vh;
+  border: 0.2vh solid #334155;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.kiosk-lang[data-on='true'] { background: #1e293b; }
+
+/* ── Попередження про скидання ──────────────────────────────────────────── */
+.kiosk-idle {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.94);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3vh;
+  z-index: 10;
+}
+.kiosk-note { font-size: 2.4vh; opacity: 0.8; text-align: center; }
+.kiosk-strong { font-size: 8vh; font-weight: 700; letter-spacing: 0.4vh; }

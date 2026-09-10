@@ -126,7 +126,12 @@ const SWEPT_BY_PROPERTY = ['cm_connections', 'fees_taxes', 'booking_sites'];
 const SWEPT_BY_ORG_IN_PROPERTY = ['cm_outbox', 'cm_mappings', 'cm_events', 'cm_inbound_bookings'];
 const SWEPT_BY_ORG = ['invoices', 'invoice_counters', 'invoice_series', 'guests', 'organization_features',
   'unit_type_amenities', 'property_amenities', 'amenities', 'amenity_categories',
-  'organization_currencies', 'finance_exchange_rates'];
+  'organization_currencies', 'finance_exchange_rates',
+  // Кіоск (10.09.2026). Каскад від `properties` зніс би пристрій і код
+  // парування сам, але `kiosk_events` висить на ОРГАНІЗАЦІЇ, а не на
+  // будинку, і після неї лишався б журнал проби. Названо всі три: прибирання
+  // за каскадом — це прибирання, про яке гейт не стверджує нічого.
+  'kiosk_events', 'kiosk_devices', 'kiosk_pairings'];
 
 const CLEANUP_NAMES = [
   ...SWEPT_BY_RESERVATION.map((table) => ({ table, column: 'reservation_id' })),
@@ -352,7 +357,7 @@ async function main() {
   // Модулі, вимкнені за замовчуванням (П15): гейт перевіряє МАРШРУТИ, а не
   // право на модуль — 403 «не куплено» тут означав би, що ми нічого не
   // спитали.
-  for (const feature of ['guest_page', 'channels', 'invoicing', 'accounting', 'booking_engine', 'reports', 'day_sheets']) {
+  for (const feature of ['guest_page', 'channels', 'invoicing', 'accounting', 'booking_engine', 'reports', 'day_sheets', 'kiosk']) {
     await sql.run(
       `INSERT INTO organization_features (organization_id, feature, enabled) VALUES (?, ?, TRUE)
        ON CONFLICT(organization_id, feature) DO UPDATE SET enabled = TRUE`,
@@ -726,6 +731,82 @@ async function main() {
     claim('звіти', ctRes.status === 200, `турзбір відповідає 200 (${ctRes.status})`);
     claim('звіти', Array.isArray(ct?.rows) || Array.isArray(ct?.nights) || typeof ct === 'object',
       `турзбір віддав структуру, а не порожнечу (${JSON.stringify(ct)?.slice(0, 40)})`);
+
+    // ── Кіоск: форма відповіді терміналу ─────────────────────────────────
+    //
+    // Родина, якої не було до 10.09.2026. Кіоск — єдина поверхня, де ФОРМА
+    // відповіді і є функцією: біля екрана немає людини, яка перечитає поле
+    // під іншою назвою, і поле, що приїхало `undefined`, — це порожній
+    // прямокутник у холі, який ніхто не полагодить.
+    //
+    // Ланцюжок повний, від картки до гостя: власник робить код парування →
+    // термінал обмінює його на токен → токен віддає сесію → сесія називає
+    // будинок і смугу → пошук з одним чинником відмовляє, з двома відповідає.
+    // Кожна ланка тут — окреме твердження, бо кожна ламається окремо.
+    const pairRes = await call(cookie, '/api/apps/kiosk/admin/pairings', {
+      method: 'POST',
+      body: JSON.stringify({ propertyId: property.id, name: 'Routes probe terminal' }),
+    });
+    const pairing = await body(pairRes);
+    const gotCode = pairRes.status === 200 && typeof pairing?.code === 'string' && /^[0-9]{6}$/.test(pairing.code);
+    claim('кіоск', gotCode, `код парування — шість цифр (${pairRes.status})`);
+    claim('кіоск', typeof pairing?.expiresAt === 'string',
+      'код має строк — без нього термінал не знає, скільки в нього часу');
+
+    if (gotCode) {
+      // Обмін коду — БЕЗ сесії: саме так це робить термінал у холі.
+      const claimRes = await fetch(`${BASE}/api/apps/kiosk/pair`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ code: pairing.code }),
+      });
+      const claimed = await body(claimRes);
+      const paired = claimRes.status === 200 && typeof claimed?.token === 'string';
+      claim('кіоск', paired, `код обміняно на токен без сесії (${claimRes.status})`);
+      claim('кіоск', claimed?.propertyId === property.id,
+        'токен привʼязаний до того будинку, на який виписано код');
+
+      if (paired) {
+        const asDevice = (path, payload) => fetch(`${BASE}/api/apps/kiosk/${path}`, {
+          method: payload === undefined ? 'GET' : 'POST',
+          headers: {
+            authorization: `Bearer ${claimed.token}`,
+            ...(payload === undefined ? {} : { 'content-type': 'application/json' }),
+          },
+          body: payload === undefined ? undefined : JSON.stringify(payload),
+        });
+
+        const sessRes = await asDevice('session');
+        const sess = await body(sessRes);
+        claim('кіоск', sessRes.status === 200, `сесія термінала — 200 (${sessRes.status})`);
+        claim('кіоск', sess?.property?.id === property.id && typeof sess?.property?.name === 'string',
+          'сесія називає будинок іменем, а не лише id — це заголовок екрана');
+        claim('кіоск', Array.isArray(sess?.languages) && sess.languages.length === 2,
+          `сесія віддає дві мови (КІ7), отримали ${JSON.stringify(sess?.languages)}`);
+        claim('кіоск', typeof sess?.touchBand?.top === 'number' && typeof sess?.touchBand?.bottom === 'number',
+          'сесія віддає робочу смугу числами — інакше кнопки лягають на весь екран');
+        claim('кіоск', sess?.checkinPaymentPolicy === 'prepaid' || sess?.checkinPaymentPolicy === 'allow_pay_later',
+          `політика оплати — відоме слово, отримали ${sess?.checkinPaymentPolicy}`);
+        claim('кіоск', 'walkinUrl' in (sess ?? {}),
+          'поле walk-in присутнє навіть порожнім — екран питає «чи є», а не «чи не впало»');
+
+        // Один чинник — це 400, а не «не знайдено»: гість мусить дізнатись,
+        // що ввів замало, і це відповідь про його ввід, а не про чужу бронь.
+        const oneRes = await asDevice('find', { lastName: 'Probe' });
+        claim('кіоск', oneRes.status === 400, `пошук з одним чинником — 400 (${oneRes.status})`);
+
+        const twoRes = await asDevice('find', { lastName: 'Probe', checkIn: day(1) });
+        const two = await body(twoRes);
+        claim('кіоск', twoRes.status === 200 && typeof two?.found === 'boolean',
+          `пошук із двома чинниками — 200 і поле found (${twoRes.status})`);
+
+        // Чужий токен — 401 із живого маршруту, а не 500 і не 200.
+        const alienRes = await fetch(`${BASE}/api/apps/kiosk/session`, {
+          headers: { authorization: `Bearer ${ORG}.${property.id}.kd_nope.${'a'.repeat(64)}` },
+        });
+        claim('кіоск', alienRes.status === 401, `чужий токен пристрою — 401 (${alienRes.status})`);
+      }
+    }
 
     // ── Вісь обʼєкта (INC-029) ───────────────────────────────────────────
     //
