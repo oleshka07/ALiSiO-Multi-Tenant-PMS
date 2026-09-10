@@ -59,7 +59,10 @@ audit-ui-report.json
 
 # database dumps hold real guest data — never in git (they already leaked into
 # a docker build context once; .dockerignore closes that side, this closes git)
-/deploy/backups/
+/deploy/backups/*
+# ...але сама тека лишається в дереві: rehearse-merge.sh шукає найсвіжіший дамп
+# саме тут і без неї падає з «no dump found» ще до першого корисного кроку.
+!/deploy/backups/README.md
 # object-store credentials for off-site backups
 /deploy/rclone.conf
 
