@@ -609,6 +609,18 @@ const AXES = [
     distinct: /'(2026-1[01]-\d\d)'/g, min: 2,
   },
   {
+    file: 'src/modules/widget/api/widget-reserve.scope.check.ts',
+    axis: 'будинків у списку сайта (свій ≠ спадковий чужий)',
+    distinct: /const (?:OWN|ALIEN)_UNIT = fx\.([ab])\.unitIds/g, min: 2,
+  },
+  {
+    file: 'src/modules/widget/api/widget-reserve.scope.check.ts',
+    // 201 і 404 — два різні СТАНИ. З одним статусом «продали» і «відмовили»
+    // нерозрізненні, і контроль угорі перестав би бути контролем.
+    axis: 'статусів відповіді (продано ≠ чужий id)',
+    distinct: /\.status, (\d{3}),/g, min: 2,
+  },
+  {
     file: 'src/modules/widget/api/widget-calendar.scope.check.ts',
     // Два будинки в списку сайта — інакше «беремо перший номер» і «беремо
     // будинок сайта» дали б той самий результат.
