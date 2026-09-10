@@ -22,6 +22,7 @@
 --
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;  -- gen_random_bytes for id defaults
+CREATE EXTENSION IF NOT EXISTS btree_gist;  -- no_double_booking
 
 CREATE TABLE "accruals" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
@@ -391,9 +392,9 @@ CREATE TABLE "cm_connections" (
   "pricing_modifier_percent" NUMERIC(5,2) DEFAULT 0 NOT NULL,
   "last_full_sync_at" TIMESTAMPTZ,
   "catalog_synced_at" TIMESTAMPTZ,
+  "channels_synced_at" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "channels_synced_at" TIMESTAMPTZ,
   PRIMARY KEY ("id"),
   UNIQUE ("webhook_token"),
   UNIQUE ("organization_id", "property_id", "provider", "environment"),
@@ -685,9 +686,9 @@ CREATE TABLE "fin_auto_rules" (
   "is_active" BOOLEAN DEFAULT true NOT NULL,
   "stop_on_match" BIGINT DEFAULT 0 NOT NULL,
   "sort_order" BIGINT DEFAULT 0 NOT NULL,
+  "broken_fields" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "broken_fields" TEXT,
   PRIMARY KEY ("id"),
   CHECK (op_type IN ('income','expense','any'))
 );
@@ -967,12 +968,12 @@ CREATE TABLE "fin_recurring_templates" (
   "end_at" TIMESTAMPTZ,
   "last_run_at" TIMESTAMPTZ,
   "runs_created" BIGINT DEFAULT 0 NOT NULL,
-  "is_active" BOOLEAN DEFAULT true NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "failed_runs" BIGINT DEFAULT 0 NOT NULL,
   "last_error" TEXT,
   "last_error_at" TIMESTAMPTZ,
+  "is_active" BOOLEAN DEFAULT true NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
   CHECK (op_type IN ('income','expense','transfer')),
   CHECK (schedule IN ('daily','weekly','monthly','yearly'))
@@ -1819,6 +1820,7 @@ CREATE TABLE "reservations" (
   "lodging_discount_reason" TEXT,
   "breakfast_included" BOOLEAN,
   "company_id" TEXT,
+  "is_pool_unit" BOOLEAN DEFAULT false NOT NULL,
   PRIMARY KEY ("id"),
   UNIQUE ("guest_page_token"),
   CHECK (status IN ('draft', 'tentative', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show')),
@@ -2684,6 +2686,21 @@ ALTER TABLE "widget_handshakes" ADD CONSTRAINT "fk_widget_handshakes_organizatio
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "widget_price_list" ADD CONSTRAINT "fk_widget_price_list_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+
+-- ── Constraints SQLite cannot express ───────────────────────────────────
+--
+-- Not read out of the SQLite database like everything above: SQLite has no
+-- EXCLUDE at all, so these live in scripts/pg-schema.mjs and are mirrored by
+-- a migration for environments that already exist.
+
+ALTER TABLE "reservations" ADD CONSTRAINT "no_double_booking"
+  EXCLUDE USING gist (
+    "unit_id" WITH =,
+    daterange("check_in", "check_out") WITH &&
+  )
+  WHERE ("unit_id" IS NOT NULL
+         AND NOT "is_pool_unit"
+         AND "status" NOT IN ('cancelled', 'no_show'));
 
 -- ── Indexes ─────────────────────────────────────────────────────────────
 

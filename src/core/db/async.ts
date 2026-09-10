@@ -70,6 +70,16 @@ export interface Sql {
 }
 
 export interface Dialect {
+  /**
+   * Який це двигун — для рішень, які НЕ зводяться до різниці в SQL.
+   *
+   * Заведено 10.09.2026 для INC-045: заборону подвійного бронювання на
+   * Postgres тримає `EXCLUDE USING gist`, а SQLite такого обмеження не має
+   * взагалі, тож там запис доводиться серіалізувати. Це не «інакший синтаксис
+   * того самого», а різні механізми, і питати про них треба прямо, а не
+   * вгадувати за `process.env.DB_DRIVER` у сусідньому модулі.
+   */
+  name: 'sqlite' | 'postgres';
   /** 'YYYY-MM' of a timestamp column, for grouping by month. */
   month(column: string): string;
   /** Day of the week as a number, 0 = Sunday — the SQLite convention. */
@@ -145,6 +155,7 @@ export interface Dialect {
  */
 /** SQLite stores these columns as TEXT, so its own date functions apply. */
 const SQLITE_DIALECT: Dialect = {
+  name: 'sqlite',
   month: (column) => `strftime('%Y-%m', ${column})`,
   dayOfWeek: (column) => `CAST(strftime('%w', ${column}) AS INTEGER)`,
   tables: () => "SELECT name FROM sqlite_master WHERE type = 'table'",

@@ -402,6 +402,47 @@ const PUBLIC_TOKEN_READ = new Map([
   ['cm_connections', 'webhook_token'],
 ]);
 
+/**
+ * Обмеження, яких SQLite не має, тож у схему вони потрапляють ЗВІДСИ.
+ *
+ * Генератор читає локальну SQLite і вміє переказати лише те, що там є. Усе,
+ * що існує тільки в Postgres — `EXCLUDE`, часткові індекси з виразами, — у
+ * ній не відбите ніяк, а отже й у `schema.sql` не потрапить.
+ *
+ * Наслідок не теоретичний: обмеження, дописане лише в міграцію, стоїть у
+ * мігрованому середовищі й відсутнє в `schema.sql`, тобто в тому, з чого
+ * заводиться НОВИЙ клієнт. Це рівно те, про що AGENTS §4 каже про індекси, і
+ * саме це побачив `check-schema-drift` на `no_double_booking`: «новий клієнт
+ * заведеться БЕЗ цього».
+ *
+ * Копія тут і копія в міграції — свідомі: міграція оновлює наявну базу,
+ * schema.sql створює нову, і злити їх нема куди. Тримає їх у згоді
+ * `check-overlap-statuses` (список статусів) і `check-schema-drift` (уся
+ * форма, на справжньому Postgres).
+ */
+const POSTGRES_ONLY_CONSTRAINTS = [
+  {
+    table: 'reservations',
+    name: 'no_double_booking',
+    extension: 'btree_gist',
+    // Двоє не в'їжджають в один номер на одну ніч (INC-045, міграція 0132).
+    // Півінтервал: виїзд 12-го і заїзд 12-го — різні ночі. Службовий фонд
+    // (`is_pool_unit`) тримає багато броней навмисно, інакше кемпінг став би
+    // непродаваним. Бронь без номера не перетинається ні з чим.
+    // Шаблонний рядок, а не склейка з екранованими лапками: `\"status\"`
+    // читається погано і людиною, і гейтом — `check-overlap-statuses` не
+    // впізнавав у ньому колонку, бо за іменем стояв не пробіл, а зворотна
+    // скісна. Тут SQL має виглядати як SQL.
+    body: `EXCLUDE USING gist (
+    "unit_id" WITH =,
+    daterange("check_in", "check_out") WITH &&
+  )
+  WHERE ("unit_id" IS NOT NULL
+         AND NOT "is_pool_unit"
+         AND "status" NOT IN ('cancelled', 'no_show'))`,
+  },
+];
+
 const REFERENCE = new Set([
   'rate_limits', 'settings', 'content_translations',
   'email_processed', 'fin_system_state', 'hostex_sync_log', 'hostex_property_map',
@@ -505,6 +546,10 @@ w('-- alone means one table missing FORCE is a silent full-table read.');
 w('--');
 w();
 w('CREATE EXTENSION IF NOT EXISTS pgcrypto;  -- gen_random_bytes for id defaults');
+for (const ext of new Set(POSTGRES_ONLY_CONSTRAINTS.map((c) => c.extension).filter(Boolean))) {
+  w(`CREATE EXTENSION IF NOT EXISTS ${ext};  -- ${POSTGRES_ONLY_CONSTRAINTS
+    .filter((c) => c.extension === ext).map((c) => c.name).join(', ')}`);
+}
 w();
 
 for (const t of tables) {
@@ -578,6 +623,26 @@ for (const t of tables) {
   }
 }
 w();
+
+// ── Обмеження, яких SQLite не має ────────────────────────────────────────────
+
+if (POSTGRES_ONLY_CONSTRAINTS.length) {
+  w('-- ── Constraints SQLite cannot express ───────────────────────────────────');
+  w('--');
+  w('-- Not read out of the SQLite database like everything above: SQLite has no');
+  w('-- EXCLUDE at all, so these live in scripts/pg-schema.mjs and are mirrored by');
+  w('-- a migration for environments that already exist.');
+  w();
+  for (const c of POSTGRES_ONLY_CONSTRAINTS) {
+    if (!known.has(c.table)) {
+      notes.push(`${c.name}: table ${c.table} does not exist — constraint dropped`);
+      continue;
+    }
+    w(`ALTER TABLE ${q(c.table)} ADD CONSTRAINT ${q(c.name)}`);
+    w(`  ${c.body};`);
+    w();
+  }
+}
 
 // ── Indexes ──────────────────────────────────────────────────────────────────
 

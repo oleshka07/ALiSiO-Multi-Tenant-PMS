@@ -218,6 +218,7 @@ async function scopeToTenant(client: PgClient): Promise<void> {
  * EXTRACT(DOW) happens to agree.
  */
 const POSTGRES_DIALECT: Dialect = {
+  name: 'postgres',
   month: (column) => `to_char(${column}, 'YYYY-MM')`,
   dayOfWeek: (column) => `EXTRACT(DOW FROM ${column})::int`,
   tables: () => "SELECT tablename AS name FROM pg_tables WHERE schemaname = 'public'",

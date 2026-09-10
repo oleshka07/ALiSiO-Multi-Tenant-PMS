@@ -21,7 +21,7 @@ import type { Sql } from '@core/db/async';
  * розійшлись би при першому ж новому статусі, і одна відповідь почала б
  * суперечити другій, нічого не зламавши.
  */
-const FREES_THE_ROOM = "('cancelled', 'no_show')";
+export const FREES_THE_ROOM = "('cancelled', 'no_show')";
 
 /**
  * Броні, які ділять кімнату з іншою живою бронню хоч на одну ніч —
@@ -52,17 +52,34 @@ export type StayConflict =
   | { kind: 'block'; id: string; reason: string | null; date_from: string; date_to: string }
   | null;
 
-export async function findStayConflict(sql: Sql, input: {
+export type StayOverlapInput = {
   unitId: string;
   checkIn: string;
   checkOut: string;
   /** Бронь, яку переносимо — сама собі не заважає. */
   excludeReservationId?: string | null;
-}): Promise<StayConflict> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const unit = await sql.row<any>('SELECT is_pool FROM units WHERE id = ?', [input.unitId]);
-  if (unit?.is_pool) return null;
+};
 
+/**
+ * Хто вже стоїть у цьому номері на ці ночі — id живої броні або `null`.
+ *
+ * Окрема функція, бо цей самий запит потрібен ДВІЧІ й у різних ролях: тут, як
+ * людська перевірка перед записом, і в `@bookings/api/overlap` як те, що на
+ * SQLite тримає замість обмеження бази (INC-045). Дві копії запиту розійшлись
+ * би так само, як розійшлися б два списки статусів, — і тоді SQLite почав би
+ * пускати те, що Postgres забороняє, при зелених гейтах.
+ *
+ * Півінтервал і `is_pool` — ті самі, що в обмеженні `no_double_booking`.
+ */
+export async function stayOverlapsExisting(
+  sql: Sql, input: StayOverlapInput,
+): Promise<string | null> {
+  if (await isPoolUnit(sql, input.unitId)) return null;
+  return bookingOverlap(sql, input);
+}
+
+/** Сам запит про перетин, уже без питання про службовий фонд. */
+async function bookingOverlap(sql: Sql, input: StayOverlapInput): Promise<string | null> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const booking = await sql.row<any>(
     `SELECT id FROM reservations
@@ -70,7 +87,31 @@ export async function findStayConflict(sql: Sql, input: {
         AND check_in < ? AND check_out > ?
       LIMIT 1`,
     [input.unitId, input.excludeReservationId ?? '', input.checkOut, input.checkIn]);
-  if (booking) return { kind: 'booking', id: String(booking.id) };
+  return booking ? String(booking.id) : null;
+}
+
+/**
+ * Службовий фонд тримає багато броней навмисно — конфлікту там немає.
+ *
+ * Своя функція, а не два однакові `SELECT is_pool`: другий такий запит у цьому
+ * файлі був НОВИМ порушенням храповика осі обʼєкта, і правильно — читання за
+ * `id` без орендаря варте одного місця, а не двох.
+ */
+async function isPoolUnit(sql: Sql, unitId: string): Promise<boolean> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const unit = await sql.row<any>('SELECT is_pool FROM units WHERE id = ?', [unitId]);
+  return Boolean(unit?.is_pool);
+}
+
+export async function findStayConflict(sql: Sql, input: StayOverlapInput): Promise<StayConflict> {
+  // Басейн не конфліктує ні з бронню, ні з закриттям: вихід ДО обох запитів,
+  // як було до появи `stayOverlapsExisting`.
+  if (await isPoolUnit(sql, input.unitId)) return null;
+
+  // `bookingOverlap`, не `stayOverlapsExisting`: та спитала б про службовий
+  // фонд удруге — зайвий похід у базу на кожну перевірку перед записом.
+  const booking = await bookingOverlap(sql, input);
+  if (booking) return { kind: 'booking', id: booking };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const block = await sql.row<any>(
