@@ -3,7 +3,7 @@
     "file": "WINHOTEL.fbk",
     "mode": "gbak"
   },
-  "extractedAt": "2026-09-10T11:33:40.192Z",
+  "extractedAt": "2026-09-10T12:15:39.229Z",
   "entities": {
     "address_types": 2,
     "addresses": 34795,
@@ -104,15 +104,15 @@
     },
     "folio_lines_live": {
       "label": "рядків рахунку (BUCHKONT) живих, сума",
-      "value": "65425 3317.2064"
+      "value": "65425 3317206.440"
     },
     "payments_live": {
       "label": "платежів живих, сума",
-      "value": "26088 2872.9012"
+      "value": "26088 2872901.250"
     },
     "payments_debtor": {
       "label": "платежів дебіторських (M_DEBITOR>0), сума",
-      "value": "10028 900.3294"
+      "value": "10028 900329.430"
     },
     "open_guest_balances": {
       "label": "відкриті позиції по рахунках гостей (виїхали, offen<>0): N, сума",
@@ -120,19 +120,19 @@
     },
     "invoice_ledger_by_status": {
       "label": "книга вихідних рахунків за DB_STATUS (код×N×сума)",
-      "value": "0 65396 3006.4223"
+      "value": "0 65396 3006422.376"
     },
     "vouchers_sold": {
       "label": "ваучерів продано (послуги 7/55/95): N, сума",
-      "value": "16 2.1398"
+      "value": "16 2139.840"
     },
     "vouchers_redeemed": {
       "label": "ваучерів погашено (спосіб оплати Gutschein): N, сума",
-      "value": "4 0.7370"
+      "value": "4 737.050"
     },
     "deposits_on_bookings": {
       "label": "депозити на бронях (ANZA_BETRAG>0): N, сума",
-      "value": "663 92.4300"
+      "value": "663 92430.000"
     },
     "deposits_on_future_bookings": {
       "label": "депозити на майбутніх бронях: N, сума",
@@ -140,7 +140,7 @@
     },
     "last_day_closing": {
       "label": "останнє денне закриття: дата, сальдо",
-      "value": "2025-03-11 0.0000"
+      "value": "2025-03-11 0.000"
     },
     "seasons_in_snapshot_year": {
       "label": "сезонів на рік знімка",
