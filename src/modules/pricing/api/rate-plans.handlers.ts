@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { withPermission, type Actor } from '@core/auth/session';
+import { withActor, withPermission, type Actor } from '@core/auth/session';
 import { requirePropertyId } from '@core/auth/tenant-context';
 import { serverError, handleError } from '@core/http/errors';
 import { listRatePlans, createRatePlan, updateRatePlan, deleteRatePlan } from '../data/rate-plans.repo';
+import { ratePlansForPayer } from '../data/company-rate-plans.repo';
 import type { SellMode, PricingType, AdjustmentKind, AdjustmentDirection } from '../domain/types';
 
 /**
@@ -49,6 +50,41 @@ export const listRatePlanSettings = withPermission('manage_pricing', async (requ
     return NextResponse.json(await listRatePlans(propertyId));
   } catch (error: unknown) {
     return serverError('modules/pricing/api/rate-plans listRatePlanSettings', error);
+  }
+});
+
+/**
+ * GET /api/pricing/rate-plans/for-payer?property_id=…&company_id=… — той самий
+ * список, ЗВУЖЕНИЙ платником (INC-205).
+ *
+ * Окремий маршрут, а не прапорець на списку вище, і причина не стильова: той
+ * список — екран НАЛАШТУВАНЬ, він мусить показувати геть усе, включно з
+ * фірмовими тарифами, інакше оператор не зможе ними керувати. Це — екран
+ * БРОНІ, і тут питання інше: що може купити ЦЕЙ платник.
+ *
+ * Тому й варта інша. Налаштуваннями керує `manage_pricing`; бронь заводить
+ * будь-хто на рецепції, і вимагати від нього право на ціни означало б, що
+ * фірмову бронь може завести лише керівник.
+ *
+ * Без `company_id` — гість платить сам: фірмових тарифів у відповіді немає
+ * жодного. Це не мовчазний дефолт (інваріант 8): «немає фірми» — повноцінна
+ * відповідь на питання «хто платить», а не пропущений параметр.
+ */
+export const listRatePlansForPayer = withActor(async (request: NextRequest, _ctx: unknown, actor: Actor) => {
+  try {
+    const params = new URL(request.url).searchParams;
+    let propertyId: string;
+    try {
+      propertyId = await requirePropertyId(params.get('property_id'));
+    } catch (e) {
+      return handleError('pricing/rate-plans/for-payer', e);
+    }
+    const companyId = params.get('company_id');
+    return NextResponse.json(
+      await ratePlansForPayer(propertyId, actor.organizationId, companyId && companyId.trim() ? companyId.trim() : null),
+    );
+  } catch (error: unknown) {
+    return handleError('pricing/rate-plans/for-payer', error);
   }
 });
 

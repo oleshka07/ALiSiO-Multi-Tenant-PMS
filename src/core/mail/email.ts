@@ -36,6 +36,7 @@
  */
 import nodemailer from 'nodemailer';
 import { integrationCredentials } from '../integration-credentials.ts';
+import { reportError, reportOk } from '../app-connections.ts';
 
 /**
  * Транспорти за ключем «хост|логін».
@@ -111,13 +112,46 @@ export async function sendEmail({ to, organizationId, fromName, subject, html, t
   }
 
   const label = fromName || process.env.EMAIL_FROM_NAME || 'ALiSiO ERP';
-  await t.send.sendMail({
+  await reported(organizationId, () => t.send.sendMail({
     from: `"${label.replace(/"/g, "'")}" <${t.sender}>`,
     to,
     subject,
     html,
     text: text || html.replace(/<[^>]+>/g, ''),
     attachments,
-  });
+  }));
   console.log(`[Email] Sent to ${to} via ${t.perOrganization ? 'hotel' : 'service'} mailbox: ${subject}`);
+}
+
+/**
+ * Стан звʼязку пошти — у `app_connections` (Блок «Застосунки», 3.4): ЄДИНЕ
+ * місце в цьому файлі, яке про нього звітує; відправка і перевірка йдуть
+ * крізь нього. На ОРГАНІЗАЦІЮ, без обʼєкта — скринька одна на готель. Виклик
+ * без організації нема кому приписати — стану немає. `reportOk`/`reportError`
+ * не кидають: відмова транспорту лишається тією самою відмовою для того, хто
+ * слав, а не двома.
+ */
+async function reported<T>(organizationId: string | null | undefined, work: () => Promise<T>): Promise<T> {
+  try {
+    const out = await work();
+    if (organizationId) await reportOk('smtp', organizationId);
+    return out;
+  } catch (e) {
+    if (organizationId) await reportError('smtp', organizationId, e);
+    throw e;
+  }
+}
+
+/**
+ * «Перевірити звʼязок» з екрана «Застосунки»: зʼєднання і автентифікація
+ * без листа (`verify()` nodemailer). Без транспорту — відмова з текстом, і
+ * вона теж записується як стан: «пошта не налаштована» — це те, що готель
+ * має побачити на картці.
+ */
+export async function probeMail(organizationId: string): Promise<void> {
+  await reported(organizationId, async () => {
+    const t = await transportFor(organizationId);
+    if (!t) throw new Error('Пошта не налаштована: ані для цього готелю, ані для сервісу');
+    await t.send.verify();
+  });
 }

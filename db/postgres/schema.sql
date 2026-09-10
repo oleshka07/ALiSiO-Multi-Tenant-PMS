@@ -125,6 +125,20 @@ CREATE TABLE "amenity_categories" (
   UNIQUE ("organization_id", "code")
 );
 
+CREATE TABLE "app_connections" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "property_id" TEXT,
+  "app" TEXT NOT NULL,
+  "status" TEXT NOT NULL,
+  "last_ok_at" TIMESTAMPTZ,
+  "last_error_at" TIMESTAMPTZ,
+  "last_error" TEXT,
+  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  CHECK (status IN ('connected', 'degraded', 'error', 'disabled'))
+);
+
 CREATE TABLE "app_users" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "organization_id" TEXT NOT NULL,
@@ -143,6 +157,15 @@ CREATE TABLE "app_users" (
   "payment_pin_hash" TEXT,
   PRIMARY KEY ("id"),
   CHECK (role IN ('owner', 'director', 'manager', 'receptionist', 'housekeeper', 'maintenance', 'accountant'))
+);
+
+CREATE TABLE "app_wishes" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "app" TEXT NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  UNIQUE ("organization_id", "app")
 );
 
 CREATE TABLE "availability_blocks" (
@@ -514,6 +537,16 @@ CREATE TABLE "companies" (
   PRIMARY KEY ("id")
 );
 
+CREATE TABLE "company_rate_plans" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "company_id" TEXT NOT NULL,
+  "rate_plan_id" TEXT NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  UNIQUE ("organization_id", "company_id", "rate_plan_id")
+);
+
 CREATE TABLE "consent_texts" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "organization_id" TEXT NOT NULL,
@@ -785,6 +818,10 @@ CREATE TABLE "fin_fiscal_settings" (
   "recording_system_serial" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "tse_admin_pin" TEXT,
+  "tse_admin_puk" TEXT,
+  "tse_pending_tss_id" TEXT,
+  "tse_connecting_at" TIMESTAMPTZ,
   PRIMARY KEY ("id"),
   UNIQUE ("property_id"),
   UNIQUE ("property_id")
@@ -2289,9 +2326,15 @@ ALTER TABLE "amenities" ADD CONSTRAINT "fk_amenities_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "amenity_categories" ADD CONSTRAINT "fk_amenity_categories_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "app_connections" ADD CONSTRAINT "fk_app_connections_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "app_connections" ADD CONSTRAINT "fk_app_connections_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "app_users" ADD CONSTRAINT "fk_app_users_default_cash_account_id_1"
   FOREIGN KEY ("default_cash_account_id") REFERENCES "finance_accounts" ("id");
 ALTER TABLE "app_users" ADD CONSTRAINT "fk_app_users_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "app_wishes" ADD CONSTRAINT "fk_app_wishes_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "availability_blocks" ADD CONSTRAINT "fk_availability_blocks_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
@@ -2374,6 +2417,12 @@ ALTER TABLE "cm_sends" ADD CONSTRAINT "fk_cm_sends_connection_id_1"
 ALTER TABLE "cm_sends" ADD CONSTRAINT "fk_cm_sends_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "companies" ADD CONSTRAINT "fk_companies_organization_id_1"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "company_rate_plans" ADD CONSTRAINT "fk_company_rate_plans_rate_plan_id_1"
+  FOREIGN KEY ("rate_plan_id") REFERENCES "rate_plans" ("id") ON DELETE CASCADE;
+ALTER TABLE "company_rate_plans" ADD CONSTRAINT "fk_company_rate_plans_company_id_2"
+  FOREIGN KEY ("company_id") REFERENCES "companies" ("id") ON DELETE CASCADE;
+ALTER TABLE "company_rate_plans" ADD CONSTRAINT "fk_company_rate_plans_organization_id_3"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "consent_texts" ADD CONSTRAINT "fk_consent_texts_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
@@ -2815,7 +2864,10 @@ CREATE INDEX "idx_ai_usage_org" ON "ai_usage" ("organization_id");
 CREATE INDEX "idx_amenities_category" ON "amenities" ("category_id");
 CREATE INDEX "idx_amenities_org" ON "amenities" ("organization_id");
 CREATE INDEX "idx_amenity_categories_org" ON "amenity_categories" ("organization_id");
+CREATE INDEX "idx_app_connections_org" ON "app_connections" ("organization_id");
+CREATE UNIQUE INDEX "idx_app_connections_row" ON "app_connections" (organization_id, COALESCE(property_id, ''), app);
 CREATE UNIQUE INDEX "idx_app_users_org_email" ON "app_users" (organization_id, lower(email));
+CREATE INDEX "idx_app_wishes_org" ON "app_wishes" ("organization_id");
 CREATE INDEX "idx_availability_blocks_org" ON "availability_blocks" ("organization_id");
 CREATE INDEX "idx_availability_blocks_unit" ON "availability_blocks" ("unit_id", "date_from", "date_to");
 CREATE INDEX "idx_booking_activity_log_org" ON "booking_activity_log" ("organization_id");
@@ -2853,6 +2905,8 @@ CREATE INDEX "idx_cm_sends_org" ON "cm_sends" ("organization_id");
 CREATE UNIQUE INDEX "idx_companies_debtor_no" ON "companies" ("organization_id", "debtor_no") WHERE debtor_no IS NOT NULL ;
 CREATE INDEX "idx_companies_org" ON "companies" ("organization_id", "name");
 CREATE UNIQUE INDEX "idx_companies_org_business_id" ON "companies" ("organization_id", "business_id") WHERE business_id IS NOT NULL;
+CREATE INDEX "idx_company_rate_plans_org" ON "company_rate_plans" ("organization_id");
+CREATE INDEX "idx_company_rate_plans_plan" ON "company_rate_plans" ("rate_plan_id");
 CREATE INDEX "idx_consent_texts_org" ON "consent_texts" ("organization_id");
 CREATE UNIQUE INDEX "idx_consent_texts_org_kind_version" ON "consent_texts" ("organization_id", "consent_kind", "version", "locale");
 CREATE INDEX "idx_ct_hash" ON "content_translations" ("text_hash");
@@ -3027,7 +3081,9 @@ CREATE INDEX IF NOT EXISTS "idx_accruals_org" ON "accruals" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_ai_usage_org" ON "ai_usage" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_amenities_org" ON "amenities" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_amenity_categories_org" ON "amenity_categories" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_app_connections_org" ON "app_connections" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_app_users_org" ON "app_users" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_app_wishes_org" ON "app_wishes" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_availability_blocks_org" ON "availability_blocks" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_booking_activity_log_org" ON "booking_activity_log" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_booking_drafts_org" ON "booking_drafts" ("organization_id");
@@ -3044,6 +3100,7 @@ CREATE INDEX IF NOT EXISTS "idx_cm_mappings_org" ON "cm_mappings" ("organization
 CREATE INDEX IF NOT EXISTS "idx_cm_outbox_org" ON "cm_outbox" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_cm_sends_org" ON "cm_sends" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_companies_org" ON "companies" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_company_rate_plans_org" ON "company_rate_plans" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_consent_texts_org" ON "consent_texts" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_coupons_org" ON "coupons" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_event_addons_org" ON "event_addons" ("organization_id");
@@ -3122,7 +3179,11 @@ ALTER TABLE "amenities" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "amenity_categories" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "app_connections" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "app_users" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "app_wishes" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "availability_blocks" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -3155,6 +3216,8 @@ ALTER TABLE "cm_outbox" ALTER COLUMN "organization_id"
 ALTER TABLE "cm_sends" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "companies" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "company_rate_plans" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "consent_texts" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -3318,10 +3381,22 @@ CREATE POLICY "amenity_categories_tenant" ON "amenity_categories"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
+ALTER TABLE "app_connections" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "app_connections" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "app_connections_tenant" ON "app_connections"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
 ALTER TABLE "app_users" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "app_users" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "app_users_tenant" ON "app_users"
   USING ("organization_id" = current_setting('app.organization_id') OR current_setting('app.organization_id') = '')
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "app_wishes" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "app_wishes" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "app_wishes_tenant" ON "app_wishes"
+  USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
 ALTER TABLE "availability_blocks" ENABLE ROW LEVEL SECURITY;
@@ -3441,6 +3516,12 @@ CREATE POLICY "cm_sends_tenant" ON "cm_sends"
 ALTER TABLE "companies" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "companies" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "companies_tenant" ON "companies"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "company_rate_plans" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "company_rate_plans" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "company_rate_plans_tenant" ON "company_rate_plans"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 

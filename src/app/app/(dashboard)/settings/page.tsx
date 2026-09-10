@@ -16,7 +16,7 @@ import { hasPermission, type Permission } from '@core/auth/permissions';
 import Link from 'next/link';
 import {
   Building2, BedDouble, Users, Settings as SettingsIcon, ChevronRight, Globe, LinkIcon, UserCheck,
-  Code2, Sparkles, Receipt, Users2, Coffee, CreditCard, Tag, Palette, Layers, CalendarRange, Baby, Percent, Coins } from 'lucide-react';
+  Code2, Sparkles, Receipt, Users2, Coffee, CreditCard, Tag, Palette, Layers, CalendarRange, Baby, Percent, Coins, Plug } from 'lucide-react';
 
 interface SettingsLink {
   title: string;
@@ -73,7 +73,9 @@ const GROUPS: { title: string; desc: string; items: SettingsLink[] }[] = [
     title: 'Модулі',
     desc: 'Що ввімкнено у вашому готелі',
     items: [
-      { title: 'Модулі та інтеграції', desc: 'Задачі, аналітика, аркуші дня, канали, фіскалізація — і ключі інтеграцій', icon: <SettingsIcon size={22} />, href: '/app/settings/features', color: 'orange' },
+      { title: 'Модулі', desc: 'Задачі, аналітика, аркуші дня, канали, облік — що ввімкнено у вашому готелі', icon: <SettingsIcon size={22} />, href: '/app/settings/features', color: 'orange' },
+      // Застосунки — вкладка в Налаштуваннях (З3): звʼязок із чужими системами, ключі, стан.
+      { title: 'Застосунки', desc: 'Фіскалізація, пошта, онлайн-оплата — ключі, стан звʼязку і те, чого ще немає', icon: <Plug size={22} />, href: '/app/settings/apps', color: 'orange' },
     ],
   },
 ];

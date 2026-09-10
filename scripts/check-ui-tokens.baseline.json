@@ -64,7 +64,7 @@
   "src/app/app/(dashboard)/settings/channel-manager/connect/page.tsx": 2,
   "src/app/app/(dashboard)/settings/channel-manager/page.tsx": 5,
   "src/app/app/(dashboard)/settings/channel-rules/page.tsx": 2,
-  "src/app/app/(dashboard)/settings/features/page.tsx": 5,
+  "src/app/app/(dashboard)/settings/features/page.tsx": 0,
   "src/app/app/(dashboard)/settings/general/_components/SecondaryCurrencies.tsx": 4,
   "src/app/app/(dashboard)/settings/general/page.tsx": 2,
   "src/app/app/(dashboard)/settings/guest-page/page.tsx": 18,

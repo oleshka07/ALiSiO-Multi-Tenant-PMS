@@ -7392,6 +7392,42 @@ function runMigrations(database: any) {
     console.error('[DB] companies migration:', e.message);
   }
 
+  // --- 0200: тариф, який бачить лише своя фірма (INC-205) ---
+  //
+  // Звʼязок «фірма → тариф», якого не було ніде: `price_rules` умов «для
+  // компанії» не мають, `rate_plans` про компанії не знає.
+  //
+  // ТАБЛИЦЯ, а не колонка на `rate_plans`, і причина виміряна на базі Ґрайца
+  // (MAPPING §125–129): `PREISCODE 3 Firmenpreise` — ОДИН прайс-код на ВСІХ
+  // корпоративних гостей, а 8 і 10 — по одному на конкретну фірму. Колонка
+  // виражає лише другий випадок; перший довелося б розмножити по разу на
+  // кожну з 12 фірм готелю. Повне обґрунтування — у самій міграції 0200 і в
+  // К22.
+  //
+  // `organization_id` на рядку (інваріант 2), бо `rate_plans` свого не має —
+  // вона тенантна через `property_id → properties`, і політика без цієї
+  // колонки ходила б двома джойнами. UNIQUE з організацією (інваріант 3).
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS company_rate_plans (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        company_id      TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        rate_plan_id    TEXT NOT NULL REFERENCES rate_plans(id) ON DELETE CASCADE,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        -- Усередині CREATE, а не окремим унікальним індексом: генератор
+        -- Postgres-схеми з окремого індексу робить І табличний UNIQUE, І
+        -- індекс — два обмеження на ту саму пару під двома іменами. Той
+        -- самий клас, про який AGENTS §4 попереджає на констрейнтах.
+        UNIQUE(organization_id, company_id, rate_plan_id)
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_company_rate_plans_org ON company_rate_plans(organization_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_company_rate_plans_plan ON company_rate_plans(rate_plan_id)');
+  } catch (e: any) {
+    console.error('[DB] company_rate_plans migration:', e.message);
+  }
+
   // --- 0094: payment_status приймає 'partial' ---
   //
   // Колонка мала CHECK на чотири значення, а ДВА писачі роками ставили пʼяте:
@@ -7926,6 +7962,9 @@ function runMigrations(database: any) {
     console.log('[DB] external_ref migration note:', e.message);
   }
 
+  // 0400 — так само окремою функцією, з тієї самої причини.
+  migrateApps(database);
+
   // --- Migration: згоди на особі і слід злиття (INC-300) ---
   //
   // Пара до CREATE вище: «додаєш колонку — додай її і в CREATE, і в ALTER»
@@ -8142,6 +8181,73 @@ function runMigrations(database: any) {
 
   console.log('[DB] migrations complete');
   }
+
+/**
+ * Міграція 0400 — стан звʼязку застосунків і попит «хочу» (Блок «Застосунки»,
+ * docs/tasks/2026-09-09-block-apps.md §3.3–3.4). Дзеркало
+ * `db/postgres/migrations/0400-*.sql`; політики — лише на Postgres.
+ *
+ * `app_connections`: один рядок на (організація, обʼєкт-або-NULL, застосунок)
+ * — статус, час останнього успіху, час і текст останньої помилки. Унікальність
+ * по `COALESCE(property_id, '')`: два NULL в UNIQUE не рівні. `app_wishes`:
+ * один рядок на (організація, застосунок).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function migrateApps(database: any) {
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS app_connections (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        property_id     TEXT REFERENCES properties(id) ON DELETE CASCADE,
+        app             TEXT NOT NULL,
+        status          TEXT NOT NULL CHECK (status IN ('connected', 'degraded', 'error', 'disabled')),
+        last_ok_at      TEXT,
+        last_error_at   TEXT,
+        last_error      TEXT,
+        updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_app_connections_org ON app_connections(organization_id)');
+    database.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_app_connections_row ON app_connections(organization_id, COALESCE(property_id, ''), app)");
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS app_wishes (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        app             TEXT NOT NULL,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(organization_id, app)
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_app_wishes_org ON app_wishes(organization_id)');
+  } catch (e) {
+    console.error('[DB] 0400 app_connections/app_wishes:', (e as Error).message);
+  }
+
+  // 0401: PIN і PUK адміністратора TSE на рядку обʼєкта — під seal(), ніколи
+  // відкритим текстом (Блок «Застосунки» 3.8, З17). Лише ALTER: цей блок іде
+  // ПІСЛЯ CREATE fin_fiscal_settings, тож і свіжа, і мігрована база дістають
+  // колонку тут.
+  try {
+    const cols = (database.prepare('PRAGMA table_info(fin_fiscal_settings)').all() as { name: string }[]).map((c) => c.name);
+    for (const col of ['tse_admin_pin', 'tse_admin_puk']) {
+      if (!cols.includes(col)) {
+        database.exec(`ALTER TABLE fin_fiscal_settings ADD COLUMN ${col} TEXT`);
+        console.log(`[DB] 0401: fin_fiscal_settings.${col} added`);
+      }
+    }
+    // 0402: недороблена TSS запамʼятовується (id + PUK з 0401), а не
+    // створюється вдруге; замок на час походу до вендора.
+    for (const col of ['tse_pending_tss_id', 'tse_connecting_at']) {
+      if (!cols.includes(col)) {
+        database.exec(`ALTER TABLE fin_fiscal_settings ADD COLUMN ${col} TEXT`);
+        console.log(`[DB] 0402: fin_fiscal_settings.${col} added`);
+      }
+    }
+  } catch (e) {
+    console.error('[DB] 0401/0402 fin_fiscal_settings TSE columns:', (e as Error).message);
+  }
+}
 
 /**
  * Міграція 0100 — дзеркало рівня OTA. Винесена з `runMigrations` навмисно:
