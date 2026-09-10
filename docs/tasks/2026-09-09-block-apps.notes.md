@@ -44,4 +44,9 @@
    Потрібна зміна в чужій теці: `src/modules/invoicing/api/index.ts` — один
    експорт (`fiskalyDevice` або окрема `fiskalyProbe`), після чого проба —
    двадцять рядків у `api/settings/apps/_handlers.ts`, а стеля `invoicing` у
-   `check-boundaries.mjs` повертається з 4 на 3.
+   `check-boundaries.mjs` повертається з 5 на 3 (другий рядок — 3.8, `fiskalyConnect`).
+
+7. **Перший живий виклик `fiskalyConnect` ключем TEST** — чекпоінт для того,
+   хто матиме акаунт fiskaly (З18, інваріант 28): подивитись на тіла
+   `PUT /tss` (`admin_puk`) і `PUT /client` очима, зберегти зразки як у
+   `docs/vendor/channex/live/`.

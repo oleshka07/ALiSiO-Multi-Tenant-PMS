@@ -90,7 +90,7 @@ export default function FeaturesSettingsPage() {
     }
   };
 
-  const line = '1px solid var(--border-color, rgba(128,128,128,.15))';
+  const line = '1px solid var(--border-color)';
   const modules = Object.entries(catalog).filter(([key]) => !APP_FEATURES.has(key as never));
 
   return (
@@ -107,7 +107,7 @@ export default function FeaturesSettingsPage() {
         </div>
 
         {loading && <Loader2 className="animate-spin" size={20} />}
-        {error && <div className="card" style={{ color: 'var(--danger, #e5484d)' }}>{error}</div>}
+        {error && <div className="card" style={{ color: 'var(--danger)' }}>{error}</div>}
 
         {!loading && (
           <div className="card" data-testid="modules-list" style={{ maxWidth: 640, padding: 0 }}>
@@ -122,7 +122,7 @@ export default function FeaturesSettingsPage() {
                     onClick={() => toggle(key)}
                     disabled={busy === key}
                     aria-label={`${features[key] ? t('Вимкнути') : t('Увімкнути')} ${t(label)}`}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: features[key] ? 'var(--success, #30a46c)' : 'var(--text-tertiary)' }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: features[key] ? 'var(--success)' : 'var(--text-tertiary)' }}
                   >
                     {features[key] ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
                   </button>

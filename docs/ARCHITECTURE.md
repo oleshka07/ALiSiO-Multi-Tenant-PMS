@@ -345,6 +345,27 @@ integration-credentials → apps` і імпорт назад був би цик�
 кожному: `invoicing/data/fiskaly-sign-de.ts` (обʼєкт — за `tss_id` у
 `fin_fiscal_settings`) і `core/mail/email.ts`.
 
+**Картка fiskaly вміє підключити TSE (3.8, міграція 0141).** До цього
+`fin_fiscal_settings` не писав ніхто в продукті — картка з полями ключів без
+способу отримати TSS була б перемикачем-обманкою (П5). `POST
+/api/settings/apps/fiskaly/connect { propertyId }` робить кроки 2–3 quickstart
+через `fiskalyConnect` (`invoicing/data/fiskaly-sign-de.ts`): `PUT /tss/{uuid}`
+→ `PATCH {UNINITIALIZED}` → `PATCH /admin {admin_puk, new_admin_pin}` → `POST
+/admin/auth` → `PATCH {INITIALIZED}` → `PUT /client/{uuid} {serial_number}` — і
+пише рядок обʼєкта: `tss_id`, `tse_client_id`, `recording_system_serial =
+ALISIO-<slug обʼєкта>` (те, що §6 KassenSichV друкує на белезі), а `admin_pin`
+(наш, шість випадкових цифр) і `admin_puk` (від fiskaly) — у нові колонки
+`tse_admin_pin`, `tse_admin_puk` **під тим самим `seal()`**, що й ключі
+`channel_credentials` (З17: колонок у `channel_credentials` три, а PIN/PUK —
+атрибут TSS, тобто обʼєкта). Ідемпотентно в бік відмови: обʼєкт із `tss_id`
+дістає 409 з назвою — кожна TSS коштує грошей. Результат іде через
+`reported()` в `app_connections` на обʼєкт. Базова адреса —
+`kassensichv-middleware.fiskaly.com` (стара `kassensichv.fiskaly.com`
+застаріла); TEST/LIVE розрізняються ключем, і екран про це каже. Форма
+відповідей (`admin_puk`, `serial_number`) — з документації, живого проходу ще
+не було (інваріант 28): гейт іде проти підставленого HTTP, а перший живий
+виклик має подивитись на тіло очима.
+
 **Попит — `app_wishes`** (0140): (організація, застосунок), UNIQUE, «хочу»
 ідемпотентне. Лічильник «скільки готелів хочуть» читає лише постачальник
 (`/app/platform/apps`, `GET /api/platform/apps` — платформна сесія, читання
@@ -367,7 +388,10 @@ live — з вимикачем і файлом варти; шлюзи — ті �
 база відмовляє (FK на неіснуючу організацію); закон обʼєкт/організація; «хочу»
 ідемпотентне і невидиме сусідові (політика — лише в `check:pg`,
 `rls-check.sql`); постачальнику 401 на сесії власника, обидва орендарі на
-платформній; імʼя вендора не зʼявляється (И1).
+платформній, попит росте дельтою; підключення TSE проти справжнього HTTP-стаба
+— порядок кроків quickstart, PIN той самий у трьох місцях і під `seal()`,
+друга TSS не створюється, відмова вендора з текстом на обʼєкті; імʼя вендора
+не зʼявляється (И1).
 
 ---
 

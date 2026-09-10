@@ -102,7 +102,7 @@ export default function PlatformAppsPage() {
                       {r.last_error ? (
                         <>
                           <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{fmt(r.last_error_at)}</div>
-                          <div style={{ color: 'var(--danger, #e5484d)' }}>{r.last_error}</div>
+                          <div style={{ color: 'var(--danger)' }}>{r.last_error}</div>
                         </>
                       ) : '—'}
                     </td>

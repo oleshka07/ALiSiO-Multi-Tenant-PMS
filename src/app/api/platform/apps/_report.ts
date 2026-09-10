@@ -24,6 +24,7 @@ import { runWithOrganization } from '@core/auth/tenant-context';
 import { getPlatformSession } from '@core/auth/platform';
 import { APPS } from '@core/apps';
 import { channelManagerHealth, listConnections, wishedApps } from '@core/app-connections';
+import { ALL_PROPERTIES } from '@core/property-scope';
 
 export interface PlatformConnectionRow {
   organization_id: string;
@@ -49,7 +50,7 @@ export async function platformAppsReport(platformSessionId: string | undefined):
   for (const o of orgs) {
     const orgId = String(o.id);
     await runWithOrganization(orgId, async () => {
-      for (const c of await listConnections(orgId)) {
+      for (const c of await listConnections(orgId, ALL_PROPERTIES)) {
         connections.push({
           organization_id: orgId,
           organization_name: String(o.name),
@@ -63,7 +64,7 @@ export async function platformAppsReport(platformSessionId: string | undefined):
       }
       // Менеджер каналів — не застосунок (З4), але звʼязок із чужою системою;
       // рядок із `cm_connections`, без нового запису.
-      for (const cm of await channelManagerHealth(orgId)) {
+      for (const cm of await channelManagerHealth(orgId, ALL_PROPERTIES)) {
         connections.push({
           organization_id: orgId,
           organization_name: String(o.name),

@@ -30,9 +30,11 @@ import { APPS, type AppId } from './apps.ts';
  * `payments.ts` імпортує цей модуль, і виводити його з `PAYMENT_PROVIDERS` було
  * б циклом; `apps.ts` не імпортує нічого з рантайму, тож із нього — можна.
  * `apps.check.ts` тримає це в обидва боки: зайвий запис з будь-якого боку —
- * червона збірка.
+ * червона збірка. Три шлюзи названі й поіменно, хоч вони вже в `AppId`:
+ * `payments.check.ts` читає ТЕКСТ цього рядка і вимагає бачити кожен id
+ * шлюзу — так він тримав юніон чесним до появи реєстру, і ця сторожа лишається.
  */
-export type IntegrationChannel = AppId | 'channel_manager';
+export type IntegrationChannel = AppId | 'stripe' | 'paypal' | 'teya' | 'channel_manager';
 
 export interface IntegrationCredentials {
   clientId?: string;
@@ -90,7 +92,7 @@ function fromEnv(channel: IntegrationChannel): IntegrationCredentials | null {
  */
 const SEAL = 'enc1:';
 
-function seal(plain: string | null): string | null {
+export function seal(plain: string | null): string | null {
   if (plain === null || plain === '') return plain;
   if (plain.startsWith(SEAL)) return plain; // already sealed — do not double-wrap
   // No key means no save. Storing it in the clear "for now" is exactly how the
@@ -112,7 +114,7 @@ function seal(plain: string | null): string | null {
  * API key: a confusing 401 from a third party instead of a plain "this hotel
  * has no usable key". Null is the honest answer.
  */
-function unseal(stored: string | null | undefined): string | null {
+export function unseal(stored: string | null | undefined): string | null {
   if (!stored) return null;
   if (!stored.startsWith(SEAL)) return stored;
   try {

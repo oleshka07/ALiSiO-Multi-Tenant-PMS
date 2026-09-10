@@ -7737,6 +7737,22 @@ function migrateApps(database: any) {
   } catch (e) {
     console.error('[DB] 0140 app_connections/app_wishes:', (e as Error).message);
   }
+
+  // 0141: PIN і PUK адміністратора TSE на рядку обʼєкта — під seal(), ніколи
+  // відкритим текстом (Блок «Застосунки» 3.8, З17). Лише ALTER: цей блок іде
+  // ПІСЛЯ CREATE fin_fiscal_settings, тож і свіжа, і мігрована база дістають
+  // колонку тут.
+  try {
+    const cols = (database.prepare('PRAGMA table_info(fin_fiscal_settings)').all() as { name: string }[]).map((c) => c.name);
+    for (const col of ['tse_admin_pin', 'tse_admin_puk']) {
+      if (!cols.includes(col)) {
+        database.exec(`ALTER TABLE fin_fiscal_settings ADD COLUMN ${col} TEXT`);
+        console.log(`[DB] 0141: fin_fiscal_settings.${col} added`);
+      }
+    }
+  } catch (e) {
+    console.error('[DB] 0141 fin_fiscal_settings pin/puk:', (e as Error).message);
+  }
 }
 
 /**

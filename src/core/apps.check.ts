@@ -27,8 +27,17 @@
  */
 import assert from 'node:assert';
 import fs from 'node:fs';
+import http from 'node:http';
 import '../../scripts/lib/module-aliases.mjs';
 import { FEATURE_SPEC } from './features.ts';
+
+// Сцена 3.8 (підключення TSE) іде ПРОТИ СПРАВЖНЬОГО HTTP — підставленого
+// сервера fiskaly на 127.0.0.1. Адресу клієнт читає при завантаженні модуля,
+// тому вона ставиться тут, до першого імпорту. Ключ шифрування — щоб `seal()`
+// мав чим запечатати PIN/PUK; це ключ стенда, не секрет.
+const FISKALY_STUB_PORT = 45000 + Math.floor(Math.random() * 1000);
+process.env.FISKALY_BASE_URL = `http://127.0.0.1:${FISKALY_STUB_PORT}/api/v2`;
+process.env.APP_SECRET_KEY ||= '0'.repeat(64);
 
 type Key = keyof typeof FEATURE_SPEC;
 type Kind = 'core' | 'module' | 'app';
@@ -144,8 +153,11 @@ const unionNames = [...union[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).sort(
 // його немає; тому рівність доводиться так: рядок тексту юніону називає
 // `AppId` (виведення з реєстру) і рівно виняток поіменно.
 assert.ok(/\bAppId\b/.test(union[1]), 'IntegrationChannel не виведений з AppId реєстру застосунків');
-assert.deepStrictEqual(unionNames, [...NOT_AN_APP].sort(),
-  `IntegrationChannel називає поіменно ${JSON.stringify(unionNames)} — має лише ${JSON.stringify(NOT_AN_APP)}, решта з реєстру`);
+// Поіменно в тексті — виняток і три шлюзи (їх вимагає бачити текстом
+// `payments.check.ts`); усе інше — лише через `AppId`.
+const gatewayIds = APPS.filter(isGatewayApp).map((a) => a.id);
+assert.deepStrictEqual(unionNames, [...NOT_AN_APP, ...gatewayIds].sort(),
+  `IntegrationChannel називає поіменно ${JSON.stringify(unionNames)} — має лише ${JSON.stringify([...NOT_AN_APP, ...gatewayIds])}, решта з реєстру`);
 console.log(`  ok  3. три експорти integration-credentials виведені з ${withFields.length} застосунків + ${NOT_AN_APP.join(', ')}`);
 
 // ── 4. «Скоро» без вимикача й полів; live — з вимикачем і файлом варти ──
@@ -214,7 +226,9 @@ console.log('  ok  5. три шлюзи — ті самі обʼєкти, що �
 const { runWithOrganization } = await import('./auth/tenant-context.ts');
 const { getSql } = await import('./db/async.ts');
 const conn = await import('./app-connections.ts');
-const { reportOk, reportError, listConnections, wishApp, wishedApps } = conn;
+const { reportOk, reportError, wishApp, wishedApps } = conn;
+const { ALL_PROPERTIES } = await import('./property-scope.ts');
+const listConnections = (org: string) => conn.listConnections(org, ALL_PROPERTIES);
 
 const sql = getSql();
 const A = '__apps_check__a';
@@ -419,9 +433,102 @@ try {
   assert.strictEqual(bRow?.last_error, 'B mailbox down');
   const aFiskaly = report.connections.find((c) => c.organization_id === A && c.app === 'fiskaly');
   assert.strictEqual(aFiskaly?.status, 'error');
+  // Попит — ДЕЛЬТОЮ, не абсолютним числом: у базі стенда можуть жити інші
+  // готелі зі своїм «хочу» (e2e-готель — теж). Натиск B додає рівно один.
   const wishRow = report.wishes.find((w) => w.app === 'winhotel_import');
-  assert.strictEqual(Number(wishRow?.hotels), 1, `попит Winhotel = ${wishRow?.hotels}, а натиснув один готель`);
+  assert.ok(Number(wishRow?.hotels) >= 1, `попит Winhotel = ${wishRow?.hotels}, а готель A натиснув`);
+  await runWithOrganization(B, () => wishApp(B, 'winhotel_import'));
+  const report2 = await (await platformAppsReport('__apps_check__ps')).json() as typeof report;
+  const after = report2.wishes.find((w) => w.app === 'winhotel_import');
+  assert.strictEqual(Number(after?.hotels), Number(wishRow?.hotels) + 1, 'другий готель натиснув «хочу», а попит не зріс рівно на один');
   console.log('  ok  9. постачальник: власнику 401, платформі — обидва готелі й попит');
+
+  // ── 3.8. «Підключити TSE» — кроки 2–3 quickstart проти справжнього HTTP ──
+  //
+  // Стаб fiskaly записує послідовність викликів і віддає тіла у формі
+  // документації (інваріант 28 — до живого проходу це форма ДОКУМЕНТАЦІЇ, і
+  // гейт про це каже). Твердження: порядок кроків; PIN, надісланий у
+  // /admin, той самий, що в /admin/auth і що лежить у базі під seal();
+  // serial_number = ALISIO-<slug>; рядок fin_fiscal_settings на обʼєкті;
+  // app_connections на обʼєкт — connected; другий виклик — 409 і жодної
+  // другої TSS; відмова вендора — error з текстом на тому ж обʼєкті.
+  const calls: { method: string; path: string; body: any }[] = [];
+  let stubMode: 'ok' | 'refuse' = 'ok';
+  const stub = http.createServer((req, res) => {
+    let raw = '';
+    req.on('data', (c) => { raw += c; });
+    req.on('end', () => {
+      const path = (req.url ?? '').replace('/api/v2', '');
+      const body = raw ? JSON.parse(raw) : {};
+      calls.push({ method: req.method ?? '', path, body });
+      const send = (code: number, obj: unknown) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+      if (path === '/auth') return send(200, { access_token: 'stub-token' });
+      if (stubMode === 'refuse') return send(402, { message: 'Payment required: TSS quota exhausted for this organisation' });
+      if (req.method === 'PUT' && /^\/tss\/[0-9a-f-]+$/.test(path)) return send(200, { _id: path.split('/')[2], state: 'CREATED', admin_puk: 'PUK-STUB-4242' });
+      if (req.method === 'PATCH' && /^\/tss\/[0-9a-f-]+$/.test(path)) return send(200, { state: body.state });
+      if (req.method === 'PATCH' && path.endsWith('/admin')) return send(200, {});
+      if (req.method === 'POST' && path.endsWith('/admin/auth')) return send(200, { access_token: 'admin-token' });
+      if (req.method === 'PUT' && /\/client\//.test(path)) return send(200, { serial_number: body.serial_number, state: 'REGISTERED' });
+      send(404, { message: `stub: ${req.method} ${path}` });
+    });
+  });
+  await new Promise<void>((r) => stub.listen(FISKALY_STUB_PORT, '127.0.0.1', r));
+  try {
+    const { connectTseForProperty } = await import('../app/api/settings/apps/_handlers.ts');
+    const { isSealed, unseal } = await import('./integration-credentials.ts');
+    // Обʼєкт B — без TSS (у A він уже є з фікстури вище); slug = id.
+    const PROP_B = `${B}_prop`;
+    const first = await runWithOrganization(B, () => connectTseForProperty(B, PROP_B, { apiKey: 'k', apiSecret: 's' }));
+    assert.strictEqual(first.status, 200, `підключення TSE відповіло ${first.status}: ${await first.text()}`);
+    const seq = calls.map((c) => `${c.method} ${c.path.replace(/[0-9a-f-]{36}/g, '{id}')}`);
+    assert.deepStrictEqual(seq, [
+      'POST /auth',
+      'PUT /tss/{id}',
+      'PATCH /tss/{id}',
+      'PATCH /tss/{id}/admin',
+      'POST /tss/{id}/admin/auth',
+      'PATCH /tss/{id}',
+      'PUT /tss/{id}/client/{id}',
+    ], `послідовність quickstart не та: ${JSON.stringify(seq)}`);
+    assert.strictEqual(calls[2].body.state, 'UNINITIALIZED');
+    assert.strictEqual(calls[3].body.admin_puk, 'PUK-STUB-4242', 'PUK у /admin — не той, що віддав PUT /tss');
+    const pinSent = calls[3].body.new_admin_pin;
+    assert.ok(/^\d{6}$/.test(pinSent), `PIN має бути шість цифр, а не ${pinSent}`);
+    assert.strictEqual(calls[4].body.admin_pin, pinSent, 'auth пішов не тим PIN, який щойно поставили');
+    assert.strictEqual(calls[5].body.state, 'INITIALIZED');
+    assert.strictEqual(calls[6].body.serial_number, `ALISIO-${PROP_B}`, 'serial_number — не ALISIO-<slug обʼєкта>');
+
+    const row = await runWithOrganization(B, () => sql.row<any>('SELECT * FROM fin_fiscal_settings WHERE property_id = ? AND organization_id = ?', [PROP_B, B]));
+    assert.ok(row?.tss_id && row.tse_client_id, 'fin_fiscal_settings без tss_id/tse_client_id після підключення');
+    assert.strictEqual(row.recording_system_serial, `ALISIO-${PROP_B}`);
+    assert.ok(isSealed(row.tse_admin_pin) && isSealed(row.tse_admin_puk), 'PIN/PUK лежать відкритим текстом');
+    assert.strictEqual(unseal(row.tse_admin_pin), pinSent, 'запечатаний PIN — не той, що надіслано у fiskaly');
+    assert.strictEqual(unseal(row.tse_admin_puk), 'PUK-STUB-4242');
+    const conn = (await runWithOrganization(B, () => listConnections(B))).find((c) => c.app === 'fiskaly');
+    assert.strictEqual(conn?.status, 'connected', 'підключення не залишило connected у app_connections');
+    assert.strictEqual(conn?.property_id, PROP_B, 'стан підключення — не на тому обʼєкті');
+
+    // Ідемпотентно в бік відмови: другий виклик — 409 з назвою, стаб не бачив другого PUT /tss.
+    const before = calls.filter((c) => c.method === 'PUT' && /^\/tss\/[0-9a-f-]+$/.test(c.path)).length;
+    const second = await runWithOrganization(B, () => connectTseForProperty(B, PROP_B, { apiKey: 'k', apiSecret: 's' }));
+    assert.strictEqual(second.status, 409, `другий виклик відповів ${second.status} — друга TSS коштує грошей`);
+    assert.ok(/…[0-9a-f]{4}/.test((await second.json()).error), 'відмова не називає TSS');
+    assert.strictEqual(calls.filter((c) => c.method === 'PUT' && /^\/tss\/[0-9a-f-]+$/.test(c.path)).length, before, 'другий виклик усе ж створив TSS');
+
+    // Відмова вендора — на картці з текстом, на обʼєкті, і рядка налаштувань немає.
+    stubMode = 'refuse';
+    await runWithOrganization(A, () => sql.run('DELETE FROM fin_fiscal_settings WHERE property_id = ?', [PROP]));
+    const refused = await runWithOrganization(A, () => connectTseForProperty(A, PROP, { apiKey: 'k', apiSecret: 's' }));
+    assert.strictEqual(refused.status, 502);
+    const aConn = (await runWithOrganization(A, () => listConnections(A))).find((c) => c.app === 'fiskaly' && c.property_id === PROP);
+    assert.strictEqual(aConn?.status, 'error');
+    assert.ok(/quota exhausted/.test(aConn?.last_error ?? ''), `текст відмови вендора не дійшов: ${aConn?.last_error}`);
+    const none = await runWithOrganization(A, () => sql.row<any>('SELECT id FROM fin_fiscal_settings WHERE property_id = ?', [PROP]));
+    assert.ok(!none, 'після відмови вендора рядок налаштувань усе ж записано');
+    console.log('  ok  3.8. TSE підключається кроками quickstart, PIN/PUK під seal(), друга TSS не створюється, відмова з текстом');
+  } finally {
+    await new Promise<void>((r) => stub.close(() => r()));
+  }
 } finally {
   await cleanup();
 }

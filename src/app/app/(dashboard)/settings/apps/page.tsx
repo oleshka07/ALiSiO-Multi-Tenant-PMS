@@ -38,6 +38,7 @@ interface Card {
   where: string; live: boolean; pricing: 'free' | 'paid' | 'included'; status: string; probeable: boolean;
   enabled: boolean | null; keys: Keys | null; connections: Connection[]; wished: boolean;
 }
+interface FiscalProperty { property_id: string; name: string; tss: string | null }
 interface HealthRow {
   key: string; label: string; property_id: string | null; status: string;
   last_ok_at: string | null; last_error_at: string | null; last_error: string | null;
@@ -68,6 +69,9 @@ export default function AppsSettingsPage() {
   const t = useT();
   const [cards, setCards] = useState<Card[]>([]);
   const [health, setHealth] = useState<HealthRow[]>([]);
+  const [fiscalProperties, setFiscalProperties] = useState<FiscalProperty[]>([]);
+  const [tseProperty, setTseProperty] = useState('');
+  const [tseResult, setTseResult] = useState('');
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -83,6 +87,7 @@ export default function AppsSettingsPage() {
     const d = await res.json();
     setCards(d.cards);
     setHealth(d.health);
+    setFiscalProperties(d.fiscalProperties ?? []);
   }, [t]);
 
   useEffect(() => {
@@ -140,6 +145,26 @@ export default function AppsSettingsPage() {
     }
   };
 
+  // «Підключити TSE» (3.8): кроки 2–3 quickstart для обраного обʼєкта.
+  const connectTse = async () => {
+    setBusy('fiskaly');
+    setError('');
+    setTseResult('');
+    try {
+      const res = await fetch('/api/settings/apps/fiskaly/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ propertyId: tseProperty }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setError(d.error || t('Не вдалося підключити TSE')); await load(); return; }
+      setTseResult(`${t('підключено')} · TSS ${d.tss}`);
+      await load();
+    } finally {
+      setBusy('');
+    }
+  };
+
   const wish = async (card: Card) => {
     setBusy(card.id);
     try {
@@ -150,7 +175,7 @@ export default function AppsSettingsPage() {
     }
   };
 
-  const line = '1px solid var(--border-color, rgba(128,128,128,.15))';
+  const line = '1px solid var(--border-color)';
 
   return (
     <div className="app-content">
@@ -165,7 +190,7 @@ export default function AppsSettingsPage() {
       </div>
 
       {loading && <Loader2 className="animate-spin" size={20} />}
-      {error && <div className="card" style={{ color: 'var(--danger, #e5484d)' }}>{error}</div>}
+      {error && <div className="card" style={{ color: 'var(--danger)' }}>{error}</div>}
 
       {!loading && !error && (
         <>
@@ -190,14 +215,14 @@ export default function AppsSettingsPage() {
                         onClick={() => toggle(card)}
                         disabled={busy === card.id}
                         aria-label={`${card.enabled ? t('Вимкнути') : t('Увімкнути')} ${card.label}`}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: card.enabled ? 'var(--success, #30a46c)' : 'var(--text-tertiary)' }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: card.enabled ? 'var(--success)' : 'var(--text-tertiary)' }}
                       >
                         {card.enabled ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
                       </button>
                     )}
                     {!card.live && (
                       card.wished ? (
-                        <span data-testid={`app-wished-${card.id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--success, #30a46c)', whiteSpace: 'nowrap' }}>
+                        <span data-testid={`app-wished-${card.id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--success)', whiteSpace: 'nowrap' }}>
                           <Check size={14} /> {t('ви позначили')}
                         </span>
                       ) : (
@@ -209,7 +234,7 @@ export default function AppsSettingsPage() {
                   </div>
 
                   {card.status === 'error' && card.connections.some((c) => c.last_error) && (
-                    <div style={{ padding: '0 18px 12px 18px', fontSize: 12, color: 'var(--danger, #e5484d)' }}>
+                    <div style={{ padding: '0 18px 12px 18px', fontSize: 12, color: 'var(--danger)' }}>
                       {card.connections.filter((c) => c.last_error).map((c, i) => (
                         <div key={i} data-testid={`app-error-${card.id}`}>
                           {t('остання помилка')}: {c.last_error} · {fmt(c.last_error_at)}
@@ -221,7 +246,7 @@ export default function AppsSettingsPage() {
                   {showKeys && (
                     <div style={{ padding: '0 18px 16px 18px', borderTop: line, paddingTop: 12 }}>
                       {card.keys && !card.keys.configured && (
-                        <div style={{ fontSize: 12, color: 'var(--warning, #f5a524)', marginBottom: 10 }}>
+                        <div style={{ fontSize: 12, color: 'var(--warning)', marginBottom: 10 }}>
                           {t('Ключа немає — інтеграція увімкнена, але відповідатиме помилкою')}
                         </div>
                       )}
@@ -232,6 +257,11 @@ export default function AppsSettingsPage() {
                       )}
                       {card.where && (
                         <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 10 }}>{t('Де взяти ключі')}: {card.where}</div>
+                      )}
+                      {card.id === 'fiskaly' && (
+                        <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 10 }}>
+                          {t('Середовище TEST чи LIVE визначає ключ, не адреса: ключ TEST не підписує по-справжньому.')}
+                        </div>
                       )}
                       {card.fields.map((f) => (
                         <label key={f.field} style={{ display: 'block', marginBottom: 10 }}>
@@ -249,7 +279,7 @@ export default function AppsSettingsPage() {
                             value={drafts[card.id]?.[f.field] ?? ''}
                             onChange={(e) => setDrafts((s) => ({ ...s, [card.id]: { ...(s[card.id] || {}), [f.field]: e.target.value } }))}
                             placeholder={card.keys?.values[f.field] ? t('Замінити') : t('Вставте ключ')}
-                            style={{ width: '100%', padding: '8px 10px', fontSize: 13, borderRadius: 6, border: line, background: 'var(--bg-secondary, transparent)', color: 'var(--text-primary)' }}
+                            style={{ width: '100%', padding: '8px 10px', fontSize: 13, borderRadius: 6, border: line, background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
                           />
                         </label>
                       ))}
@@ -274,11 +304,47 @@ export default function AppsSettingsPage() {
                           {busy === card.id ? t('Зберігаю…') : t('Зберегти ключі')}
                         </button>
                         {saved === card.id && (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--success, #30a46c)' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--success)' }}>
                             <Check size={14} /> {t('Збережено')}
                           </span>
                         )}
                       </div>
+
+                      {card.id === 'fiskaly' && card.keys?.configured && (
+                        <div style={{ marginTop: 14, paddingTop: 12, borderTop: line }}>
+                          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>{t('TSE обʼєкта')}</div>
+                          {fiscalProperties.map((p) => (
+                            <div key={p.property_id} style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 4 }} data-testid={`tse-property-${p.property_id}`}>
+                              {p.name} — {p.tss ? `${t('підключено')} · TSS ${p.tss}` : t('TSS не підключено')}
+                            </div>
+                          ))}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
+                            <select
+                              className="form-select"
+                              style={{ width: 'auto' }}
+                              value={tseProperty}
+                              onChange={(e) => setTseProperty(e.target.value)}
+                              aria-label={t('Обʼєкт')}
+                              data-testid="tse-property-select"
+                            >
+                              <option value="">{t('— оберіть обʼєкт —')}</option>
+                              {fiscalProperties.filter((p) => !p.tss).map((p) => (
+                                <option key={p.property_id} value={p.property_id}>{p.name}</option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={connectTse}
+                              disabled={busy === card.id || !tseProperty}
+                              className="btn btn-primary"
+                              data-testid="tse-connect"
+                              style={{ fontSize: 13 }}
+                            >
+                              {busy === card.id ? t('Підключаю…') : t('Підключити TSE')}
+                            </button>
+                            {tseResult && <span data-testid="tse-result" style={{ fontSize: 12, color: 'var(--success)' }}>{tseResult}</span>}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -303,7 +369,7 @@ export default function AppsSettingsPage() {
                     <span className={`badge ${st.badge}`}>{t(st.word)}</span>
                   </div>
                   {row.last_error && (
-                    <div style={{ marginTop: 6, fontSize: 12, color: row.status === 'error' ? 'var(--danger, #e5484d)' : 'var(--text-secondary)' }}>
+                    <div style={{ marginTop: 6, fontSize: 12, color: row.status === 'error' ? 'var(--danger)' : 'var(--text-secondary)' }}>
                       {row.last_error}
                     </div>
                   )}

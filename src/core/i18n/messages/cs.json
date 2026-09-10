@@ -3611,5 +3611,12 @@
   "хочу": "chci",
   "ще не зверталися": "zatím nekontaktováno",
   "Перевірити звʼязок": "Ověřit spojení",
-  "Не вдалося перевірити": "Ověření se nezdařilo"
+  "Не вдалося перевірити": "Ověření se nezdařilo",
+  "Не вдалося підключити TSE": "TSE se nepodařilo připojit",
+  "Середовище TEST чи LIVE визначає ключ, не адреса: ключ TEST не підписує по-справжньому.": "Zda jde o TEST nebo LIVE, určuje klíč, ne adresa: klíč TEST nepodepisuje doopravdy.",
+  "TSE обʼєкта": "TSE objektu",
+  "TSS не підключено": "TSS nepřipojeno",
+  "— оберіть обʼєкт —": "— vyberte objekt —",
+  "Підключаю…": "Připojuji…",
+  "Підключити TSE": "Připojit TSE"
 }

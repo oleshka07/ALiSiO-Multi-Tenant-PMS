@@ -37,6 +37,7 @@
 import { getSql } from './db/async.ts';
 import { runWithOrganization } from './auth/tenant-context.ts';
 import { appById, isAppId, type AppId } from './apps.ts';
+import { propertyScopeFilter, type PropertyScope } from './property-scope.ts';
 
 export type ConnectionStatus = 'connected' | 'degraded' | 'error' | 'disabled';
 
@@ -128,11 +129,19 @@ export async function reportError(app: AppId | string, organizationId: string, e
   await upsert(app, organizationId, propertyId ?? null, { status: 'error', error: text });
 }
 
-/** Усі звʼязки організації — для картки й для здоровʼя. У контексті орендаря. */
-export async function listConnections(organizationId: string): Promise<AppConnection[]> {
+/**
+ * Звʼязки організації — для картки й для здоровʼя. У контексті орендаря.
+ *
+ * Область обʼєкта — типом (INC-029): картка застосунків показує весь рахунок
+ * (`ALL_PROPERTIES`), а звужений читач побачить і рядки організації
+ * (`property_id IS NULL` — пошта): підключення на організацію належить
+ * кожному її обʼєкту.
+ */
+export async function listConnections(organizationId: string, scope: PropertyScope): Promise<AppConnection[]> {
+  const on = propertyScopeFilter(scope, '');
   return await getSql().rows<AppConnection>(
-    'SELECT * FROM app_connections WHERE organization_id = ? ORDER BY app, property_id',
-    [organizationId],
+    `SELECT * FROM app_connections WHERE organization_id = ? AND (${on.sql} OR property_id IS NULL) ORDER BY app, property_id`,
+    [organizationId, ...on.params],
   );
 }
 
@@ -151,11 +160,12 @@ export interface ChannelManagerHealth {
  * тека). Його стан читається звідти, де він уже є: `cm_connections`. Без
  * нового запису і без правки каналів.
  */
-export async function channelManagerHealth(organizationId: string): Promise<ChannelManagerHealth[]> {
+export async function channelManagerHealth(organizationId: string, scope: PropertyScope): Promise<ChannelManagerHealth[]> {
+  const on = propertyScopeFilter(scope, '');
   const rows = await getSql().rows<any>(
     `SELECT property_id, provider, is_enabled, last_full_sync_at, catalog_synced_at
-       FROM cm_connections WHERE organization_id = ? ORDER BY property_id`,
-    [organizationId],
+       FROM cm_connections WHERE organization_id = ? AND ${on.sql} ORDER BY property_id`,
+    [organizationId, ...on.params],
   );
   return rows.map((r) => ({
     property_id: String(r.property_id),

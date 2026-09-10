@@ -98,6 +98,7 @@ AssertionError [ERR_ASSERTION]: ключ «booking_engine» реєстру не 
 |---|---|---|
 | `b167997` | увесь блок: 3.1–3.7, гейт, міграція 0140, екрани, e2e | `tsc` 0; `npm run check` зелений; `check:pg` роллю `alisio_app` на локальному Postgres 16 зелений; `rls-check.sql` — усі; `check-schema-drift` — «збігаються — 124 таблиць, 1582 колонок, 404 індексів, 361 обмежень»; `check:i18n` 3532/3532; `check:unwrapped` чисто; `check:i18n-leak` чисто; `check-docs-current --strict` чисто; `check-boundaries --strict` у межах стелі; `check-no-tenant-names` чисто; `build` ok; `check:routes` по живому серверу — усі; `smoke-routes` — 5xx лише крони без секрету і `/api/test-email` з навмисно битим SMTP; Playwright `tests/e2e/apps.spec.ts` — 1 passed (1.1 хв) |
 | `36b5c41` | злиття `origin/claude/channex-integration-66kv65` (19 комітів; конфлікти в `package.json` і трьох словниках зведені ОБʼЄДНАННЯМ, AUTOLOOP п. 1) | після злиття: `tsc` 0, `check:i18n` 3533/3533, `check:unwrapped`, `check:i18n-leak`, `check-boundaries`, `check-docs-current`; повний `npm run check` зелений, `check:pg` роллю `alisio_app` (з 0131 накоченою) зелений, `rls-check.sql` — усі, `check-schema-drift` — збігаються, `build` ok |
+| (наступний) | 3.8 «Підключити TSE» (задача контролера `44c5a22`): `fiskalyConnect`, `POST /api/settings/apps/fiskaly/connect`, міграція 0141, картка; читачі стану з віссю обʼєкта (INC-029, храповик `check-property-scope` після злиття); юніон каналів називає шлюзи текстом (`payments.check` після злиття) | `tsc` 0; `npm run check` зелений; `check:pg` роллю `alisio_app` (0141 накочена) зелений; `rls-check.sql` — усі; `check-schema-drift` — «124 таблиць, 1584 колонок»; `check:i18n` 3540/3540; `check:unwrapped`, `check:i18n-leak`, `check-docs-current`, `check-boundaries` (стеля `invoicing` 5), `check-property-scope` у межах стелі; `build` ok |
 
 CI (`.github/workflows/checks.yml`) на гілці — після пушу; статус дописується.
 
@@ -173,6 +174,24 @@ Aplikace», «скоро», «хочу», «ви позначили», «під�
 таблиці. Посилання з `/app/platform` не додано (файл не мій) — сторінка
 відкривається адресою, як і сама платформа; є зворотне посилання «Готелі».
 
+**3.8 Картка fiskaly підключає TSE** (додано контролером 09.09 у `44c5a22`,
+підібрано злиттям). Було: `fin_fiscal_settings` не писав ніхто в продукті
+(єдиний INSERT — у перевірці); `FISKALY_BASE_URL` за замовчуванням —
+застаріла `kassensichv.fiskaly.com`. Стало: `fiskalyConnect()` у
+`src/modules/invoicing/data/fiskaly-sign-de.ts` (кроки quickstart: `PUT /tss`
+→ `PATCH {UNINITIALIZED}` → `PATCH /admin` → `POST /admin/auth` → `PATCH
+{INITIALIZED}` → `PUT /client {serial_number}`, під `reported()` на обʼєкт),
+дефолт адреси — `kassensichv-middleware.fiskaly.com/api/v2`;
+`POST /api/settings/apps/fiskaly/connect { propertyId }` → `connectTseForProperty`
+(`_handlers.ts`): обʼєкт свій або 404, `tss_id` уже є → 409 з назвою, без
+`APP_SECRET_KEY` → 503, відмова вендора → 502 з текстом на картці; рядок
+`fin_fiscal_settings` з `recording_system_serial = ALISIO-<slug>` і PIN/PUK під
+`seal()` у нових колонках `tse_admin_pin`/`tse_admin_puk` (міграція `0141`,
+дзеркало в `migrateApps()`; З17). Картка: список обʼєктів зі станом TSS,
+вибір обʼєкта, кнопка «Підключити TSE», результат «підключено · TSS …last4»,
+підпис про TEST/LIVE-ключ. Живого проходу проти fiskaly не було (З18):
+форма відповідей — з документації, гейт іде проти HTTP-стаба.
+
 **3.7 Документація.** `docs/ARCHITECTURE.md` §2.3 — новий підрозділ
 «Застосунки» (три рівні, `kind`, реєстр як маніфест, чому `channels` — модуль,
 закон креденшели/підключення, де стан, чого немає і чому, що тримає гейт); §7
@@ -214,6 +233,31 @@ Aplikace», «скоро», «хочу», «ви позначили», «під�
 5. **Тв. 9**: `FOREIGN KEY constraint failed` на фікстурі сесії власника без
    рядка `app_users` — фікстура доповнена.
 6. **Тв. 11**: `ENOENT …settings/apps/page.tsx` — екранів ще не було.
+7. **Сцена 3.8** (після злиття з `44c5a22`): написана після коду 3.8, тому
+   червоність доведена зломом — `POST /admin/auth` із PUK замість PIN →
+   `auth пішов не тим PIN, який щойно поставили`; після відкату — зелена.
+   Побічно тв. 9 впало на стенді з e2e-готелем (`попит Winhotel = 2, а
+   натиснув один`): твердження про абсолютне число залежало від сусідніх
+   даних — переписано дельтою (другий готель натискає → рівно +1).
+8. **Після злиття гілки робіт — два чужі гейти на моєму коді.**
+   `check-property-scope --strict` (храповик сесії 3, INC-029): чотири
+   читання scoped-таблиць «мовчать» про вісь обʼєкта (`listConnections`,
+   `channelManagerHealth`, пошук обʼєкта за `tss_id`, список TSS на картці) —
+   тепер приймають `PropertyScope`/пишуть `ALL_PROPERTIES` словом.
+   `payments.check.ts` читає ТЕКСТ юніону `IntegrationChannel` і вимагає
+   бачити кожен id шлюзу — `AppId | 'channel_manager'` його не задовольняв;
+   шлюзи названі й поіменно, тв. 3 гейта підправлено відповідно.
+   `features.check.ts INTEGRATIONS.online_payments` називав файл варти
+   `integration-credentials.ts`, який після виведення мапи вже не містить
+   слова `online_payments` — тепер названо `core/apps.ts`, де кожен шлюз
+   каже свій вимикач (одна правка у файлі, дозволеному лише для `kind`;
+   рядок саме про це — на рецензію).
+   `check-ui-tokens --strict` (П18): у двох нових екранах — 10 літералів
+   кольору у запасних значеннях `var(--danger, #e5484d)` і подібних (нові
+   файли — стеля нуль), а звужений екран «Модулі» став чистішим за свою
+   стелю. Запасні значення прибрано (токени `--danger`, `--success`,
+   `--warning`, `--border-color`, `--bg-secondary` існують у `globals.css`),
+   стеля «Модулів» опущена 5 → 0 у `check-ui-tokens.baseline.json`.
 
 Осі (інваріант 26): успіх/відмова × два різні тексти відмов
 (`quota exceeded` fiskaly, `535 5.7.8` пошти, `ECONNREFUSED` проби) × два
@@ -318,7 +362,12 @@ fiskaly, бо §5.6 вимагає фікстуру для fiskaly-клієнт�
    одним рядком у цьому файлі і в темі сесії 3. Чи ховати екран підключення
    від готелю без модуля — продуктове питання контролеру. У гейті — названий
    виняток.
-3. **Посилання на `/app/platform/apps` з `/app/platform`** —
+3. **Двері у фасаді для клієнта TSE** — та сама зміна, що в п. 1, тепер
+   потрібна двічі: 3.8 (`connectFiskaly`) імпортує `fiskalyConnect` з
+   `modules/invoicing/data` напряму. Стеля `invoicing` у
+   `check-boundaries.mjs` — 5 (було 3), обидва рядки з причиною; один
+   експорт у `src/modules/invoicing/api/index.ts` повертає 3.
+4. **Посилання на `/app/platform/apps` з `/app/platform`** —
    `src/app/app/platform/page.tsx` (не мій): один `<Link>`.
 
 ## 8. Що потрібно від власника

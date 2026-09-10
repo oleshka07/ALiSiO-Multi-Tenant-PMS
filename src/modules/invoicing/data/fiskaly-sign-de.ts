@@ -24,8 +24,12 @@ import {
 import { getSql } from '../../../core/db/async.ts';
 import { currentOrganizationId } from '../../../core/auth/tenant-context.ts';
 import { reportError, reportOk } from '../../../core/app-connections.ts';
+import { ALL_PROPERTIES, propertyScopeFilter } from '../../../core/property-scope.ts';
 
-const BASE = process.env.FISKALY_BASE_URL || 'https://kassensichv.fiskaly.com/api/v2';
+// Чинна адреса middleware (Блок «Застосунки» 3.8, 09.09.2026); стара
+// `kassensichv.fiskaly.com` — застаріла. Середовища TEST/LIVE у fiskaly
+// розрізняються КЛЮЧЕМ, не адресою.
+const BASE = process.env.FISKALY_BASE_URL || 'https://kassensichv-middleware.fiskaly.com/api/v2';
 
 export interface FiskalyConfig {
   apiKey: string;
@@ -59,14 +63,17 @@ async function call(path: string, init: RequestInit & { token?: string }): Promi
  * організацію — звіту немає, але підпис від цього не змінюється: стан звʼязку
  * ніколи не ламає операцію, яку описує (`reportOk`/`reportError` не кидають).
  */
-async function reported<T>(config: FiskalyConfig, work: () => Promise<T>): Promise<T> {
+async function reported<T>(config: Pick<FiskalyConfig, 'tssId'>, work: () => Promise<T>, knownPropertyId?: string): Promise<T> {
   const organizationId = currentOrganizationId();
-  let propertyId: string | null = null;
-  if (organizationId) {
+  let propertyId: string | null = knownPropertyId ?? null;
+  if (organizationId && !propertyId) {
     try {
+      // Обʼєкт тут — ВІДПОВІДЬ, а не умова: шукаємо, чия це TSS, по всьому
+      // рахунку (INC-029, написано словом).
+      const anyProperty = propertyScopeFilter(ALL_PROPERTIES, '');
       const row = await getSql().row<{ property_id: string }>(
-        'SELECT property_id FROM fin_fiscal_settings WHERE tss_id = ? AND organization_id = ?',
-        [config.tssId, organizationId]);
+        `SELECT property_id FROM fin_fiscal_settings WHERE tss_id = ? AND organization_id = ? AND ${anyProperty.sql}`,
+        [config.tssId, organizationId, ...anyProperty.params]);
       propertyId = row?.property_id ?? null;
     } catch { /* без обʼєкта — без звіту, підпис іде далі */ }
   }
@@ -146,4 +153,67 @@ async function signReceipt(config: FiskalyConfig, receipt: FiscalReceipt): Promi
     processType: 'Kassenbeleg-V1',
     processData: String(finished.schema?.standard_v1 ? JSON.stringify(finished.schema.standard_v1) : ''),
   };
+}
+
+// ─── Підключення TSE (Блок «Застосунки» 3.8) ───────────────────────────────
+
+/** Що повертає підключення: ідентифікатори — у fin_fiscal_settings, секрети — під seal(). */
+export interface FiskalyTss {
+  tssId: string;
+  clientId: string;
+  serialNumber: string;
+  adminPin: string;
+  adminPuk: string;
+}
+
+/**
+ * Створити TSS і касового клієнта для ОБʼЄКТА — кроки 2–3 quickstart
+ * (workspace.fiskaly.com/countries/germany/quickstart):
+ *
+ *   PUT  /tss/{uuid}                  → state CREATED, у відповіді admin_puk
+ *   PATCH /tss/{id}   {UNINITIALIZED} → персоналізація
+ *   PATCH /tss/{id}/admin {admin_puk, new_admin_pin}
+ *   POST /tss/{id}/admin/auth {admin_pin}
+ *   PATCH /tss/{id}   {INITIALIZED}
+ *   PUT  /tss/{id}/client/{uuid} {serial_number}
+ *
+ * Нічого тут не пишеться в базу: викликач (маршрут застосунку) кладе
+ * ідентифікатори у `fin_fiscal_settings`, а PIN/PUK — під `seal()`. Кожна
+ * TSS у fiskaly коштує грошей, тому ідемпотентність — на викликачеві: обʼєкт
+ * із заповненим `tss_id` сюди не доходить. Результат — під `reported()`: успіх
+ * і відмова з текстом вендора лягають у `app_connections` на цей обʼєкт.
+ *
+ * Поля відповідей (`admin_puk`, `serial_number`) — з документації, не з
+ * живої відповіді (інваріант 28): перший живий прохід має подивитись на тіло
+ * очима, і саме тому кожен крок кидає з текстом вендора, а не мовчить.
+ */
+export async function fiskalyConnect(
+  creds: Pick<FiskalyConfig, 'apiKey' | 'apiSecret'>,
+  target: { propertyId: string; serialNumber: string },
+): Promise<FiskalyTss> {
+  const tssId = crypto.randomUUID();
+  return reported({ tssId }, async () => {
+    const auth = await call('/auth', {
+      method: 'POST',
+      body: JSON.stringify({ api_key: creds.apiKey, api_secret: creds.apiSecret }),
+    });
+    const token = auth.access_token;
+
+    const created = await call(`/tss/${tssId}`, { method: 'PUT', token, body: JSON.stringify({}) });
+    const adminPuk = String(created.admin_puk ?? '');
+    if (!adminPuk) throw new Error('fiskaly PUT /tss → відповідь без admin_puk — TSS створено, але персоналізувати нема чим');
+
+    await call(`/tss/${tssId}`, { method: 'PATCH', token, body: JSON.stringify({ state: 'UNINITIALIZED' }) });
+
+    // Шість цифр — мінімум fiskaly; випадкові, ніде не друкуються.
+    const adminPin = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000).padStart(6, '0');
+    await call(`/tss/${tssId}/admin`, { method: 'PATCH', token, body: JSON.stringify({ admin_puk: adminPuk, new_admin_pin: adminPin }) });
+    await call(`/tss/${tssId}/admin/auth`, { method: 'POST', token, body: JSON.stringify({ admin_pin: adminPin }) });
+    await call(`/tss/${tssId}`, { method: 'PATCH', token, body: JSON.stringify({ state: 'INITIALIZED' }) });
+
+    const clientId = crypto.randomUUID();
+    await call(`/tss/${tssId}/client/${clientId}`, { method: 'PUT', token, body: JSON.stringify({ serial_number: target.serialNumber }) });
+
+    return { tssId, clientId, serialNumber: target.serialNumber, adminPin, adminPuk };
+  }, target.propertyId);
 }

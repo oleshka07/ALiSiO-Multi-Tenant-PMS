@@ -3579,5 +3579,12 @@
   "хочу": "Ich will",
   "ще не зверталися": "noch nicht angesprochen",
   "Перевірити звʼязок": "Verbindung prüfen",
-  "Не вдалося перевірити": "Prüfung fehlgeschlagen"
+  "Не вдалося перевірити": "Prüfung fehlgeschlagen",
+  "Не вдалося підключити TSE": "TSE konnte nicht verbunden werden",
+  "Середовище TEST чи LIVE визначає ключ, не адреса: ключ TEST не підписує по-справжньому.": "Ob TEST oder LIVE, entscheidet der Schlüssel, nicht die Adresse: ein TEST-Schlüssel signiert nicht wirklich.",
+  "TSE обʼєкта": "TSE des Objekts",
+  "TSS не підключено": "TSS nicht verbunden",
+  "— оберіть обʼєкт —": "— Objekt wählen —",
+  "Підключаю…": "Verbinde…",
+  "Підключити TSE": "TSE verbinden"
 }
