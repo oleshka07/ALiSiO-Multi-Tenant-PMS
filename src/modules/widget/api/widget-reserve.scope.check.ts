@@ -3,7 +3,7 @@
  *
  *   node src/modules/widget/api/widget-reserve.scope.check.ts
  *
- * ── Чому це не дубль INC-047/INC-048 ────────────────────────────────────
+ * ── Чому це не дубль INC-201/INC-202 ────────────────────────────────────
  *
  * Ті двоє — про ЧИТАЧІВ: аналітика рахувала чужу бронь, календар показував
  * чужий фонд. Обидва обороняли рядки `site_listings`, записані ДО INC-034
@@ -122,4 +122,4 @@ try {
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
-console.log('widget-reserve.scope: сайт продає номер свого будинку (INC-049)');
+console.log('widget-reserve.scope: сайт продає номер свого будинку (INC-203)');

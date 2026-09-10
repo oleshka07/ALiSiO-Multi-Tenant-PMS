@@ -192,9 +192,31 @@ export async function createWidgetReservation(request: NextRequest) {
     // застаріло» замість своєї броні. Саме це й показала червона сцена: перше
     // твердження впало не на 409, а на 403.
     //
-    // Відповідати без рукостискання тут безпечно: ми не створюємо нічого, а
-    // віддаємо бронь, чий ідентифікатор виводиться з подання того, хто питає.
-    // Хто не робив цього бронювання, не назве його змісту.
+    // ── І чому повтор віддається ЛИШЕ на клієнтський ключ (INC-047) ──────
+    //
+    // Тут стояв довід: «відповідати без рукостискання безпечно — ми нічого не
+    // створюємо, а ідентифікатор виводиться з подання того, хто питає; хто не
+    // робив цього бронювання, не назве його змісту». Перша половина істинна.
+    // Друга — ні, і рецензія контролера це показала.
+    //
+    // `guestPageToken` у відповіді — не довідка, а ПЕРЕПУСТКА: за нею
+    // відкривається гостьовий портал, запит на оплату, дії гостя і
+    // завантаження документів (інваріант 14). А зміст подання відгадуваний:
+    // `unitId` перелічує сам віджет, дати перебирає календар, імʼя, пошта й
+    // телефон відомі кожному, хто знає гостя. Тобто перепустку дістає
+    // знайомий, а не «зловмисник із базою».
+    //
+    // І це ОРАКУЛ без гальма: відповідь розрізняє здогади однозначно (201 —
+    // вгадав, 403 — ні), а всі обмеження швидкості стоять на рукостисканні,
+    // яке цей шлях обходить за побудовою.
+    //
+    // Тому повтор віддається лише тоді, коли ключ ПРИЙШОВ ВІД КЛІЄНТА: це
+    // випадковий UUID, якого не відгадати, і обидва входи віджета його вже
+    // шлють. Виведений ключ (старий бандл із кешу браузера) повтору не
+    // дістає — він поводиться так, як до INC-046: другий клік бачить 409 на
+    // зайнятий номер. Сам виведений ключ лишається і далі: він тримає
+    // ідентифікатор броні детермінованим, тобто вставка не може роздвоїтись
+    // на первинному ключі.
     const stayKey = reserveKey(
       request.headers.get('idempotency-key') ?? body.idempotencyKey,
       {
@@ -210,8 +232,10 @@ export async function createWidgetReservation(request: NextRequest) {
       },
     );
     const stayIds = reservationIdsFor(stayKey, Number(body.quantity) || 1);
-    const replay = await withSite(siteId || siteSlug,
-      (site) => replayReservation(sql, stayIds, site?.property_id ? String(site.property_id) : null));
+    const replay = stayKey.origin === 'client'
+      ? await withSite(siteId || siteSlug,
+        (site) => replayReservation(sql, stayIds, site?.property_id ? String(site.property_id) : null))
+      : null;
     if (replay) {
       console.log(`[Reserve] repeat (${stayKey.origin} key) → ${replay.reservationId}`);
       return NextResponse.json(replay, { status: 201, headers: dynamicHeaders });
@@ -306,7 +330,7 @@ export async function createWidgetReservation(request: NextRequest) {
     const hasPromotions = existingTables.has('promotions');
     const hasPriceCalendar = existingTables.has('price_calendar');
 
-    // Будинок сайта — умова ЗАПИТУ, а не наслідок списку (INC-049).
+    // Будинок сайта — умова ЗАПИТУ, а не наслідок списку (INC-203).
     //
     // Нижче стоїть перевірка «номер є в списку цього сайта», і вона була
     // єдиною. Але список може містити рядок спадку: писач звіряє
