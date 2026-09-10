@@ -609,6 +609,19 @@ const AXES = [
     distinct: /'(2026-1[01]-\d\d)'/g, min: 2,
   },
   {
+    file: 'src/modules/widget/api/widget-calendar.scope.check.ts',
+    // Два будинки в списку сайта — інакше «беремо перший номер» і «беремо
+    // будинок сайта» дали б той самий результат.
+    axis: 'будинків у списку сайта (свій ≠ чужий)',
+    distinct: /const (?:OWN|ALIEN)_UNIT = fx\.([ab])\.unitIds/g, min: 2,
+  },
+  {
+    file: 'src/modules/widget/api/widget-calendar.scope.check.ts',
+    // Стан дня: з одним значенням «зайнято» і «частково» нерозрізненні.
+    axis: 'станів дня у твердженнях (booked ≠ available)',
+    distinct: /status, '(booked|available|partial)'/g, min: 2,
+  },
+  {
     file: 'src/modules/widget/api/site-analytics.scope.check.ts',
     // Пʼять сум, і всі різні: з двома однаковими «порахували не те» і
     // «порахували те» дали б один результат. Мутація, що прибрала вісь

@@ -5,6 +5,7 @@ import { getSql } from '@core/db/async';
 import { cheapestByDay } from '@pricing';
 import { unassignedPressureByDay } from '@properties';
 import { withSite } from '../data/site.repo';
+import { ALL_PROPERTIES, oneProperty, propertyScopeFilter } from '@core/property-scope';
 import { money } from '@core/money';
 
 export const CORS_HEADERS = {
@@ -57,16 +58,46 @@ async function calendarFor(searchParams: URLSearchParams) {
     let siteUnitIds: string[] | null = null;
     let siteIdObj: string | null = null;
 
+    // Обʼєкт сайта — з РЯДКА САЙТА, а не з першого номера його списку.
+    //
+    // `booking_sites.property_id` — `NOT NULL`, тобто сайт заведено під один
+    // будинок, і це відповідь на питання «чий цей календар». Раніше будинок
+    // брався з `siteUnitIds[0]`, тож на списку з двох будинків його вирішував
+    // ПОРЯДОК рядків (AGENTS §7). Фонд при цьому рахувався по всьому списку —
+    // і в день, коли єдиний номер сайта вже проданий, гість бачив «частково
+    // вільно» замість «зайнято».
+    // Сам рядок сайта і сам рядок номера — НОСІЇ осі, тож звузити їх по
+    // будинку означало б спитати відповідь у питання. Сказано дверима, а не
+    // мовчанням (INC-029, К19).
+    const CARRIES_THE_AXIS = propertyScopeFilter(ALL_PROPERTIES, '');
+    let sitePropertyId: string | null = null;
     if ((siteSlug || siteId) && hasBookingSites && hasSiteListings) {
       let site: any;
       if (siteSlug) {
-        site = await sql.row<any>("SELECT id FROM booking_sites WHERE (slug = ? OR id = ?) AND status != 'deleted'", [siteSlug, siteSlug]);
+        site = await sql.row<any>(
+          `SELECT id, property_id FROM booking_sites
+            WHERE (slug = ? OR id = ?) AND status != 'deleted' AND ${CARRIES_THE_AXIS.sql}`,
+          [siteSlug, siteSlug, ...CARRIES_THE_AXIS.params]);
       } else {
-        site = await sql.row<any>("SELECT id FROM booking_sites WHERE id = ? AND status != 'deleted'", [siteId]);
+        site = await sql.row<any>(
+          `SELECT id, property_id FROM booking_sites
+            WHERE id = ? AND status != 'deleted' AND ${CARRIES_THE_AXIS.sql}`,
+          [siteId, ...CARRIES_THE_AXIS.params]);
       }
       if (site) {
         siteIdObj = site.id;
-        const listings = await sql.rows<any>('SELECT unit_id FROM site_listings WHERE site_id = ?', [site.id]) as any[];
+        sitePropertyId = site.property_id ? String(site.property_id) : null;
+        // Фонд сайта — його номери В ЙОГО БУДИНКУ. Писач такого рядка вже не
+        // пише (INC-034 звіряє `u.property_id = site.property_id`), але рядки,
+        // записані ДО нього, у базі лежать, і жодна міграція їх не
+        // переглядала. Звуження тут — оборона саме для них.
+        const house = propertyScopeFilter(
+          sitePropertyId ? oneProperty(sitePropertyId) : ALL_PROPERTIES, 'u');
+        const listings = await sql.rows<any>(
+          `SELECT sl.unit_id FROM site_listings sl
+             JOIN units u ON u.id = sl.unit_id
+            WHERE sl.site_id = ? AND ${house.sql}`,
+          [site.id, ...house.params]) as any[];
         siteUnitIds = listings.map((l: any) => l.unit_id);
       }
     }
@@ -90,15 +121,19 @@ async function calendarFor(searchParams: URLSearchParams) {
     // ── 3. Resolve property ─────────────────────────────────────────────────
     let property: any;
 
-    if (targetUnitId) {
-      const u = await sql.row<any>('SELECT property_id FROM units WHERE id = ?', [targetUnitId]) as any;
+    // Сайт головніший за номер: якщо каталог сайта названо, будинок — його,
+    // і питати номер уже нема про що (номери списку вже звужені вище).
+    if (sitePropertyId) {
+      property = { id: sitePropertyId };
+    } else if (targetUnitId) {
+      const u = await sql.row<any>(
+        `SELECT property_id FROM units WHERE id = ? AND ${CARRIES_THE_AXIS.sql}`,
+        [targetUnitId, ...CARRIES_THE_AXIS.params]) as any;
       if (u) property = { id: u.property_id };
     }
 
-    if (!property && siteUnitIds && siteUnitIds.length > 0) {
-      const u = await sql.row<any>('SELECT property_id FROM units WHERE id = ?', [siteUnitIds[0]]) as any;
-      if (u) property = { id: u.property_id };
-    }
+    // Будинок сайта, а не будинок його першого номера.
+    if (!property && sitePropertyId) property = { id: sitePropertyId };
 
     if (!property && propertyId) {
       property = await sql.row<any>('SELECT id FROM properties WHERE id = ? AND is_active = TRUE', [propertyId]);
@@ -134,11 +169,17 @@ async function calendarFor(searchParams: URLSearchParams) {
     // ── 5. Total unit count ─────────────────────────────────────────────────
     let totalCount = 0;
     if (targetUnitId) {
-      const row = await sql.row<any>('SELECT COUNT(*) as cnt FROM units WHERE id = ? AND is_active = TRUE', [targetUnitId]) as any;
+      const inHouse = propertyScopeFilter(oneProperty(String(property.id)), '');
+      const row = await sql.row<any>(
+        `SELECT COUNT(*) as cnt FROM units WHERE id = ? AND is_active = TRUE AND ${inHouse.sql}`,
+        [targetUnitId, ...inHouse.params]) as any;
       totalCount = row?.cnt || 0;
     } else if (siteUnitIds && siteUnitIds.length > 0) {
       const ph  = siteUnitIds.map(() => '?').join(',');
-      const row = await sql.row<any>(`SELECT COUNT(*) as cnt FROM units WHERE id IN (${ph}) AND is_active = TRUE`, [...siteUnitIds]) as any;
+      const inHouse = propertyScopeFilter(oneProperty(String(property.id)), '');
+      const row = await sql.row<any>(
+        `SELECT COUNT(*) as cnt FROM units WHERE id IN (${ph}) AND is_active = TRUE AND ${inHouse.sql}`,
+        [...siteUnitIds, ...inHouse.params]) as any;
       totalCount = row?.cnt || 0;
     } else {
       // Fallback: every bookable unit in the property. Filtering to one
@@ -156,20 +197,22 @@ async function calendarFor(searchParams: URLSearchParams) {
     // ── 6. Reservations ─────────────────────────────────────────────────────
     let reservations: any[];
     if (targetUnitId) {
+      const inHouse = propertyScopeFilter(oneProperty(String(property.id)), 'r');
       reservations = await sql.rows<any>(`
         SELECT r.unit_id, r.check_in, r.check_out FROM reservations r
-        WHERE r.unit_id = ?
+        WHERE r.unit_id = ? AND ${inHouse.sql}
           AND r.status NOT IN ('cancelled', 'no_show')
           AND r.check_in < ? AND r.check_out > ?
-      `, [targetUnitId, nextMonthStart, monthStart]) as any[];
+      `, [targetUnitId, ...inHouse.params, nextMonthStart, monthStart]) as any[];
     } else if (siteUnitIds && siteUnitIds.length > 0) {
       const ph = siteUnitIds.map(() => '?').join(',');
+      const inHouse = propertyScopeFilter(oneProperty(String(property.id)), 'r');
       reservations = await sql.rows<any>(`
         SELECT r.unit_id, r.check_in, r.check_out FROM reservations r
-        WHERE r.unit_id IN (${ph})
+        WHERE r.unit_id IN (${ph}) AND ${inHouse.sql}
           AND r.status NOT IN ('cancelled', 'no_show')
           AND r.check_in < ? AND r.check_out > ?
-      `, [...siteUnitIds, nextMonthStart, monthStart]) as any[];
+      `, [...siteUnitIds, ...inHouse.params, nextMonthStart, monthStart]) as any[];
     } else {
       reservations = await sql.rows<any>(`
         SELECT r.unit_id, r.check_in, r.check_out FROM reservations r
@@ -243,13 +286,17 @@ async function calendarFor(searchParams: URLSearchParams) {
     // Область та сама, що й у `totalCount` вище: один номер, фонд сайту або
     // весь обʼєкт. Інакше віднімалося б від одного фонду те, що продано з
     // іншого.
+    const typeHouse = propertyScopeFilter(oneProperty(String(property.id)), '');
     const scopeTypeIds = targetUnitId
-      ? (await sql.rows<any>('SELECT unit_type_id FROM units WHERE id = ?', [targetUnitId]) as any[])
+      ? (await sql.rows<any>(
+        `SELECT unit_type_id FROM units WHERE id = ? AND ${typeHouse.sql}`,
+        [targetUnitId, ...typeHouse.params]) as any[])
         .map((u: any) => u.unit_type_id).filter(Boolean)
       : siteUnitIds && siteUnitIds.length > 0
         ? (await sql.rows<any>(
-          `SELECT DISTINCT unit_type_id FROM units WHERE id IN (${siteUnitIds.map(() => '?').join(',')})`,
-          [...siteUnitIds]) as any[]).map((u: any) => u.unit_type_id).filter(Boolean)
+          `SELECT DISTINCT unit_type_id FROM units
+            WHERE id IN (${siteUnitIds.map(() => '?').join(',')}) AND ${typeHouse.sql}`,
+          [...siteUnitIds, ...typeHouse.params]) as any[]).map((u: any) => u.unit_type_id).filter(Boolean)
         : unitTypes.map((ut: any) => ut.id);
 
     const unassignedPerDay = await unassignedPressureByDay(

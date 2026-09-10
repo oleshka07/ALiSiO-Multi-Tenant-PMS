@@ -86,7 +86,6 @@
   "src/modules/tasks/data/tasks.repo.ts": 7,
   "src/modules/widget/api/site-analytics.handlers.ts": 16,
   "src/modules/widget/api/widget-availability.handlers.ts": 4,
-  "src/modules/widget/api/widget-calendar-public.handlers.ts": 10,
   "src/modules/widget/api/widget-capture.handlers.ts": 1,
   "src/modules/widget/api/widget-event.handlers.ts": 1,
   "src/modules/widget/api/widget-prices.handlers.ts": 1,
