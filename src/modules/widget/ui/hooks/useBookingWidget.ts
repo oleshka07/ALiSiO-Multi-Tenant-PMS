@@ -433,6 +433,28 @@ export function useBookingWidget({ siteId, siteSlug, thankYouUrl, design, isPrev
 
   useEffect(() => { if (!isMounted) return; if (couponCode && !offerApplied && !applyingOffer && !offerError && !!(siteId||siteSlug)) handleApplyOffer(couponCode); }, [isMounted, couponCode, offerApplied, siteId, siteSlug]);
 
+
+/**
+ * Ключ ідемпотентності подання (INC-046).
+ *
+ * Один на віджет, не на клік: подвійний клік і повтор мережі мусять прийти з
+ * ТИМ САМИМ ключем, інакше сервер не впізнає їх як повтор.
+ *
+ * Скидати його після успіху не треба, і це не недогляд: сервер рахує ключ як
+ * пару «зміст броні × ця стрічка», тож наступне бронювання того самого гостя —
+ * інший номер або інші дати — дає інший ключ саме тому, що змінилось тіло. А
+ * ідентичне бронювання вдруге неможливе: номер уже зайнятий.
+ */
+  const reserveKeyRef = useRef<string>('');
+  const reserveKey = () => {
+    if (!reserveKeyRef.current) {
+      reserveKeyRef.current = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+    }
+    return reserveKeyRef.current;
+  };
+
   const submitBooking = async () => {
     if (!checkIn || !checkOut || !selectedUnitId || !firstName || !lastName || !phone) { setError(v3t.errorReq); return; }
     if (isPreview) { setSubmitting(true); await new Promise(r => setTimeout(r,1000)); setReservation({ success:true, reservationId:'MOCK-123', unitName:selectedUnit?.name||'Mock', checkIn, checkOut, nights, totalPrice:totalWithDiscount, currency:'Kc' }); setSubmitting(false); goToStep(4); return; }
@@ -456,6 +478,7 @@ export function useBookingWidget({ siteId, siteSlug, thankYouUrl, design, isPrev
         method:'POST', 
         headers:{
           'Content-Type':'application/json',
+          'Idempotency-Key': reserveKey(),
           ...(handshakeToken ? { 'X-Handshake-Token': handshakeToken } : {})
         }, 
         body: JSON.stringify({ 

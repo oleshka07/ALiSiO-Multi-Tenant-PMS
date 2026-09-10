@@ -545,6 +545,28 @@ export default function BookingPage() {
   }, [checkIn, checkOut, siteId]);
 
   // ─── Submit Booking (Step 3: create reservation, then go to services or payment step) ──────
+
+/**
+ * Ключ ідемпотентності подання (INC-046).
+ *
+ * Один на віджет, не на клік: подвійний клік і повтор мережі мусять прийти з
+ * ТИМ САМИМ ключем, інакше сервер не впізнає їх як повтор.
+ *
+ * Скидати його після успіху не треба, і це не недогляд: сервер рахує ключ як
+ * пару «зміст броні × ця стрічка», тож наступне бронювання того самого гостя —
+ * інший номер або інші дати — дає інший ключ саме тому, що змінилось тіло. А
+ * ідентичне бронювання вдруге неможливе: номер уже зайнятий.
+ */
+  const reserveKeyRef = useRef<string>('');
+  const reserveKey = () => {
+    if (!reserveKeyRef.current) {
+      reserveKeyRef.current = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+    }
+    return reserveKeyRef.current;
+  };
+
   const submitBooking = useCallback(async () => {
     if (!checkIn || !checkOut || !selectedUnit || !firstName || !lastName || !phone) return;
     setSubmitting(true);
@@ -562,7 +584,7 @@ export default function BookingPage() {
 
       const res = await fetch(`${API_BASE}/api/booking/reserve`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': reserveKey() },
         body: JSON.stringify({
           unitId: selectedUnit,
           checkIn,
