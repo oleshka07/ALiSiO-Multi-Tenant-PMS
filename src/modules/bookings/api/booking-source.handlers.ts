@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { serverError } from '@core/http/errors';
 import { withActor, type Actor } from '@core/auth/session';
+import { sourceUsageCount } from '../data/source-usage.repo';
 
 /**
  * A sales channel belongs to a hotel, and only that hotel may edit it.
@@ -91,17 +92,17 @@ export const deleteBookingSource = withActor(async (
       return NextResponse.json({ error: 'Source not found' }, { status: 404 });
     }
 
-    // Only this hotel's bookings count: another tenant using the same code
-    // (`direct`, `booking_com`) is not a reason to refuse the deletion here.
-    const usageCount = await sql.row<any>(`
-      SELECT COUNT(*) as cnt FROM reservations r
-      JOIN properties p ON r.property_id = p.id
-      WHERE r.source = ? AND p.organization_id = ?
-    `, [existing.code, actor.organizationId]) as any;
+    // Рахуються броні ТОГО будинку, чиє це джерело (INC-029). `source` — це
+    // код-рядок, не посилання, і два будинки рахунку мають кожен свій рядок з
+    // тим самим кодом: лічильник по рахунку відмовляв оператору будинку А за
+    // прямі броні будинку Б, тобто за причину, якої він не бачить і не може
+    // усунути. Область береться з рядка, який видаляють, а не з адреси.
+    const usage = await sourceUsageCount(
+      actor.organizationId, String(existing.property_id), String(existing.code));
 
-    if (usageCount?.cnt > 0) {
+    if (usage > 0) {
       return NextResponse.json(
-        { error: `Неможливо видалити: ${usageCount.cnt} бронювань використовують це джерело` },
+        { error: `Неможливо видалити: ${usage} бронювань використовують це джерело` },
         { status: 400 }
       );
     }
