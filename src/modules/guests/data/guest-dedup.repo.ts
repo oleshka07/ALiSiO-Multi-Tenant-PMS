@@ -66,6 +66,20 @@ export async function findOrCreateGuest(args: GuestDedupArgs): Promise<GuestDedu
     if (existing) matchedBy = 'name';
   }
 
+  // Знайдений рядок міг бути ЗЛИТИЙ у когось (INC-300). Тоді це вже не людина,
+  // а слід від неї, і чіпляти на нього нову бронь означало б відродити дублікат:
+  // оператор побачив би, що злиття «не тримається».
+  //
+  // Ланцюга тут не розкручуємо і циклу не боїмось — його не буває за побудовою:
+  // злиття перенацілює старі посилання, тож `merged_into` завжди веде на живого
+  // ОДНИМ кроком (О303). Якби ланцюги були можливі, тут стояв би лічильник.
+  if (existing) {
+    const alive = await sql.row<any>(
+      'SELECT id, merged_into FROM guests WHERE id = ? AND organization_id = ?',
+      [existing.id, orgId]);
+    if (alive?.merged_into) existing = { id: alive.merged_into };
+  }
+
   if (existing) {
     // Soft-merge: only fill columns that are currently empty.
     const updates: string[] = [];
