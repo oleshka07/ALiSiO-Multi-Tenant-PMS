@@ -485,7 +485,11 @@ try {
   // app_connections на обʼєкт — connected; другий виклик — 409 і жодної
   // другої TSS; відмова вендора — error з текстом на тому ж обʼєкті.
   const calls: { method: string; path: string; body: any }[] = [];
-  let stubMode: 'ok' | 'refuse' | 'refuse_admin' | 'slow' = 'ok';
+  let stubMode: 'ok' | 'refuse' | 'refuse_admin' | 'refuse_client' | 'slow' = 'ok';
+  // Стан кожної TSS — як у fiskaly: переходи односторонні
+  // (CREATED → UNINITIALIZED → INITIALIZED), PATCH у стан, в якому TSS уже є,
+  // відхиляється. Саме через це дограння мусить спершу спитати стан (В1).
+  const tssState = new Map<string, string>();
   const stub = http.createServer((req, res) => {
     let raw = '';
     req.on('data', (c) => { raw += c; });
@@ -499,13 +503,26 @@ try {
       // Часткова відмова: TSS уже створено, персоналізація впала.
       if (stubMode === 'refuse_admin' && req.method === 'PATCH' && path.endsWith('/admin')) return send(500, { message: 'admin endpoint temporarily unavailable' });
       if (req.method === 'PUT' && /^\/tss\/[0-9a-f-]+$/.test(path)) {
-        const body200 = { _id: path.split('/')[2], state: 'CREATED', admin_puk: 'PUK-STUB-4242' };
+        const id = path.split('/')[2];
+        tssState.set(id, 'CREATED');
+        const body200 = { _id: id, state: 'CREATED', admin_puk: 'PUK-STUB-4242' };
         // «Повільна» TSS — щоб два натиски встигли накластись.
         if (stubMode === 'slow') return void setTimeout(() => send(200, body200), 400);
         return send(200, body200);
       }
-      if (req.method === 'GET' && /^\/tss\/[0-9a-f-]+$/.test(path)) return send(200, { _id: path.split('/')[2], state: 'INITIALIZED', serial_number: 'SER-STUB' });
-      if (req.method === 'PATCH' && /^\/tss\/[0-9a-f-]+$/.test(path)) return send(200, { state: body.state });
+      if (req.method === 'GET' && /^\/tss\/[0-9a-f-]+$/.test(path)) {
+        const id = path.split('/')[2];
+        return send(200, { _id: id, state: tssState.get(id) ?? 'INITIALIZED', serial_number: 'SER-STUB' });
+      }
+      if (req.method === 'PATCH' && /^\/tss\/[0-9a-f-]+$/.test(path)) {
+        const id = path.split('/')[2];
+        const from = tssState.get(id);
+        const allowed = (from === 'CREATED' && body.state === 'UNINITIALIZED') || (from === 'UNINITIALIZED' && body.state === 'INITIALIZED') || !from;
+        if (!allowed) return send(400, { message: `E_TSS_STATE: transition ${from} → ${body.state} is not allowed` });
+        tssState.set(id, body.state);
+        return send(200, { state: body.state });
+      }
+      if (stubMode === 'refuse_client' && req.method === 'PUT' && /\/client\//.test(path)) return send(503, { message: 'client registration temporarily unavailable' });
       if (req.method === 'PATCH' && path.endsWith('/admin')) return send(200, {});
       if (req.method === 'POST' && path.endsWith('/admin/auth')) return send(200, { access_token: 'admin-token' });
       if (req.method === 'PUT' && /\/client\//.test(path)) return send(200, { serial_number: body.serial_number, state: 'REGISTERED' });
@@ -613,6 +630,51 @@ try {
       'два одночасні натиски створили дві TSS');
     console.log('  ok  А2. два одночасні натиски — одна TSS, другий дістає 409');
     stubMode = 'ok';
+
+    // ── В1. Дограння за СТАНОМ TSS ────────────────────────────────────────
+    //
+    // Відмова на останньому кроці (PUT /client): TSS уже INITIALIZED. Повторний
+    // натиск мусить спитати стан і зробити лише те, що лишилось — admin,
+    // admin/auth, client, — без PUT /tss і без PATCH {UNINITIALIZED}, який
+    // fiskaly відхилив би (переходи односторонні), і завершити підключення.
+    stubMode = 'refuse_client';
+    await runWithOrganization(A, () => sql.run('DELETE FROM fin_fiscal_settings WHERE property_id = ?', [PROP]));
+    calls.length = 0;
+    const lateFail = await runWithOrganization(A, () => connectTseForProperty(A, PROP, { apiKey: 'k', apiSecret: 's' }));
+    assert.strictEqual(lateFail.status, 502, `відмова на PUT /client відповіла ${lateFail.status}`);
+    const lateId = calls.find((c) => c.method === 'PUT' && /^\/tss\/[0-9a-f-]+$/.test(c.path))?.path.split('/')[2];
+    assert.ok(lateId && tssState.get(lateId) === 'INITIALIZED', 'сцена не про те: TSS мала лишитись INITIALIZED');
+    stubMode = 'ok';
+    calls.length = 0;
+    const finished = await runWithOrganization(A, () => connectTseForProperty(A, PROP, { apiKey: 'k', apiSecret: 's' }));
+    assert.strictEqual(finished.status, 200, `дограння INITIALIZED-TSS відповіло ${finished.status}: ${await finished.text()}`);
+    const resumeSeq = calls.map((c) => `${c.method} ${c.path.replace(/[0-9a-f-]{36}/g, '{id}')}`);
+    assert.deepStrictEqual(resumeSeq, [
+      'POST /auth',
+      'GET /tss/{id}',
+      'PATCH /tss/{id}/admin',
+      'POST /tss/{id}/admin/auth',
+      'PUT /tss/{id}/client/{id}',
+    ], `дограння INITIALIZED-TSS зробило не ті кроки: ${JSON.stringify(resumeSeq)}`);
+    const finishedRow = await runWithOrganization(A, () => sql.row<any>('SELECT tss_id, tse_pending_tss_id FROM fin_fiscal_settings WHERE property_id = ? AND organization_id = ?', [PROP, A]));
+    assert.strictEqual(finishedRow?.tss_id, lateId, 'після дограння tss_id — не створена TSS');
+    assert.strictEqual(finishedRow?.tse_pending_tss_id, null);
+    // Невідомий стан (DISABLED) — названа відмова з tssId, без жодного кроку.
+    await runWithOrganization(A, () => sql.run('DELETE FROM fin_fiscal_settings WHERE property_id = ?', [PROP]));
+    stubMode = 'refuse_client';
+    calls.length = 0;
+    await runWithOrganization(A, () => connectTseForProperty(A, PROP, { apiKey: 'k', apiSecret: 's' }));
+    const disabledId = calls.find((c) => c.method === 'PUT' && /^\/tss\/[0-9a-f-]+$/.test(c.path))!.path.split('/')[2];
+    tssState.set(disabledId, 'DISABLED');
+    stubMode = 'ok';
+    calls.length = 0;
+    const dead = await runWithOrganization(A, () => connectTseForProperty(A, PROP, { apiKey: 'k', apiSecret: 's' }));
+    assert.strictEqual(dead.status, 502);
+    assert.deepStrictEqual(calls.map((c) => `${c.method} ${c.path.replace(/[0-9a-f-]{36}/g, '{id}')}`), ['POST /auth', 'GET /tss/{id}'],
+      'на TSS у невідомому стані дограння зробило кроки замість названої відмови');
+    const deadConn = (await runWithOrganization(A, () => listConnections(A))).find((c) => c.app === 'fiskaly' && c.property_id === PROP);
+    assert.ok((deadConn?.last_error ?? '').includes(disabledId) && /DISABLED/.test(deadConn?.last_error ?? ''), `відмова на невідомому стані не називає TSS і стан: ${deadConn?.last_error}`);
+    console.log('  ok  В1. дограння йде від стану TSS: після відмови на client — лише admin/auth/client; невідомий стан — названа відмова');
   } finally {
     await new Promise<void>((r) => stub.close(() => r()));
   }

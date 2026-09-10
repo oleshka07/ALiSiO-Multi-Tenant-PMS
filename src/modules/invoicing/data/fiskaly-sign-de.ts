@@ -236,12 +236,24 @@ export interface FiskalyConnectOptions {
  * кроки на тій самій TSS замість `PUT` нової. Результат — під `reported()`:
  * успіх і відмова з текстом вендора лягають у `app_connections` на обʼєкт.
  *
- * Поля відповідей (`admin_puk`, `serial_number`) — з документації, не з
- * живої відповіді (інваріант 28): перший живий прохід має подивитись на тіло
- * очима, і саме тому кожен крок кидає з текстом вендора, а не мовчить. Те
- * саме про дограння: чи приймає fiskaly повторний `PATCH {UNINITIALIZED}` на
- * TSS, яка вже в цьому стані, — живий прохід скаже; відмова тут теж іде з
- * текстом і з `tssId`.
+ * Поля відповідей (`admin_puk`, `serial_number`, `state`) — з документації,
+ * не з живої відповіді (інваріант 28): перший живий прохід має подивитись на
+ * тіло очима, і саме тому кожен крок кидає з текстом вендора, а не мовчить.
+ *
+ * Дограння йде ВІД СТАНУ TSS, не з початку (В1, рецензія 3): переходи станів
+ * у fiskaly односторонні (`CREATED → UNINITIALIZED → INITIALIZED`), і PATCH у
+ * стан, в якому TSS уже є, відхиляється — сліпе дограння з
+ * `PATCH {UNINITIALIZED}` падало б на першому кроці назавжди, якщо перший
+ * прохід упав після `PATCH {INITIALIZED}`. Тому `resume` спершу читає
+ * `GET /tss/{id}` і робить лише те, що лишилось:
+ *
+ *   CREATED        → UNINITIALIZED → admin → admin/auth → INITIALIZED → client
+ *   UNINITIALIZED  → admin → admin/auth → INITIALIZED → client
+ *   INITIALIZED    → admin → admin/auth → client
+ *   інший/порожній → названа відмова з tssId і станом, без кроків
+ *
+ * PIN на дограній TSS ставиться заново (PATCH /admin з PUK): попередній міг
+ * не дійти до бази, а PUK — той самий, збережений одразу після PUT /tss.
  */
 export async function fiskalyConnect(
   creds: Pick<FiskalyConfig, 'apiKey' | 'apiSecret'>,
@@ -259,21 +271,36 @@ export async function fiskalyConnect(
       });
       const token = auth.access_token;
 
+      // Звідки продовжувати: нова TSS — з CREATED; дограння — зі стану, який
+      // назвав сам вендор.
+      let state: string;
       if (!created) {
         const made = await call(`/tss/${tssId}`, { method: 'PUT', token, body: JSON.stringify({}) });
         adminPuk = String(made.admin_puk ?? '');
         created = true;
         if (!adminPuk) throw new Error('fiskaly PUT /tss → відповідь без admin_puk — TSS створено, але персоналізувати нема чим');
         if (options.onCreated) await options.onCreated(tssId, adminPuk);
+        state = 'CREATED';
+      } else {
+        const current = await call(`/tss/${tssId}`, { method: 'GET', token });
+        state = String(current.state ?? '');
+      }
+      if (state !== 'CREATED' && state !== 'UNINITIALIZED' && state !== 'INITIALIZED') {
+        throw new Error(`fiskaly GET /tss → TSS у стані «${state || 'невідомо'}», з якого підключення не дограти — потрібне рішення в кабінеті вендора`);
       }
 
-      await call(`/tss/${tssId}`, { method: 'PATCH', token, body: JSON.stringify({ state: 'UNINITIALIZED' }) });
+      if (state === 'CREATED') {
+        await call(`/tss/${tssId}`, { method: 'PATCH', token, body: JSON.stringify({ state: 'UNINITIALIZED' }) });
+      }
 
-      // Шість цифр — мінімум fiskaly; випадкові, ніде не друкуються.
+      // Шість цифр — мінімум fiskaly; випадкові, ніде не друкуються. На
+      // дограній TSS PIN ставиться заново — PUK той самий.
       const adminPin = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000).padStart(6, '0');
       await call(`/tss/${tssId}/admin`, { method: 'PATCH', token, body: JSON.stringify({ admin_puk: adminPuk, new_admin_pin: adminPin }) });
       await call(`/tss/${tssId}/admin/auth`, { method: 'POST', token, body: JSON.stringify({ admin_pin: adminPin }) });
-      await call(`/tss/${tssId}`, { method: 'PATCH', token, body: JSON.stringify({ state: 'INITIALIZED' }) });
+      if (state !== 'INITIALIZED') {
+        await call(`/tss/${tssId}`, { method: 'PATCH', token, body: JSON.stringify({ state: 'INITIALIZED' }) });
+      }
 
       const clientId = crypto.randomUUID();
       await call(`/tss/${tssId}/client/${clientId}`, { method: 'PUT', token, body: JSON.stringify({ serial_number: target.serialNumber }) });

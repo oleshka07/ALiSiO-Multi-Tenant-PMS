@@ -494,3 +494,56 @@ fiskaly}`; обʼєкт для звіту — той, що має `tss_id`, ін
 `settings-apps.png` оновлено — картка fiskaly «підключено», обʼєкт
 «підключено · TSS …last4». У CI крок пропускається з анотацією (сервер там
 стартує без `FISKALY_BASE_URL`; `checks.yml` — не мій файл).
+
+---
+
+## Задача 4 (В1 — дограння TSS за станом)
+
+**CI на гілці:** (заповнюється після пушу).
+
+### Коміти
+
+(заповнюється)
+
+### Було → стало
+
+Було: `fiskalyConnect` з `resume` завжди починав з `PATCH {UNINITIALIZED}`
+(`fiskaly-sign-de.ts:270` до правки). Переходи станів у fiskaly односторонні,
+тож відмова після `PATCH {INITIALIZED}` (на `PUT /client`) лишала б TSS, яку
+жоден натиск не дограє. Стало (`fiskaly-sign-de.ts`, `fiskalyConnect`): у гілці
+`resume` — `GET /tss/{id}` (той самий виклик, що в `fiskalyProbe`), далі лише
+кроки від стану: `CREATED` → з `PATCH {UNINITIALIZED}`; `UNINITIALIZED` → з
+`PATCH /admin`; `INITIALIZED` → `PATCH /admin` + `POST /admin/auth` +
+`PUT /client`; інший або порожній стан — названа відмова з `tssId` і станом,
+без кроків (текст у `app_connections` через `reported()`). PIN на дограній TSS
+ставиться заново тим самим PUK. Коментар про «живий прохід скаже» переписано
+на те, що є; З19 доповнено одним реченням; ARCHITECTURE §2.3 — те саме.
+
+### Гейт червоним спершу
+
+Стаб fiskaly в `apps.check.ts` тепер тримає стан кожної TSS і відхиляє PATCH
+у поточний стан (`E_TSS_STATE: transition UNINITIALIZED → UNINITIALIZED is not
+allowed`), як вендор. На старому коді впала вже сцена А1 (відмова на
+`/admin` → TSS `UNINITIALIZED` → сліпе дограння з `PATCH {UNINITIALIZED}`):
+
+```
+AssertionError: повторний натиск після часткової відмови відповів 502:
+{"error":"fiskaly відмовив — текст на картці застосунку. TSS …5ed3 створено,
+повторний натиск дограє підключення."}   502 !== 200
+```
+
+Нова сцена В1: відмова на `PUT /client` (TSS `INITIALIZED`) → повторний натиск
+шле рівно `POST /auth`, `GET /tss/{id}`, `PATCH /tss/{id}/admin`,
+`POST /tss/{id}/admin/auth`, `PUT /tss/{id}/client/{id}` — без `PUT /tss` і
+без `PATCH {UNINITIALIZED}` — і завершується 200 з `tss_id = створена`;
+плюс TSS у стані `DISABLED` → після `GET` жодного кроку, 502, текст називає
+id і стан.
+
+### Приймання
+
+`tsc` 0; гейт `apps.check.ts` зелений на SQLite і на Postgres роллю
+`alisio_app` (сцени 3.8, А1, А2, В1); `npm run check` exit 0; `check:pg`
+exit 0; `build` ok; `check:i18n` 3542/3542 (нових рядків немає — зміна
+без екрана); `check-boundaries` 39 у межах стелі; `check-docs-current`,
+`check-decisions-registry` (204) — чисто. `checks.yml`, фасад, стелі, чужі
+теки — не чіпав.
