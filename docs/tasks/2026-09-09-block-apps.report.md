@@ -4,7 +4,17 @@
 
 ## Стан блоку
 
-**Блок зроблено цілком (3.1–3.7, §5, §6) і чекає одного чекпоінта — рецензії
+**CI гілки червоний — і це не код.** Усі запуски `checks.yml` у репозиторії з
+20:17 09.09 (`b5067fa`, `44c5a22` контролера, `3070d15`, `8b0e7db` мої, і
+`7e28abd` гілки робіт о 20:49) завершуються `failure` за 2–5 секунд: три
+завдання «completed/failure» без жодного кроку і без логів (API логів — 404),
+тоді як `5d04ed1` гілки робіт о 19:59 пройшов за 11 хвилин. Раннер не
+стартує — ймовірно ліміт/оплата Actions в акаунті; це видно власнику на
+сторінці Actions, не мені. Локально повний набір §6 зелений (таблиця §2).
+Перезапуск CI зі свого боку не робив: він упав би так само і нічого б не
+довів.
+
+**Блок зроблено цілком (3.1–3.8, §5, §6) і чекає одного чекпоінта — рецензії
 контролера перед злиттям.** Два пункти зупинені на «потрібна зміна в чужій
 теці» (нижче, розділ «Що не вдалося»): проба fiskaly кнопкою і екран «Канали»
 без ключа модуля. Обидва не блокують решту блоку і не потребують власника.
@@ -98,9 +108,9 @@ AssertionError [ERR_ASSERTION]: ключ «booking_engine» реєстру не 
 |---|---|---|
 | `b167997` | увесь блок: 3.1–3.7, гейт, міграція 0140, екрани, e2e | `tsc` 0; `npm run check` зелений; `check:pg` роллю `alisio_app` на локальному Postgres 16 зелений; `rls-check.sql` — усі; `check-schema-drift` — «збігаються — 124 таблиць, 1582 колонок, 404 індексів, 361 обмежень»; `check:i18n` 3532/3532; `check:unwrapped` чисто; `check:i18n-leak` чисто; `check-docs-current --strict` чисто; `check-boundaries --strict` у межах стелі; `check-no-tenant-names` чисто; `build` ok; `check:routes` по живому серверу — усі; `smoke-routes` — 5xx лише крони без секрету і `/api/test-email` з навмисно битим SMTP; Playwright `tests/e2e/apps.spec.ts` — 1 passed (1.1 хв) |
 | `36b5c41` | злиття `origin/claude/channex-integration-66kv65` (19 комітів; конфлікти в `package.json` і трьох словниках зведені ОБʼЄДНАННЯМ, AUTOLOOP п. 1) | після злиття: `tsc` 0, `check:i18n` 3533/3533, `check:unwrapped`, `check:i18n-leak`, `check-boundaries`, `check-docs-current`; повний `npm run check` зелений, `check:pg` роллю `alisio_app` (з 0131 накоченою) зелений, `rls-check.sql` — усі, `check-schema-drift` — збігаються, `build` ok |
-| (наступний) | 3.8 «Підключити TSE» (задача контролера `44c5a22`): `fiskalyConnect`, `POST /api/settings/apps/fiskaly/connect`, міграція 0141, картка; читачі стану з віссю обʼєкта (INC-029, храповик `check-property-scope` після злиття); юніон каналів називає шлюзи текстом (`payments.check` після злиття) | `tsc` 0; `npm run check` зелений; `check:pg` роллю `alisio_app` (0141 накочена) зелений; `rls-check.sql` — усі; `check-schema-drift` — «124 таблиць, 1584 колонок»; `check:i18n` 3540/3540; `check:unwrapped`, `check:i18n-leak`, `check-docs-current`, `check-boundaries` (стеля `invoicing` 5), `check-property-scope` у межах стелі; `build` ok |
+| `8b0e7db` | 3.8 «Підключити TSE» (задача контролера `44c5a22`): `fiskalyConnect`, `POST /api/settings/apps/fiskaly/connect`, міграція 0141, картка; читачі стану з віссю обʼєкта (INC-029, храповик `check-property-scope` після злиття); юніон каналів називає шлюзи текстом (`payments.check` після злиття) | `tsc` 0; `npm run check` зелений; `check:pg` роллю `alisio_app` (0141 накочена) зелений; `rls-check.sql` — усі; `check-schema-drift` — «124 таблиць, 1584 колонок»; `check:i18n` 3540/3540; `check:unwrapped`, `check:i18n-leak`, `check-docs-current`, `check-boundaries` (стеля `invoicing` 5), `check-property-scope` у межах стелі; `build` ok |
 
-CI (`.github/workflows/checks.yml`) на гілці — після пушу; статус дописується.
+CI (`.github/workflows/checks.yml`) — див. перший абзац: раннер не стартує в усьому репозиторії з 20:17 09.09.
 
 ## 3. Було → стало по пунктах
 
