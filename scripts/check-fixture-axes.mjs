@@ -609,6 +609,20 @@ const AXES = [
     distinct: /'(2026-1[01]-\d\d)'/g, min: 2,
   },
   {
+    file: 'src/modules/widget/api/widget-reserve.idempotency.check.ts',
+    // Вісь ключа: з ОДНИМ ключем «повтор віддав ту саму бронь» і «варта
+    // перестала вартувати» дали б однакове зелене.
+    axis: 'ключів ідемпотентності у сцені',
+    distinct: /'Idempotency-Key': '([^']+)'|const key = '([^']+)'/g, min: 2,
+  },
+  {
+    file: 'src/modules/widget/api/widget-reserve.idempotency.check.ts',
+    // Вісь гостя: з одним гостем «чужий запит дістав чужу бронь» непомітне —
+    // саме це й показала мутація, що прибрала гостя з хеша.
+    axis: 'гостей у сцені (свій повтор ≠ чужий запит)',
+    distinct: /firstName: '([^']+)'/g, min: 2,
+  },
+  {
     file: 'src/modules/channels/api/ical-scope.check.ts',
     // Вісь сцени — будинок: «канал А не дістає до Б». Один будинок у фікстурі
     // лишив би її зеленою на коді, який осі не має взагалі.

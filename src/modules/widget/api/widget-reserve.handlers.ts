@@ -1,14 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { runWithOrganization } from '@core/auth/tenant-context';
+import { runWithOrganization, currentOrganizationId } from '@core/auth/tenant-context';
 import { noteAvailabilityChanged, lastNight } from '@channels/outbox';
 import { NextRequest, NextResponse } from 'next/server';
 import { appBaseUrl } from '@core/app-url';
-import { getSql } from '@core/db/async';
+import { getSql, type Sql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { eventBus } from '@core/event-bus';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { hasFeature, featureDisabled } from '@core/features';
 import { withSite } from '../data/site.repo';
+import { reserveKey, reservationIdsFor } from '../domain/reserve-idempotency';
+import { ALL_PROPERTIES, oneProperty, propertyScopeFilter } from '@core/property-scope';
 import { percentOf } from '@core/money';
 import { siteAllowsHost, type SiteRow } from '../data/site.repo';
 import { quoteCertificate, claimCertificate } from '../data/certificate.repo';
@@ -32,8 +34,89 @@ const ensureSubscribers = async () => {
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-Handshake-Token',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Handshake-Token, Idempotency-Key',
 };
+
+/**
+ * Броні цього подання, якщо вони вже є — тобто це повтор (INC-046).
+ *
+ * Читається за ідентифікаторами, виведеними з подання, тож ЧУЖОЇ броні тут
+ * не буває за побудовою; орендар усе одно названий — на SQLite політик немає,
+ * а SQLite це вся розробка (рід INC-014).
+ *
+ * ── Що саме віддається, і чого тут НЕ буває ─────────────────────────────
+ *
+ * Усе, що можна прочитати з рядка: бронь, її токен, дати, ночі, сума, валюта,
+ * назва номера. Розбивки першої відповіді — `originalPrice`, `offerDiscount`,
+ * `certificateDiscount` — у рядку немає, і вигадувати її не можна: показана
+ * знижка, якої не було, гірша за відсутню. Тому вони рівні сумі й нулю, а
+ * `repeated: true` каже клієнту, що це повтор.
+ */
+async function replayReservation(
+  sql: Sql,
+  ids: string[],
+  propertyId: string | null,
+): Promise<Record<string, unknown> | null> {
+  if (ids.length === 0) return null;
+  const organizationId = currentOrganizationId();
+  if (!organizationId) return null;
+
+  // Вісь обʼєкта (INC-029): сайт заведено ПІД ОБʼЄКТ (`booking_sites.property_id`
+  // — `NOT NULL`), тож бронь, яку віддає повтор, мусить бути того ж будинку.
+  // Без сайта обʼєкта не названо НІЧИМ — це легасі-віджет першого клієнта, і
+  // там вісь тримає інша гілка: єдина організація або відмова (`withSite`).
+  // Сказано дверима, а не мовчанням.
+  //
+  // Двері кличуться ОДИН раз, а розвилка стоїть на області, а не на фільтрі:
+  // гейт осі впізнає фрагмент за прямим викликом `propertyScopeFilter`, і
+  // тернарник із двох таких викликів для нього — звичайна підстановка
+  // («невизначено», не «називає»). Це та сама пастка, що обгортка `inHouse()`
+  // в INC-040, і другий раз за дві задачі: гейт стереже властивість «фрагмент
+  // прийшов із дверей», і будь-яка обгортка над ними цю властивість ховає.
+  const scope = propertyId ? oneProperty(propertyId) : ALL_PROPERTIES;
+  const house = propertyScopeFilter(scope, 'r');
+
+  const rows = await sql.rows<any>(
+    `SELECT r.id, r.guest_page_token, r.check_in, r.check_out, r.nights,
+            r.total_price, r.currency, u.name AS unit_name
+       FROM reservations r LEFT JOIN units u ON u.id = r.unit_id
+      WHERE r.id IN (${ids.map(() => '?').join(', ')}) AND r.organization_id = ?
+        AND ${house.sql}`,
+    [...ids, organizationId, ...house.params]) as any[];
+  if (rows.length === 0) return null;
+
+  // Порядок замовлення — порядок `ids`, а не порядок, у якому база віддала
+  // рядки: слот 1 несе токен, який клієнт уже показав гостю (AGENTS §7 —
+  // твердження про рядок, якого може бути кілька, не спирається на перший).
+  const byId = new Map(rows.map((r) => [String(r.id), r]));
+  const ordered = ids.map((id) => byId.get(id)).filter(Boolean) as any[];
+  const primary = ordered[0];
+
+  return {
+    success: true,
+    repeated: true,
+    reservationId: String(primary.id),
+    unitName: primary.unit_name ?? '',
+    checkIn: String(primary.check_in ?? '').slice(0, 10),
+    checkOut: String(primary.check_out ?? '').slice(0, 10),
+    nights: Number(primary.nights ?? 0),
+    totalPrice: Number(primary.total_price ?? 0),
+    originalPrice: Number(primary.total_price ?? 0),
+    offerDiscount: 0,
+    certificateDiscount: 0,
+    currency: String(primary.currency ?? ''),
+    thankYouUrl: null,
+    guestPageToken: String(primary.guest_page_token ?? ''),
+    testEmailStatus: 'not_sent',
+    quantity: ordered.length,
+    reservations: ordered.map((r, i) => ({
+      reservationId: String(r.id),
+      guestPageToken: String(r.guest_page_token ?? ''),
+      unitName: r.unit_name ?? '',
+      slot: i + 1,
+    })),
+  };
+}
 
 export async function createWidgetReservationOptions(request: NextRequest) {
   const origin = request.headers.get('origin') || '*';
@@ -70,7 +153,7 @@ export async function createWidgetReservation(request: NextRequest) {
     const origin = request.headers.get('origin');
     const dynamicHeaders: Record<string, string> = {
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, X-Handshake-Token',
+      'Access-Control-Allow-Headers': 'Content-Type, X-Handshake-Token, Idempotency-Key',
     };
     
     if (origin) {
@@ -88,6 +171,40 @@ export async function createWidgetReservation(request: NextRequest) {
       }
     } else {
       dynamicHeaders['Access-Control-Allow-Origin'] = '*';
+    }
+
+    // ── Повтор того самого подання (INC-046) — ПЕРЕД рукостисканням ──────
+    //
+    // Порядок тут не стильовий, і саме він був другою половиною вади.
+    // Рукостискання одноразове: рядок нижче його СПОЖИВАЄ (`DELETE`). Повтор
+    // мережі приходить із тим самим токеном, тож перевірка повтору, поставлена
+    // після, не спрацювала б ніколи — гість діставав би 403 «рукостискання
+    // застаріло» замість своєї броні. Саме це й показала червона сцена: перше
+    // твердження впало не на 409, а на 403.
+    //
+    // Відповідати без рукостискання тут безпечно: ми не створюємо нічого, а
+    // віддаємо бронь, чий ідентифікатор виводиться з подання того, хто питає.
+    // Хто не робив цього бронювання, не назве його змісту.
+    const stayKey = reserveKey(
+      request.headers.get('idempotency-key') ?? body.idempotencyKey,
+      {
+        siteKey: String(siteId || siteSlug || ''),
+        unitId: String(body.unitId ?? ''),
+        checkIn: String(body.checkIn ?? ''),
+        checkOut: String(body.checkOut ?? ''),
+        quantity: Number(body.quantity) || 1,
+        firstName: String(body.firstName ?? ''),
+        lastName: String(body.lastName ?? ''),
+        email: String(body.email ?? ''),
+        phone: String(body.phone ?? ''),
+      },
+    );
+    const stayIds = reservationIdsFor(stayKey, Number(body.quantity) || 1);
+    const replay = await withSite(siteId || siteSlug,
+      (site) => replayReservation(sql, stayIds, site?.property_id ? String(site.property_id) : null));
+    if (replay) {
+      console.log(`[Reserve] repeat (${stayKey.origin} key) → ${replay.reservationId}`);
+      return NextResponse.json(replay, { status: 201, headers: dynamicHeaders });
     }
 
     // Verify and consume handshake token
@@ -562,7 +679,15 @@ export async function createWidgetReservation(request: NextRequest) {
     }
 
     for (let slot = 1; slot <= bookingQuantity; slot++) {
-      const resId = `r_${Date.now()}_${slot}`;
+      // Ідентифікатор — із ключа подання, а не з мітки часу (INC-046).
+      //
+      // `r_${Date.now()}_${slot}` мав дві вади в одному рядку: два бронювання
+      // в ту саму мілісекунду діставали ОДИН ідентифікатор (друге падало на
+      // первинному ключі — 500 гостю), і сам ідентифікатор був вгадуваний
+      // перебором міток часу. Виведений тут — і те, і те закриває, а ще саме
+      // він робить повтор ідемпотентним: другий запис не може створити
+      // другий рядок, бо первинний ключ у таблиці вже є.
+      const resId = stayIds[slot - 1];
       const guestPageToken = await generateToken();
 
       const notesArr = [];
