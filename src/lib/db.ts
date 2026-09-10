@@ -319,6 +319,10 @@ function buildSchema(database: any) {
       document_number TEXT,
       date_of_birth TEXT,
       notes TEXT,
+      -- Звідки цей рядок прийшов: система, таблиця, ідентифікатор у ній
+      -- (INC-301, міграція 0301). Порожньо — завели в нас. Тримає повторний
+      -- прогін імпорту від подвоєння, і тримає це UNIQUE-індекс, а не цикл.
+      external_ref TEXT,
       -- Кого лишили, коли цей рядок злили дублікатом (INC-300, міграція 0300).
       -- Рядок злитого гостя НЕ ВИДАЛЯЄТЬСЯ: посилання на нього лежать у
       -- виданих документах і в чужих системах, і «такого гостя немає» — гірша
@@ -332,6 +336,13 @@ function buildSchema(database: any) {
     -- Списки гостей питають «живі, тобто не злиті» на кожному екрані.
     CREATE INDEX IF NOT EXISTS idx_guests_merged_into
       ON guests (organization_id) WHERE merged_into IS NULL;
+
+    -- Унікальність включає орендаря: ADRESSEN.LNR = 1 є в кожній базі
+    -- Winhotel, тож тотальний індекс зробив би неможливим імпорт другого
+    -- готелю. Предикат — щоб гості без походження (їх більшість) не
+    -- конфліктували між собою.
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_guests_external_ref
+      ON guests (organization_id, external_ref) WHERE external_ref IS NOT NULL;
 
     -- Згоди GDPR живуть на ОСОБІ й переживають бронь (INC-300, міграція 0300).
     --
@@ -429,6 +440,11 @@ function buildSchema(database: any) {
       -- Postgres-клієнт отримав би колонку не зі schema.sql, а лише з ALTER-у
       -- в 0133 — рівно та розбіжність, про яку AGENTS §4 каже про індекси.
       is_pool_unit INTEGER NOT NULL DEFAULT 0,
+      -- Походження імпорту (INC-301). Окремо від external_uid: те поле
+      -- ділять iCal-синк і канали, воно навмисно не ключ, і класти туди ще
+      -- й імпорт означало б, що «звідки ця бронь» відповідає той, хто
+      -- записав останнім.
+      external_ref TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -7833,6 +7849,27 @@ function runMigrations(database: any) {
   // туди, лишить визначення на місці, а виклик у чужому циклі впаде на
   // `tsc` або дасть видимий повтор у лозі — замість тиші.
   migrateOtaMirror(database);
+
+  // --- Migration: ключ походження імпорту (INC-301) ---
+  //
+  // Пара до CREATE вище (AGENTS §4). Індекси — ПІСЛЯ колонок.
+  try {
+    for (const t of ['guests', 'reservations']) {
+      const cols = database.prepare(`PRAGMA table_info(${t})`).all() as { name: string }[];
+      if (cols.length > 0 && !cols.some((c) => c.name === 'external_ref')) {
+        database.exec(`ALTER TABLE ${t} ADD COLUMN external_ref TEXT`);
+        console.log(`[DB] ${t}: external_ref (INC-301)`);
+      }
+    }
+    database.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_guests_external_ref
+        ON guests (organization_id, external_ref) WHERE external_ref IS NOT NULL;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_reservations_external_ref
+        ON reservations (organization_id, external_ref) WHERE external_ref IS NOT NULL;
+    `);
+  } catch (e: any) {
+    console.log('[DB] external_ref migration note:', e.message);
+  }
 
   // --- Migration: згоди на особі і слід злиття (INC-300) ---
   //
