@@ -1741,11 +1741,16 @@ CREATE TABLE "properties" (
   "checkin_payment_policy" TEXT DEFAULT 'prepaid' NOT NULL,
   "system_of_record" TEXT DEFAULT 'alisio' NOT NULL,
   "kiosk_walkin_url" TEXT,
+  "kiosk_auto_assign" BOOLEAN DEFAULT true NOT NULL,
+  "kiosk_signature" TEXT DEFAULT 'foreigners' NOT NULL,
+  "kiosk_earliest_checkin" TEXT,
+  "kiosk_latest_checkout" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("organization_id", "slug"),
   CHECK (checkout_balance_policy IN ('none', 'warning', 'blocking')),
   CHECK (checkin_payment_policy IN ('prepaid', 'allow_pay_later')),
-  CHECK (system_of_record IN ('external', 'alisio'))
+  CHECK (system_of_record IN ('external', 'alisio')),
+  CHECK (kiosk_signature IN ('foreigners', 'always', 'never'))
 );
 
 CREATE TABLE "property_amenities" (

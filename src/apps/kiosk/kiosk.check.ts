@@ -52,6 +52,9 @@ const tokens = await import('./data/device-token.ts');
 const pairing = await import('./api/pairing.handlers.ts');
 const session = await import('./api/session.handlers.ts');
 const stay = await import('./api/stay.handlers.ts');
+const today = await import('./data/today.repo.ts');
+const dayMail = await import('./data/today-mail.ts');
+const { oneProperty, ALL_PROPERTIES } = await import('@core/property-scope.ts');
 const walkin = await import('./api/walkin.handlers.ts');
 const search = await import('./domain/search.ts');
 
@@ -551,6 +554,120 @@ try {
   assert.strictEqual(alienIn.status, 404, `заселення в корпусі 2: очікували 404, отримали ${alienIn.status}`);
   assert.strictEqual(await eventCount(B), 0, 'у журналі B зʼявилась подія від термінала A');
   console.log('  ok  19. хендлери: бронь чужого рахунку і чужого корпусу — 404, чужий журнал порожній');
+
+
+  // ── 20. Доба готелю: події ЦЬОГО будинку і ЦІЄЇ доби ────────────────────
+  //
+  // Два готелі у фікстурі — інваріант 26: підсумок, який рахує «усі події в
+  // базі», з одним готелем виглядає правильним.
+  const devB = await runWithOrganization(B, () => devices.createPairing({ organizationId: B, propertyId: PB, name: 'B-Foyer' }));
+  await runWithOrganization(B, () => setFeature(B, 'kiosk', true));
+  res = await pair(devB.code);
+  assert.strictEqual(res.status, 200, `парування B: ${res.status}`);
+  const deviceB = (await res.json() as { deviceId: string }).deviceId;
+  await runWithOrganization(B, () => devices.noteEvent({
+    organizationId: B, deviceId: deviceB, kind: 'checkin', result: 'ok' }));
+
+  const dayA = await runWithOrganization(A, () => today.kioskDay({
+    organizationId: A, scope: ALL_PROPERTIES }));
+  const dayB = await runWithOrganization(B, () => today.kioskDay({
+    organizationId: B, scope: ALL_PROPERTIES }));
+  assert.strictEqual(dayB.counts.checkedIn, 1, `у B рівно одне заселення, отримали ${dayB.counts.checkedIn}`);
+  assert.ok(dayA.counts.checkedIn >= 1, 'у A заселень немає — фікстура вироджена');
+  assert.ok(!dayA.events.some((e) => e.device_id === deviceB), 'подія B потрапила в добу A');
+  assert.ok(!dayB.events.some((e) => e.organization_id === A || e.device_id === paired.deviceId),
+    'подія A потрапила в добу B');
+  // Вісь БУДИНКУ всередині одного рахунку: термінал стоїть у P1, і доба
+  // сусіднього корпусу порожня, хоч рахунок той самий.
+  const dayP2 = await runWithOrganization(A, () => today.kioskDay({
+    organizationId: A, scope: oneProperty(P2) }));
+  assert.strictEqual(dayP2.events.length, 0,
+    `доба корпусу без термінала не порожня: ${dayP2.events.length} подій`);
+  // Інша доба — інші події: вчорашня порожня, і це не те саме, що «немає даних».
+  const yesterday = await runWithOrganization(A, () => today.kioskDay({
+    organizationId: A, scope: ALL_PROPERTIES, day: day(-1) }));
+  assert.strictEqual(yesterday.events.length, 0, 'вчорашня доба не порожня — межі доби не тримають');
+  console.log('  ok  20. доба: свій рахунок, свій корпус, своя доба — три осі, кожна двома боками');
+
+  // ── 21. Лист о 7:00 містить рівно цю добу цього готелю ─────────────────
+  //
+  // Лист не шлеться (пошти в перевірці немає) — перевіряється те, що в нього
+  // складається: підсумок і список для рецепції.
+  const propRow = await runWithOrganization(A, () => sql.row<{ name: string }>(
+    'SELECT name FROM properties WHERE id = ?', [P1]));
+  const letterExternal = dayMail.renderKioskDay(
+    dayA, { subject: (d: string, n: string) => `K ${d} ${n}`, checkedIn: 'CI', registered: 'R',
+      checkedOut: 'CO', errors: 'E', invoiceList: 'INV', none: 'NONE' },
+    propRow!.name, 'external');
+  assert.match(letterExternal.text, /CI: \d+/, `лист без підсумку: ${letterExternal.text}`);
+  assert.ok(letterExternal.text.includes('INV'),
+    'у фазі external немає списку «виставити фактуру у чужій системі»');
+  // Друга вісь: у фазі alisio того списку в листі НЕМАЄ — фактури виставились самі.
+  const letterAlisio = dayMail.renderKioskDay(
+    dayA, { subject: (d: string, n: string) => `K ${d} ${n}`, checkedIn: 'CI', registered: 'R',
+      checkedOut: 'CO', errors: 'E', invoiceList: 'INV', none: 'NONE' },
+    propRow!.name, 'alisio');
+  assert.ok(!letterAlisio.text.includes('INV'),
+    'у фазі alisio лист усе одно кличе виставляти фактуру в чужій системі');
+  // Порожня доба каже про це словом, а не порожнім списком.
+  const emptyLetter = dayMail.renderKioskDay(
+    yesterday, { subject: (d: string, n: string) => `K ${d} ${n}`, checkedIn: 'CI', registered: 'R',
+      checkedOut: 'CO', errors: 'E', invoiceList: 'INV', none: 'NONE' },
+    propRow!.name, 'alisio');
+  assert.ok(emptyLetter.text.includes('NONE'), `порожня доба без слова: ${emptyLetter.text}`);
+  console.log('  ok  21. лист: підсумок доби, список рецепції лише в external, порожня доба сказана словом');
+
+  // ── 22. Картка: чужий термінал — 404; повторне відкликання — одна подія ─
+  // Хендлери картки загорнуті у `withOwner`, а він читає куку — під голим
+  // node запиту немає, і виклик падає на `cookies()`, не дійшовши до правила.
+  // Тому вісь стверджується на тому шарі, який хендлер і кличе: саме його
+  // нуль змінених рядків стає 404 у відповіді. HTTP-бік того самого — у
+  // родині «кіоск» `check:routes`, на живому сервері з сесією.
+  const seenByA = await runWithOrganization(A, () => devices.listDevices(A, ALL_PROPERTIES));
+  assert.ok(!seenByA.some((d) => d.id === deviceB), 'термінал B видно на картці A');
+  const revokedAlien = await runWithOrganization(A, () => devices.revokeDevice(A, deviceB));
+  assert.strictEqual(revokedAlien, false, 'власник A відкликав термінал готелю B');
+  const stillLive = await runWithOrganization(B, () => devices.listDevices(B, ALL_PROPERTIES));
+  assert.ok(stillLive.some((d) => d.id === deviceB && !d.revoked_at),
+    'термінал B усе-таки відкликано чужими руками');
+  // Вигляд теж не записується в чужий термінал: той самий UPDATE із чужим
+  // орендарем міняє нуль рядків, і саме нуль хендлер віддає як 404.
+  const alienCfg = await runWithOrganization(A, () => sql.run(
+    'UPDATE kiosk_devices SET config_json = ? WHERE id = ? AND organization_id = ?',
+    ['{"touch_band":{"top":1,"bottom":99}}', deviceB, A]));
+  assert.strictEqual(alienCfg.changes, 0, 'вигляд чужого термінала записався');
+  // Повторне відкликання свого термінала — false, і журнал не росте.
+  const beforeRevoke = await eventCount(A);
+  const revoke1 = await runWithOrganization(A, () => devices.revokeDevice(A, dev.deviceId));
+  const revoke2 = await runWithOrganization(A, () => devices.revokeDevice(A, dev.deviceId));
+  assert.strictEqual(revoke1, true, 'перше відкликання не спрацювало');
+  assert.strictEqual(revoke2, false, 'повторне відкликання «спрацювало» вдруге');
+  assert.strictEqual(await eventCount(A), beforeRevoke, 'відкликання дописало подію в журнал');
+  console.log('  ok  22. чужий термінал — не свій; повторне відкликання не рахується вдруге');
+
+  // ── 23. Робоча смуга поза [0,100] — дефолт, а не порожній екран ─────────
+  // NaN тут не випадковий: `JSON.stringify` перетворює його на `null`, а
+  // `Number(null)` — це 0. Смуга з NaN поверталася б як `{top: 0}` — тобто
+  // «правильна» і від самого верху екрана. Той самий шлях у рядків і масивів.
+  for (const bad of [
+    { top: -5, bottom: 80 }, { top: 40, bottom: 140 }, { top: 80, bottom: 30 },
+    { top: NaN, bottom: 80 }, { top: 40, bottom: 40 },
+    { top: '35', bottom: '85' }, { top: [], bottom: 80 }, { top: 35 },
+  ]) {
+    const cfg = JSON.stringify({ touch_band: bad });
+    await runWithOrganization(A, () => sql.run(
+      'UPDATE kiosk_devices SET config_json = ? WHERE id = ? AND organization_id = ?',
+      [cfg, dev.deviceId, A]));
+    // Читає та сама функція, що й сесія термінала.
+    const band = session.readTouchBand(cfg);
+    assert.deepStrictEqual(band, session.DEFAULT_TOUCH_BAND,
+      `смуга ${JSON.stringify(bad)} мала стати дефолтною, стала ${JSON.stringify(band)}`);
+  }
+  // І правильна смуга ПРОХОДИТЬ — інакше сцена доводила б, що дефолт завжди.
+  assert.deepStrictEqual(
+    session.readTouchBand(JSON.stringify({ touch_band: { top: 25, bottom: 75 } })),
+    { top: 25, bottom: 75 }, 'правильна смуга не дійшла до екрана');
+  console.log('  ok  23. смуга поза [0,100], перевернута й нечислова — дефолт; правильна проходить');
 
   console.log('  ok  kiosk: термінал робить лише своє — свій рахунок, свій корпус, свою бронь');
 } finally {

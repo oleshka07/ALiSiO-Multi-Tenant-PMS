@@ -38,16 +38,32 @@ const APP = 'kiosk';
 /** §3.2: кнопки в межах смуги, дефолт 35–85 % висоти екрана. */
 export const DEFAULT_TOUCH_BAND = { top: 35, bottom: 85 };
 
-function touchBand(configJson: string | null): { top: number; bottom: number } {
+/**
+ * Смуга з `config_json`, приведена до придатної.
+ *
+ * Експортована як `readTouchBand` навмисно: сцена гейта мусить читати ТУ САМУ
+ * функцію, що й сесія термінала. Копія правила в перевірці доводила б, що
+ * правильна копія правильна.
+ */
+export function readTouchBand(configJson: string | null): { top: number; bottom: number } {
   if (!configJson) return DEFAULT_TOUCH_BAND;
   try {
     const parsed = typeof configJson === 'string' ? JSON.parse(configJson) : configJson;
     const band = (parsed as { touch_band?: { top?: unknown; bottom?: unknown } })?.touch_band;
-    const top = Number(band?.top);
-    const bottom = Number(band?.bottom);
+    // Число — саме `number`, а не «те, що `Number()` зуміє привести».
+    //
+    // `Number(null)` це 0, а `JSON.stringify({top: NaN})` дає саме `null` —
+    // тобто смуга, записана з NaN, поверталася б із бази як `{top: 0}`:
+    // скінченне, у межах, «правильне». Кнопки лягли б на весь екран від
+    // самого верху, і жодна перевірка меж цього не помітила б. Те саме
+    // зробили б `''`, `[]` і `false`.
+    const num = (v: unknown): number | null =>
+      (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    const top = num(band?.top);
+    const bottom = num(band?.bottom);
     // Смуга, яка не смуга (нечисла, перевернуті межі, поза екраном), — це
     // дефолт, а не порожній екран: кнопки мусять бути десь.
-    if (!Number.isFinite(top) || !Number.isFinite(bottom)) return DEFAULT_TOUCH_BAND;
+    if (top === null || bottom === null) return DEFAULT_TOUCH_BAND;
     if (top < 0 || bottom > 100 || top >= bottom) return DEFAULT_TOUCH_BAND;
     return { top, bottom };
   } catch {
@@ -100,7 +116,7 @@ export async function deviceSession(request: Request): Promise<Response> {
         // адресою забороняє iframe, тож відкриває її оболонка кіоска окремою
         // сторінкою — це справа частини Б, тут лише адреса.
         walkinUrl: property.kiosk_walkin_url?.trim() || null,
-        touchBand: touchBand(device.configJson),
+        touchBand: readTouchBand(device.configJson),
       });
     });
   } catch (error) {

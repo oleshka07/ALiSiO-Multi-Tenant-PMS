@@ -157,3 +157,58 @@ export function maskName(value: string | null | undefined): string {
   const first = [...v][0];
   return `${first.toUpperCase()}…`;
 }
+
+/**
+ * Політики обʼєкта, за якими живе термінал (0413, частина В).
+ *
+ * Читачі найсуворіші там, де суворість має сенс, і найближчі до дотеперішньої
+ * поведінки там, де ні (інваріант 13 плюс «дефолт не змінює поведінки»).
+ */
+
+export const KIOSK_SIGNATURE_MODES = ['foreigners', 'always', 'never'] as const;
+export type KioskSignatureMode = typeof KIOSK_SIGNATURE_MODES[number];
+
+/**
+ * Кому потрібен підпис. Невідоме слово → `foreigners`, тобто ЗАКОН (КІ3):
+ * не `never`, бо це мовчки скасувало б Meldeschein, і не `always`, бо це
+ * вимагало б підпису там, де його ніхто не просить.
+ */
+export function readSignatureMode(raw: unknown): KioskSignatureMode {
+  if (raw === 'always') return 'always';
+  if (raw === 'never') return 'never';
+  return 'foreigners';
+}
+
+/** Чи вимагати підпис із цього гостя. `domestic` — громадянин країни обʼєкта. */
+export function signatureNeeded(mode: KioskSignatureMode, domestic: boolean): boolean {
+  if (mode === 'never') return false;
+  if (mode === 'always') return true;
+  return !domestic;
+}
+
+/**
+ * Чи вільно терміналу обирати кімнату сам. Порожнеча → `true`: це
+ * дотеперішня поведінка, і колонка зʼявилась пізніше за неї. `0`/`false`/`'0'`
+ * — усі три форми, бо на SQLite це число, на Postgres булеве.
+ */
+export function readAutoAssign(raw: unknown): boolean {
+  return !(raw === 0 || raw === false || raw === '0' || raw === 'false');
+}
+
+/** `HH:MM` або null. Сміття — теж null: година, якої ми не зрозуміли, не година. */
+export function readTime(raw: unknown): string | null {
+  const v = String(raw ?? '').trim();
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? v : null;
+}
+
+/**
+ * Чи зарано заселятись. Порівнюються ГОДИНИ доби, не дати: питання тут — «чи
+ * вже та частина дня», і воно має сенс лише для заїзду СЬОГОДНІ.
+ *
+ * Години немає — заселяти можна: обмеження, якого готель не назвав, не
+ * вигадується (інваріант 8 — мовчазного дефолту немає, але й вигаданого теж).
+ */
+export function tooEarly(now: string, earliest: string | null): boolean {
+  if (!earliest) return false;
+  return now < earliest;
+}

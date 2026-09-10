@@ -34,11 +34,13 @@ import { saveSignature, isSigned, saveRegistrations } from '@guests/kernel';
 import { lockCodeForStay } from '@properties/kernel';
 import { reservationFolioSummary } from '@invoicing/kernel';
 import { getSql } from '@core/db/async';
+import { todayIn } from '@core/hotel-day';
 import { requireDevice } from './session.handlers';
 import { noteEvent } from '../data/devices.repo';
 import { findStays, propertyGuestConfig, stayById, stayGuests } from '../data/stay.repo';
 import {
-  decideSearch, enoughFactors, maskName, namedFactors, stayWindow, type SearchInput,
+  decideSearch, enoughFactors, maskName, namedFactors, readAutoAssign, readSignatureMode,
+  readTime, signatureNeeded, stayWindow, tooEarly, type SearchInput,
 } from '../domain/search';
 import type { KioskDevice } from '../data/device-token';
 
@@ -173,8 +175,11 @@ export async function stayCard(request: Request): Promise<Response> {
         organizationId: device.organizationId, propertyId: device.propertyId, reservationId,
       });
       const signed = await isSigned(device.organizationId, device.propertyId, reservationId);
-      const home = await getSql().row<{ country: string | null }>(
-        'SELECT country FROM properties WHERE id = ? AND organization_id = ?',
+      const home = await getSql().row<{
+        country: string | null; kiosk_signature: string | null;
+        kiosk_earliest_checkin: string | null; kiosk_auto_assign: unknown;
+      }>(`SELECT country, kiosk_signature, kiosk_earliest_checkin, kiosk_auto_assign
+            FROM properties WHERE id = ? AND organization_id = ?`,
         [device.propertyId, device.organizationId]);
       return NextResponse.json({
         stay: forScreen(row),
@@ -188,7 +193,16 @@ export async function stayCard(request: Request): Promise<Response> {
         // з першого гостя або з профілю броні; порожнє означає «ще не
         // назвався», і тоді підпис вимагається — бо доки не знаємо, ми не
         // маємо права вирішити, що він не потрібен (інваріант 13).
-        signatureNeeded: !isDomestic(guests[0]?.nationality ?? row.guest_country, home?.country),
+        // Підпис — за політикою ОБʼЄКТА поверх громадянства (0413): дефолт
+        // `foreigners` це і є КІ3, `never` знімає Meldeschein там, де його
+        // немає в законі, `always` — внутрішнє правило готелю.
+        signatureNeeded: signatureNeeded(
+          readSignatureMode(home?.kiosk_signature),
+          isDomestic(guests[0]?.nationality ?? row.guest_country, home?.country),
+        ),
+        // Година, раніше за яку термінал не селить. Порожньо = обмеження
+        // немає; екран показує її гостю, а не мовчки відмовляє.
+        earliestCheckIn: readTime(home?.kiosk_earliest_checkin),
         signed,
         // QR веде на гостьовий портал, де вже є OCR документа зі згодою.
         // Порожньо, поки токена немає: він зʼявляється при заселенні.
@@ -299,6 +313,41 @@ export async function checkInStay(request: Request): Promise<Response> {
         kind: 'device' as const, organizationId: device.organizationId,
         propertyId: device.propertyId, userId: null,
       };
+
+      const policy = await getSql().row<{
+        kiosk_auto_assign: unknown; kiosk_earliest_checkin: string | null; timezone?: string | null;
+      }>(`SELECT p.kiosk_auto_assign, p.kiosk_earliest_checkin, o.timezone
+            FROM properties p JOIN organizations o ON o.id = p.organization_id
+           WHERE p.id = ? AND p.organization_id = ?`,
+        [device.propertyId, device.organizationId]);
+      // Обʼєкта немає — політик немає — заселяти нікуди (інваріант 13).
+      if (!policy) refuse('Не знайдено', 404);
+
+      // Зарано — це відмова гостю з ГОДИНОЮ, а не мовчазне «спробуйте пізніше».
+      // Питання лише про заїзд СЬОГОДНІ: хто приїхав учора, давно всередині.
+      const nowHm = new Date().toLocaleTimeString('en-GB', {
+        hour: '2-digit', minute: '2-digit', hour12: false,
+        timeZone: policy.timezone || 'UTC',
+      });
+      const earliest = readTime(policy.kiosk_earliest_checkin);
+      if (!already && before.check_in.slice(0, 10) === todayIn(policy.timezone)
+          && tooEarly(nowHm, earliest)) {
+        await noteEvent({
+          organizationId: device.organizationId, deviceId: device.id,
+          reservationId, kind: 'checkin', result: 'refused', detail: `too_early:${earliest}`,
+        });
+        return NextResponse.json({ error: 'too_early', earliestCheckIn: earliest }, { status: 409 });
+      }
+
+      if (!before.unit_id && !readAutoAssign(policy.kiosk_auto_assign)) {
+        // Готель розподіляє номери руками: термінал не обирає кімнату, він
+        // веде гостя до рецепції. Це не поломка — це рішення готелю.
+        await noteEvent({
+          organizationId: device.organizationId, deviceId: device.id,
+          reservationId, kind: 'checkin', result: 'refused', detail: 'no_auto_assign',
+        });
+        refuse('no_unit', 409);
+      }
 
       if (!before.unit_id) {
         const assigned = await assignUnit(reservationId, { actor, prefer: 'clean' });

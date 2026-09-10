@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Check, Loader2, ToggleLeft, ToggleRight, Heart } from 'lucide-react';
 import PaymentGatewayNotice from '@/components/payments/PaymentGatewayNotice';
+import { KioskCard } from '@/apps/kiosk/ui/KioskCard';
 import { notifyCurrentUserChanged } from '@/ui/hooks/useCurrentUser';
 
 /**
@@ -328,6 +329,10 @@ export default function AppsSettingsPage() {
                         </div>
                       ))}
                     </div>
+                  )}
+
+                  {card.id === 'kiosk' && card.live && card.enabled && (
+                    <KioskCard />
                   )}
 
                   {card.id === 'winhotel_import' && card.live && card.enabled && (

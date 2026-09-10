@@ -755,7 +755,7 @@ async function main() {
     claim('кіоск', screenRes.status === 200,
       `екран /kiosk віддається гостю без сесії (${screenRes.status}; 307 = перенаправлення на вхід оператора)`);
 
-    const pairRes = await call(cookie, '/api/apps/kiosk/admin/pairings', {
+    const pairRes = await call(cookie, '/api/settings/apps/kiosk/pairings', {
       method: 'POST',
       body: JSON.stringify({ propertyId: property.id, name: 'Routes probe terminal' }),
     });
@@ -817,6 +817,67 @@ async function main() {
           headers: { authorization: `Bearer ${ORG}.${property.id}.kd_nope.${'a'.repeat(64)}` },
         });
         claim('кіоск', alienRes.status === 401, `чужий токен пристрою — 401 (${alienRes.status})`);
+
+        // ── Картка застосунку (частина В) ───────────────────────────────
+        //
+        // Вона живе під `/api/settings/apps/kiosk/` — у звичайному
+        // охоронюваному контурі. Тому перше твердження про неї — БЕЗ сесії:
+        // маршрут картки, який відповідає невідомому, це діра, а не зручність.
+        const noCookie = await fetch(`${BASE}/api/settings/apps/kiosk/devices`, { redirect: 'manual' });
+        claim('кіоск', noCookie.status === 307 || noCookie.status === 401,
+          `картка без сесії не відповідає (${noCookie.status})`);
+
+        const devicesRes = await call(cookie, '/api/settings/apps/kiosk/devices');
+        const deviceList = await body(devicesRes);
+        claim('кіоск', devicesRes.status === 200 && Array.isArray(deviceList?.devices),
+          `список терміналів — 200 і масив (${devicesRes.status})`);
+        claim('кіоск', (deviceList?.devices ?? []).some((d) => d.id === claimed.deviceId),
+          'щойно спарований термінал є в списку картки');
+
+        const polRes = await call(cookie, `/api/settings/apps/kiosk/policies?property_id=${property.id}`);
+        const pol = await body(polRes);
+        claim('кіоск', polRes.status === 200 && typeof pol?.autoAssign === 'boolean',
+          `політики — 200 і автопризначення булевим (${polRes.status})`);
+        claim('кіоск', ['foreigners', 'always', 'never'].includes(pol?.signature),
+          `політика підпису — відоме слово, отримали ${pol?.signature}`);
+
+        // Запис і читання назад: збереглося те, що просили, а не «ok».
+        const putRes = await call(cookie, '/api/settings/apps/kiosk/policies', {
+          method: 'PUT',
+          body: JSON.stringify({
+            propertyId: property.id, checkinPaymentPolicy: 'allow_pay_later',
+            signature: 'always', autoAssign: false, walkinUrl: '', earliestCheckIn: '15:00',
+          }),
+        });
+        claim('кіоск', putRes.status === 200, `політики збережено (${putRes.status})`);
+        const back = await body(await call(cookie, `/api/settings/apps/kiosk/policies?property_id=${property.id}`));
+        claim('кіоск', back?.checkinPaymentPolicy === 'allow_pay_later' && back?.signature === 'always'
+          && back?.autoAssign === false && back?.earliestCheckIn === '15:00',
+          `політики читаються назад тими самими: ${JSON.stringify(back)}`);
+
+        // Слово поза словником — 400, а не 500 на CHECK-у бази.
+        const badRes = await call(cookie, '/api/settings/apps/kiosk/policies', {
+          method: 'PUT',
+          body: JSON.stringify({ propertyId: property.id, signature: 'sometimes' }),
+        });
+        claim('кіоск', badRes.status === 400, `невідоме слово підпису — 400 (${badRes.status})`);
+
+        // Смуга поза межами — теж 400, і термінал лишається зі своєю.
+        const bandRes = await call(cookie, `/api/settings/apps/kiosk/devices/${claimed.deviceId}/config`, {
+          method: 'PUT', body: JSON.stringify({ touchBand: { top: 90, bottom: 10 } }),
+        });
+        claim('кіоск', bandRes.status === 400, `перевернута смуга — 400 (${bandRes.status})`);
+
+        const todayRes = await call(cookie, `/api/settings/apps/kiosk/today?property_id=${property.id}`);
+        const today = await body(todayRes);
+        claim('кіоск', todayRes.status === 200 && typeof today?.counts?.checkedIn === 'number'
+          && typeof today?.day === 'string' && typeof today?.timezone === 'string',
+          `«Kiosk heute» — 200, доба і підсумок числами (${todayRes.status})`);
+        claim('кіоск', Array.isArray(today?.events) && today.events.some((e) => e.kind === 'pair'),
+          'подія парування є в добі — журнал наповнюється сам');
+
+        const alienDay = await call(cookie, `/api/settings/apps/kiosk/today?property_id=${TAG}alien`);
+        claim('кіоск', alienDay.status === 404, `доба чужого обʼєкта — 404 (${alienDay.status})`);
       }
     }
 

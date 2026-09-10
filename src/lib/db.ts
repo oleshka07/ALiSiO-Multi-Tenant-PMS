@@ -189,6 +189,17 @@ function buildSchema(database: any) {
       system_of_record TEXT NOT NULL DEFAULT 'alisio'
         CHECK (system_of_record IN ('external', 'alisio')),
       kiosk_walkin_url TEXT,
+      -- 0413, частина В: політики картки застосунку.
+      -- kiosk_auto_assign — чи вільно терміналу обирати кімнату сам;
+      -- kiosk_signature — foreigners (КІ3, як закон) | always | never;
+      -- години NULL = як в обʼєкта (check_in_time / check_out_time), а не
+      -- «будь-коли»: на терміналі година буває інша, ніж на стійці.
+      -- І тут, і в ALTER нижче (AGENTS §4).
+      kiosk_auto_assign INTEGER NOT NULL DEFAULT 1,
+      kiosk_signature TEXT NOT NULL DEFAULT 'foreigners'
+        CHECK (kiosk_signature IN ('foreigners', 'always', 'never')),
+      kiosk_earliest_checkin TEXT,
+      kiosk_latest_checkout TEXT,
       UNIQUE(organization_id, slug)
     );
 
@@ -7332,6 +7343,23 @@ function runMigrations(database: any) {
     if (!propCols.includes('kiosk_walkin_url')) {
       database.exec('ALTER TABLE properties ADD COLUMN kiosk_walkin_url TEXT');
       console.log('[DB] 0410: properties.kiosk_walkin_url');
+    }
+    // 0413 — політики картки застосунку (частина В).
+    if (!propCols.includes('kiosk_auto_assign')) {
+      database.exec('ALTER TABLE properties ADD COLUMN kiosk_auto_assign INTEGER NOT NULL DEFAULT 1');
+      console.log('[DB] 0413: properties.kiosk_auto_assign');
+    }
+    if (!propCols.includes('kiosk_signature')) {
+      database.exec("ALTER TABLE properties ADD COLUMN kiosk_signature TEXT NOT NULL DEFAULT 'foreigners'");
+      console.log('[DB] 0413: properties.kiosk_signature');
+    }
+    if (!propCols.includes('kiosk_earliest_checkin')) {
+      database.exec('ALTER TABLE properties ADD COLUMN kiosk_earliest_checkin TEXT');
+      console.log('[DB] 0413: properties.kiosk_earliest_checkin');
+    }
+    if (!propCols.includes('kiosk_latest_checkout')) {
+      database.exec('ALTER TABLE properties ADD COLUMN kiosk_latest_checkout TEXT');
+      console.log('[DB] 0413: properties.kiosk_latest_checkout');
     }
   } catch (e: any) {
     console.error('[DB] properties checkout_balance_policy:', e.message);
