@@ -534,6 +534,7 @@ CREATE TABLE "companies" (
   "archived_at" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "external_ref" TEXT,
   PRIMARY KEY ("id")
 );
 
@@ -846,6 +847,7 @@ CREATE TABLE "fin_folio_items" (
   "voided_by_item_id" TEXT,
   "invoice_id" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "external_ref" TEXT,
   PRIMARY KEY ("id"),
   CHECK (kind IN ('lodging','service','fee','city_tax','manual')),
   CHECK (source IN ('nightly','ota_split','manual','restaurant','import','service'))
@@ -873,6 +875,7 @@ CREATE TABLE "fin_folio_payments" (
   "tse_client_id" TEXT,
   "tse_process_type" TEXT,
   "tse_process_data" TEXT,
+  "external_ref" TEXT,
   PRIMARY KEY ("id"),
   CHECK (method IN ('cash','card_terminal','transfer','voucher'))
 );
@@ -915,6 +918,7 @@ CREATE TABLE "fin_invoice_lines" (
   "vat_rate" DOUBLE PRECISION DEFAULT 0 NOT NULL,
   "source_item_id" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "external_ref" TEXT,
   PRIMARY KEY ("id")
 );
 
@@ -927,6 +931,7 @@ CREATE TABLE "fin_invoice_tax_totals" (
   "gross_amount" NUMERIC(14,2) DEFAULT 0 NOT NULL,
   "net_amount" NUMERIC(14,2) DEFAULT 0 NOT NULL,
   "tax_amount" NUMERIC(14,2) DEFAULT 0 NOT NULL,
+  "external_ref" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("invoice_id", "vat_rate")
 );
@@ -1444,6 +1449,7 @@ CREATE TABLE "invoices" (
   "custom_email" TEXT,
   "corrects_invoice_id" TEXT,
   "folio_id" TEXT,
+  "external_ref" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("organization_id", "invoice_number"),
   CHECK (status IN ('issued', 'cancelled', 'storno', 'corrected'))
@@ -2903,6 +2909,7 @@ CREATE INDEX "idx_cm_outbox_pending" ON "cm_outbox" ("connection_id", "kind") WH
 CREATE INDEX "idx_cm_sends_connection" ON "cm_sends" ("connection_id", "sent_at");
 CREATE INDEX "idx_cm_sends_org" ON "cm_sends" ("organization_id");
 CREATE UNIQUE INDEX "idx_companies_debtor_no" ON "companies" ("organization_id", "debtor_no") WHERE debtor_no IS NOT NULL ;
+CREATE UNIQUE INDEX "idx_companies_external_ref" ON "companies" ("organization_id", "external_ref") WHERE external_ref IS NOT NULL;
 CREATE INDEX "idx_companies_org" ON "companies" ("organization_id", "name");
 CREATE UNIQUE INDEX "idx_companies_org_business_id" ON "companies" ("organization_id", "business_id") WHERE business_id IS NOT NULL;
 CREATE INDEX "idx_company_rate_plans_org" ON "company_rate_plans" ("organization_id");
@@ -2935,15 +2942,19 @@ CREATE INDEX "idx_fin_fiscal_outages_org" ON "fin_fiscal_outages" ("organization
 CREATE INDEX "idx_fin_fiscal_settings_org" ON "fin_fiscal_settings" ("organization_id");
 CREATE UNIQUE INDEX "idx_fin_fiscal_settings_row" ON "fin_fiscal_settings" ("property_id");
 CREATE INDEX "idx_fin_folio_items_date" ON "fin_folio_items" ("organization_id", "service_date");
+CREATE UNIQUE INDEX "idx_fin_folio_items_external_ref" ON "fin_folio_items" ("organization_id", "external_ref") WHERE external_ref IS NOT NULL;
 CREATE INDEX "idx_fin_folio_items_folio" ON "fin_folio_items" ("folio_id");
 CREATE INDEX "idx_fin_folio_items_invoice" ON "fin_folio_items" ("invoice_id");
 CREATE INDEX "idx_fin_folio_items_order" ON "fin_folio_items" ("service_order_id");
+CREATE UNIQUE INDEX "idx_fin_folio_payments_external_ref" ON "fin_folio_payments" ("organization_id", "external_ref") WHERE external_ref IS NOT NULL;
 CREATE INDEX "idx_fin_folio_payments_folio" ON "fin_folio_payments" ("folio_id");
 CREATE INDEX "idx_fin_folio_payments_org" ON "fin_folio_payments" ("organization_id", "paid_at");
 CREATE INDEX "idx_fin_folios_company" ON "fin_folios" ("organization_id", "company_id");
 CREATE INDEX "idx_fin_folios_org" ON "fin_folios" ("organization_id", "status");
 CREATE INDEX "idx_fin_folios_res" ON "fin_folios" ("reservation_id");
+CREATE UNIQUE INDEX "idx_fin_invoice_lines_external_ref" ON "fin_invoice_lines" ("organization_id", "external_ref") WHERE external_ref IS NOT NULL;
 CREATE INDEX "idx_fin_invoice_lines_invoice" ON "fin_invoice_lines" ("invoice_id", "position");
+CREATE UNIQUE INDEX "idx_fin_invoice_tax_totals_external_ref" ON "fin_invoice_tax_totals" ("organization_id", "external_ref") WHERE external_ref IS NOT NULL;
 CREATE UNIQUE INDEX "idx_fin_invoice_tax_totals_rate" ON "fin_invoice_tax_totals" ("invoice_id", "vat_rate");
 CREATE INDEX "idx_attach_op" ON "fin_operation_attachments" ("operation_id");
 CREATE INDEX "idx_attach_org" ON "fin_operation_attachments" ("organization_id");
@@ -3006,6 +3017,7 @@ CREATE INDEX "idx_invoice_series_channel" ON "invoice_series" ("organization_id"
 CREATE INDEX "idx_invoice_series_property" ON "invoice_series" ("organization_id", "property_id");
 CREATE UNIQUE INDEX "idx_invoice_series_row" ON "invoice_series" (organization_id, (COALESCE(property_id, '')), code);
 CREATE INDEX "idx_invoices_corrects" ON "invoices" ("corrects_invoice_id");
+CREATE UNIQUE INDEX "idx_invoices_external_ref" ON "invoices" ("organization_id", "external_ref") WHERE external_ref IS NOT NULL;
 CREATE INDEX "idx_invoices_folio" ON "invoices" ("folio_id");
 CREATE INDEX "idx_invoices_issued" ON "invoices" ("issued_at");
 CREATE INDEX "idx_invoices_number" ON "invoices" ("organization_id", "invoice_number");
