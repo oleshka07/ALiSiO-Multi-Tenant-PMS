@@ -36,7 +36,20 @@ process.env.ALISIO_DATA_DIR = tmp;
 await import('@core/db/index.ts');
 const { seedTwoProperties, seedNeighbourOrganization } = await import('@core/fixtures/two-properties.ts');
 const { ALL_PROPERTIES, oneProperty } = await import('@core/property-scope.ts');
-const { listUnits } = await import('./units.repo.ts');
+const { runWithOrganization } = await import('@core/auth/tenant-context.ts');
+const { listUnits: rawListUnits } = await import('./units.repo.ts');
+/**
+ * Кожен виклик репозиторію — ПІД орендарем, якого йому передали.
+ *
+ * Сцена не має власного `runWithOrganization`: вона кличе читачів прямо в тілі
+ * модуля. На SQLite це працює, на Postgres під `alisio_app` політика віддає
+ * порожнє, і сцена падає з «очікували 5, отримали 0». Обгортка тут, а не
+ * двадцять `runWithOrganization` нижче: орендар у цих викликах і так уже
+ * перший аргумент.
+ */
+const listUnits = ((org: string, ...rest: unknown[]) =>
+  runWithOrganization(org, () => (rawListUnits as (...a: unknown[]) => unknown)(org, ...rest))
+) as unknown as typeof rawListUnits;
 
 const fx = await seedTwoProperties();
 const neighbour = await seedNeighbourOrganization();

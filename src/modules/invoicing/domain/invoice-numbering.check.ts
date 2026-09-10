@@ -43,8 +43,8 @@ async function claims(sql: Sql, engine: string, insertInvoice: (id: string, org:
   // what fails.
 
   // Each organization starts its own sequence at 1.
-  const a1 = await allocateInvoiceNumber(sql, A, 'house', YEAR);
-  const b1 = await allocateInvoiceNumber(sql, B, 'house', YEAR);
+  const a1 = await allocateInvoiceNumber(sql, A, null, 'house', YEAR);
+  const b1 = await allocateInvoiceNumber(sql, B, null, 'house', YEAR);
   assert.strictEqual(a1.invoiceNumber, '2026-001', `${engine}: A got ${a1.invoiceNumber}`);
   assert.strictEqual(b1.invoiceNumber, '2026-001', `${engine}: B got ${b1.invoiceNumber} — it read A's counter`);
 
@@ -59,10 +59,10 @@ async function claims(sql: Sql, engine: string, insertInvoice: (id: string, org:
 
   // A's second invoice is 002 regardless of how many B has issued. This is the
   // one that needs DO UPDATE — the first allocation only ever INSERTs.
-  await allocateInvoiceNumber(sql, B, 'house', YEAR);
-  await allocateInvoiceNumber(sql, B, 'house', YEAR);
+  await allocateInvoiceNumber(sql, B, null, 'house', YEAR);
+  await allocateInvoiceNumber(sql, B, null, 'house', YEAR);
   assert.strictEqual(
-    (await allocateInvoiceNumber(sql, A, 'house', YEAR)).invoiceNumber, '2026-002',
+    (await allocateInvoiceNumber(sql, A, null, 'house', YEAR)).invoiceNumber, '2026-002',
     `${engine}: the counter did not advance`,
   );
 
@@ -72,11 +72,11 @@ async function claims(sql: Sql, engine: string, insertInvoice: (id: string, org:
   // and no year. A, which configured nothing, must be unaffected on the very
   // next allocation.
   await sql.run(
-    `INSERT INTO invoice_series (id, organization_id, code, channel, prefix, number_format, is_default)
-     VALUES (?, ?, ?, ?, ?, ?, TRUE)`,
+    `INSERT INTO invoice_series (id, organization_id, property_id, code, channel, prefix, number_format, is_default)
+     VALUES (?, ?, NULL, ?, ?, ?, ?, TRUE)`,
     ['s_b', B, 'RG', 'house', '', '{seq}'],
   );
-  const bConfigured = await allocateInvoiceNumber(sql, B, 'house', YEAR);
+  const bConfigured = await allocateInvoiceNumber(sql, B, null, 'house', YEAR);
   assert.strictEqual(bConfigured.series, 'RG', `${engine}: B's series code was ignored`);
   // 1, not 4: the counter is keyed on the SERIES, so naming a new one starts a
   // new run. That is the correct behaviour — a series is a legal sequence and
@@ -87,17 +87,17 @@ async function claims(sql: Sql, engine: string, insertInvoice: (id: string, org:
   assert.strictEqual(bConfigured.invoiceNumber, '1', `${engine}: B's template was ignored`);
 
   assert.strictEqual(
-    (await allocateInvoiceNumber(sql, A, 'house', YEAR)).invoiceNumber, '2026-003',
+    (await allocateInvoiceNumber(sql, A, null, 'house', YEAR)).invoiceNumber, '2026-003',
     `${engine}: configuring B changed A's numbering`,
   );
 
   // Series are still independent within an organization.
-  assert.strictEqual((await allocateInvoiceNumber(sql, A, 'booking', YEAR)).invoiceNumber, 'BKG-2026-001');
+  assert.strictEqual((await allocateInvoiceNumber(sql, A, null, 'booking', YEAR)).invoiceNumber, 'BKG-2026-001');
 
   // Locking a period is per organization too — and reaches the invoices in it.
-  await lockPeriod(sql, A, 'HOUSE', '2026-01');
-  assert.strictEqual(await isPeriodLocked(sql, A, 'HOUSE', '2026-01'), true);
-  assert.strictEqual(await isPeriodLocked(sql, B, 'HOUSE', '2026-01'), false, `${engine}: A's lock froze B's period`);
+  await lockPeriod(sql, A, null, 'HOUSE', '2026-01');
+  assert.strictEqual(await isPeriodLocked(sql, A, null, 'HOUSE', '2026-01'), true);
+  assert.strictEqual(await isPeriodLocked(sql, B, null, 'HOUSE', '2026-01'), false, `${engine}: A's lock froze B's period`);
 
   // isInvoiceLocked reads COALESCE(period, substr(issued_at)) — the other
   // spelling that only Postgres rejects.
@@ -112,24 +112,29 @@ async function claims(sql: Sql, engine: string, insertInvoice: (id: string, org:
   const sql = sqliteSql(db);
   await sql.exec(`
     CREATE TABLE invoice_series (
-      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, code TEXT NOT NULL,
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, property_id TEXT, code TEXT NOT NULL,
       channel TEXT, prefix TEXT NOT NULL DEFAULT '',
       number_format TEXT NOT NULL DEFAULT '{prefix}{year}-{seq:3}',
       reset_yearly BOOLEAN NOT NULL DEFAULT TRUE, is_default BOOLEAN NOT NULL DEFAULT FALSE,
       sort_order INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE invoice_counters (
-      organization_id TEXT NOT NULL, series TEXT NOT NULL, year INTEGER NOT NULL,
-      last_no INTEGER NOT NULL DEFAULT 0,
-      PRIMARY KEY (organization_id, series, year)
+      organization_id TEXT NOT NULL, property_id TEXT, series TEXT NOT NULL, year INTEGER NOT NULL,
+      last_no INTEGER NOT NULL DEFAULT 0
     );
+    CREATE UNIQUE INDEX idx_invoice_counters_row
+      ON invoice_counters(organization_id, (COALESCE(property_id, '')), series, year);
     CREATE TABLE invoice_periods (
-      organization_id TEXT NOT NULL, series TEXT NOT NULL, month TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'open', locked_at TEXT,
-      PRIMARY KEY (organization_id, series, month)
+      organization_id TEXT NOT NULL, property_id TEXT, series TEXT NOT NULL, month TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open', locked_at TEXT
     );
+    CREATE UNIQUE INDEX idx_invoice_periods_row
+      ON invoice_periods(organization_id, (COALESCE(property_id, '')), series, month);
+    CREATE TABLE reservations (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, property_id TEXT);
+    CREATE TABLE fin_folios (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, property_id TEXT);
     CREATE TABLE invoices (
       id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, invoice_number TEXT NOT NULL,
+      reservation_id TEXT, folio_id TEXT,
       series TEXT, period TEXT, issued_at TEXT, locked INTEGER NOT NULL DEFAULT 0,
       UNIQUE (organization_id, invoice_number)
     );
@@ -156,24 +161,29 @@ async function claims(sql: Sql, engine: string, insertInvoice: (id: string, org:
 
   await sql.exec(`
     CREATE TABLE invoice_series (
-      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, code TEXT NOT NULL,
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, property_id TEXT, code TEXT NOT NULL,
       channel TEXT, prefix TEXT NOT NULL DEFAULT '',
       number_format TEXT NOT NULL DEFAULT '{prefix}{year}-{seq:3}',
       reset_yearly BOOLEAN NOT NULL DEFAULT TRUE, is_default BOOLEAN NOT NULL DEFAULT FALSE,
       sort_order INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE invoice_counters (
-      organization_id TEXT NOT NULL, series TEXT NOT NULL, year BIGINT NOT NULL,
-      last_no BIGINT NOT NULL DEFAULT 0,
-      PRIMARY KEY (organization_id, series, year)
+      organization_id TEXT NOT NULL, property_id TEXT, series TEXT NOT NULL, year BIGINT NOT NULL,
+      last_no BIGINT NOT NULL DEFAULT 0
     );
+    CREATE UNIQUE INDEX idx_invoice_counters_row
+      ON invoice_counters(organization_id, (COALESCE(property_id, '')), series, year);
     CREATE TABLE invoice_periods (
-      organization_id TEXT NOT NULL, series TEXT NOT NULL, month TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'open', locked_at TIMESTAMPTZ,
-      PRIMARY KEY (organization_id, series, month)
+      organization_id TEXT NOT NULL, property_id TEXT, series TEXT NOT NULL, month TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open', locked_at TIMESTAMPTZ
     );
+    CREATE UNIQUE INDEX idx_invoice_periods_row
+      ON invoice_periods(organization_id, (COALESCE(property_id, '')), series, month);
+    CREATE TABLE reservations (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, property_id TEXT);
+    CREATE TABLE fin_folios (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, property_id TEXT);
     CREATE TABLE invoices (
       id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, invoice_number TEXT NOT NULL,
+      reservation_id TEXT, folio_id TEXT,
       series TEXT, period TEXT, issued_at TIMESTAMPTZ DEFAULT now(),
       locked BOOLEAN NOT NULL DEFAULT false,
       UNIQUE (organization_id, invoice_number)

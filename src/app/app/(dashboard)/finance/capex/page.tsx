@@ -3,6 +3,7 @@
 import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import { Landmark, Plus, Edit2, Trash2, X } from 'lucide-react';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
 
 interface BU { id: string; name: string; }
 
@@ -24,6 +25,13 @@ function formatCZK(n: number): string {
 }
 
 export default function CapexPage() {
+  // Обʼєкт із перемикача в шапці (INC-038, Д54): довідники фінансів належать
+  // БУДИНКУ — два обʼєкти під одним рахунком ведуть дві бухгалтерії. `?? 'all'`
+  // — це СКАЗАНЕ «усі обʼєкти», а не мовчання: на мовчання маршрут відповідає
+  // 400, і це навмисно (інваріант 8).
+  const { propertyId } = usePropertyScope();
+  const scopeParam = propertyId ?? 'all';
+
   const t = useT();
   const [items, setItems] = useState<CapexItem[]>([]);
   const [summary, setSummary] = useState<Summary>({ total_items: 0, total_amount: 0, active_items: 0, monthly_depreciation: 0 });
@@ -36,7 +44,7 @@ export default function CapexPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [res, buRes] = await Promise.all([fetch('/api/finance/capex'), fetch('/api/finance/business-units')]);
+      const [res, buRes] = await Promise.all([fetch('/api/finance/capex'), fetch(`/api/finance/business-units?property_id=${encodeURIComponent(scopeParam)}`)]);
       const data = await res.json();
       setItems(data.items || []);
       setSummary(data.summary || {});

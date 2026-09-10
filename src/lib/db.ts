@@ -1820,6 +1820,10 @@ function runMigrations(database: any) {
       CREATE TABLE business_units (
         id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
         organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        -- Будинок, або NULL = «на весь рахунок» (Д54). Колонка нульова
+        -- навмисно: обовʼязкова вимагала б вигадати будинок кожному наявному
+        -- рядку і зламала б готель з одним обʼєктом.
+        property_id TEXT REFERENCES properties(id) ON DELETE CASCADE,
         name TEXT NOT NULL,
         unit_type TEXT,
         is_shared INTEGER NOT NULL DEFAULT 0,
@@ -1858,6 +1862,8 @@ function runMigrations(database: any) {
       CREATE TABLE expense_categories (
         id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
         organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        -- Будинок, або NULL = «на весь рахунок» (Д54).
+        property_id TEXT REFERENCES properties(id) ON DELETE CASCADE,
         name TEXT NOT NULL,
         std_group TEXT NOT NULL DEFAULT 'OPEX',
         pnl_line TEXT NOT NULL,
@@ -2086,6 +2092,8 @@ function runMigrations(database: any) {
     CREATE TABLE IF NOT EXISTS finance_accounts (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
       organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      -- Будинок, або NULL = «на весь рахунок» (Д54). Каса стоїть у будинку.
+      property_id TEXT REFERENCES properties(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       type TEXT NOT NULL DEFAULT 'cash' CHECK (type IN ('cash', 'bank', 'card', 'investment', 'other')),
       currency TEXT NOT NULL DEFAULT 'CZK',
@@ -2153,6 +2161,8 @@ function runMigrations(database: any) {
     CREATE TABLE IF NOT EXISTS finance_counterparties (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
       organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      -- Будинок, або NULL = «на весь рахунок» (Д54).
+      property_id TEXT REFERENCES properties(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       parent_id TEXT REFERENCES finance_counterparties(id),
       kind TEXT,
@@ -3564,14 +3574,18 @@ function runMigrations(database: any) {
     if (!counterCols.includes('organization_id')) {
       // Counters are derived data: whatever is in them can be rebuilt from the
       // invoices themselves, so they are recreated rather than guessed at.
+      // Форма ВІДРАЗУ з віссю обʼєкта (INC-038): новий клієнт не має проходити
+      // через проміжний вигляд, який блок наприкінці ланцюжка все одно
+      // перебудує. Обмеження — унікальний індекс по `COALESCE`, а не PRIMARY
+      // KEY: нульова колонка в ключі інакше не працює.
       database.exec(`
         DROP TABLE IF EXISTS invoice_counters;
         CREATE TABLE invoice_counters (
           organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          property_id TEXT REFERENCES properties(id) ON DELETE CASCADE,
           series  TEXT NOT NULL,
           year    INTEGER NOT NULL,
-          last_no INTEGER NOT NULL DEFAULT 0,
-          PRIMARY KEY (organization_id, series, year)
+          last_no INTEGER NOT NULL DEFAULT 0
         )
       `);
     }
@@ -3585,11 +3599,11 @@ function runMigrations(database: any) {
         ALTER TABLE invoice_periods RENAME TO invoice_periods_old;
         CREATE TABLE invoice_periods (
           organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          property_id TEXT REFERENCES properties(id) ON DELETE CASCADE,
           series    TEXT NOT NULL,
           month     TEXT NOT NULL,
           status    TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','locked')),
-          locked_at TEXT,
-          PRIMARY KEY (organization_id, series, month)
+          locked_at TEXT
         )
       `);
       if (orgs.length === 1) {
@@ -3894,11 +3908,24 @@ function runMigrations(database: any) {
         // bank_transactions) auto-migrate to the renamed table because they
         // store account_id strings, not row pointers.
         database.pragma('foreign_keys = OFF');
+        // Вісь обʼєкта (INC-038, Д54) переживає цю перебудову тільки тому, що
+        // названа тут ЯВНО. Перебудова старша за колонку: вона перелічує
+        // стовпці поіменно, тож `property_id`, доданий у CREATE вище, мовчки
+        // зникав би разом зі старою таблицею — рівно той клас, яким уже двічі
+        // зникали УНІКАЛЬНІ індекси (AGENTS §4).
+        //
+        // Копіюється УМОВНО: на базі, яка цієї колонки ще не має (стара, що
+        // не дійшла до кінця ланцюжка), `SELECT property_id` упав би, і
+        // перебудова не відбулась би взагалі.
+        const acctHasProperty = (database.prepare("PRAGMA table_info(finance_accounts)").all() as { name: string }[])
+          .some((c) => c.name === 'property_id');
+        const carry = acctHasProperty ? ', property_id' : '';
         try {
           database.exec(`
             CREATE TABLE finance_accounts_pr15 (
               id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
               organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+              property_id TEXT REFERENCES properties(id) ON DELETE CASCADE,
               name TEXT NOT NULL,
               type TEXT NOT NULL DEFAULT 'cash' CHECK (type IN ('cash', 'bank', 'card', 'investment', 'clearing', 'other')),
               currency TEXT NOT NULL DEFAULT 'CZK',
@@ -3911,8 +3938,8 @@ function runMigrations(database: any) {
               created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
             INSERT INTO finance_accounts_pr15
-              (id, organization_id, name, type, currency, initial_balance, credit_limit, iban, color, is_active, sort_order, created_at)
-            SELECT id, organization_id, name, type, currency, initial_balance, credit_limit, iban, color, is_active, sort_order, created_at
+              (id, organization_id, name, type, currency, initial_balance, credit_limit, iban, color, is_active, sort_order, created_at${carry})
+            SELECT id, organization_id, name, type, currency, initial_balance, credit_limit, iban, color, is_active, sort_order, created_at${carry}
             FROM finance_accounts;
             DROP TABLE finance_accounts;
             ALTER TABLE finance_accounts_pr15 RENAME TO finance_accounts;
@@ -6653,6 +6680,9 @@ function runMigrations(database: any) {
       CREATE TABLE IF NOT EXISTS invoice_series (
         id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
         organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+        -- Будинок, або NULL = «на весь рахунок» (Д54). Дві бухгалтерії з однією
+        -- наскрізною нумерацією — діра в книгах, тож серія належить будинку.
+        property_id     TEXT REFERENCES properties(id) ON DELETE CASCADE,
         code            TEXT NOT NULL,
         channel         TEXT,
         prefix          TEXT NOT NULL DEFAULT '',
@@ -6665,7 +6695,15 @@ function runMigrations(database: any) {
     `);
     // One series per code per hotel. Two rows with the same code would mean two
     // counters answering to one name, i.e. duplicate invoice numbers.
-    database.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_invoice_series_code ON invoice_series(organization_id, code)');
+    // Один код серії на БУДИНОК, не на рахунок (Д54). `UNIQUE (organization_id,
+    // code)` не пускав двом будинкам мати кожен свою серію з тим самим кодом —
+    // а дві бухгалтерії з однією наскрізною нумерацією це діра в книгах.
+    // COALESCE, бо спільний рядок має `property_id IS NULL`, а `UNIQUE` не
+    // дедуплікує NULL — той самий прийом, що `idx_channel_rate_rules_row`.
+    database.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_invoice_series_row
+        ON invoice_series(organization_id, (COALESCE(property_id, '')), code)
+    `);
     database.exec('CREATE INDEX IF NOT EXISTS idx_invoice_series_channel ON invoice_series(organization_id, channel)');
   } catch (e: any) {
     console.error('[DB] invoice_series migration:', e.message);
@@ -6693,6 +6731,11 @@ function runMigrations(database: any) {
       CREATE TABLE IF NOT EXISTS fin_tax_rates (
         id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
         organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+        -- Будинок, або NULL = «на весь рахунок» (Д54). Тут нульове значення
+        -- НЕ означає «мовчки бери спільне»: ставка чужої юрисдикції їде в
+        -- документ держави, тож спільний набір застосовується лише до будинку
+        -- країни рахунку, інакше — названа відмова (див. stay-charges.repo).
+        property_id     TEXT REFERENCES properties(id) ON DELETE CASCADE,
         code            TEXT NOT NULL CHECK (code IN ('standard','reduced','zero')),
         rate            REAL NOT NULL,
         label           TEXT,
@@ -7693,6 +7736,113 @@ function runMigrations(database: any) {
   // the table count said "done" while ALTER TABLE ADD COLUMN was still going,
   // and the comparison then reported dozens of differences that were really
   // just a race with itself.
+  // --- Міграція: вісь ОБʼЄКТА в конфігурації фінансів (INC-038, Д54) ---
+  //
+  // Власник (В11, 09.09.2026): «не можуть бути одні фінанси на 2 обʼєкти, бо в
+  // них різна бухгалтерія і різні правила по ПДВ і всьому можуть бути; тому і
+  // налаштовуватися це все має окремо».
+  //
+  // Форма — НУЛЬОВА колонка: `NULL` = «на весь рахунок», старшинство — будинок
+  // перед рахунком (той самий взірець, що Д51, `channel_rate_rules`,
+  // `invoices`). Обовʼязкова вимагала б вигадати будинок кожному наявному рядку
+  // шести таблиць і зламала б готель з одним обʼєктом, який про обʼєкти не
+  // думає; нульова лишає всі наявні рядки законними «спільними».
+  //
+  // Колонка стоїть І в CREATE вище, І тут (AGENTS §4): CREATE — для нового
+  // клієнта, ALTER — для того, чия база вже існує. Блок наприкінці ланцюжка,
+  // після всіх CREATE: `ALTER` над таблицею, якої ще немає, тихо падає.
+  for (const tbl of [
+    'fin_tax_rates', 'invoice_series', 'expense_categories',
+    'finance_accounts', 'business_units', 'finance_counterparties',
+  ]) {
+    try {
+      const cols = database.prepare(`PRAGMA table_info(${tbl})`).all() as { name: string }[];
+      if (cols.length > 0 && !cols.some((c) => c.name === 'property_id')) {
+        database.exec(`ALTER TABLE ${tbl} ADD COLUMN property_id TEXT REFERENCES properties(id)`);
+        console.log(`[DB] ${tbl}: вісь обʼєкта (NULL = на весь рахунок)`);
+      }
+      // Індекс читання: «цей рахунок, цей будинок або спільне». Без нього
+      // кожен список конфігурації сканує таблицю цілком.
+      database.exec(
+        `CREATE INDEX IF NOT EXISTS idx_${tbl}_property ON ${tbl}(organization_id, property_id)`);
+    } catch (e: any) {
+      console.error(`[DB] ${tbl} property axis:`, e.message);
+    }
+  }
+
+  // Серії: старий унікальний індекс тримав «один код на РАХУНОК» і не давав
+  // другому будинку завести свою серію з тим самим кодом. Знімаємо його ЯВНО —
+  // `CREATE ... IF NOT EXISTS` нового індексу старого не прибирає, і два
+  // обмеження жили б поруч, з яких старе суворіше.
+  try {
+    const seriesCols = database.prepare("PRAGMA table_info(invoice_series)").all() as { name: string }[];
+    if (seriesCols.length > 0) {
+      database.exec('DROP INDEX IF EXISTS idx_invoice_series_code');
+      database.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_invoice_series_row
+          ON invoice_series(organization_id, (COALESCE(property_id, '')), code)
+      `);
+    }
+  } catch (e: any) {
+    console.error('[DB] invoice_series row index:', e.message);
+  }
+
+  // Лічильник номерів і замок місяця належать РЯДКОВІ СЕРІЇ, а не її коду.
+  //
+  // Це друга половина Д54, якої в самому рішенні немає — її не було видно зі
+  // схеми конфігурації. Знявши «один код на рахунок», ми відкриваємо саме той
+  // випадок, задля якого знімали: дві серії з кодом `FA` у двох будинках. А
+  // `invoice_counters` і `invoice_periods` ключовані `(організація, серія,
+  // рік/місяць)` — тобто обидві серії ділили б ОДИН прогін і ОДИН замок:
+  // другий будинок продовжував би чужі номери, а закриття місяця в одному
+  // заморожувало б документи іншого. Без жодної помилки в лозі.
+  //
+  // Перебудова, не `ALTER`: ключ у SQLite не міняється на місці. Рядки
+  // переносяться з `property_id = NULL` — усе, що видано досі, видано на весь
+  // рахунок, і саме таким має лишитись. Обмеження переїжджає з PRIMARY KEY на
+  // УНІКАЛЬНИЙ ІНДЕКС по `COALESCE`: нульова колонка в ключі інакше не
+  // працює — жоден із двох рушіїв не вважає NULL рівним NULL.
+  //
+  // Лічильник рядків звіряється (AGENTS §4): перебудова, яка мовчки загубила
+  // рядки, віддає базу, у якій нумерація починається спочатку.
+  for (const [tbl, keyCol, rest] of [
+    ['invoice_counters', 'year', 'last_no INTEGER NOT NULL DEFAULT 0'],
+    ['invoice_periods', 'month', "status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','locked')), locked_at TEXT"],
+  ] as const) {
+    try {
+      const cols = database.prepare(`PRAGMA table_info(${tbl})`).all() as { name: string }[];
+      if (cols.length > 0 && !cols.some((c) => c.name === 'property_id')) {
+        const before = (database.prepare(`SELECT COUNT(*) c FROM ${tbl}`).get() as { c: number }).c;
+        const carried = cols.map((c) => c.name).filter((n) => n !== 'property_id');
+        const keyType = tbl === 'invoice_counters' ? 'INTEGER' : 'TEXT';
+        database.exec(`
+          ALTER TABLE ${tbl} RENAME TO ${tbl}_old;
+          CREATE TABLE ${tbl} (
+            organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+            property_id TEXT REFERENCES properties(id) ON DELETE CASCADE,
+            series TEXT NOT NULL,
+            ${keyCol} ${keyType} NOT NULL,
+            ${rest}
+          );
+          INSERT INTO ${tbl} (${carried.join(', ')})
+            SELECT ${carried.join(', ')} FROM ${tbl}_old;
+          DROP TABLE ${tbl}_old;
+        `);
+        const after = (database.prepare(`SELECT COUNT(*) c FROM ${tbl}`).get() as { c: number }).c;
+        if (after !== before) {
+          console.error(`[DB] ${tbl}: перебудова загубила рядки — було ${before}, стало ${after}`);
+        }
+        console.log(`[DB] ${tbl}: вісь обʼєкта, ${after} рядків перенесено як спільні`);
+      }
+      database.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_${tbl}_row
+          ON ${tbl}(organization_id, (COALESCE(property_id, '')), series, ${keyCol})
+      `);
+    } catch (e: any) {
+      console.error(`[DB] ${tbl} property axis:`, e.message);
+    }
+  }
+
   console.log('[DB] migrations complete');
   }
 

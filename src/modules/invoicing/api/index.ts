@@ -188,6 +188,7 @@ export { generateIsdocXml } from '../domain/isdoc';
  */
 export {
   allocateInvoiceNumber, seriesForChannel, isPeriodLocked, lockPeriod, unlockPeriod,
+  invoicePropertyId,
 } from '../domain/invoice-numbering';
 
 /**

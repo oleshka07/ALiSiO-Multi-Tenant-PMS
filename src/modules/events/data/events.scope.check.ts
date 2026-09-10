@@ -48,26 +48,35 @@ const sql = getSql();
 const fx = await seedTwoProperties();
 const neighbour = await seedNeighbourOrganization();
 
+/** Засів — під орендарем того рахунку, якому рядок належить (див. lists.scope). */
+const inOurs = <T>(fn: () => Promise<T>) => runWithOrganization(fx.organizationId, fn);
+const inTheirs = <T>(fn: () => Promise<T>) => runWithOrganization(neighbour.organizationId, fn);
+const forProperty = <T>(propertyId: string, fn: () => Promise<T>) =>
+  (propertyId === neighbour.propertyId ? inTheirs(fn) : inOurs(fn));
+const forOrg = <T>(organizationId: string, fn: () => Promise<T>) =>
+  runWithOrganization(organizationId, fn);
+
+
 /** Зал, доповнення й подія — прямим SQL: репозиторій це те, що перевіряють. */
 const space = async (id: string, organizationId: string, propertyId: string) =>
-  sql.run(
+  forOrg(organizationId, () => sql.run(
     `INSERT INTO event_spaces (id, organization_id, property_id, name, code)
      VALUES (?, ?, ?, ?, ?)`,
     [id, organizationId, propertyId, id, id],
-  );
+  ));
 const addon = async (id: string, organizationId: string, propertyId: string) =>
-  sql.run(
+  forOrg(organizationId, () => sql.run(
     `INSERT INTO event_addons (id, organization_id, property_id, name, kind, price_gross)
      VALUES (?, ?, ?, ?, 'flat', 100)`,
     [id, organizationId, propertyId, id],
-  );
+  ));
 const booking = async (id: string, organizationId: string, propertyId: string, spaceId: string, day: number) =>
-  sql.run(
+  forOrg(organizationId, () => sql.run(
     `INSERT INTO event_bookings (id, organization_id, property_id, space_id, event_date,
                                  time_from, time_to, persons, customer_name)
      VALUES (?, ?, ?, ?, ?, '10:00', '12:00', 10, ?)`,
     [id, organizationId, propertyId, spaceId, `2026-10-${String(day).padStart(2, '0')}`, id],
-  );
+  ));
 
 // Обʼєкт А: 2 зали, 1 доповнення, 2 події. Обʼєкт Б: 3 / 2 / 4.
 for (const i of [1, 2]) await space(`a_space_${i}`, fx.organizationId, fx.a.id);

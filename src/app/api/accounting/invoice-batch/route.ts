@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireFinanceAccess } from '@core/security/route-guard';
 import { allocateInvoiceNumber, seriesForChannel, isPeriodLocked, deleteInvoicesWhere } from '@invoicing';
+import { requirePropertyScope, requestedPropertyParam, scopedPropertyId } from '@core/property-scope';
 import type { Actor } from '@core/auth/session';
 import { getSql } from '@core/db/async';
 import { serverError } from '@core/http/errors';
@@ -393,6 +394,13 @@ async function _POST(request: NextRequest, _ctx: unknown, actor: Actor): Promise
     const today = new Date().toISOString().slice(0, 10);
     const results: BatchInvoiceResult[] = [];
 
+    // Вивантаження каналу не називає будинку — його називає перемикач у шапці
+    // (INC-038, Д54). «Усі обʼєкти» означає серію рахунку, а не серію першого
+    // будинку: пакет, який мовчки ліг би в чужу книгу, це рядок у чужому
+    // місяці, який видно лише бухгалтеру наступного кварталу.
+    const batchProperty = scopedPropertyId(
+      await requirePropertyScope(requestedPropertyParam(request.url)));
+
     const createInvoice = (row: BatchRow) => sql.tx(async (t) => {
       // Dedup: check if already exists via notes field
       const noteKey = `${row.source}:${row.source_ref}`;
@@ -409,11 +417,11 @@ async function _POST(request: NextRequest, _ctx: unknown, actor: Actor): Promise
       const issued = (row.date || today);
       const period = issued.slice(0, 7);
       const { series } = seriesForChannel(row.source);
-      if (await isPeriodLocked(t, actor.organizationId, series, period)) {
+      if (await isPeriodLocked(t, actor.organizationId, batchProperty, series, period)) {
         throw new Error(`Období ${series} ${period} je uzamčeno — nové faktury nelze přidat.`);
       }
       const invId  = `inv_batch_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
-      const { invoiceNumber: invNum } = await allocateInvoiceNumber(t, actor.organizationId, row.source, new Date().getFullYear());
+      const { invoiceNumber: invNum } = await allocateInvoiceNumber(t, actor.organizationId, batchProperty, row.source, new Date().getFullYear());
       const due    = row.date > today ? row.date : today;
 
       // For rows that need a guest name, store a placeholder

@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { X, Repeat, Check, ArrowLeftRight } from 'lucide-react';
 import AttachmentsSection from './AttachmentsSection';
 import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
 
 type OpType = 'income' | 'expense' | 'transfer';
 
@@ -22,6 +23,13 @@ interface Props {
 }
 
 export default function OperationModal({ opType, initial, accounts, onClose, onSaved }: Props) {
+  // Обʼєкт із перемикача в шапці (INC-038, Д54): довідники фінансів належать
+  // БУДИНКУ — два обʼєкти під одним рахунком ведуть дві бухгалтерії. `?? 'all'`
+  // — це СКАЗАНЕ «усі обʼєкти», а не мовчання: на мовчання маршрут відповідає
+  // 400, і це навмисно (інваріант 8).
+  const { propertyId } = usePropertyScope();
+  const scopeParam = propertyId ?? 'all';
+
   const t = useT();
   // currentOpType is local state so the «Перетворити в переказ» button
   // can flip it inside the modal without reopening. Initial value comes
@@ -68,7 +76,7 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
     Promise.all([
       fetch(`/api/finance/categories?op_type=${currentOpType}`).then((r) => r.json()).catch(() => []),
       fetch('/api/finance/projects').then((r) => r.json()).catch(() => []),
-      fetch('/api/finance/counterparties').then((r) => r.json()).catch(() => []),
+      fetch(`/api/finance/counterparties?property_id=${encodeURIComponent(scopeParam)}`).then((r) => r.json()).catch(() => []),
     ]).then(([cats, projs, cps]) => {
       setCategories(Array.isArray(cats) ? cats : []);
       setProjects(Array.isArray(projs) ? projs : []);

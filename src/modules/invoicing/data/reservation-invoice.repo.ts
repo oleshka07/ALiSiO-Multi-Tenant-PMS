@@ -73,10 +73,10 @@ export async function generateInvoiceForReservation(
 
     // Fetch reservation basic data
     const res = await sql.row<any>(`
-      SELECT total_price, currency, check_out
+      SELECT total_price, currency, check_out, property_id
       FROM reservations
       WHERE id = ?
-    `, [reservationId]) as { total_price: number; currency: string; check_out: string } | undefined;
+    `, [reservationId]) as { total_price: number; currency: string; check_out: string; property_id: string | null } | undefined;
 
     if (!res) return null;
 
@@ -88,8 +88,11 @@ export async function generateInvoiceForReservation(
 
     const invoiceId = `inv_${Date.now()}`;
     const today = new Date().toISOString().split('T')[0];
-    // Direct-booking invoices use the HOUSE series (plain YYYY-NNN), allocated atomically.
-    const { invoiceNumber } = await allocateInvoiceNumber(sql, organizationId, 'house', new Date().getFullYear());
+    // Direct-booking invoices use the HOUSE series (plain YYYY-NNN), allocated
+    // atomically — from the series of the reservation's HOUSE (INC-038, Д54):
+    // two properties under one account keep two sets of books.
+    const { invoiceNumber } = await allocateInvoiceNumber(
+      sql, organizationId, res.property_id ?? null, 'house', new Date().getFullYear());
     // Due date: check-out date (service rendered on departure)
     const dueDate = res.check_out > today ? res.check_out : today;
     const period = (res.check_out || today).slice(0, 7);

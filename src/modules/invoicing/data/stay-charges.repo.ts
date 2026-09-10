@@ -24,6 +24,7 @@ import { money } from '@core/money';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { oneProperty, propertyOrSharedFilter } from '@core/property-scope';
 import { pickRate, type TaxRate } from '../domain/invoice-vat';
+import { taxRatesFor } from './tax-rates.repo';
 import { splitOtaAmount, linesGross, type ChargeLine } from '../domain/ota-split';
 import { ruleFor, type ChannelRateRule } from '../domain/channel-rate-rule';
 import { chargeName, localeForLanguage } from '../domain/invoice-document';
@@ -52,6 +53,11 @@ export type PostRefusal =
    *  неправильне, і від'ємний рядок проживання не той спосіб з'ясувати яке. */
   | { reason: 'city_tax_exceeds_total'; total: number; cityTax: number }
   | { reason: 'no_tax_rate'; code: string; date: string }
+  /** Спільний набір ставок належить іншій країні, ніж цей будинок, а свого в
+   *  нього немає (INC-038, Д54). Ставка ПДВ їде в документ держави, тож
+   *  «візьмемо спільну» тут не відповідь: названо будинок і країну, бо саме це
+   *  оператор має завести. */
+  | { reason: 'no_tax_rate_for_property'; property: string; country: string | null }
   /** A service has no `vat_code`. Named with the service, because the fix is
    *  one field on one row in Settings → Guest services. */
   | { reason: 'service_without_tax_code'; services: string[] };
@@ -158,10 +164,10 @@ export async function postStayCharges(input: {
   );
   const rule = ruleFor(rules.map(toRule), res.source);
 
-  const rates = await sql.rows<TaxRate>(
-    'SELECT code, rate, valid_from, valid_to FROM fin_tax_rates WHERE organization_id = ?',
-    [organizationId],
-  );
+  // Ставки — ЦЬОГО будинку, зі старшинством і названою відмовою (INC-038, Д54).
+  const rateSet = await taxRatesFor(organizationId, res.property_id);
+  if ('reason' in rateSet) return rateSet;
+  const rates = rateSet.rates;
 
   // The rate is chosen by the date of SERVICE, and the first night is when the
   // room is supplied. A stay that crosses a rate change is a real case and is
@@ -339,10 +345,9 @@ export async function postServiceCharges(input: {
   const untaxed = orders.filter((o) => !o.vat_code).map((o) => String(o.service_name));
   if (untaxed.length > 0) return { reason: 'service_without_tax_code', services: [...new Set(untaxed)] };
 
-  const rates = await sql.rows<TaxRate>(
-    'SELECT code, rate, valid_from, valid_to FROM fin_tax_rates WHERE organization_id = ?',
-    [organizationId],
-  );
+  const rateSet = await taxRatesFor(organizationId, res.property_id);
+  if ('reason' in rateSet) return rateSet;
+  const rates = rateSet.rates;
 
   const guestName = [res.first_name, res.last_name].filter(Boolean).join(' ') || null;
   const unitCode = res.unit_code || res.unit_name || null;
@@ -473,9 +478,9 @@ export async function postCatalogService(input: {
 
   const quantity = Math.max(1, Math.floor(Number(input.quantity) || 1));
   const serviceDate = day(input.serviceDate) || day(new Date());
-  const rates = await sql.rows<TaxRate>(
-    'SELECT code, rate, valid_from, valid_to FROM fin_tax_rates WHERE organization_id = ?',
-    [organizationId]);
+  const rateSet = await taxRatesFor(organizationId, folio.property_id ?? null);
+  if ('reason' in rateSet) return rateSet;
+  const rates = rateSet.rates;
   const locale = folio.property_id ? localeForLanguage(await documentLanguage(folio.property_id)) : null;
   const baseName = (locale === 'de-DE' && svc.name_de) ? String(svc.name_de) : String(svc.name);
   const guestName = [folio.first_name, folio.last_name].filter(Boolean).join(' ') || null;

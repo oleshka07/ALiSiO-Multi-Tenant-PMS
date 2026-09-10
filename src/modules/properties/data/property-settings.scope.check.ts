@@ -44,13 +44,22 @@ const sql = getSql();
 const fx = await seedTwoProperties();
 const neighbour = await seedNeighbourOrganization();
 
+/** Засів — під орендарем того рахунку, якому рядок належить (див. lists.scope). */
+const inOurs = <T>(fn: () => Promise<T>) => runWithOrganization(fx.organizationId, fn);
+const inTheirs = <T>(fn: () => Promise<T>) => runWithOrganization(neighbour.organizationId, fn);
+const forProperty = <T>(propertyId: string, fn: () => Promise<T>) =>
+  (propertyId === neighbour.propertyId ? inTheirs(fn) : inOurs(fn));
+const forOrg = <T>(organizationId: string, fn: () => Promise<T>) =>
+  runWithOrganization(organizationId, fn);
+
+
 // `fees_taxes` не несе `organization_id` — орендар доводиться через
 // `property_id`, тож обидві осі тут тримає одна колонка.
-const fee = async (id: string, propertyId: string, name: string, amount: number) => sql.run(
+const fee = async (id: string, propertyId: string, name: string, amount: number) => forProperty(propertyId, () => sql.run(
   `INSERT INTO fees_taxes (id, property_id, name, type, amount, applies_to, collected_for,
                            is_included_in_price, is_active)
    VALUES (?, ?, ?, 'per_night', ?, 'all', 'authority', FALSE, TRUE)`,
-  [id, propertyId, name, amount]);
+  [id, propertyId, name, amount]));
 
 // Збори 2 і 3: різні ставки навмисно — «взяв не той рядок» видно числом.
 await fee('f_a1', fx.a.id, 'Місцевий збір', 20);

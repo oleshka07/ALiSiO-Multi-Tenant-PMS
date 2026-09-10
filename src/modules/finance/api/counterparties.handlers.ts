@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { serverError } from '@core/http/errors';
+import {
+  propertyOrSharedFilter, requirePropertyScope, requestedPropertyParam, configPropertyId,
+} from '@core/property-scope';
 
 const KINDS = ['client', 'supplier', 'employee', 'other'] as const;
 type Kind = typeof KINDS[number];
@@ -63,9 +66,22 @@ function enrich(row: CounterpartyRow) {
   return { ...row, aliases: parseAliases(row.aliases_json) };
 }
 
+/**
+ * Вісь обʼєкта в довіднику контрагентів (INC-038, Д54).
+ *
+ * Список — СВОЄ І СПІЛЬНЕ (`propertyOrSharedFilter`, Д51): постачальник
+ * рахунку (банк, бухгалтер) лишається видимим з обох будинків, а місцева
+ * пральня одного обʼєкта не стоїть у формі іншого. Писач бере обʼєкт з
+ * ОБЛАСТІ ЗАПИТУ, не з тіла.
+ */
+const scopeOf = async (request: NextRequest) =>
+  await requirePropertyScope(requestedPropertyParam(request.url));
+
 async function countChildren(id: string): Promise<number> {
   const sql = getSql();
-  const r = await sql.row<any>("SELECT COUNT(*) AS n FROM finance_counterparties WHERE parent_id = ?", [id]) as { n: number };
+  const r = await sql.row<any>(
+    'SELECT COUNT(*) AS n FROM finance_counterparties WHERE parent_id = ? AND organization_id = ?',
+    [id, await getOrgId()]) as { n: number };
   return r.n;
 }
 
@@ -77,15 +93,20 @@ export async function listCounterparties(request: NextRequest): Promise<NextResp
     const includeArchived = request.nextUrl.searchParams.get('archived') === '1';
     const search = request.nextUrl.searchParams.get('search');
 
+    // Вісь стоїть у САМОМУ шаблоні запиту, не збирається в змінну: гейт
+    // `check-property-scope` судить текст запиту, і `WHERE ${where}` він
+    // читає як «невизначено» — тобто твердження «вісь дійшла до SQL» лишалося
+    // б недоведеним рівно там, де воно й потрібне.
+    const axis = propertyOrSharedFilter(await scopeOf(request), '');
     const where: string[] = ['organization_id = ?'];
-    const params: any[] = [orgId];
+    const params: any[] = [orgId, ...axis.params];
     if (!includeArchived) where.push('is_active = TRUE');
     if (kind && KINDS.includes(kind as Kind)) { where.push('kind = ?'); params.push(kind); }
     if (search) { where.push('name LIKE ?'); params.push(`%${search}%`); }
 
     const rows = await sql.rows<any>(`
       SELECT * FROM finance_counterparties
-      WHERE ${where.join(' AND ')}
+      WHERE ${where.join(' AND ')} AND ${axis.sql}
       ORDER BY sort_order ASC, name ASC
     `, [...params]) as CounterpartyRow[];
     return NextResponse.json(rows.map(enrich));
@@ -99,13 +120,14 @@ export async function getCounterpartyTree(request: NextRequest): Promise<NextRes
     const sql = getSql();
     const orgId = await getOrgId();
     const includeArchived = request.nextUrl.searchParams.get('archived') === '1';
-    const where = includeArchived ? 'organization_id = ?' : 'organization_id = ? AND is_active = TRUE';
+    const axis = propertyOrSharedFilter(await scopeOf(request), '');
+    const active = includeArchived ? '' : 'AND is_active = TRUE';
 
     const rows = await sql.rows<any>(`
       SELECT * FROM finance_counterparties
-      WHERE ${where}
+      WHERE organization_id = ? AND ${axis.sql} ${active}
       ORDER BY sort_order ASC, name ASC
-    `, [orgId]) as CounterpartyRow[];
+    `, [orgId, ...axis.params]) as CounterpartyRow[];
 
     const enriched = rows.map(enrich);
     const roots = enriched.filter((r) => r.parent_id === null);
@@ -167,16 +189,25 @@ export async function createCounterparty(request: NextRequest): Promise<NextResp
     // `IS NOT DISTINCT FROM`: a root-level row has parent_id NULL, and `= ?`
     // never matches NULL. SQLite spells the null-safe form `IS ?`; Postgres
     // rejects a parameter after IS outright — "syntax error at or near $2".
+    // Підконтрагент успадковує будинок ВЛАСНИКА, а не область запиту: інакше
+    // гілка дерева розʼїхалась би по двох будинках і показувалась не там.
+    const propertyId = parent_id
+      ? (await sql.row<{ property_id: string | null }>(
+          'SELECT property_id FROM finance_counterparties WHERE id = ? AND organization_id = ?',
+          [parent_id, orgId]))?.property_id ?? null
+      : await configPropertyId(await scopeOf(request));
+    const orderAxis = propertyOrSharedFilter(await scopeOf(request), '');
     const maxOrder = await sql.row<any>(
-      "SELECT COALESCE(MAX(sort_order), 0) AS mx FROM finance_counterparties WHERE organization_id = ? AND parent_id IS NOT DISTINCT FROM ?",
-      [orgId, parent_id],
+      `SELECT COALESCE(MAX(sort_order), 0) AS mx FROM finance_counterparties
+        WHERE organization_id = ? AND ${orderAxis.sql} AND parent_id IS NOT DISTINCT FROM ?`,
+      [orgId, ...orderAxis.params, parent_id],
     ) as { mx: number };
 
     await sql.run(`
       INSERT INTO finance_counterparties
-        (id, organization_id, name, parent_id, kind, note, aliases_json, icon, color, sort_order)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [id, orgId, name.trim(), parent_id, finalKind,
+        (id, organization_id, property_id, name, parent_id, kind, note, aliases_json, icon, color, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [id, orgId, propertyId, name.trim(), parent_id, finalKind,
       note || null,
       JSON.stringify(aliasArr),
       icon || null,

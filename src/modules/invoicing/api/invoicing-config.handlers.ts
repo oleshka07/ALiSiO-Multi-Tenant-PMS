@@ -38,6 +38,26 @@ import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { DEFAULT_TEMPLATE, formatInvoiceNumber } from '../domain/invoice-number-format';
+import {
+  propertyOrSharedFilter, requirePropertyScope, requestedPropertyParam, configPropertyId,
+} from '@core/property-scope';
+
+/**
+ * Вісь обʼєкта на екрані конфігурації (INC-038, Д54).
+ *
+ * «не можуть бути одні фінанси на 2 обʼєкти, бо в них різна бухгалтерія і різні
+ * правила по ПДВ і всьому можуть бути» — рішення власника 09.09. Тому список
+ * показує СВОЄ І СПІЛЬНЕ (`propertyOrSharedFilter`, як Д51: рядок рахунку має
+ * бути видимий з обох будинків, інакше спільні ставки зникли б з кожного
+ * екрана), а писач ставить обʼєкт з ОБЛАСТІ ЗАПИТУ, не з тіла: тіло приходить
+ * від форми, а форма не знає, який будинок обрано в шапці — і саме так
+ * зʼявляється рядок, який приписали не тому.
+ *
+ * «Усі обʼєкти» в шапці означає спільний рядок (NULL), а не рядок першого
+ * будинку. Мовчазного дефолту тут не буває (інваріант 8).
+ */
+const scopeOf = async (request: Request) =>
+  await requirePropertyScope(requestedPropertyParam(request.url));
 
 const CODES = ['standard', 'reduced', 'zero'] as const;
 const isCode = (v: unknown): v is (typeof CODES)[number] =>
@@ -46,13 +66,14 @@ const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{
 
 // ── VAT rates ───────────────────────────────────────────────────────────────
 
-export const listTaxRates = async () => {
+export const listTaxRates = async (request: Request) => {
   const organizationId = await requireOrganizationId();
+  const axis = propertyOrSharedFilter(await scopeOf(request), '');
   const rows = await getSql().rows(
-    `SELECT id, code, rate, label, valid_from, valid_to
-       FROM fin_tax_rates WHERE organization_id = ?
-      ORDER BY code, valid_from DESC`,
-    [organizationId],
+    `SELECT id, code, rate, label, valid_from, valid_to, property_id
+       FROM fin_tax_rates WHERE organization_id = ? AND ${axis.sql}
+      ORDER BY property_id, code, valid_from DESC`,
+    [organizationId, ...axis.params],
   );
   return NextResponse.json({ rates: rows });
 };
@@ -85,11 +106,12 @@ export const createTaxRate = async (request: Request) => {
   // machine runs, has no equivalent. Omitting it there wrote rows with a NULL
   // tenant: the INSERT answered 201 and the list came back empty.
   const organizationId = await requireOrganizationId();
+  const propertyId = await configPropertyId(await scopeOf(request));
   const id = crypto.randomUUID();
   await getSql().run(
-    `INSERT INTO fin_tax_rates (id, organization_id, code, rate, label, valid_from, valid_to)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [id, organizationId, body.code, rate, body.label ?? null, body.valid_from, body.valid_to || null],
+    `INSERT INTO fin_tax_rates (id, organization_id, property_id, code, rate, label, valid_from, valid_to)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, organizationId, propertyId, body.code, rate, body.label ?? null, body.valid_from, body.valid_to || null],
   );
   return NextResponse.json({ id }, { status: 201 });
 };
@@ -146,24 +168,34 @@ export const deleteTaxRate = async (
 
 // ── Invoice series ──────────────────────────────────────────────────────────
 
-export const listInvoiceSeries = async () => {
+export const listInvoiceSeries = async (request: Request) => {
   const organizationId = await requireOrganizationId();
   const sql = getSql();
+  const scope = await scopeOf(request);
+  const axis = propertyOrSharedFilter(scope, '');
   const rows = await sql.rows<any>(
-    `SELECT id, code, channel, prefix, number_format, is_default, sort_order
-       FROM invoice_series WHERE organization_id = ? ORDER BY sort_order, code`,
-    [organizationId],
+    `SELECT id, code, channel, prefix, number_format, is_default, sort_order, property_id
+       FROM invoice_series WHERE organization_id = ? AND ${axis.sql}
+      ORDER BY property_id, sort_order, code`,
+    [organizationId, ...axis.params],
   );
   // Where each series has actually got to. An operator configuring numbering
   // needs to see this: it is what says whether a change is still free.
+  //
+  // Лічильник шукається за РЯДКОМ серії, не за її кодом: два будинки можуть
+  // тримати один код і два незалежні прогони (Д54), і `.find()` за самим кодом
+  // показав би одному будинку чужий номер — саме той рід помилки, який AGENTS §7
+  // називає «твердження про рядок, якого може бути кілька».
   const counters = await sql.rows<any>(
-    'SELECT series, year, last_no FROM invoice_counters WHERE organization_id = ?',
-    [organizationId],
+    `SELECT series, year, last_no, property_id FROM invoice_counters
+      WHERE organization_id = ? AND ${axis.sql}`,
+    [organizationId, ...axis.params],
   );
   const year = new Date().getFullYear();
   return NextResponse.json({
     series: rows.map((r) => {
-      const used = counters.find((c) => c.series === r.code && Number(c.year) === year);
+      const used = counters.find((c) => c.series === r.code && Number(c.year) === year
+        && (c.property_id ?? null) === (r.property_id ?? null));
       return {
         ...r,
         last_no: used?.last_no ?? 0,
@@ -194,9 +226,14 @@ export const createInvoiceSeries = async (request: Request) => {
 
   const organizationId = await requireOrganizationId();
   const sql = getSql();
+  // Зіткнення коду — В МЕЖАХ БУДИНКУ, не рахунку (Д54). Саме заради цього і
+  // знімався `UNIQUE (organization_id, code)`: два будинки з двома
+  // бухгалтеріями можуть мати кожен свою серію під тим самим кодом.
+  const propertyId = await configPropertyId(await scopeOf(request));
   const clash = await sql.row(
-    'SELECT id FROM invoice_series WHERE organization_id = ? AND code = ?',
-    [organizationId, code],
+    `SELECT id FROM invoice_series
+      WHERE organization_id = ? AND COALESCE(property_id, '') = ? AND code = ?`,
+    [organizationId, propertyId ?? '', code],
   );
   if (clash) return NextResponse.json({ error: 'This series already exists' }, { status: 409 });
 
@@ -204,12 +241,12 @@ export const createInvoiceSeries = async (request: Request) => {
   // a bound value, and Postgres refuses the integer 1 in a BOOLEAN column.
   const id = crypto.randomUUID();
   await sql.run(
-    `INSERT INTO invoice_series (id, organization_id, code, channel, prefix, number_format, is_default, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?, ${body.is_default ? 'TRUE' : 'FALSE'}, ?)`,
-    [id, organizationId, code, body.channel || null, body.prefix ?? '', template,
+    `INSERT INTO invoice_series (id, organization_id, property_id, code, channel, prefix, number_format, is_default, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ${body.is_default ? 'TRUE' : 'FALSE'}, ?)`,
+    [id, organizationId, propertyId, code, body.channel || null, body.prefix ?? '', template,
      Number(body.sort_order) || 0],
   );
-  if (body.is_default) await clearOtherDefaults(id, organizationId);
+  if (body.is_default) await clearOtherDefaults(id, organizationId, propertyId);
   return NextResponse.json({ id }, { status: 201 });
 };
 
@@ -237,7 +274,11 @@ export const updateInvoiceSeries = async (
      Number(body.sort_order) || 0, id, organizationId],
   );
   if (res.changes === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  if (body.is_default) await clearOtherDefaults(id, organizationId);
+  if (body.is_default) {
+    const row = await getSql().row<{ property_id: string | null }>(
+      'SELECT property_id FROM invoice_series WHERE id = ? AND organization_id = ?', [id, organizationId]);
+    await clearOtherDefaults(id, organizationId, row?.property_id ?? null);
+  }
   return NextResponse.json({ ok: true });
 };
 
@@ -254,11 +295,14 @@ export const deleteInvoiceSeries = async (
   // application fall back to the built-in map and re-issue numbers that are
   // already on paper.
   const row = await sql.row<any>(
-    'SELECT code FROM invoice_series WHERE id = ? AND organization_id = ?', [id, organizationId]);
+    'SELECT code, property_id FROM invoice_series WHERE id = ? AND organization_id = ?', [id, organizationId]);
   if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  // Лічильник ЦЬОГО рядка: серія сусіднього будинку під тим самим кодом веде
+  // свій прогін, і його номери не є доказом про цей рядок ані в один бік.
   const used = await sql.row<any>(
-    'SELECT last_no FROM invoice_counters WHERE organization_id = ? AND series = ?',
-    [organizationId, row.code]);
+    `SELECT last_no FROM invoice_counters
+      WHERE organization_id = ? AND COALESCE(property_id, '') = ? AND series = ?`,
+    [organizationId, row.property_id ?? '', row.code]);
   if (used && Number(used.last_no) > 0) {
     return NextResponse.json(
       { error: 'This series has already issued invoices and cannot be removed' },
@@ -270,10 +314,18 @@ export const deleteInvoiceSeries = async (
   return NextResponse.json({ ok: true });
 };
 
-/** Exactly one default, or the fallback order stops being predictable. */
-async function clearOtherDefaults(keepId: string, organizationId: string): Promise<void> {
+/**
+ * Exactly one default, or the fallback order stops being predictable — але
+ * рівно один НА БУДИНОК (Д54): дефолт будинку А не сміє знімати дефолт
+ * будинку Б, інакше кожне збереження в одному обʼєкті мовчки лишало б інший
+ * без серії за замовчуванням.
+ */
+async function clearOtherDefaults(
+  keepId: string, organizationId: string, propertyId: string | null,
+): Promise<void> {
   await getSql().run(
-    'UPDATE invoice_series SET is_default = FALSE WHERE organization_id = ? AND id <> ?',
-    [organizationId, keepId],
+    `UPDATE invoice_series SET is_default = FALSE
+      WHERE organization_id = ? AND COALESCE(property_id, '') = ? AND id <> ?`,
+    [organizationId, propertyId ?? '', keepId],
   );
 }
