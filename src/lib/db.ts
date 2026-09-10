@@ -7834,7 +7834,7 @@ function runMigrations(database: any) {
   // `tsc` або дасть видимий повтор у лозі — замість тиші.
   migrateOtaMirror(database);
 
-  // 0140 — так само окремою функцією, з тієї самої причини.
+  // 0400 — так само окремою функцією, з тієї самої причини.
   migrateApps(database);
 
   // --- Migration: згоди на особі і слід злиття (INC-300) ---
@@ -8055,9 +8055,9 @@ function runMigrations(database: any) {
   }
 
 /**
- * Міграція 0140 — стан звʼязку застосунків і попит «хочу» (Блок «Застосунки»,
+ * Міграція 0400 — стан звʼязку застосунків і попит «хочу» (Блок «Застосунки»,
  * docs/tasks/2026-09-09-block-apps.md §3.3–3.4). Дзеркало
- * `db/postgres/migrations/0140-*.sql`; політики — лише на Postgres.
+ * `db/postgres/migrations/0400-*.sql`; політики — лише на Postgres.
  *
  * `app_connections`: один рядок на (організація, обʼєкт-або-NULL, застосунок)
  * — статус, час останнього успіху, час і текст останньої помилки. Унікальність
@@ -8093,10 +8093,10 @@ function migrateApps(database: any) {
     `);
     database.exec('CREATE INDEX IF NOT EXISTS idx_app_wishes_org ON app_wishes(organization_id)');
   } catch (e) {
-    console.error('[DB] 0140 app_connections/app_wishes:', (e as Error).message);
+    console.error('[DB] 0400 app_connections/app_wishes:', (e as Error).message);
   }
 
-  // 0141: PIN і PUK адміністратора TSE на рядку обʼєкта — під seal(), ніколи
+  // 0401: PIN і PUK адміністратора TSE на рядку обʼєкта — під seal(), ніколи
   // відкритим текстом (Блок «Застосунки» 3.8, З17). Лише ALTER: цей блок іде
   // ПІСЛЯ CREATE fin_fiscal_settings, тож і свіжа, і мігрована база дістають
   // колонку тут.
@@ -8105,19 +8105,19 @@ function migrateApps(database: any) {
     for (const col of ['tse_admin_pin', 'tse_admin_puk']) {
       if (!cols.includes(col)) {
         database.exec(`ALTER TABLE fin_fiscal_settings ADD COLUMN ${col} TEXT`);
-        console.log(`[DB] 0141: fin_fiscal_settings.${col} added`);
+        console.log(`[DB] 0401: fin_fiscal_settings.${col} added`);
       }
     }
-    // 0142: недороблена TSS запамʼятовується (id + PUK з 0141), а не
+    // 0402: недороблена TSS запамʼятовується (id + PUK з 0401), а не
     // створюється вдруге; замок на час походу до вендора.
     for (const col of ['tse_pending_tss_id', 'tse_connecting_at']) {
       if (!cols.includes(col)) {
         database.exec(`ALTER TABLE fin_fiscal_settings ADD COLUMN ${col} TEXT`);
-        console.log(`[DB] 0142: fin_fiscal_settings.${col} added`);
+        console.log(`[DB] 0402: fin_fiscal_settings.${col} added`);
       }
     }
   } catch (e) {
-    console.error('[DB] 0141/0142 fin_fiscal_settings TSE columns:', (e as Error).message);
+    console.error('[DB] 0401/0402 fin_fiscal_settings TSE columns:', (e as Error).message);
   }
 }
 

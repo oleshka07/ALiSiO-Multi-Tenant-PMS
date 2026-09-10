@@ -106,7 +106,7 @@ AssertionError [ERR_ASSERTION]: ключ «booking_engine» реєстру не 
 
 | Коміт | Що | Перевірки |
 |---|---|---|
-| `b167997` | увесь блок: 3.1–3.7, гейт, міграція 0140, екрани, e2e | `tsc` 0; `npm run check` зелений; `check:pg` роллю `alisio_app` на локальному Postgres 16 зелений; `rls-check.sql` — усі; `check-schema-drift` — «збігаються — 124 таблиць, 1582 колонок, 404 індексів, 361 обмежень»; `check:i18n` 3532/3532; `check:unwrapped` чисто; `check:i18n-leak` чисто; `check-docs-current --strict` чисто; `check-boundaries --strict` у межах стелі; `check-no-tenant-names` чисто; `build` ok; `check:routes` по живому серверу — усі; `smoke-routes` — 5xx лише крони без секрету і `/api/test-email` з навмисно битим SMTP; Playwright `tests/e2e/apps.spec.ts` — 1 passed (1.1 хв) |
+| `b167997` | увесь блок: 3.1–3.7, гейт, міграція 0400 (до перенумерування 0140), екрани, e2e | `tsc` 0; `npm run check` зелений; `check:pg` роллю `alisio_app` на локальному Postgres 16 зелений; `rls-check.sql` — усі; `check-schema-drift` — «збігаються — 124 таблиць, 1582 колонок, 404 індексів, 361 обмежень»; `check:i18n` 3532/3532; `check:unwrapped` чисто; `check:i18n-leak` чисто; `check-docs-current --strict` чисто; `check-boundaries --strict` у межах стелі; `check-no-tenant-names` чисто; `build` ok; `check:routes` по живому серверу — усі; `smoke-routes` — 5xx лише крони без секрету і `/api/test-email` з навмисно битим SMTP; Playwright `tests/e2e/apps.spec.ts` — 1 passed (1.1 хв) |
 | `36b5c41` | злиття `origin/claude/channex-integration-66kv65` (19 комітів; конфлікти в `package.json` і трьох словниках зведені ОБʼЄДНАННЯМ, AUTOLOOP п. 1) | після злиття: `tsc` 0, `check:i18n` 3533/3533, `check:unwrapped`, `check:i18n-leak`, `check-boundaries`, `check-docs-current`; повний `npm run check` зелений, `check:pg` роллю `alisio_app` (з 0131 накоченою) зелений, `rls-check.sql` — усі, `check-schema-drift` — збігаються, `build` ok |
 | `8b0e7db` | 3.8 «Підключити TSE» (задача контролера `44c5a22`): `fiskalyConnect`, `POST /api/settings/apps/fiskaly/connect`, міграція 0141, картка; читачі стану з віссю обʼєкта (INC-029, храповик `check-property-scope` після злиття); юніон каналів називає шлюзи текстом (`payments.check` після злиття) | `tsc` 0; `npm run check` зелений; `check:pg` роллю `alisio_app` (0141 накочена) зелений; `rls-check.sql` — усі; `check-schema-drift` — «124 таблиць, 1584 колонок»; `check:i18n` 3540/3540; `check:unwrapped`, `check:i18n-leak`, `check-docs-current`, `check-boundaries` (стеля `invoicing` 5), `check-property-scope` у межах стелі; `build` ok |
 
@@ -134,7 +134,7 @@ AppId | 'channel_manager'`, `:179–195` обидві мапи виведені 
 `dirs21`, `pricelabs`, `unzer` — `live: false`, `feature: null`, `fields: []`;
 ключів реєстру для них немає.
 
-**3.3 «Хочу».** Міграція `db/postgres/migrations/0140-an-app-says-whether-it-is-connected.sql:79–114`
+**3.3 «Хочу».** Міграція `db/postgres/migrations/0400-an-app-says-whether-it-is-connected.sql:79–114`
 (`app_wishes`, UNIQUE(organization_id, app), індекс, RLS); дзеркало
 `src/lib/db.ts` `migrateApps()` (окремою функцією наприкінці `runMigrations`,
 з тієї ж причини, що `migrateOtaMirror`). `wishApp()` / `wishedApps()` —
@@ -196,7 +196,7 @@ Aplikace», «скоро», «хочу», «ви позначили», «під�
 (`_handlers.ts`): обʼєкт свій або 404, `tss_id` уже є → 409 з назвою, без
 `APP_SECRET_KEY` → 503, відмова вендора → 502 з текстом на картці; рядок
 `fin_fiscal_settings` з `recording_system_serial = ALISIO-<slug>` і PIN/PUK під
-`seal()` у нових колонках `tse_admin_pin`/`tse_admin_puk` (міграція `0141`,
+`seal()` у нових колонках `tse_admin_pin`/`tse_admin_puk` (міграція `0401`,
 дзеркало в `migrateApps()`; З17). Картка: список обʼєктів зі станом TSS,
 вибір обʼєкта, кнопка «Підключити TSE», результат «підключено · TSS …last4»,
 підпис про TEST/LIVE-ключ. Живого проходу проти fiskaly не було (З18):
@@ -210,7 +210,7 @@ Aplikace», «скоро», «хочу», «ви позначили», «під�
 `docs/NAMING.md` §2 — статуси `app_connections.status`, значення `app`.
 `check-docs-current --strict` — чисто (45 таблиць із міграцій, 35 гейтів).
 
-**Міграція 0140 і наявні дані.** Дві нові таблиці; наявних рядків не чіпає.
+**Міграція 0400 (тоді 0140) і наявні дані.** Дві нові таблиці; наявних рядків не чіпає.
 `schema.sql` перегенеровано з свіжої SQLite (`pg-schema.mjs`; диф — дві
 таблиці, FK, індекси, політики і одна косметична перестановка колонок у
 чужій таблиці, інваріант 10). `check-schema-drift` на локальному Postgres:
@@ -400,7 +400,7 @@ and tenant isolation з e2e). Раннер повернувся: до 06:11 ус
 
 | Коміт | Що |
 |---|---|
-| `6f65219f` | А1, А2, Б1–Б4, міграція 0142, гейт (сцени Б2, проба, А1, А2), e2e-крок «Підключити TSE», DECISIONS З19–З21, ARCHITECTURE, NAMING, notes п. 8 |
+| `6f65219f` | А1, А2, Б1–Б4, міграція 0402 (тоді 0142), гейт (сцени Б2, проба, А1, А2), e2e-крок «Підключити TSE», DECISIONS З19–З21, ARCHITECTURE, NAMING, notes п. 8 |
 | `b6b56f0a` | злиття `origin/claude/channex-integration-66kv65` (21 коміт; конфлікт лише в `package.json`, зведено обʼєднанням) — після нього `tsc` 0, `npm run check` зелений, `check:pg` роллю `alisio_app` зелений, `build` ok, `check:i18n` 3542/3542, `check-boundaries` 39 у межах стелі, `check-decisions-registry` 204 |
 
 ### А1. Сирітська TSS
@@ -410,7 +410,7 @@ and tenant isolation з e2e). Раннер повернувся: до 06:11 ус
 `PUT /tss`. Стало: `fiskalyConnect(…, { resume, onCreated })`
 (`fiskaly-sign-de.ts`) — одразу після `PUT /tss` викликач кладе `tssId` і
 PUK (під `seal()`) у `tse_pending_tss_id`/`tse_admin_puk` рядка обʼєкта
-(міграція `0142`; `tss_id` лишається NULL — недороблена TSS не підписує);
+(міграція `0402`; `tss_id` лишається NULL — недороблена TSS не підписує);
 відмова далі — `FiskalyConnectError` з `tssId`, текст у `app_connections`
 називає її: `… [TSS <uuid> створено у fiskaly, підключення не завершено —
 повторний натиск дограє]`; наступний натиск бачить `tse_pending_tss_id`,
@@ -422,7 +422,7 @@ PUK (під `seal()`) у `tse_pending_tss_id`/`tse_admin_puk` рядка обʼ�
 
 Було: `existing?.tss_id` читалось до вендора — два запити бачили «TSS
 немає» обидва. Стало: рядок обʼєкта створюється ДО походу до вендора
-(`INSERT … WHERE NOT EXISTS`), замок `tse_connecting_at` (0142) береться
+(`INSERT … WHERE NOT EXISTS`), замок `tse_connecting_at` (0402) береться
 одним `UPDATE … WHERE tss_id IS NULL AND (замка немає OR замок старший за 10
 хв)`; `changes = 0` → 409 «підключення вже триває»; після успіху/відмови
 замок знімається. З20. **Червоне по-справжньому і не там, де чекав:** перша
@@ -480,7 +480,7 @@ fiskaly}`; обʼєкт для звіту — той, що має `tss_id`, ін
 ### Приймання
 
 `tsc` 0; `npm run check` зелений (exit 0); `check:pg` роллю `alisio_app` на
-локальному Postgres 16 з 0141–0142 накоченими — зелений; `rls-check.sql` —
+локальному Postgres 16 з 0141–0142 (тепер 0401–0402) накоченими — зелений; `rls-check.sql` —
 усі; `check-boundaries --strict` — «39 по 16 модулях, у межах стелі» (стеля
 `invoicing` = 3); `check-property-scope --strict` — у межах стелі;
 `check-schema-drift` — «збігаються — 124 таблиць, 1586 колонок, 404 індексів,
