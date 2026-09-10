@@ -119,7 +119,53 @@ SQL
   done
 fi
 
-# 7. Прибрати базу з контейнера. Джерело ($SRC) лишається на совісті того,
+# 7. Агрегати для COUNTS-*.md — лише числа, жодного рядка даних. Кожен запит окремо:
+#    невідома таблиця/колонка дає ERR у своєму рядку, а не зупиняє скрипт. Список
+#    складено з MAPPING.md (10.09.2026); дати знімка підставляються з
+#    max(RECHNUNG.DATUM_ZEIT), 2025-й рік — як рік знімка.
+echo "== aggregates"
+agg() {
+  local label="$1" sql="$2" v
+  v=$($ISQL "$DB" <<SQL 2>/dev/null | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; /^$/d' | tr '\n' ' ' | sed 's/ *$//' || true
+SET HEADING OFF;
+$sql
+SQL
+)
+  printf '%s\t%s\n' "$label" "${v:-ERR}" >> "$OUT/aggregates.txt"
+}
+: > "$OUT/aggregates.txt"
+agg "знімок: max RECHNUNG.DATUM_ZEIT"      "SELECT MAX(DATUM_ZEIT) FROM RECHNUNG;"
+agg "знімок: max GASTKONT.ERF_DATUM"       "SELECT MAX(ERF_DATUM) FROM GASTKONT;"
+agg "остання Rechnung-Nr (генератор)"      "SELECT GEN_ID(GEN_RECHNUNGNR, 0) FROM RDB\$DATABASE;"
+agg "остання Rechnung-Nr (max, живі)"      "SELECT MAX(RECHNR), COUNT(*) FROM RECHNUNG WHERE TA_STATUS < 1000;"
+agg "фактур у році знімка (живі)"          "SELECT COUNT(*) FROM RECHNUNG WHERE TA_STATUS < 1000 AND EXTRACT(YEAR FROM DATUM_ZEIT) = (SELECT EXTRACT(YEAR FROM MAX(DATUM_ZEIT)) FROM RECHNUNG);"
+agg "фактур сторнованих"                   "SELECT COUNT(*) FROM RECHNUNG WHERE STORNO_KZ > 0;"
+agg "броней (GASTKONT) живих"              "SELECT COUNT(*) FROM GASTKONT WHERE TA_STATUS < 1000;"
+agg "броней із заїздом після знімка"       "SELECT COUNT(*) FROM GASTKONT WHERE TA_STATUS < 1000 AND VONAUFH > (SELECT CAST(MAX(DATUM_ZEIT) AS DATE) FROM RECHNUNG);"
+agg "броней із заїздом у році знімка"      "SELECT COUNT(*) FROM GASTKONT WHERE TA_STATUS < 1000 AND EXTRACT(YEAR FROM VONAUFH) = (SELECT EXTRACT(YEAR FROM MAX(DATUM_ZEIT)) FROM RECHNUNG);"
+agg "стани броней BUCH/CI/TA (код×N)"      "SELECT BUCH_STATUS, CI_STATUS, TA_STATUS, COUNT(*) FROM GASTKONT GROUP BY 1,2,3 ORDER BY 4 DESC;"
+agg "BELEGUNG сміттєвих дат (<1900)"       "SELECT COUNT(*) FROM BELEGUNG WHERE ANREISE < '1900-01-01';"
+agg "адрес живих"                          "SELECT COUNT(*) FROM ADRESSEN WHERE TA_STATUS < 1000;"
+agg "адрес з номером дебітора"             "SELECT COUNT(*), MIN(DEBI_NR), MAX(DEBI_NR) FROM ADRESSEN WHERE DEBI_NR > 0 AND TA_STATUS < 1000;"
+agg "адрес за типом ADR_WAHL (код×N)"      "SELECT ADR_WAHL, COUNT(*) FROM ADRESSEN WHERE TA_STATUS < 1000 GROUP BY 1;"
+agg "адрес, що анонімізовані (DS_VORGENOMMEN)" "SELECT DS_VORGENOMMEN, COUNT(*) FROM ADRESSEN GROUP BY 1;"
+agg "номерів справжніх / псевдо"           "SELECT SUM(CASE WHEN CAST(ZINR AS INTEGER) < 9000 THEN 1 ELSE 0 END), SUM(CASE WHEN CAST(ZINR AS INTEGER) >= 9000 THEN 1 ELSE 0 END) FROM ZIMMSTAM WHERE TA_STATUS < 1000 AND ZINR IS NOT NULL;"
+agg "рядків рахунку (BUCHKONT) живих, сума" "SELECT COUNT(*), SUM(GBETRAG)/1000.0 FROM BUCHKONT WHERE TA_STATUS < 1000;"
+agg "платежів живих, сума"                 "SELECT COUNT(*), SUM(BETRAG)/1000.0 FROM ZAHLUNGEN WHERE TA_STATUS < 1000;"
+agg "платежів дебіторських (M_DEBITOR>0), сума" "SELECT COUNT(*), SUM(BETRAG)/1000.0 FROM ZAHLUNGEN WHERE TA_STATUS < 1000 AND M_DEBITOR > 0;"
+agg "відкриті позиції по рахунках гостей (виїхали, offen<>0): N, сума" "EXECUTE BLOCK RETURNS (N INTEGER, SUMME NUMERIC(15,3)) AS DECLARE L INTEGER; DECLARE O NUMERIC(12,3); BEGIN N = 0; SUMME = 0; FOR SELECT LNR FROM GASTKONT WHERE TA_STATUS < 1000 AND CI_STATUS = 2 INTO :L DO BEGIN SELECT OFFEN_BETRAG FROM GET_OFFEN_ZAHLBETRAG(:L) INTO :O; IF (O IS NOT NULL AND O <> 0) THEN BEGIN N = N + 1; SUMME = SUMME + O; END END SUSPEND; END"
+agg "книга вихідних рахунків за DB_STATUS (код×N×сума)" "SELECT DB_STATUS, COUNT(*), SUM(UMSATZ)/1000.0 FROM AUSGBUCH GROUP BY 1;"
+agg "ваучерів продано (послуги 7/55/95): N, сума" "SELECT COUNT(*), SUM(GBETRAG)/1000.0 FROM BUCHKONT WHERE TA_STATUS < 1000 AND LEIST_LNR IN (7, 55, 95);"
+agg "ваучерів погашено (спосіб оплати Gutschein): N, сума" "SELECT COUNT(*), SUM(Z.BETRAG)/1000.0 FROM ZAHLUNGEN Z JOIN DEVISEN D ON D.LNR = Z.LNR_DEVI WHERE Z.TA_STATUS < 1000 AND UPPER(D.BEZEICHN) LIKE '%GUTSCHEIN%';"
+agg "реєстр ваучерів GUTSCHEINE (живі)"    "SELECT COUNT(*) FROM GUTSCHEINE WHERE TA_STATUS < 1000;"
+agg "депозити на бронях (ANZA_BETRAG>0): N, сума" "SELECT COUNT(*), SUM(ANZA_BETRAG)/1000.0 FROM GASTKONT WHERE TA_STATUS < 1000 AND ANZA_BETRAG > 0;"
+agg "TSE: підписаних рядків FISKAL_BK (SIGN_OK×N)" "SELECT SIGN_OK, COUNT(*) FROM FISKAL_BK GROUP BY 1;"
+agg "TSE: квитанцій FISKAL_RECHNUNG"       "SELECT COUNT(*), MIN(DATUMZEIT), MAX(DATUMZEIT) FROM FISKAL_RECHNUNG;"
+agg "сезонів на рік знімка"                "SELECT COUNT(*) FROM SAISSTAM WHERE TA_STATUS < 1000 AND EXTRACT(YEAR FROM VON) = (SELECT EXTRACT(YEAR FROM MAX(DATUM_ZEIT)) FROM RECHNUNG);"
+agg "цінових рядків живих"                 "SELECT COUNT(*) FROM PREISLIST WHERE TA_STATUS < 1000;"
+cat "$OUT/aggregates.txt"
+
+# 8. Прибрати базу з контейнера. Джерело ($SRC) лишається на совісті того,
 #    хто його поклав, — видаліть і його, коли закінчите.
 rm -f "$DB"
 echo "== база $DB видалена; результати в $OUT"
