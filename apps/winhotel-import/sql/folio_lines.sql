@@ -2,7 +2,7 @@
 -- source: BUCHKONT
 -- columns: lnr:int, gk_lnr:int, leist_lnr:int, von:date, bis:date, tage:int, me:int, prl_lnr:int, bezeichn:text, aufp:int, zipreis:bool, pausch:bool, gbetrag:amount, tagbetrag:amount, e_preis:amount, ta_status:int, zahlung_lnr:int, umb_gk_lnr:int, lnr_co:int, re_lauf:int, rechnr:int, online_gebucht:bool, basis_lnr:int, sto_kennung:int, gs_lnr:int, erf_datum:date, kor_datum:date
 --
--- Рядки рахунків гостей (крок 10): суми ×1000 як є, не перераховуються; RECHNR > 0 — уже у фактурі.
+-- Рядки рахунків гостей (крок 10): суми як є (NUMERIC(12,3), уже масштабовані), не перераховуються; RECHNR > 0 — уже у фактурі.
 --
 -- Формат: поля через ASCII 31, запис закінчується ASCII 30 (deploy/bridge/lib/convert.mjs).
 -- Запускається так само рукою: isql-fb -q -user SYSDBA -charset NONE -i <цей файл> <db.fdb>

@@ -1,6 +1,6 @@
 -- entity: tax_codes
 -- source: STEUSTAM
--- columns: lnr:int, mand_nr:int, von:date, bis:date, sts:int, stsatz:int, stland:text, stbemerk:text, fiskal_zuweisung:int, sts_kasse:text
+-- columns: lnr:int, mand_nr:int, von:date, bis:date, sts:int, stsatz:amount, stland:text, stbemerk:text, fiskal_zuweisung:int, sts_kasse:text
 --
 -- Ставки ПДВ (крок 2): STS — код (1 нуль / 2 знижена / 3 стандартна), STSATZ — відсоток, VON–BIS — чинність.
 --

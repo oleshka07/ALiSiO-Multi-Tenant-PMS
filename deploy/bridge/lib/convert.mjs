@@ -6,7 +6,14 @@
  *
  *   байти → текст     charset NONE у базі = CP1252; декодуємо windows-1252,
  *                     і застосунок бачить уже UTF-8 («ÜF», не «\xDCF»);
- *   суми              BIGINT ×1000 (домен NUMERIC(12,3)): 141000 → 141;
+ *   суми              домени NUMERIC(12,3) / NUMERIC(12,2) / DECIMAL(12,4):
+ *                     isql через CAST віддає їх УЖЕ масштабованими — `141.000`,
+ *                     `12.50` — тож рядок читається як десяткове число як є, без
+ *                     жодного ділення. Перша редакція ділила на 1000, бо стаб
+ *                     оголошував колонки BIGINT зі значенням 141000 (тип
+ *                     ЗБЕРІГАННЯ з table-columns.tsv, не тип домену) — і живий
+ *                     прохід віддав ніч за 141 € як 0.141 (рецензія А 10.09,
+ *                     інваріант 28: стаб має форму живого зразка, не здогаду);
  *   дати              1899-12-30 (нуль Delphi) і все, що раніше 1900 → null;
  *                     2050-12-31 у довідниках — «без кінця», лишається як є:
  *                     це рішення застосунку, не мосту;
@@ -64,18 +71,15 @@ export function convertTimestamp(text) {
   return /^\d{2}:\d{2}:\d{2}$/.test(time) ? `${date} ${time}` : date;
 }
 
-/** BIGINT ×1000 → число з трьома знаками; 141000 → 141, 141001 → 141.001. */
+/**
+ * Десятковий рядок домену як є: `141.000` → 141, `12.50` → 12.5, `-1.500` → -1.5,
+ * `0.038` → 0.038. Знаків стільки, скільки дав домен; ділення НЕМАЄ.
+ */
 export function convertAmount(text) {
   if (text === '' || text == null) return null;
+  if (!/^-?\d+(\.\d+)?$/.test(text)) return null;
   const n = Number(text);
-  if (!Number.isFinite(n)) return null;
-  // Ділимо цілі: /1000 через рядок, щоб 141001 не стало 141.00099999.
-  const negative = n < 0;
-  const abs = Math.abs(Math.trunc(n));
-  const whole = Math.floor(abs / 1000);
-  const frac = abs % 1000;
-  const value = Number(`${whole}.${String(frac).padStart(3, '0')}`);
-  return negative ? -value : value;
+  return Number.isFinite(n) ? n : null;
 }
 
 export function convertValue(type, raw) {

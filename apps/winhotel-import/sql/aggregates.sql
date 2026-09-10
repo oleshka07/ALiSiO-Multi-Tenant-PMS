@@ -6,7 +6,8 @@
 -- (одне число або короткий розподіл «код×N»), і `ERR`, якщо запит упав.
 -- Персональних даних тут немає за побудовою: лише лічильники, суми й коди.
 --
--- Суми в базі — BIGINT ×1000; тут уже поділені на 1000.0.
+-- Суми в базі — домени NUMERIC(12,3)/(12,2): isql віддає їх уже масштабованими
+-- (141.000), тому тут НІЧОГО не ділиться (рецензія А 10.09, інваріант 28).
 
 -- name: snapshot_max_invoice_at
 -- label: знімок: max RECHNUNG.DATUM_ZEIT
@@ -78,15 +79,15 @@ SELECT SUM(CASE WHEN COALESCE(PSEUDO, 0) = 0 THEN 1 ELSE 0 END), SUM(CASE WHEN C
 
 -- name: folio_lines_live
 -- label: рядків рахунку (BUCHKONT) живих, сума
-SELECT COUNT(*), SUM(GBETRAG) / 1000.0 FROM BUCHKONT WHERE TA_STATUS < 1000;
+SELECT COUNT(*), SUM(GBETRAG) FROM BUCHKONT WHERE TA_STATUS < 1000;
 
 -- name: payments_live
 -- label: платежів живих, сума
-SELECT COUNT(*), SUM(BETRAG) / 1000.0 FROM ZAHLUNGEN WHERE TA_STATUS < 1000;
+SELECT COUNT(*), SUM(BETRAG) FROM ZAHLUNGEN WHERE TA_STATUS < 1000;
 
 -- name: payments_debtor
 -- label: платежів дебіторських (M_DEBITOR>0), сума
-SELECT COUNT(*), SUM(BETRAG) / 1000.0 FROM ZAHLUNGEN WHERE TA_STATUS < 1000 AND M_DEBITOR > 0;
+SELECT COUNT(*), SUM(BETRAG) FROM ZAHLUNGEN WHERE TA_STATUS < 1000 AND M_DEBITOR > 0;
 
 -- name: open_guest_balances
 -- label: відкриті позиції по рахунках гостей (виїхали, offen<>0): N, сума
@@ -94,27 +95,27 @@ EXECUTE BLOCK RETURNS (N INTEGER, SUMME NUMERIC(15,3)) AS DECLARE L INTEGER; DEC
 
 -- name: invoice_ledger_by_status
 -- label: книга вихідних рахунків за DB_STATUS (код×N×сума)
-SELECT DB_STATUS, COUNT(*), SUM(UMSATZ) / 1000.0 FROM AUSGBUCH GROUP BY 1;
+SELECT DB_STATUS, COUNT(*), SUM(UMSATZ) FROM AUSGBUCH GROUP BY 1;
 
 -- name: vouchers_sold
 -- label: ваучерів продано (послуги 7/55/95): N, сума
-SELECT COUNT(*), SUM(GBETRAG) / 1000.0 FROM BUCHKONT WHERE TA_STATUS < 1000 AND LEIST_LNR IN (7, 55, 95);
+SELECT COUNT(*), SUM(GBETRAG) FROM BUCHKONT WHERE TA_STATUS < 1000 AND LEIST_LNR IN (7, 55, 95);
 
 -- name: vouchers_redeemed
 -- label: ваучерів погашено (спосіб оплати Gutschein): N, сума
-SELECT COUNT(*), SUM(Z.BETRAG) / 1000.0 FROM ZAHLUNGEN Z JOIN DEVISEN D ON D.LNR = Z.LNR_DEVI WHERE Z.TA_STATUS < 1000 AND UPPER(D.BEZEICHN) LIKE '%GUTSCHEIN%';
+SELECT COUNT(*), SUM(Z.BETRAG) FROM ZAHLUNGEN Z JOIN DEVISEN D ON D.LNR = Z.LNR_DEVI WHERE Z.TA_STATUS < 1000 AND UPPER(D.BEZEICHN) LIKE '%GUTSCHEIN%';
 
 -- name: deposits_on_bookings
 -- label: депозити на бронях (ANZA_BETRAG>0): N, сума
-SELECT COUNT(*), SUM(ANZA_BETRAG) / 1000.0 FROM GASTKONT WHERE TA_STATUS < 1000 AND ANZA_BETRAG > 0;
+SELECT COUNT(*), SUM(ANZA_BETRAG) FROM GASTKONT WHERE TA_STATUS < 1000 AND ANZA_BETRAG > 0;
 
 -- name: deposits_on_future_bookings
 -- label: депозити на майбутніх бронях: N, сума
-SELECT COUNT(*), SUM(ANZA_BETRAG) / 1000.0 FROM GASTKONT WHERE TA_STATUS < 1000 AND ANZA_BETRAG > 0 AND VONAUFH > (SELECT CAST(MAX(DATUM_ZEIT) AS DATE) FROM RECHNUNG);
+SELECT COUNT(*), SUM(ANZA_BETRAG) FROM GASTKONT WHERE TA_STATUS < 1000 AND ANZA_BETRAG > 0 AND VONAUFH > (SELECT CAST(MAX(DATUM_ZEIT) AS DATE) FROM RECHNUNG);
 
 -- name: last_day_closing
 -- label: останнє денне закриття: дата, сальдо
-SELECT FIRST 1 TAG_ABS_DATUM, SALDO / 1000.0 FROM TAG_ABS WHERE TA_STATUS < 1000 ORDER BY TAG_ABS_DATUM DESC;
+SELECT FIRST 1 TAG_ABS_DATUM, SALDO FROM TAG_ABS WHERE TA_STATUS < 1000 ORDER BY TAG_ABS_DATUM DESC;
 
 -- name: seasons_in_snapshot_year
 -- label: сезонів на рік знімка

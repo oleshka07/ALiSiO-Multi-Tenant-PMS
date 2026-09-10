@@ -2,7 +2,7 @@
 -- source: ZAHLUNGEN
 -- columns: lnr:int, mand_nr:int, budat:date, uhrzeit:time, lnr_devi:int, bezeichn:text, betrag:amount, gastnr_1:int, lnr_gk:int, re_nr:int, tatigk:text, kurs_fakt:amount, re_lauf:int, userid:int, tg_abs:int, m_debitor:int, woher:int, mahns:int, leist_lnr:int, lnr_co:int, debi_bez_betr:amount, tag_abs_lnr:int, signatur_ok:int, gastauslage:bool, gs_extern_key:text, gs_extern_gsnr:int
 --
--- Оплати (крок 12): BETRAG ×1000 зі знаком; LNR_DEVI → payment_methods; RE_NR — фактура; M_DEBITOR — дебіторський платіж.
+-- Оплати (крок 12): BETRAG (NUMERIC(12,3)) зі знаком; LNR_DEVI → payment_methods; RE_NR — фактура; M_DEBITOR — дебіторський платіж.
 --
 -- Формат: поля через ASCII 31, запис закінчується ASCII 30 (deploy/bridge/lib/convert.mjs).
 -- Запускається так само рукою: isql-fb -q -user SYSDBA -charset NONE -i <цей файл> <db.fdb>

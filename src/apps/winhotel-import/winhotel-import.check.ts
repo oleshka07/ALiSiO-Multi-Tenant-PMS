@@ -18,11 +18,12 @@
  * 404), а не одна. Два тіла: справжнє й підмінене (sha256 не збігається).
  * Два стани знімка на томі: `.extracted` і `.failed`. У стабі бази — по два
  * значення на кожній осі перетворення: жива/видалена, 1899-12-30/справжня
- * дата, 141000/89500, ASCII/умлаут.
+ * дата, 141.000/89.500 (домени NUMERIC(12,3), як у живій базі — рецензія А),
+ * ASCII/умлаут.
  *
  * ── Що доводиться живим Firebird, а що без нього ────────────────────────
  *
- * Перетворення (CP1252, /1000, нуль Delphi) — на чистих функціях мосту, без
+ * Перетворення (CP1252, десяткові домени як є, нуль Delphi) — на чистих функціях мосту, без
  * бази. Властивість «TA_STATUS >= 1000 не витягається» — на СПРАВЖНЬОМУ
  * `gbak -c` + `isql` зі стабом `fixture/stub-db.sql`, якщо бінарники є в
  * системі; якщо їх немає (CI без Firebird), сцена пропускається з названим
@@ -243,10 +244,15 @@ try {
   // ── 9. Перетворення мосту: CP1252, /1000, нуль Delphi, порожнє → null ────
   assert.strictEqual(convert.convertValue('text', Buffer.from([0xdc, 0x46])), 'ÜF', 'CP1252 0xDC не став Ü');
   assert.strictEqual(convert.convertValue('text', Buffer.from([0x4d, 0xfc, 0x6c, 0x6c, 0x65, 0x72])), 'Müller');
-  assert.strictEqual(convert.convertValue('amount', '141000'), 141, '141000 не став 141');
-  assert.strictEqual(convert.convertValue('amount', '89500'), 89.5, '89500 не став 89.5');
-  assert.strictEqual(convert.convertValue('amount', '-1500'), -1.5, '-1500 не став -1.5');
-  assert.strictEqual(convert.convertValue('amount', '141001'), 141.001);
+  // Домени NUMERIC(12,3)/(12,2): isql віддає вже масштабоване число — читається як є.
+  // Перша редакція ділила на 1000 і на живій базі давала 0.141 (рецензія А).
+  assert.strictEqual(convert.convertValue('amount', '141.000'), 141, '141.000 (N_BETRAG) не став 141');
+  assert.strictEqual(convert.convertValue('amount', '12.50'), 12.5, '12.50 (BETRAG2) не став 12.5');
+  assert.strictEqual(convert.convertValue('amount', '-1.500'), -1.5, '-1.500 не став -1.5');
+  assert.strictEqual(convert.convertValue('amount', '0.038'), 0.038, '0.038 (три знаки) не лишився 0.038');
+  assert.strictEqual(convert.convertValue('amount', '141.0010'), 141.001, 'DECIMAL(12,4) не читається як є');
+  assert.strictEqual(convert.convertValue('amount', '1.000000'), 1, 'NUMERIC(12,6) курс 1.000000 не став 1');
+  assert.strictEqual(convert.convertValue('amount', '141000'), 141000, 'ціле без крапки — це 141000, а не «×1000»');
   assert.strictEqual(convert.convertValue('date', '1899-12-30'), null, 'нуль Delphi не став null');
   assert.strictEqual(convert.convertValue('date', '2027-03-10'), '2027-03-10');
   assert.strictEqual(convert.convertValue('ts', '1899-12-30 00:00:00.0000'), null);
@@ -256,11 +262,11 @@ try {
   assert.strictEqual(convert.convertValue('int', ''), null);
   assert.strictEqual(convert.convertValue('text', '   '), null);
   const cols = convert.parseColumns('-- columns: lnr:int, name:text, betrag:amount, d:date');
-  const rec = Buffer.concat([Buffer.from('7\x1f'), Buffer.from([0xdc, 0x46]), Buffer.from('\x1f141000\x1f1899-12-30')]);
+  const rec = Buffer.concat([Buffer.from('7\x1f'), Buffer.from([0xdc, 0x46]), Buffer.from('\x1f141.000\x1f1899-12-30')]);
   assert.deepStrictEqual(convert.convertRecord(cols, rec), { lnr: 7, name: 'ÜF', betrag: 141, d: null });
   assert.throws(() => convert.convertRecord(cols, Buffer.from('7\x1fx')), /полів/, 'запис із меншою кількістю полів пройшов');
   assert.throws(() => convert.parseColumns('-- columns: lnr:integer'), /type/, 'невідомий тип колонки пройшов');
-  console.log('  ok  9. перетворення: ÜF з CP1252, 141000 → 141, 1899-12-30 → null, -1 → true, порожнє → null');
+  console.log('  ok  9. перетворення: ÜF з CP1252, 141.000 → 141 і 12.50 → 12.5 без ділення, 1899-12-30 → null, -1 → true, порожнє → null');
 
   // ── 10. Кожен SQL сутності називає TA_STATUS, або його виняток названий словами ──
   const NO_FILTER = new Set(['services', 'rate_codes', 'payment_methods', 'invoices', 'invoice_lines', 'invoice_ledger']);
@@ -306,17 +312,17 @@ try {
     assert.ok(bookings.some((b) => b.lnr === 104 && b.storno_datum === '2025-01-15' && b.ta_status === 1000), 'сторнована з датою 104 має бути у витягу');
     const b101 = bookings.find((b) => b.lnr === 101)!;
     assert.deepStrictEqual([b101.gastnr_1, b101.gastnr_2, b101.gastnr_3], [1, 2, 5], 'три адреси броні 101');
-    assert.strictEqual(b101.anza_betrag, 50, 'депозит 50000 → 50');
+    assert.strictEqual(b101.anza_betrag, 50, 'депозит N_BETRAG 50.000 → 50');
     assert.strictEqual(b101.bemerk, 'Späte Anreise', `умлаут у примітці броні: ${b101.bemerk}`);
     const services = jsonl('services');
     const uef = services.find((s) => s.lnr === 67)!;
     assert.strictEqual(uef.kurzbez, 'ÜN', `KURZBEZ ${uef.kurzbez}`);
     assert.strictEqual(uef.bezeichn, 'ÜF Übernachtung/Frühstück', `BEZEICHN ${uef.bezeichn}`);
-    assert.strictEqual(uef.betrag, 141, '141000 у послузі не став 141');
+    assert.strictEqual(uef.betrag, 141, '141.000 у послузі не став 141');
     assert.ok(services.some((s) => s.lnr === 91 && s.ta_status === 1000), 'вимкнена послуга 91 мусить бути у витягу (історія посилається)');
     const lines = jsonl('folio_lines');
     const l1001 = lines.find((l) => l.lnr === 1001)!;
-    assert.strictEqual(l1001.gbetrag, 423, `GBETRAG 423000 → ${l1001.gbetrag}`);
+    assert.strictEqual(l1001.gbetrag, 423, `GBETRAG 423.000 → ${l1001.gbetrag}`);
     assert.strictEqual(l1001.e_preis, 141);
     assert.strictEqual(l1001.bezeichn, 'ÜF 2 Personen');
     assert.ok(!lines.some((l) => l.lnr === 1006), 'видалений рядок рахунку 1006 витягнуто');
@@ -330,14 +336,14 @@ try {
     const occ = jsonl('occupancy');
     assert.strictEqual(occ.find((o) => o.lnr === 4)!.anreise, null, 'сміттєва дата BELEGUNG не стала null');
     const payments = jsonl('payments');
-    assert.strictEqual(payments.find((x) => x.lnr === 4)!.betrag, -1.5, 'повернення -1500 → -1.5');
+    assert.strictEqual(payments.find((x) => x.lnr === 4)!.betrag, -1.5, 'повернення -1.500 → -1.5');
     assert.strictEqual(payments.find((x) => x.lnr === 1)!.uhrzeit, '10:05:00');
     assert.strictEqual(result.numbers.invoice_no_generator.value, '22591', `генератор фактур: ${result.numbers.invoice_no_generator.value}`);
     assert.strictEqual(result.numbers.bookings_future.value, '2', `майбутніх броней: ${result.numbers.bookings_future.value}`);
     assert.strictEqual(result.numbers.occupancy_junk_dates.value, '1');
     assert.match(result.numbers.open_guest_balances.value, /^2 283\.5/, `відкриті сальдо: ${result.numbers.open_guest_balances.value}`);
     assert.ok(!fs.existsSync(path.join(tmp, 'work')), 'робоча тека з відновленою базою лишилась');
-    console.log(`  ok  11. живий Firebird: стаб → ${Object.keys(result.entities).length} сутностей; видалене не витягнуто, умлаути, /1000 і нуль Delphi — правильні, база прибрана`);
+    console.log(`  ok  11. живий Firebird: стаб → ${Object.keys(result.entities).length} сутностей; видалене не витягнуто, умлаути, домени сум і нуль Delphi — правильні, база прибрана`);
   } else {
     console.log('  ПРОПУЩЕНО 11. живий Firebird (gbak/isql-fb) у системі немає — сцену витягу тримає локальний прогін і bridge-local.sh --stub');
   }

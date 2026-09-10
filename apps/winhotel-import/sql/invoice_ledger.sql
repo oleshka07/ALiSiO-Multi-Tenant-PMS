@@ -3,7 +3,7 @@
 -- deleted: kept — книга по фактурах, які беруться всі; DB_STATUS — сальдо
 -- columns: lnr:int, adr_lnr:int, rechnr:int, rechnr_alpha:text, re_lauf:int, rech_dat:date, lnr_zinr:int, gbvon:date, gbbis:date, leist_lnr:int, menge:int, epreis:amount, umsatz:amount, steuersatz:amount, db_status:int, lnr_buchkont:int, bezeichn:text, lnr_co:int, sto_betrag:amount, konto_nr:text
 --
--- Книга вихідних рахунків (крок 11, сальдо §3): ADR_LNR — дебітор, DB_STATUS — стан оплати, STEUERSATZ ×1000.
+-- Книга вихідних рахунків (крок 11, сальдо §3): ADR_LNR — дебітор, DB_STATUS — стан оплати, STEUERSATZ (NUMERIC(12,3)).
 --
 -- Формат: поля через ASCII 31, запис закінчується ASCII 30 (deploy/bridge/lib/convert.mjs).
 -- Запускається так само рукою: isql-fb -q -user SYSDBA -charset NONE -i <цей файл> <db.fdb>

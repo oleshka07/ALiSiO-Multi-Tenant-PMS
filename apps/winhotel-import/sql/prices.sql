@@ -2,7 +2,7 @@
 -- source: PREISLIST
 -- columns: lnr:int, mand_nr:int, prcode_lnr:int, preistyp:int, preislist_lnr:int, saison:int, matchc:text, bezeichung:text, zimmerpreis:bool, pauschale:bool, von:date, bis:date, min_tage:int, max_tage:int, betrag:amount, leist_lnr:int, ezzuschlag:amount, ezpreis:amount, betrag_pers:int, kurtax_inkl:bool, fm_rateid:text, online_buchbar:bool, online_verfuegbar:bool, max_anz_erw:int, max_anz_kind:int, max_anz_gesamt:int, basis_lnr:int, prozentsatz:amount, ext_mapping:text
 --
--- Цінові рядки (крок 5): MATCHC ÜF_1..ÜF_4 — заселеність 1–4; BETRAG за ніч ×1000; MIN_TAGE — LOS.
+-- Цінові рядки (крок 5): MATCHC ÜF_1..ÜF_4 — заселеність 1–4; BETRAG за ніч (NUMERIC(12,3), уже масштабоване); MIN_TAGE — LOS.
 --
 -- Формат: поля через ASCII 31, запис закінчується ASCII 30 (deploy/bridge/lib/convert.mjs).
 -- Запускається так само рукою: isql-fb -q -user SYSDBA -charset NONE -i <цей файл> <db.fdb>
