@@ -84,15 +84,37 @@ await sql.run("INSERT INTO organizations (id, name, slug, default_currency) VALU
 
 const PROP = '__folbook__prop';
 
-/** Бронь на 5000 із фоліо, у якому нараховано проживання на всю суму. */
+/**
+ * Бронь на 5000 із фоліо, у якому нараховано проживання на всю суму.
+ *
+ * Ночі — СВОЇ в кожної броні, а не одні спільні на всіх. Раніше всі стояли в
+ * одному номері на 2–4 листопада, тобто засів описував стан, якого не буває:
+ * четверо гостей у одній кімнаті на ті самі ночі. Це нікому не заважало рівно
+ * доти, доки заборону тримала лише уважність коду; обмеження
+ * `no_double_booking` (INC-045) відмовило на другій броні першим же прогоном
+ * `check:pg`. Сцена про ФОЛІО — номер і дати їй байдужі, важлива лише сума, —
+ * тож виправлено засів, а не обмеження.
+ *
+ * Вікна суміжні й не перетинаються: [02,04), [04,06), … — виїзд і заїзд в один
+ * день це не та сама ніч. Номер лишається один: на нього є ЗОВНІШНІЙ КЛЮЧ, і
+ * вигаданий `${id}_unit` упав би на `fk_reservations_unit_id`.
+ */
+let stayNo = 0;
+/** Наступне вільне вікно з двох ночей: 11-02, 11-04, 11-06 … */
+function nextWindow(): { checkIn: string; checkOut: string } {
+  const day = 2 + stayNo++ * 2;
+  const dd = (n: number) => String(n).padStart(2, '0');
+  return { checkIn: `2026-11-${dd(day)}`, checkOut: `2026-11-${dd(day + 2)}` };
+}
 async function seedStay(id: string): Promise<string> {
+  const { checkIn, checkOut } = nextWindow();
   await sql.run(
     `INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, check_in, check_out, nights, adults, status, payment_status, total_price, currency)
-     VALUES (?, ?, ?, ?, ?, '2026-11-02', '2026-11-04', 2, 2, 'checked_in', 'unpaid', ?, 'CZK')`,
-    [id, ORG, PROP, '__folbook__unit', '__folbook__guest', TOTAL]);
+     VALUES (?, ?, ?, ?, ?, ?, ?, 2, 2, 'checked_in', 'unpaid', ?, 'CZK')`,
+    [id, ORG, PROP, '__folbook__unit', '__folbook__guest', checkIn, checkOut, TOTAL]);
   const folioId = await createFolio({ reservationId: id, payerKind: 'guest', payerName: 'Eva Nová' });
   await addCharges([{
-    folioId, reservationId: id, serviceDate: '2026-11-02', kind: 'lodging',
+    folioId, reservationId: id, serviceDate: checkIn, kind: 'lodging',
     description: 'Проживання', quantity: 2, unitPriceGross: TOTAL / 2, totalGross: TOTAL, vatRate: 12,
   }]);
   return folioId;
@@ -201,10 +223,11 @@ try {
     // політикою `blocking`. Порожня книга не каже «нічого не винен» — вона не
     // каже нічого, і це різні речі.
     const c = '__folbook__c';
+    const winC = nextWindow();
     await sql.run(
       `INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, check_in, check_out, nights, adults, status, payment_status, total_price, currency)
-       VALUES (?, ?, ?, ?, ?, '2026-11-02', '2026-11-04', 2, 2, 'checked_in', 'unpaid', ?, 'CZK')`,
-      [c, ORG, PROP, '__folbook__unit', '__folbook__guest', TOTAL]);
+       VALUES (?, ?, ?, ?, ?, ?, ?, 2, 2, 'checked_in', 'unpaid', ?, 'CZK')`,
+      [c, ORG, PROP, '__folbook__unit', '__folbook__guest', winC.checkIn, winC.checkOut, TOTAL]);
     await createFolio({ reservationId: c, payerKind: 'guest', payerName: 'Eva Nová' });
     const seenC = await asSeen(c);
     console.log('  В (порожнє фоліо):', JSON.stringify(seenC));

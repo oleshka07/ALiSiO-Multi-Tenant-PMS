@@ -369,6 +369,16 @@ function buildSchema(database: any) {
       currency TEXT NOT NULL DEFAULT 'CZK',
       notes TEXT,
       internal_notes TEXT,
+      -- Копія units.is_pool на самій броні (INC-045, міграція 0132).
+      --
+      -- На Postgres подвійне бронювання забороняє EXCLUDE USING gist, а він не
+      -- вміє джойнитись — тож ознака службового фонду мусить лежати колонкою
+      -- ТУТ, інакше обмеження зробило б кемпінг непродаваним. На SQLite
+      -- обмеження немає й колонку ніхто не читає; вона тут лише тому, що
+      -- db/postgres/schema.sql генерується з ЦІЄЇ схеми, і без неї свіжий
+      -- Postgres-клієнт отримав би колонку не зі schema.sql, а лише з ALTER-у
+      -- в 0132 — рівно та розбіжність, про яку AGENTS §4 каже про індекси.
+      is_pool_unit INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -7730,6 +7740,25 @@ function runMigrations(database: any) {
 
   // 0140 — так само окремою функцією, з тієї самої причини.
   migrateApps(database);
+
+  // --- Migration: is_pool_unit на броні (INC-045) ---
+  //
+  // Пара до CREATE вище: «додаєш колонку — додай її і в CREATE, і в ALTER»
+  // (AGENTS §4). У кінці, коли всі перебудови reservations позаду, — інакше
+  // наступний DROP+RENAME зніс би її мовчки.
+  //
+  // Значення тут ніхто не підтримує: на SQLite обмеження немає, і колонка
+  // існує рівно для того, щоб схема двох двигунів була однією схемою. На
+  // Postgres її наповнює тригер із 0132.
+  try {
+    const cols = database.prepare('PRAGMA table_info(reservations)').all() as { name: string }[];
+    if (cols.length > 0 && !cols.some((c) => c.name === 'is_pool_unit')) {
+      database.exec('ALTER TABLE reservations ADD COLUMN is_pool_unit INTEGER NOT NULL DEFAULT 0');
+      console.log('[DB] reservations: is_pool_unit (INC-045)');
+    }
+  } catch (e: any) {
+    console.log('[DB] is_pool_unit migration note:', e.message);
+  }
 
   // The last line of runMigrations, and the only reliable signal that the
   // schema has settled. scripts/check-fresh-schema.mjs waits for it: polling

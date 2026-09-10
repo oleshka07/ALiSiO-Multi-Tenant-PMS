@@ -11,6 +11,17 @@ import { serverError, handleError } from '@core/http/errors';
 import { percentOf } from '@core/money';
 import { requestPropertyScope } from '@core/auth/property-scope';
 import { listReservationRows } from '../data/lists.repo';
+import { insertingStay, UnitOverlap } from './overlap';
+
+/**
+ * Одна відмова на одну причину.
+ *
+ * Її кажуть ДВА місця: перевірка перед записом (у 99 % випадків) і обмеження
+ * бази (в останньому відсотку, коли двоє писали одночасно). Гість не має
+ * бачити двох різних текстів на одне й те саме, тож текст один — константою, а
+ * не двома літералами, які розійдуться при першій же правці (INC-045).
+ */
+const ALREADY_BOOKED = 'This unit is already booked for the selected dates';
 
 export const listReservations = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
@@ -88,7 +99,7 @@ export const createReservation = withPermission('manage_bookings', async (reques
       LIMIT 1
     `, [unitId, checkOut, checkIn]);
     if (overlap) {
-      return NextResponse.json({ error: 'This unit is already booked for the selected dates' }, { status: 409 });
+      return NextResponse.json({ error: ALREADY_BOOKED }, { status: 409 });
     }
 
     const org = { id: actor.organizationId };
@@ -152,10 +163,21 @@ export const createReservation = withPermission('manage_bookings', async (reques
     }
 
 
-    await sql.run(`
-      INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, check_in, check_out, nights, adults, children, status, payment_status, source, total_price, currency, commission_amount, guest_page_token, city_tax_amount, city_tax_included, city_tax_paid, internal_notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [resId, actor.organizationId, unit.property_id, unitId, guestId, checkIn, checkOut, nights || 1, adults || 1, children || 0, bookingStatus, body.paymentStatus || 'unpaid', source || 'direct', priceGiven, currency, commissionAmount, guestPageToken, finalCityTaxAmount, finalCityTaxIncluded, finalCityTaxPaid, internalNotes || null]);
+    // Двері INC-045. Перевірка вище лишається — вона дає людський текст майже
+    // завжди; ці двері тримають те, що між нею і цим рядком стоять `await`-и
+    // (дедуплікація гостя, комісія, валюта). У це вікно проходили ОБИДВІ броні.
+    try {
+      await insertingStay(() => sql.run(`
+        INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, check_in, check_out, nights, adults, children, status, payment_status, source, total_price, currency, commission_amount, guest_page_token, city_tax_amount, city_tax_included, city_tax_paid, internal_notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [resId, actor.organizationId, unit.property_id, unitId, guestId, checkIn, checkOut, nights || 1, adults || 1, children || 0, bookingStatus, body.paymentStatus || 'unpaid', source || 'direct', priceGiven, currency, commissionAmount, guestPageToken, finalCityTaxAmount, finalCityTaxIncluded, finalCityTaxPaid, internalNotes || null]),
+      { unitId, checkIn, checkOut, reservationId: resId });
+    } catch (e) {
+      if (e instanceof UnitOverlap) {
+        return NextResponse.json({ error: ALREADY_BOOKED }, { status: 409 });
+      }
+      throw e;
+    }
 
     // Канали: ночі цього типу стали зайнятішими. Шлях старший за чергу й без
     // транзакції, тож одразу після запису, тим самим `sql`.

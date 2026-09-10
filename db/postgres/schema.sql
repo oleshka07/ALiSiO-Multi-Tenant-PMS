@@ -22,6 +22,7 @@
 --
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;  -- gen_random_bytes for id defaults
+CREATE EXTENSION IF NOT EXISTS btree_gist;  -- no_double_booking
 
 CREATE TABLE "accruals" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
@@ -1851,6 +1852,7 @@ CREATE TABLE "reservations" (
   "lodging_discount_reason" TEXT,
   "breakfast_included" BOOLEAN,
   "company_id" TEXT,
+  "is_pool_unit" BOOLEAN DEFAULT false NOT NULL,
   PRIMARY KEY ("id"),
   UNIQUE ("guest_page_token"),
   CHECK (status IN ('draft', 'tentative', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show')),
@@ -2738,6 +2740,21 @@ ALTER TABLE "widget_handshakes" ADD CONSTRAINT "fk_widget_handshakes_organizatio
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "widget_price_list" ADD CONSTRAINT "fk_widget_price_list_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+
+-- ── Constraints SQLite cannot express ───────────────────────────────────
+--
+-- Not read out of the SQLite database like everything above: SQLite has no
+-- EXCLUDE at all, so these live in scripts/pg-schema.mjs and are mirrored by
+-- a migration for environments that already exist.
+
+ALTER TABLE "reservations" ADD CONSTRAINT "no_double_booking"
+  EXCLUDE USING gist (
+    "unit_id" WITH =,
+    daterange("check_in", "check_out") WITH &&
+  )
+  WHERE ("unit_id" IS NOT NULL
+         AND NOT "is_pool_unit"
+         AND "status" NOT IN ('cancelled', 'no_show'));
 
 -- ── Indexes ─────────────────────────────────────────────────────────────
 

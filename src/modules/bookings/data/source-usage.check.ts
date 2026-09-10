@@ -77,20 +77,36 @@ await inOurs(() => sql.run('INSERT INTO guests (id, organization_id, first_name,
 await inTheirs(() => sql.run('INSERT INTO guests (id, organization_id, first_name, last_name) VALUES (?, ?, ?, ?)',
   ['su_guest_n', neighbour.organizationId, 'N', 'N']));
 
+/**
+ * Ночі — параметром, бо в одному номері двох броней на одну ніч не буває.
+ *
+ * Тут стояла одна пара дат на всі броні, тож `ota_zeta` і `direct` сідали в
+ * ТОЙ САМИЙ номер на ТУ САМУ ніч — стан, якого в готелі не існує. Поки заборону
+ * тримала лише уважність коду, засів проходив; обмеження `no_double_booking`
+ * (INC-045) відмовило першим же прогоном `check:pg`. Сцена про ДЖЕРЕЛА броні —
+ * дати їй байдужі, тому виправлено засів.
+ */
+// Виїзд рахує JS, не SQL: `date(?, '+1 day')` — діалект SQLite, і на Postgres
+// запит просто не розібрався б (check-dialect). Арифметикою дат, а не правкою
+// двох останніх цифр: 31 грудня перетворилось би на 32-ге.
+const nextDay = (d: string) => new Date(Date.parse(`${d}T00:00:00Z`) + 86_400_000)
+  .toISOString().slice(0, 10);
+
 const stay = async (id: string, organizationId: string, propertyId: string, unitId: string,
-  guestId: string, src: string) =>
+  guestId: string, src: string, night = '2026-12-01') =>
   forOrg(organizationId, () => sql.run(
     `INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, source,
                                check_in, check_out, nights, adults, currency)
-     VALUES (?, ?, ?, ?, ?, ?, '2026-12-01', '2026-12-02', 1, 2,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 2,
              (SELECT default_currency FROM organizations WHERE id = ?))`,
-    [id, organizationId, propertyId, unitId, guestId, src, organizationId]));
+    [id, organizationId, propertyId, unitId, guestId, src, night, nextDay(night), organizationId]));
 
 // Фікстура вже дала 2 прямі броні в А і 3 в Б (DEFAULT 'direct'). Додаємо:
 // три `ota_zeta` у Б і жодної в А; дві `web` у А; три `direct` у Б.
 for (const i of [0, 1, 2]) {
-  await stay(`su_b_z${i}`, fx.organizationId, fx.b.id, fx.b.unitIds[i], 'su_guest', 'ota_zeta');
-  await stay(`su_b_d${i}`, fx.organizationId, fx.b.id, fx.b.unitIds[i], 'su_guest', 'direct');
+  // Два джерела в тому самому номері — на РІЗНІ ночі: 1-ша і 3-тя грудня.
+  await stay(`su_b_z${i}`, fx.organizationId, fx.b.id, fx.b.unitIds[i], 'su_guest', 'ota_zeta', '2026-12-01');
+  await stay(`su_b_d${i}`, fx.organizationId, fx.b.id, fx.b.unitIds[i], 'su_guest', 'direct', '2026-12-03');
 }
 await stay('su_a_web1', fx.organizationId, fx.a.id, fx.a.unitIds[0], 'su_guest', 'web');
 await stay('su_a_web2', fx.organizationId, fx.a.id, fx.a.unitIds[1], 'su_guest', 'web');
