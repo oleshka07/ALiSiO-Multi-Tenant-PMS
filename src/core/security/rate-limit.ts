@@ -9,7 +9,15 @@ import { getSql } from '../db/async.ts';
  * Ліміт «3 на 5 хвилин» тоді нічого не обмежує, і помітити це можна лише
  * зловживанням.
  */
-export type RateLimitedAction = 'service_order' | 'registration' | 'payment_request';
+export type RateLimitedAction = 'service_order' | 'registration' | 'payment_request'
+  // Обмін коду парування на токен термінала (Блок «Кіоск» §3.1). Ключ тут —
+  // не токен, а IP: коду ще немає, доводити нічим, і саме тому маршрут
+  // мусить коштувати спроби. Шість цифр без цього ліміту підбираються.
+  | 'kiosk_pair'
+  // Виклик самого термінала. Ключ — пристрій: ліміт стоїть НА ПРИСТРОЇ, а не
+  // на IP, бо всі термінали готелю сидять за одним вихідним IP, і спільне
+  // відро зробило б повільним холом кожен другий.
+  | 'kiosk_device';
 
 /**
  * Check rate limit for a given token + action.

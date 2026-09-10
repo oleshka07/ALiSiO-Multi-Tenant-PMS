@@ -57,7 +57,7 @@ const strict = process.argv.includes('--strict');
  * доводить секретом із оточення. Той гейт його не бачить, бо він не під
  * вартою й не в списку публічних; тут він на місці.
  */
-const PUBLIC_PREFIX = /^(widget|booking|guest|public|webhooks?|health|cron|apps\/winhotel-import\/snapshots)(\/|$)/;
+const PUBLIC_PREFIX = /^(widget|booking|guest|public|webhooks?|health|cron|apps\/winhotel-import\/snapshots|apps\/kiosk)(\/|$)/;
 
 /**
  * Двері, які доводять право ПЕРЕПУСТКОЮ в самому запиті.
@@ -84,6 +84,16 @@ const TOKEN_DOORS = [
   // Токен агента Winhotel у заголовку: без нього прийом знімка відмовляє
   // 401 до першого байта (src/apps/winhotel-import/data/agent-token.ts).
   'organizationByAgentToken',
+  // Токен ТЕРМІНАЛА в заголовку: `requireDevice` відмовляє 401 до першого
+  // запиту про бронь, і саме він, а не `deviceByToken`, — двері: звірка
+  // токена сама по собі нічого не гейтить, гейтить те, що вона стоїть перед
+  // роботою і кидає (src/apps/kiosk/api/session.handlers.ts).
+  'requireDevice',
+  // Обмін коду парування: токена ще немає, і перепустка — сам код. Читання
+  // йде під `runWithPublicToken`, тобто перепустка стоїть на ЗʼЄДНАННІ
+  // (інваріант 14), а не в `WHERE`; функція названа тут, бо без неї рядок
+  // парування не читається взагалі (src/apps/kiosk/data/devices.repo.ts).
+  'pairingByCode',
 ];
 
 /**
@@ -124,8 +134,17 @@ const TENANT_BY_HAND = ['booking_sites', 'runWithOrganization'];
  * публічним префіксом: `booking/drafts-count` це бейдж чернеток в адмінці.
  * `check-route-guards` його теж не рахує — пропускає за префіксом, — тож він
  * не потрапляє в жоден із двох звітів. Тут він принаймні названий.
+ *
+ * `withOwner` тут із 10.09.2026: картка застосунку «Кіоск» лежить під
+ * публічним префіксом (`/api/apps/kiosk/admin/`), і без цього слова її
+ * маршрути виходили «доведені токеном» — бо в тексті модуля стояло імʼя
+ * функції, якою парується ІНШИЙ маршрут. Це четверта брехня цього гейта,
+ * спіймана до того, як стала звітом: варта, якої гейт не знає, читається як
+ * її відсутність, а сусідні двері в тому самому файлі — як її наявність.
+ * Звідси й друга половина ліку: публічний і власницький хендлери кіоска
+ * лежать у РІЗНИХ файлах.
  */
-const OPERATOR_GUARDS = ['withActor', 'withPermission'];
+const OPERATOR_GUARDS = ['withActor', 'withPermission', 'withOwner'];
 
 /**
  * Маршрути, яким нема чого доводити, — з причиною. Список, а не прапорець:
@@ -153,8 +172,34 @@ const ALLOWED = {
  * маршруту, нікуди не веде — його текст і є весь текст.
  */
 function handlerSources(routeFile) {
+  const { modules } = handlerParts(routeFile);
+  return modules;
+}
+
+/**
+ * Те саме читання, але з ОДНИМ додатковим зрізом: текст самих хендлерів, у
+ * які веде цей маршрут, окремо від решти модуля.
+ *
+ * ── Пʼята брехня, і вона з'явилась від виправлення четвертої ────────────
+ *
+ * Коли в перелік варт додали `withOwner` (картка застосунку «Кіоск» лежить
+ * під публічним префіксом), маршрут прийому знімка Winhotel миттю перестав
+ * бути «доведеним токеном» і став «під вартою». Нічого в ньому не змінилось:
+ * просто в ТОМУ САМОМУ файлі, поруч із безсесійним `receiveSnapshot`, живуть
+ * три хендлери картки під `withOwner`, а гейт читав файл цілком. Тобто варта
+ * СУСІДА зараховувалась маршрутові, і замість помилкового «доведено токеном»
+ * вийшло помилкове «під вартою» — маршрут просто зник зі звіту.
+ *
+ * Тому питання розділені. «Чи маршрут під вартою оператора» питається лише в
+ * тексті ЙОГО хендлера: варта стоїть обгорткою навколо самої функції і в
+ * чужу не переїжджає. «Чим доводить право» питається в усьому модулі: двері
+ * часто лежать у помічнику (`requireDevice`, `organizationByAgentToken`),
+ * якого хендлер лише кличе.
+ */
+function handlerParts(routeFile) {
   const raw = fs.readFileSync(path.join(ROOT, routeFile), 'utf8');
   const out = [raw];
+  const bodies = [];
 
   // Що маршрут імпортує — тільки ці імена можуть вести в модуль.
   const imported = new Set();
@@ -169,20 +214,30 @@ function handlerSources(routeFile) {
   // (`export const GET = async (…) => getGuestPortal(…)`).
   const used = [...imported].filter((name) =>
     new RegExp(String.raw`export[\s\S]{0,400}?\b${name}\b`).test(raw));
-  if (used.length === 0) return out;
+  // Хендлер написаний у самому файлі маршруту — його текст і є весь текст,
+  // і він же текст хендлера: розділяти нічого.
+  if (used.length === 0) return { modules: out, bodies: out };
 
   for (const file of walk(path.join(ROOT, 'src'))) {
     if (!/\.tsx?$/.test(file) || /\.check\.tsx?$/.test(file)) continue;
     if (file.endsWith(`${path.sep}route.ts`)) continue;   // маршрут не веде в маршрут
     const text = fs.readFileSync(file, 'utf8');
+    let hit = false;
     for (const name of used) {
-      if (new RegExp(String.raw`export\s+(?:async\s+function|function|const)\s+${name}\b`).test(text)) {
-        out.push(text);
-        break;
-      }
+      // Зріз від оголошення хендлера до наступного верхньорівневого `export`:
+      // саме стільки тексту належить ЙОМУ, і саме в ньому стоїть обгортка.
+      const at = new RegExp(String.raw`export\s+(?:async\s+function|function|const)\s+${name}\b`).exec(text);
+      if (!at) continue;
+      hit = true;
+      const rest = text.slice(at.index);
+      const next = rest.indexOf('\nexport ', 1);
+      bodies.push(next === -1 ? rest : rest.slice(0, next));
     }
+    if (hit) out.push(text);
   }
-  return out;
+  // Жодного визначення не знайшли — питати нема чого, і мовчазне «під вартою»
+  // тут було б гіршим за чесне «модуль цілком» (інваріант 13).
+  return { modules: out, bodies: bodies.length > 0 ? bodies : out };
 }
 
 /**
@@ -223,8 +278,10 @@ for (const file of walk(path.join(ROOT, 'src', 'app', 'api'))) {
   const name = rel.replace(/^src\/app\/api\//, '').replace(/\/route\.ts$/, '');
   if (!PUBLIC_PREFIX.test(name)) continue;
 
-  const sources = handlerSources(rel).map(stripComments).join('\n');
-  if (OPERATOR_GUARDS.some((g) => sources.includes(g))) {
+  const parts = handlerParts(rel);
+  const sources = parts.modules.map(stripComments).join('\n');
+  const own = parts.bodies.map(stripComments).join('\n');
+  if (OPERATOR_GUARDS.some((g) => own.includes(g))) {
     guarded.push(name);
     continue;
   }

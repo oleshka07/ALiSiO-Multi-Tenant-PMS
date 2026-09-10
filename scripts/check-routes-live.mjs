@@ -81,6 +81,7 @@
 import assert from 'node:assert';
 import { readFile } from 'node:fs/promises';
 import { getSql } from '../src/core/db/async.ts';
+import { runWithOrganization } from '../src/core/auth/tenant-context.ts';
 import { nameResolver, missingFrom, isUnresolvedObject } from './lib/db-names.mjs';
 
 const BASE = process.env.BASE_URL || 'http://localhost:3000';
@@ -126,7 +127,12 @@ const SWEPT_BY_PROPERTY = ['cm_connections', 'fees_taxes', 'booking_sites'];
 const SWEPT_BY_ORG_IN_PROPERTY = ['cm_outbox', 'cm_mappings', 'cm_events', 'cm_inbound_bookings'];
 const SWEPT_BY_ORG = ['invoices', 'invoice_counters', 'invoice_series', 'guests', 'organization_features',
   'unit_type_amenities', 'property_amenities', 'amenities', 'amenity_categories',
-  'organization_currencies', 'finance_exchange_rates'];
+  'organization_currencies', 'finance_exchange_rates',
+  // Кіоск (10.09.2026). Каскад від `properties` зніс би пристрій і код
+  // парування сам, але `kiosk_events` висить на ОРГАНІЗАЦІЇ, а не на
+  // будинку, і після неї лишався б журнал проби. Названо всі три: прибирання
+  // за каскадом — це прибирання, про яке гейт не стверджує нічого.
+  'kiosk_events', 'kiosk_devices', 'kiosk_pairings'];
 
 const CLEANUP_NAMES = [
   ...SWEPT_BY_RESERVATION.map((table) => ({ table, column: 'reservation_id' })),
@@ -187,7 +193,26 @@ const sweepEach = async (tables, column, value) => {
   }
 };
 
+/**
+ * Засів і прибирання — ПІД ОРЕНДАРЕМ.
+ *
+ * На SQLite політик немає, і голий `sql.run` працював. На справжньому
+ * Postgres під роллю `alisio_app` той самий рядок відхиляється політикою:
+ * `new row violates row-level security policy for table "app_users"` — гейт
+ * обривався на власній фікстурі, ще не діставшись до жодного маршруту.
+ *
+ * Тобто «зелено» тут означало «зелено на SQLite», і про другий рушій гейт не
+ * стверджував нічого. `organizations` лишається поза обгорткою навмисно: це
+ * сама таблиця орендарів, у неї немає `organization_id`, і політики на ній
+ * немає (`pg-schema.mjs`, `rlsIdentity`).
+ */
+const asTenant = (fn) => runWithOrganization(ORG, fn);
+
 async function cleanup() {
+  return asTenant(() => cleanupInner());
+}
+
+async function cleanupInner() {
   const props = (await sql.rows('SELECT id FROM properties WHERE organization_id = ?', [ORG])).map((r) => r.id);
   for (const pid of props) {
     const resIds = (await sql.rows('SELECT id FROM reservations WHERE property_id = ?', [pid])).map((r) => r.id);
@@ -207,6 +232,8 @@ async function cleanup() {
   await sql.run('DELETE FROM properties WHERE organization_id = ?', [ORG]);
   await sql.run('DELETE FROM sessions WHERE user_id = ?', [USER]);
   await sql.run('DELETE FROM app_users WHERE organization_id = ?', [ORG]);
+  // `organizations` — сама таблиця орендарів: політики на ній немає
+  // (`rlsIdentity`), тож контекст навколо їй байдужий.
   await sql.run('DELETE FROM organizations WHERE id = ?', [ORG]);
 }
 
@@ -346,17 +373,17 @@ async function main() {
   await cleanup();
   await sql.run('INSERT INTO organizations (id, name, slug, default_currency, language) VALUES (?, ?, ?, ?, ?)',
     [ORG, 'Routes probe', `${TAG}org`, 'EUR', 'uk']);
-  await sql.run(
+  await asTenant(() => sql.run(
     'INSERT INTO app_users (id, organization_id, email, full_name, role, password_hash) VALUES (?, ?, ?, ?, ?, ?)',
-    [USER, ORG, 'routes@probe.test', 'Routes probe', 'owner', PROBE_HASH]);
+    [USER, ORG, 'routes@probe.test', 'Routes probe', 'owner', PROBE_HASH]));
   // Модулі, вимкнені за замовчуванням (П15): гейт перевіряє МАРШРУТИ, а не
   // право на модуль — 403 «не куплено» тут означав би, що ми нічого не
   // спитали.
-  for (const feature of ['guest_page', 'channels', 'invoicing', 'accounting', 'booking_engine', 'reports', 'day_sheets']) {
-    await sql.run(
+  for (const feature of ['guest_page', 'channels', 'invoicing', 'accounting', 'booking_engine', 'reports', 'day_sheets', 'kiosk']) {
+    await asTenant(() => sql.run(
       `INSERT INTO organization_features (organization_id, feature, enabled) VALUES (?, ?, TRUE)
        ON CONFLICT(organization_id, feature) DO UPDATE SET enabled = TRUE`,
-      [ORG, feature]);
+      [ORG, feature]));
   }
 
   try {
@@ -491,7 +518,13 @@ async function main() {
       //
       // Рівно та сторінка, яка не відкривалась півтора місяця. Токен береться
       // з бази, бо його видає створення броні — так само, як лист гостю.
-      const tokenRow = await sql.row('SELECT guest_page_token FROM reservations WHERE id = ?', [booking.id]);
+      // ПІД ОРЕНДАРЕМ, як і решта читань фікстури: на Postgres голий `sql.row`
+      // повертає `undefined` — політика `reservations` не бачить рядка без
+      // орендаря, і гейт доповідав «бронь не отримала токена» про бронь, у
+      // якої токен є. Дефект гейта, не продукту, і саме той рід, від якого
+      // «зелено на SQLite» виглядає доказом.
+      const tokenRow = await asTenant(() =>
+        sql.row('SELECT guest_page_token FROM reservations WHERE id = ?', [booking.id]));
       const token = tokenRow?.guest_page_token;
       if (claim('гостьовий портал', !!token, 'бронь отримала гостьовий токен')) {
         const guestRes = await fetch(`${BASE}/api/guest/${token}`);
@@ -559,10 +592,10 @@ async function main() {
     // (немає ключа → 409), а не про 500: маршрут, який падає, і маршрут,
     // який каже «ключа немає», для екрана — різні речі.
     const connId = `${TAG}conn`;
-    await sql.run(
+    await asTenant(() => sql.run(
       `INSERT INTO cm_connections (id, organization_id, property_id, provider, environment, webhook_token, webhook_secret, is_enabled)
        VALUES (?, ?, ?, 'channex', 'staging', ?, ?, TRUE)`,
-      [connId, ORG, property.id, `${TAG}tok`, `${TAG}secret`]);
+      [connId, ORG, property.id, `${TAG}tok`, `${TAG}secret`]));
 
     const connRes = await call(cookie, '/api/channels/connections');
     const conns = await body(connRes);
@@ -616,10 +649,10 @@ async function main() {
     // Тому тут стверджується не «маршрут відповів», а «відповів валютою
     // ЦЬОГО готелю»: EUR, як його заведено, і жодного запасного значення.
     const siteId = `${TAG}site`;
-    await sql.run(
+    await asTenant(() => sql.run(
       `INSERT INTO booking_sites (id, organization_id, property_id, name, slug, type, currency, status)
        VALUES (?, ?, ?, ?, ?, 'widget', 'EUR', 'active')`,
-      [siteId, ORG, property.id, 'Routes probe site', `${TAG}site`]);
+      [siteId, ORG, property.id, 'Routes probe site', `${TAG}site`]));
 
     const wcRes = await fetch(`${BASE}/api/widget/config?propertyId=${property.id}`);
     const wc = await body(wcRes);
@@ -726,6 +759,165 @@ async function main() {
     claim('звіти', ctRes.status === 200, `турзбір відповідає 200 (${ctRes.status})`);
     claim('звіти', Array.isArray(ct?.rows) || Array.isArray(ct?.nights) || typeof ct === 'object',
       `турзбір віддав структуру, а не порожнечу (${JSON.stringify(ct)?.slice(0, 40)})`);
+
+    // ── Кіоск: форма відповіді терміналу ─────────────────────────────────
+    //
+    // Родина, якої не було до 10.09.2026. Кіоск — єдина поверхня, де ФОРМА
+    // відповіді і є функцією: біля екрана немає людини, яка перечитає поле
+    // під іншою назвою, і поле, що приїхало `undefined`, — це порожній
+    // прямокутник у холі, який ніхто не полагодить.
+    //
+    // Ланцюжок повний, від картки до гостя: власник робить код парування →
+    // термінал обмінює його на токен → токен віддає сесію → сесія називає
+    // будинок і смугу → пошук з одним чинником відмовляє, з двома відповідає.
+    // Кожна ланка тут — окреме твердження, бо кожна ламається окремо.
+    // Сам ЕКРАН — 200, а не 307 на вхід оператора.
+    //
+    // Це не зайве твердження: саме так воно й було зламане до 10.09.2026.
+    // `/api/apps/kiosk/` стояв у публічному переліку `proxy.ts`, а сторінка
+    // `/kiosk` — ні, і термінал у холі показував би гостю форму входу. Жоден
+    // статичний гейт цього не бачить за побудовою: `check-public-routes` і
+    // `check-route-guards` читають `src/app/api`, СТОРІНОК вони не знають.
+    // Спіймав дим по живій збірці, тому твердження живе тут.
+    const screenRes = await fetch(`${BASE}/kiosk`, { redirect: 'manual' });
+    claim('кіоск', screenRes.status === 200,
+      `екран /kiosk віддається гостю без сесії (${screenRes.status}; 307 = перенаправлення на вхід оператора)`);
+
+    const pairRes = await call(cookie, '/api/settings/apps/kiosk/pairings', {
+      method: 'POST',
+      body: JSON.stringify({ propertyId: property.id, name: 'Routes probe terminal' }),
+    });
+    const pairing = await body(pairRes);
+    const gotCode = pairRes.status === 200 && typeof pairing?.code === 'string' && /^[0-9]{6}$/.test(pairing.code);
+    claim('кіоск', gotCode, `код парування — шість цифр (${pairRes.status})`);
+    claim('кіоск', typeof pairing?.expiresAt === 'string',
+      'код має строк — без нього термінал не знає, скільки в нього часу');
+
+    if (gotCode) {
+      // Обмін коду — БЕЗ сесії: саме так це робить термінал у холі.
+      const claimRes = await fetch(`${BASE}/api/apps/kiosk/pair`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ code: pairing.code }),
+      });
+      const claimed = await body(claimRes);
+      const paired = claimRes.status === 200 && typeof claimed?.token === 'string';
+      // 500 на цій ланці майже завжди означає не кіоск, а порожній
+      // `APP_SECRET_KEY` на СЕРВЕРІ: `pairDevice` відмовляється класти секрет
+      // пристрою в базу відкритим (`seal()`), і відмова виходить назовні
+      // пʼятисоткою. У CI ключ стоїть у кроці `start`; на стенді його треба
+      // передати руками. Твердження лишається ЧЕРВОНИМ — конфіг сервера це
+      // теж частина «маршрут відповідає», — але читач бачить, куди дивитись,
+      // замість того щоб три години шукати ваду в самому паруванні.
+      const hint = claimRes.status === 500
+        ? ' — перевірте APP_SECRET_KEY на сервері: без нього sealing відмовляє'
+        : '';
+      claim('кіоск', paired, `код обміняно на токен без сесії (${claimRes.status})${hint}`);
+      claim('кіоск', claimed?.propertyId === property.id,
+        'токен привʼязаний до того будинку, на який виписано код');
+
+      if (paired) {
+        const asDevice = (path, payload) => fetch(`${BASE}/api/apps/kiosk/${path}`, {
+          method: payload === undefined ? 'GET' : 'POST',
+          headers: {
+            authorization: `Bearer ${claimed.token}`,
+            ...(payload === undefined ? {} : { 'content-type': 'application/json' }),
+          },
+          body: payload === undefined ? undefined : JSON.stringify(payload),
+        });
+
+        const sessRes = await asDevice('session');
+        const sess = await body(sessRes);
+        claim('кіоск', sessRes.status === 200, `сесія термінала — 200 (${sessRes.status})`);
+        claim('кіоск', sess?.property?.id === property.id && typeof sess?.property?.name === 'string',
+          'сесія називає будинок іменем, а не лише id — це заголовок екрана');
+        claim('кіоск', Array.isArray(sess?.languages) && sess.languages.length === 2,
+          `сесія віддає дві мови (КІ7), отримали ${JSON.stringify(sess?.languages)}`);
+        claim('кіоск', typeof sess?.touchBand?.top === 'number' && typeof sess?.touchBand?.bottom === 'number',
+          'сесія віддає робочу смугу числами — інакше кнопки лягають на весь екран');
+        claim('кіоск', sess?.checkinPaymentPolicy === 'prepaid' || sess?.checkinPaymentPolicy === 'allow_pay_later',
+          `політика оплати — відоме слово, отримали ${sess?.checkinPaymentPolicy}`);
+        claim('кіоск', 'walkinUrl' in (sess ?? {}),
+          'поле walk-in присутнє навіть порожнім — екран питає «чи є», а не «чи не впало»');
+
+        // Один чинник — це 400, а не «не знайдено»: гість мусить дізнатись,
+        // що ввів замало, і це відповідь про його ввід, а не про чужу бронь.
+        const oneRes = await asDevice('find', { lastName: 'Probe' });
+        claim('кіоск', oneRes.status === 400, `пошук з одним чинником — 400 (${oneRes.status})`);
+
+        const twoRes = await asDevice('find', { lastName: 'Probe', checkIn: day(1) });
+        const two = await body(twoRes);
+        claim('кіоск', twoRes.status === 200 && typeof two?.found === 'boolean',
+          `пошук із двома чинниками — 200 і поле found (${twoRes.status})`);
+
+        // Чужий токен — 401 із живого маршруту, а не 500 і не 200.
+        const alienRes = await fetch(`${BASE}/api/apps/kiosk/session`, {
+          headers: { authorization: `Bearer ${ORG}.${property.id}.kd_nope.${'a'.repeat(64)}` },
+        });
+        claim('кіоск', alienRes.status === 401, `чужий токен пристрою — 401 (${alienRes.status})`);
+
+        // ── Картка застосунку (частина В) ───────────────────────────────
+        //
+        // Вона живе під `/api/settings/apps/kiosk/` — у звичайному
+        // охоронюваному контурі. Тому перше твердження про неї — БЕЗ сесії:
+        // маршрут картки, який відповідає невідомому, це діра, а не зручність.
+        const noCookie = await fetch(`${BASE}/api/settings/apps/kiosk/devices`, { redirect: 'manual' });
+        claim('кіоск', noCookie.status === 307 || noCookie.status === 401,
+          `картка без сесії не відповідає (${noCookie.status})`);
+
+        const devicesRes = await call(cookie, '/api/settings/apps/kiosk/devices');
+        const deviceList = await body(devicesRes);
+        claim('кіоск', devicesRes.status === 200 && Array.isArray(deviceList?.devices),
+          `список терміналів — 200 і масив (${devicesRes.status})`);
+        claim('кіоск', (deviceList?.devices ?? []).some((d) => d.id === claimed.deviceId),
+          'щойно спарований термінал є в списку картки');
+
+        const polRes = await call(cookie, `/api/settings/apps/kiosk/policies?property_id=${property.id}`);
+        const pol = await body(polRes);
+        claim('кіоск', polRes.status === 200 && typeof pol?.autoAssign === 'boolean',
+          `політики — 200 і автопризначення булевим (${polRes.status})`);
+        claim('кіоск', ['foreigners', 'always', 'never'].includes(pol?.signature),
+          `політика підпису — відоме слово, отримали ${pol?.signature}`);
+
+        // Запис і читання назад: збереглося те, що просили, а не «ok».
+        const putRes = await call(cookie, '/api/settings/apps/kiosk/policies', {
+          method: 'PUT',
+          body: JSON.stringify({
+            propertyId: property.id, checkinPaymentPolicy: 'allow_pay_later',
+            signature: 'always', autoAssign: false, walkinUrl: '', earliestCheckIn: '15:00',
+          }),
+        });
+        claim('кіоск', putRes.status === 200, `політики збережено (${putRes.status})`);
+        const back = await body(await call(cookie, `/api/settings/apps/kiosk/policies?property_id=${property.id}`));
+        claim('кіоск', back?.checkinPaymentPolicy === 'allow_pay_later' && back?.signature === 'always'
+          && back?.autoAssign === false && back?.earliestCheckIn === '15:00',
+          `політики читаються назад тими самими: ${JSON.stringify(back)}`);
+
+        // Слово поза словником — 400, а не 500 на CHECK-у бази.
+        const badRes = await call(cookie, '/api/settings/apps/kiosk/policies', {
+          method: 'PUT',
+          body: JSON.stringify({ propertyId: property.id, signature: 'sometimes' }),
+        });
+        claim('кіоск', badRes.status === 400, `невідоме слово підпису — 400 (${badRes.status})`);
+
+        // Смуга поза межами — теж 400, і термінал лишається зі своєю.
+        const bandRes = await call(cookie, `/api/settings/apps/kiosk/devices/${claimed.deviceId}/config`, {
+          method: 'PUT', body: JSON.stringify({ touchBand: { top: 90, bottom: 10 } }),
+        });
+        claim('кіоск', bandRes.status === 400, `перевернута смуга — 400 (${bandRes.status})`);
+
+        const todayRes = await call(cookie, `/api/settings/apps/kiosk/today?property_id=${property.id}`);
+        const today = await body(todayRes);
+        claim('кіоск', todayRes.status === 200 && typeof today?.counts?.checkedIn === 'number'
+          && typeof today?.day === 'string' && typeof today?.timezone === 'string',
+          `«Kiosk heute» — 200, доба і підсумок числами (${todayRes.status})`);
+        claim('кіоск', Array.isArray(today?.events) && today.events.some((e) => e.kind === 'pair'),
+          'подія парування є в добі — журнал наповнюється сам');
+
+        const alienDay = await call(cookie, `/api/settings/apps/kiosk/today?property_id=${TAG}alien`);
+        claim('кіоск', alienDay.status === 404, `доба чужого обʼєкта — 404 (${alienDay.status})`);
+      }
+    }
 
     // ── Вісь обʼєкта (INC-029) ───────────────────────────────────────────
     //

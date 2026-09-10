@@ -153,12 +153,23 @@ async function unassignedByTypeDay(
   propertyIds: string[],
   from: DateStr,
   to: DateStr,
+  excludeReservationId?: string | null,
 ): Promise<Map<UnitTypeId, Map<DateStr, number>>> {
   const sql = getSql();
   const result = new Map<UnitTypeId, Map<DateStr, number>>();
   if (propertyIds.length === 0) return result;
 
   const ph = propertyIds.map(() => '?').join(', ');
+  // Бронь, якій САМЕ ЗАРАЗ шукають номер, не тисне сама на себе.
+  //
+  // Той самий клас, що INC-045 у PATCH: питання «які номери вільні для ЦІЄЇ
+  // броні» задає бронь, яка ще не має номера, — тобто вона входить у власний
+  // тиск і з'їдає одну кімнату свого ж типу. У готелі на дві кімнати цього
+  // типу це означає, що остання вільна ніколи не призначиться: `assignUnit`
+  // відповідав «вільних немає», маючи перед собою вільну і чисту кімнату.
+  // Виняток стоїть тут, у джерелі тиску, а не у виклику: інакше кожен
+  // наступний споживач мусив би віднімати одиницю сам і хтось забув би.
+  const skip = excludeReservationId ? ' AND r.id <> ?' : '';
   const rows = (await sql.rows<{ unit_type_id: UnitTypeId; check_in: string; check_out: string }>(
     `SELECT r.unit_type_id, r.check_in, r.check_out
        FROM reservations r
@@ -166,8 +177,8 @@ async function unassignedByTypeDay(
         AND r.unit_id IS NULL
         AND r.unit_type_id IS NOT NULL
         AND r.status NOT IN ('cancelled', 'no_show')
-        AND r.check_in < ? AND r.check_out > ?`,
-    [...propertyIds, to, from],
+        AND r.check_in < ? AND r.check_out > ?${skip}`,
+    excludeReservationId ? [...propertyIds, to, from, excludeReservationId] : [...propertyIds, to, from],
   )) as { unit_type_id: UnitTypeId; check_in: string; check_out: string }[];
 
   for (const r of rows) {
@@ -228,6 +239,12 @@ export async function freeUnitsForRange(
   unitIds: UnitId[],
   from: DateStr,
   to: DateStr,
+  /**
+   * Бронь, для якої й питають. Її власний тиск не рахується — див. коментар
+   * у `unassignedByTypeDay`. Не передано — рахується все, як було: віджет
+   * питає «що я можу продати», і там жодної броні виключати не треба.
+   */
+  excludeReservationId?: string | null,
 ): Promise<Set<UnitId>> {
   if (unitIds.length === 0) return new Set();
   if (daysBetween(from, to) <= 0) return new Set(unitIds);
@@ -253,7 +270,7 @@ export async function freeUnitsForRange(
   )) as { id: UnitId; unit_type_id: UnitTypeId; property_id: string }[];
 
   const properties = [...new Set(meta.map(m => m.property_id))];
-  const pressure = await unassignedByTypeDay(properties, from, to);
+  const pressure = await unassignedByTypeDay(properties, from, to, excludeReservationId);
   if (pressure.size === 0) return new Set(free);
 
   const result = new Set(free);

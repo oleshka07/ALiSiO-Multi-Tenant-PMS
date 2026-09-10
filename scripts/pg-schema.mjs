@@ -120,6 +120,12 @@ const OVERRIDE = {
   // Postgres — при тому, що на SQLite воно б працювало й розбіжність
   // виявилась би лише на сервері. Міграція 0112 оголошує його так само.
   'organizations.pricing_advanced': 'BOOLEAN',
+  // Кіоск (0413): «чи вільно терміналу обирати кімнату сам» — прапорець, а не
+  // лічильник. Без цього рядка евристика бачить INTEGER із дефолтом 1 і робить
+  // BIGINT, а міграція оголошує BOOLEAN — тобто мігрована база і база нового
+  // клієнта розійшлися б у ТИПІ колонки, і `check-schema-drift` сказав би про
+  // це вже після того, як обидві існують.
+  'properties.kiosk_auto_assign': 'BOOLEAN',
   // Три стани: null = «вирішує правило каналу», і це не те саме, що false.
   // BOOLEAN у Postgres nullable, тож третій стан зберігається.
   'unit_types.breakfast_included': 'BOOLEAN',
@@ -447,6 +453,13 @@ const PUBLIC_TOKEN_READ = new Map([
   // read before the tenant is known (migration 0060). The header secret is
   // checked by code after the read; the token opens a row, never the door.
   ['cm_connections', 'webhook_token'],
+  // Термінал у холі обмінює шестизначний код на токен, ще не знаючи
+  // орендаря: рядок парування має бути прочитаний ДО того, як відомо, чий
+  // він (Блок «Кіоск», міграція 0411). У базі лежить sha256 коду, і саме він
+  // ставиться перепусткою — тобто перепустка тут не «схожа на секрет», вона
+  // і Є секрет, тож звіряти її може сама політика. Вікно завширшки в один
+  // запит: далі йде звичайний `runWithOrganization`.
+  ['kiosk_pairings', 'code_hash'],
 ]);
 
 /**

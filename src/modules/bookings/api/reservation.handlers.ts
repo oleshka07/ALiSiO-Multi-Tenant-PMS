@@ -12,6 +12,8 @@ import { writeBookingAudit, getBookingActor, buildBookingLabel } from './audit-l
 import { getSql } from '@core/db/async';
 import { serverError } from '@core/http/errors';
 import { decideCheckout } from '../data/checkout.repo';
+import { decideCheckIn } from '../data/checkin.repo';
+import type { CheckinRefusal } from '../domain/checkin-policy';
 import type { CheckoutDecision } from '../domain/checkout-balance';
 import { companyPayer } from '@companies/kernel';
 import { findStayConflict } from '../data/conflicts.repo';
@@ -23,6 +25,21 @@ import { legacyInvoiceWanted } from '../domain/folio-payment';
  * бази, і гість не має бачити двох різних текстів на одне й те саме (INC-045).
  */
 const UNIT_OCCUPIED = 'Кімната зайнята на ці дати іншим бронюванням';
+
+/**
+ * Текст рецепції на кожну відмову варти заселення.
+ *
+ * Слово ухвалює домен, текст добирає хендлер — і саме тому воно тут, а не у
+ * фасаді: кіоск на ті самі слова показує СВОЄ, німецькою або англійською
+ * (К7), і спільний рядок українською поїхав би гостю на екран у холі.
+ * Перші два тексти — дослівно ті, що бачила рецепція до фасаду.
+ */
+const CHECKIN_REFUSAL: Record<CheckinRefusal, string> = {
+  payment_required: 'Неможливо заселити без повної оплати. Спочатку завершіть оплату.',
+  not_registered: 'Неможливо заселити без реєстрації гостей. Заповніть документи всіх гостей.',
+  unit_dirty: 'Номер ще не прибрано.',
+  no_unit: 'Спочатку призначте номер.',
+};
 
 export const getReservation = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
@@ -187,37 +204,44 @@ export const updateReservation = withPermission('manage_bookings', async (reques
     // Capture full row snapshot BEFORE the update for audit trail
     const beforeSnapshot = await sql.row<any>('SELECT * FROM reservations WHERE id = ?', [id]);
 
-    if (body.status === 'checked_in') {
-      const current = await sql.row<any>('SELECT payment_status, registration_status FROM reservations WHERE id = ?', [id]) as any;
-      const payStatus = body.payment_status || current?.payment_status;
-      const regStatus = current?.registration_status;
 
-      if (!['paid', 'prepaid'].includes(payStatus)) {
-        return NextResponse.json({ error: 'Неможливо заселити без повної оплати. Спочатку завершіть оплату.' }, { status: 422 });
-      }
-      if (regStatus !== 'registered') {
-        return NextResponse.json({ error: 'Неможливо заселити без реєстрації гостей. Заповніть документи всіх гостей.' }, { status: 422 });
-      }
-    }
-
-    // Виселення з боргом — за політикою ОБʼЄКТА (0091, Блок 4): `none` не
-    // дивиться, `warning` виселяє з прапорцем у відповіді, `blocking` — 422 з
-    // назвою причини. Борг — з фоліо броні; без фоліо — зі статусу оплати,
-    // того самого слова, за яким варта заселення пускає гостя в номер.
-    // Домен — `checkout-balance.ts`, обидві осі тримає його перевірка.
-    // Заселення в неприбраний номер — попередження, не заборона (Блок 4 §2.2):
-    // рецепція бачить, що номер брудний, і вирішує сама.
+    // ── Варта заселення: одна на рецепцію і на кіоск ────────────────────
+    //
+    // Тут стояла ВЛАСНА копія правила: перелік оплачених статусів, порівняння
+    // `registration_status`, читання `cleaning_status`. Копія була єдиною,
+    // поки заселяла лише рецепція; кіоск (Блок «Кіоск», 10.09.2026) — другий
+    // писач, і два примірники одного правила розходяться мовчки.
+    //
+    // Тепер рішення ухвалює `decideCheckIn` (`data/checkin.repo.ts` →
+    // `domain/checkin-policy.ts`), а хендлер лишає собі те, що вміє лише він:
+    // ЗАПИС однією транзакцією разом із рештою полів. Правило оплати при
+    // цьому перестало бути числом у коді й стало політикою обʼєкта
+    // (`checkin_payment_policy`, 0146): дефолт `prepaid` дослівно повторює
+    // те, що було, тож рецепція нічого не помічає, а готель із
+    // `allow_pay_later` пускає гостя до оплати (К1).
+    //
+    // Заселення в неприбраний номер — попередження, не заборона (Блок 4
+    // §2.2): рецепція бачить, що номер брудний, і вирішує сама. Терміналу
+    // той самий домен відмовляє — біля нього нема кому вирішувати.
     let checkinWarning: 'unit_dirty' | null = null;
     if (body.status === 'checked_in') {
-      const targetUnit = body.unit_id ?? beforeSnapshot?.unit_id;
-      if (targetUnit) {
-        // З орендарем у запиті (рецензія 07.09 п.7), хоч власність номера
-        // вже доведена `ownedUnit` вище: правило одне на всі читання.
-        const u = await sql.row<any>(
-          `SELECT u.cleaning_status FROM units u JOIN properties p ON p.id = u.property_id
-            WHERE u.id = ? AND p.organization_id = ?`, [targetUnit, actor.organizationId]);
-        if (u && u.cleaning_status !== 'clean') checkinWarning = 'unit_dirty';
+      const seen = await decideCheckIn(sql, {
+        reservationId: id,
+        // Будинок — той, у якому лежить бронь: його щойно віддала
+        // `ownedReservation`, тобто право на нього вже доведене. Для
+        // рецепції це декларація, для термінала — межа (див. `FacadeActor`).
+        actor: {
+          kind: 'reception', organizationId: actor.organizationId,
+          propertyId: owned.property_id, userId: actor.user.id,
+        },
+        paymentStatus: body.payment_status,
+        unitId: body.unit_id,
+      });
+      if (seen === 'not_found') return NextResponse.json({ error: 'Not found' }, { status: 404 });
+      if (!seen.decision.allowed) {
+        return NextResponse.json({ error: CHECKIN_REFUSAL[seen.decision.refusal] }, { status: 422 });
       }
+      checkinWarning = seen.decision.warning;
     }
 
     let checkout: CheckoutDecision | null = null;

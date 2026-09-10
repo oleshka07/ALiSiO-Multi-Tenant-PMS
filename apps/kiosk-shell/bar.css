@@ -1,0 +1,17 @@
+#alisio-kiosk-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2147483647;
+  background: #0b1120;
+  color: #f8fafc;
+  font: 600 22px/1.2 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  padding: 18px 24px;
+  cursor: pointer;
+  text-align: center;
+  user-select: none;
+}
+/* На 45-й секунді смуга змінює колір — це єдине попередження, яке видно
+   на чужій сторінці, не втручаючись у неї. */
+#alisio-kiosk-bar[data-warn='true'] { background: #7f1d1d; }
