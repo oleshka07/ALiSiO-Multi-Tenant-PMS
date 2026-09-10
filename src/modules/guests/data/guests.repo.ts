@@ -55,7 +55,10 @@ export async function listGuests(
   limit: number = 50,
 ) {
   const sql = getSql();
-  let where = 'WHERE g.organization_id = ?';
+  // Злиті рядки — сліди від людей, а не люди (INC-300): у списку гостей їх
+  // немає, інакше та сама особа й далі показувалась би двічі, і злиття
+  // виглядало б так, ніби воно не спрацювало.
+  let where = 'WHERE g.organization_id = ? AND g.merged_into IS NULL';
   const params: string[] = [organizationId];
 
   if (filters.search) {
