@@ -120,6 +120,37 @@ const OVERRIDE = {
   // Postgres — при тому, що на SQLite воно б працювало й розбіжність
   // виявилась би лише на сервері. Міграція 0112 оголошує його так само.
   'organizations.pricing_advanced': 'BOOLEAN',
+  // Той самий клас, і цього разу він УЖЕ ламав прод-збірку (INC-308,
+  // 10.09.2026). `settles_to_debtor` — прапорець «оплата переносить борг на
+  // фірму»; імʼя ні на що не схоже, тож генератор дав BIGINT, а міграція 0141
+  // оголосила BOOLEAN. На середовищі, яке живе давно, таблицю створила
+  // МІГРАЦІЯ — там boolean і все працює. На базі, зібраній з цього
+  // `schema.sql` (новий клієнт і CI), таблицю створює ВІН — там bigint, і
+  // писач падає на кожному додаванні способу оплати:
+  // `invalid input syntax for type bigint: "false"`.
+  'fin_payment_methods.settles_to_debtor': 'BOOLEAN',
+  // Те саме поруч і з тієї ж причини: міграція 0011 і всі сцени нумерації
+  // оголошують `reset_yearly` як BOOLEAN. Писача сьогодні немає — тобто це
+  // рівно та вада, яку знаходять не тоді, коли її роблять.
+  'invoice_series.reset_yearly': 'BOOLEAN',
+  // ── Гроші й ставки: NUMERIC, а не DOUBLE PRECISION ────────────────────
+  //
+  // Це не нове рішення, а відновлення наявного: перший абзац цього файла
+  // каже, чому подвійна точність не тримає 0.10, і саме тому міграції 0010,
+  // 0012 і 0013 оголосили ці колонки NUMERIC. Генератор бачив у SQLite REAL,
+  // а імена «quantity», «vat_rate», «rate» під шаблон грошей не підпадають —
+  // і новий клієнт діставав float там, де в кожного живого готелю точне
+  // десяткове. Ставка ПДВ у float — це фактура, яка не сходиться на копійку.
+  'fin_folio_items.quantity': 'NUMERIC(12,3)',
+  'fin_folio_items.vat_rate': 'NUMERIC(5,2)',
+  'fin_invoice_lines.quantity': 'NUMERIC(12,3)',
+  'fin_invoice_lines.vat_rate': 'NUMERIC(5,2)',
+  'fin_invoice_tax_totals.vat_rate': 'NUMERIC(5,2)',
+  'fin_tax_rates.rate': 'NUMERIC(5,2)',
+  'organization_invoicing.buyer_name_threshold': 'NUMERIC(14,2)',
+  // А тут навпаки: «days» затягнулось у шаблон грошей і стало NUMERIC(14,2).
+  // Міграція 0011 каже BIGINT — днів пів не буває.
+  'organization_invoicing.due_days': 'BIGINT',
   // Три стани: null = «вирішує правило каналу», і це не те саме, що false.
   // BOOLEAN у Postgres nullable, тож третій стан зберігається.
   'unit_types.breakfast_included': 'BOOLEAN',
