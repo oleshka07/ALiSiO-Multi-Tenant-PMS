@@ -15,7 +15,14 @@ import { decideCheckout } from '../data/checkout.repo';
 import type { CheckoutDecision } from '../domain/checkout-balance';
 import { companyPayer } from '@companies/kernel';
 import { findStayConflict } from '../data/conflicts.repo';
+import { insertingStay, UnitOverlap } from './overlap';
 import { legacyInvoiceWanted } from '../domain/folio-payment';
+
+/**
+ * Одна відмова на одну причину: її кажуть перевірка перед записом і обмеження
+ * бази, і гість не має бачити двох різних текстів на одне й те саме (INC-045).
+ */
+const UNIT_OCCUPIED = 'Кімната зайнята на ці дати іншим бронюванням';
 
 export const getReservation = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
@@ -247,6 +254,10 @@ export const updateReservation = withPermission('manage_bookings', async (reques
     // a room closed for maintenance is not free either. `conflicts.repo.ts`
     // answers both for the edit form, the planner drag and the allocation
     // modal alike; pool units are skipped there by design.
+    // Куди бронь переїжджає — потрібне не лише перевірці, а й самому запису:
+    // між ними стоїть решта хендлера, і в це вікно проходить друге переселення
+    // в той самий номер (INC-045).
+    let moveTo: { unitId: string; checkIn: string; checkOut: string } | null = null;
     if (body.unit_id !== undefined || body.check_in !== undefined || body.check_out !== undefined) {
       const current = await sql.row<any>('SELECT unit_id, check_in, check_out FROM reservations WHERE id = ?', [id]) as { unit_id: string; check_in: string; check_out: string } | undefined;
       if (current) {
@@ -254,10 +265,11 @@ export const updateReservation = withPermission('manage_bookings', async (reques
         const targetIn  = body.check_in   !== undefined ? body.check_in  : current.check_in;
         const targetOut = body.check_out  !== undefined ? body.check_out : current.check_out;
         if (targetUnit) {
+          moveTo = { unitId: String(targetUnit), checkIn: targetIn, checkOut: targetOut };
           const conflict = await findStayConflict(sql, { unitId: String(targetUnit), checkIn: targetIn, checkOut: targetOut, excludeReservationId: id });
           if (conflict?.kind === 'booking') {
             return NextResponse.json(
-              { error: 'Кімната зайнята на ці дати іншим бронюванням', code: 'unit_occupied', conflictBookingId: conflict.id },
+              { error: UNIT_OCCUPIED, code: 'unit_occupied', conflictBookingId: conflict.id },
               { status: 409 },
             );
           }
@@ -308,7 +320,7 @@ export const updateReservation = withPermission('manage_bookings', async (reques
     if (sets.length > 0) {
       sets.push("updated_at = CURRENT_TIMESTAMP");
       values.push(id);
-      await writeReservationChange(sql, {
+      const write = () => writeReservationChange(sql, {
         organizationId: actor.organizationId, reservationId: id,
         statement: `UPDATE reservations SET ${sets.join(', ')} WHERE id = ?`, values,
         movesStay: movesStay(body),
@@ -318,6 +330,22 @@ export const updateReservation = withPermission('manage_bookings', async (reques
         },
         checkout: checkout ? { changedBy: actor.user.id } : null,
       });
+
+      // Переселення — той самий вектор, що створення: перевірка вище і запис
+      // тут розділені рештою хендлера. `reservationId` виключає саму бронь —
+      // інакше вона знайшла б у базі себе (INC-045).
+      if (moveTo) {
+        try {
+          await insertingStay(write, { ...moveTo, reservationId: id });
+        } catch (e) {
+          if (e instanceof UnitOverlap) {
+            return NextResponse.json({ error: UNIT_OCCUPIED, code: 'unit_occupied' }, { status: 409 });
+          }
+          throw e;
+        }
+      } else {
+        await write();
+      }
     }
 
     // Emit payment status change event for TG notification editing
