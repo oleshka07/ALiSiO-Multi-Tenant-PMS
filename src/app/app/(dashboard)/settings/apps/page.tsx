@@ -49,6 +49,26 @@ interface WinhotelSnapshot {
   error: string | null; counts_json: string | null; received_at: string; imported_at: string | null;
 }
 interface WinhotelCard { hasToken: boolean; last: WinhotelSnapshot | null; snapshots: WinhotelSnapshot[] }
+/** `counts_json.import` — фаза («триває») або звіт частини Б (§2.6): числа, staging, звірка. */
+interface WinhotelImport {
+  phase?: 'importing' | 'done';
+  since?: string;
+  entities?: Record<string, { winhotel: number; imported: number; updated: number; staged: number }>;
+  staging?: Array<{ entity: string; reason: string; n: number }>;
+  reconcile?: { mustMatch: Array<{ name: string; winhotel: number | string; ours: number | string; ok: boolean }> };
+  mismatch?: boolean;
+  durationMs?: number;
+}
+/** Причина staging — словом оператору; ключі — словник NAMING.md. */
+const STAGING_REASON: Record<string, string> = {
+  frozen: 'заморожені фактури', frozen_sammelrechnung: 'збірні фактури', fiscal_guard: 'готівка/картка до TSE',
+  method_unmapped: 'спосіб оплати поза класами', overlap: 'бронь поверх зайнятого номера', no_guest: 'бронь без гостя',
+  no_unit_type: 'бронь без типу номера', changed: 'змінено після імпорту', refused_by_core: 'ядро відмовило',
+  core_gap_gdpr_journal: 'згоди GDPR', core_gap_cash_book: 'касова книга',
+  open_guest_balances: 'відкриті сальдо', invoice_ledger_by_status: 'журнал фактур', vouchers_sold: 'продані ваучери',
+  vouchers_redeemed: 'погашені ваучери', deposits_on_bookings: 'депозити броней', deposits_on_future_bookings: 'депозити майбутніх броней',
+  last_day_closing: 'останнє закриття дня', payments_debtor: 'оплати дебіторів',
+};
 
 /** Стан знімка Winhotel — словом і кольором; `imported` і `failed` — крайні. */
 const SNAPSHOT_STATUS: Record<string, { word: string; badge: string }> = {
@@ -99,6 +119,7 @@ export default function AppsSettingsPage() {
   const [winhotel, setWinhotel] = useState<WinhotelCard | null>(null);
   const [agentToken, setAgentToken] = useState('');
   const [importNote, setImportNote] = useState('');
+  const [importSince, setImportSince] = useState('2025-01-01');
 
   const load = useCallback(async () => {
     const res = await fetch('/api/settings/apps');
@@ -217,7 +238,9 @@ export default function AppsSettingsPage() {
     setBusy('winhotel_import');
     setImportNote('');
     try {
-      const res = await fetch(`/api/settings/apps/winhotel-import/snapshots/${encodeURIComponent(id)}/import`, { method: 'POST' });
+      const res = await fetch(`/api/settings/apps/winhotel-import/snapshots/${encodeURIComponent(id)}/import`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ since: importSince }),
+      });
       const d = await res.json().catch(() => ({}));
       setImportNote(res.ok ? t('Імпорт запущено') : (d.error || t('Не вдалося імпортувати')));
       await load();
@@ -349,26 +372,61 @@ export default function AppsSettingsPage() {
                               {winhotel.snapshots.map((snap) => {
                                 const ss = SNAPSHOT_STATUS[snap.status] ?? SNAPSHOT_STATUS.received;
                                 let counts: Record<string, number> = {};
-                                try { counts = (JSON.parse(snap.counts_json ?? '{}') as { winhotel?: Record<string, number> }).winhotel ?? {}; } catch { counts = {}; }
+                                let imp: WinhotelImport | undefined;
+                                try {
+                                  const parsed = JSON.parse(snap.counts_json ?? '{}') as { winhotel?: Record<string, number>; import?: WinhotelImport };
+                                  counts = parsed.winhotel ?? {};
+                                  imp = parsed.import;
+                                } catch { counts = {}; }
+                                const importing = imp?.phase === 'importing';
+                                const ent = imp?.entities ?? {};
+                                const stagedTotal = (imp?.staging ?? []).reduce((a, x) => a + Number(x.n), 0);
+                                const failedMatch = (imp?.reconcile?.mustMatch ?? []).filter((m) => !m.ok);
                                 return (
                                   <tr key={snap.id} data-testid={`winhotel-snapshot-${snap.id}`}>
                                     <td title={snap.id}>{fmt(snap.taken_at ?? snap.received_at)}</td>
                                     <td>{t(SNAPSHOT_MODE[snap.mode] ?? snap.mode)}</td>
                                     <td>{mb(snap.size_bytes)}</td>
                                     <td>
-                                      <span className={`badge ${ss.badge}`}>{t(ss.word)}</span>
+                                      {importing
+                                        ? <span className="badge badge-warning" data-testid={`winhotel-importing-${snap.id}`}>{t('імпорт триває')}</span>
+                                        : <span className={`badge ${ss.badge}`}>{t(ss.word)}</span>}
                                       {snap.error && <div style={{ color: 'var(--danger)', marginTop: 4 }}>{snap.error}</div>}
+                                      {imp?.mismatch && (
+                                        <div style={{ color: 'var(--danger)', marginTop: 4 }} data-testid={`winhotel-mismatch-${snap.id}`}>
+                                          {t('Числа не зійшлись')}: {failedMatch.map((m) => `${m.name} ${m.winhotel} ≠ ${m.ours}`).join(' · ')}
+                                        </div>
+                                      )}
                                     </td>
                                     <td style={{ color: 'var(--text-tertiary)' }}>
                                       {Object.keys(counts).length
                                         ? `${t('брони')} ${counts.bookings ?? '—'} · ${t('адреси')} ${counts.addresses ?? '—'} · ${t('фактури')} ${counts.invoices ?? '—'}`
                                         : '—'}
+                                      {imp?.phase === 'done' && (
+                                        <div style={{ marginTop: 4, color: 'var(--text-secondary)' }} data-testid={`winhotel-imported-${snap.id}`}>
+                                          {t('у ядрі')}: {t('брони')} {ent.reservation?.imported ?? 0}+{ent.reservation?.updated ?? 0} · {t('гості')} {ent.guest?.imported ?? 0} ·{' '}
+                                          {t('рядки')} {ent.folio_line?.imported ?? 0} · {t('оплати')} {ent.payment?.imported ?? 0}
+                                          {imp?.since && <span> · {t('з')} {imp.since}</span>}
+                                          {stagedTotal > 0 && (
+                                            <div data-testid={`winhotel-staged-${snap.id}`}>
+                                              {t('відкладено')} {stagedTotal}:{' '}
+                                              {(imp?.staging ?? []).map((x) => (
+                                                <span key={`${x.entity}/${x.reason}`} style={{ marginRight: 8 }}>{t(STAGING_REASON[x.reason] ?? x.reason)} {x.n}</span>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
                                     </td>
                                     <td>
-                                      {snap.status === 'extracted' && (
-                                        <button className="btn btn-primary btn-sm" data-testid={`winhotel-import-${snap.id}`} disabled={busy === card.id} onClick={() => importSnapshot(snap.id)}>
-                                          {t('Імпортувати знімок')}
-                                        </button>
+                                      {(snap.status === 'extracted' || snap.status === 'imported') && !importing && (
+                                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                                          <input type="date" className="input" style={{ fontSize: 12, width: 140 }} value={importSince} title={t('Минулі брони — з цієї дати заїзду; майбутні — всі')}
+                                            data-testid={`winhotel-since-${snap.id}`} onChange={(e) => setImportSince(e.target.value)} />
+                                          <button className="btn btn-primary btn-sm" data-testid={`winhotel-import-${snap.id}`} disabled={busy === card.id} onClick={() => importSnapshot(snap.id)}>
+                                            {snap.status === 'imported' ? t('Імпортувати знову') : t('Імпортувати знімок')}
+                                          </button>
+                                        </div>
                                       )}
                                     </td>
                                   </tr>

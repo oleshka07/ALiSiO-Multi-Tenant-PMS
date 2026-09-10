@@ -153,9 +153,25 @@ Charter описує, ЯК називати. Він не вимагає нега
     базу**): `backup` — готовий `.fbk` з теки бекапів Winhotel | `gbak` —
     `gbak -b` агентом | `copy` — копія `winhotel.fdb` при закритому Winhotel.
     Таблиці застосунку — префікс `winhotel_*`, кожна з `organization_id`;
-    відповідність «рядок Winhotel → наш рядок» — `winhotel_refs` (частина Б),
-    те, чого ядро не вміє, — `winhotel_staging` (частина Б); у таблиці ядра
-    колонок застосунок не додає
+    у таблиці ядра колонок застосунок не додає.
+    `winhotel_refs.entity` (**що за рядок Winhotel став нашим**, 0144):
+    `address` — `ADRESSEN` без `DEBI_NR` → `guests` | `company` — з `DEBI_NR`
+    → `companies` | `reservation` — `GASTKONT` → `reservations` |
+    `reservation_guest` — адреса броні → `reservation_guests` (LNR =
+    `GASTKONT.LNR·100 + слот 1..9`) | `folio_line` — `BUCHKONT` →
+    `fin_folio_items` | `payment` — `ZAHLUNGEN` → `fin_folio_payments`.
+    `winhotel_staging.entity` — ті самі слова плюс `invoice`, `balance`,
+    `consent`, `cash_book`. `winhotel_staging.reason` (**чому не в ядрі**):
+    `frozen` — заморожена фактура з чужою нумерацією | `frozen_sammelrechnung`
+    — те саме, виставлена дебітору | `fiscal_guard` — готівка/картка на
+    обʼєкті DE без `fiscal_de` | `method_unmapped` — `DEVISEN` поза чотирма
+    класами оплати | `overlap` — бронь поверх зайнятого номера |
+    `no_unit_type` — бронь без категорії, що є в нас | `no_guest` — бронь без
+    жодної адреси | `changed` — рядок або оплата змінені у Winhotel після
+    нашого імпорту, дверей на зміну немає | `refused_by_core` — фасад відмовив
+    (текст у payload) | `core_gap_gdpr_journal`, `core_gap_cash_book` —
+    CORE-GAPS 6 і 9 | ключі агрегатів (`open_guest_balances`, …) — сальдо
+    числом. Нова причина = рядок тут + слово у `STAGING_REASON` картки.
   Новий статус = міграція + рядок тут + бейдж у UI. Статус, якого немає в
   мапі UI, — баг (`partial` у календарі був невидимим саме так).
 - **Без назв юрисдикцій у схемі** (AGENTS.md, інваріант 22): ні в таблиці, ні

@@ -50,6 +50,9 @@ import {
   findSnapshotBySha,
   insertSnapshot,
   listSnapshots,
+  markImportFailed,
+  markImported,
+  markImporting,
   newSnapshotId,
   snapshotsReceivedToday,
   syncMarkers,
@@ -57,6 +60,8 @@ import {
   type SnapshotRow,
 } from '../data/snapshots.repo';
 import { discardSnapshotFiles, ensureDir, snapshotPaths } from '../storage';
+import { runImport, type ImportReport } from '../import/importer';
+import { isRefusal } from '@core/http/refusal';
 
 const APP = 'winhotel_import';
 const SHA_HEX = /^[0-9a-f]{64}$/;
@@ -190,19 +195,58 @@ export const getSnapshots = withOwner(async (_req, _ctx, actor: Actor) => {
 });
 
 /**
- * Імпорт у ядро — частина Б задачі. Кнопка на картці є вже, бо стан
- * `extracted` без неї — глухий кут; але вона не вдає успіху: знімок
- * перевіряється (свій, витягнутий), і відповідь називає, чого бракує.
+ * Імпорт знімка в ядро (частина Б) — той самий код, що кличе картка й гейт.
+ *
+ * Довідники звіряються ПЕРШИМИ, і відмова там нічого не пише (`runImport`);
+ * така відмова лягає в `error` знімка текстом, стан лишається `extracted`.
+ * Успіх — `imported` зі звітом у `counts_json.import`; розбіжність у числах,
+ * що мусять зійтись, — `mismatch: true` там само, і картка каже це червоним.
  */
-export const importSnapshot = withOwner(async (_req, ctx: { params: Promise<{ id: string }> }, actor: Actor) => {
+export async function importSnapshotNow(organizationId: string, id: string, since?: string): Promise<ImportReport> {
+  const row = await findSnapshot(organizationId, id);
+  if (!row) refuse('Не знайдено', 404);
+  if (row.status !== 'extracted' && row.status !== 'imported') refuse(`Знімок у стані «${row.status}» — імпортувати можна лише витягнутий`, 409);
+  const p = snapshotPaths(organizationId, id);
+  await markImporting(organizationId, id, true);
+  try {
+    const report = await runImport({ organizationId, snapshotId: id, dir: p.out, since, takenAt: row.taken_at, log: (l) => console.log(`[winhotel-import] ${organizationId}/${id}: ${l}`) });
+    await markImported(organizationId, id, report);
+    return report;
+  } catch (e) {
+    const text = isRefusal(e) ? e.message : 'Імпорт зупинився на помилці; деталі в журналі сервера';
+    if (!isRefusal(e)) console.error(`[winhotel-import] ${organizationId}/${id}:`, e);
+    await markImportFailed(organizationId, id, text);
+    throw e;
+  }
+}
+
+const running = new Set<string>();
+
+/**
+ * Кнопка «Імпортувати знімок»: старт у фоні, відповідь 202 одразу — 50 тисяч
+ * броней не влазять у HTTP-запит. Другий натиск під час роботи — 409. Стан
+ * читається тим самим `GET …/snapshots`.
+ */
+export const importSnapshot = withOwner(async (req: Request, ctx: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
     const { id } = await ctx.params;
     const org = actor.organizationId;
     await syncMarkers(org);
     const row = await findSnapshot(org, id);
     if (!row) refuse('Не знайдено', 404);
-    if (row.status !== 'extracted') refuse(`Знімок у стані «${row.status}» — імпортувати можна лише витягнутий`, 409);
-    refuse('Імпорт у ядро ще не підключений: це частина Б задачі winhotel-import; знімок витягнутий і чекає', 409);
+    if (row.status !== 'extracted' && row.status !== 'imported') refuse(`Знімок у стані «${row.status}» — імпортувати можна лише витягнутий`, 409);
+    const key = `${org}/${id}`;
+    if (running.has(key)) refuse('Імпорт цього знімка вже триває', 409);
+    let since: string | undefined;
+    try {
+      const body = await req.json() as { since?: string };
+      if (body?.since && /^\d{4}-\d{2}-\d{2}$/.test(body.since)) since = body.since;
+    } catch { /* тіла немає — дефолт */ }
+    running.add(key);
+    void runWithOrganization(org, () => importSnapshotNow(org, id, since))
+      .catch(() => undefined)
+      .finally(() => running.delete(key));
+    return NextResponse.json({ started: true, snapshotId: id }, { status: 202 });
   } catch (e) {
     return handleError('winhotel-import/import', e);
   }

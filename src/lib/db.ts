@@ -7976,6 +7976,43 @@ function migrateWinhotelImport(database: any) {
   } catch (e) {
     console.error('[DB] 0143 winhotel_snapshots:', (e as Error).message);
   }
+  // 0144: відповідність «рядок Winhotel → наш рядок» і те, чого ядро не
+  // вміє (частина Б). Дзеркало db/postgres/migrations/0144-*.sql.
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS winhotel_refs (
+        id              TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        entity          TEXT NOT NULL,
+        winhotel_lnr    INTEGER NOT NULL,
+        our_id          TEXT NOT NULL,
+        fingerprint     TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(organization_id, entity, winhotel_lnr)
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_refs_org ON winhotel_refs(organization_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_refs_our ON winhotel_refs(organization_id, entity, our_id)');
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS winhotel_staging (
+        id              TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        snapshot_id     TEXT,
+        entity          TEXT NOT NULL,
+        winhotel_lnr    INTEGER NOT NULL,
+        reason          TEXT NOT NULL,
+        payload_json    TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(organization_id, entity, winhotel_lnr)
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_staging_org ON winhotel_staging(organization_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_staging_entity ON winhotel_staging(organization_id, entity, reason)');
+  } catch (e) {
+    console.error('[DB] 0144 winhotel_refs/winhotel_staging:', (e as Error).message);
+  }
 }
 
 /**

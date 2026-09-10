@@ -119,6 +119,42 @@ export async function setSnapshotStatus(
   );
 }
 
+/** Після імпорту: стан `imported`, час, і звіт імпорту поруч із числами мосту. */
+export async function markImported(organizationId: string, id: string, report: unknown): Promise<void> {
+  const row = await findSnapshot(organizationId, id);
+  const base = row?.counts_json ? safeParse(row.counts_json) : {};
+  const merged = JSON.stringify({ ...base, import: report });
+  await getSql().run(
+    `UPDATE winhotel_snapshots SET status = 'imported', error = NULL, counts_json = ?, imported_at = CURRENT_TIMESTAMP
+      WHERE organization_id = ? AND id = ?`,
+    [merged, organizationId, id],
+  );
+}
+
+/** Імпорт триває: стан лишається `extracted`, фаза — у числах (CHECK статусів без «importing»). */
+export async function markImporting(organizationId: string, id: string, running: boolean): Promise<void> {
+  const row = await findSnapshot(organizationId, id);
+  const base = (row?.counts_json ? safeParse(row.counts_json) : {}) as Record<string, unknown>;
+  if (running) base.import = { phase: 'importing', startedAt: new Date().toISOString() };
+  else if (base.import && (base.import as { phase?: string }).phase === 'importing') delete base.import;
+  await getSql().run('UPDATE winhotel_snapshots SET counts_json = ? WHERE organization_id = ? AND id = ?', [JSON.stringify(base), organizationId, id]);
+}
+
+/** Імпорт відмовив: стан `extracted` лишається (знімок цілий), текст відмови — у `error`. */
+export async function markImportFailed(organizationId: string, id: string, error: string): Promise<void> {
+  const row = await findSnapshot(organizationId, id);
+  const base = (row?.counts_json ? safeParse(row.counts_json) : {}) as Record<string, unknown>;
+  delete base.import;
+  await getSql().run(
+    'UPDATE winhotel_snapshots SET error = ?, counts_json = ? WHERE organization_id = ? AND id = ?',
+    [error.slice(0, ERROR_TEXT_MAX), JSON.stringify(base), organizationId, id],
+  );
+}
+
+function safeParse(text: string): Record<string, unknown> {
+  try { return JSON.parse(text) as Record<string, unknown>; } catch { return {}; }
+}
+
 function readText(file: string): string | null {
   try { return fs.readFileSync(file, 'utf8'); } catch { return null; }
 }

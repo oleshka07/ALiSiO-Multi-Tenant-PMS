@@ -1,0 +1,4 @@
+{"lnr":1,"mand_nr":1,"wgnr":100,"bezeichn":"Logis","durchl":false,"ums_gr":1}
+{"lnr":2,"mand_nr":1,"wgnr":200,"bezeichn":"Speisen","durchl":false,"ums_gr":2}
+{"lnr":3,"mand_nr":1,"wgnr":300,"bezeichn":"Getränke","durchl":false,"ums_gr":2}
+{"lnr":4,"mand_nr":1,"wgnr":600,"bezeichn":"Kurtaxe","durchl":true,"ums_gr":0}
