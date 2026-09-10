@@ -53,7 +53,10 @@ export interface SnapshotPaths {
   dir: string;
   /** Файл під час завантаження — перейменовується в `archive` лише цілим. */
   part: string;
+  /** Повний знімок — `<id>.fbk.gz` (бекап або копія бази). */
   archive: string;
+  /** Денна дельта — `<id>.delta.gz`: сирий вивід isql агента, без бази (задача 8 §3). */
+  deltaArchive: string;
   ready: string;
   extracting: string;
   extracted: string;
@@ -69,6 +72,7 @@ export function snapshotPaths(organizationId: string, snapshotId: string): Snaps
     dir,
     part: `${base}.part`,
     archive: `${base}.fbk.gz`,
+    deltaArchive: `${base}.delta.gz`,
     ready: `${base}.ready`,
     extracting: `${base}.extracting`,
     extracted: `${base}.extracted`,
@@ -77,13 +81,18 @@ export function snapshotPaths(organizationId: string, snapshotId: string): Snaps
   };
 }
 
+/** Куди лягає тіло за режимом: дельта — не база, і міст її не відновлює. */
+export function archiveFor(p: SnapshotPaths, mode: string): string {
+  return mode === 'delta' ? p.deltaArchive : p.archive;
+}
+
 export function ensureDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true });
 }
 
 /** Прибрати все, що лишилось від знімка, який не прийнято. Ніколи не кидає. */
 export function discardSnapshotFiles(p: SnapshotPaths): void {
-  for (const f of [p.part, p.archive, p.ready]) {
+  for (const f of [p.part, p.archive, p.deltaArchive, p.ready]) {
     try { fs.rmSync(f, { force: true }); } catch { /* нема — і не треба */ }
   }
 }

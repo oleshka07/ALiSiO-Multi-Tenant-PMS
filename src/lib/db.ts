@@ -6396,6 +6396,8 @@ function runMigrations(database: any) {
         method          TEXT NOT NULL,
         paid_at         TEXT NOT NULL DEFAULT (datetime('now')),
         received_by     TEXT,
+        source          TEXT,
+        origin          TEXT,
         created_at      TEXT NOT NULL DEFAULT (datetime('now')),
         tse_status      TEXT,
         tse_serial      TEXT,
@@ -6417,9 +6419,10 @@ function runMigrations(database: any) {
     // guarded ALTER stands AFTER the CREATE on purpose (lesson of 086ec1d).
     {
       const payCols = (database.prepare('PRAGMA table_info(fin_folio_payments)').all() as any[]).map((c: any) => c.name);
+      // 0145: `source`/`origin` — оплата, перенесена з попередньої системи (З34).
       for (const col of ['tse_status', 'tse_serial', 'tse_tx_number', 'tse_signature_counter',
         'tse_signature', 'tse_start_time', 'tse_end_time', 'tse_qr_payload',
-        'tse_client_id', 'tse_process_type', 'tse_process_data']) {
+        'tse_client_id', 'tse_process_type', 'tse_process_data', 'source', 'origin']) {
         if (!payCols.includes(col)) database.exec(`ALTER TABLE fin_folio_payments ADD COLUMN ${col} TEXT`);
       }
     }
@@ -7960,7 +7963,7 @@ function migrateWinhotelImport(database: any) {
         id              TEXT PRIMARY KEY,
         organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
         taken_at        TEXT,
-        mode            TEXT NOT NULL CHECK (mode IN ('backup', 'gbak', 'copy')),
+        mode            TEXT NOT NULL CHECK (mode IN ('backup', 'gbak', 'copy', 'delta')),
         sha256          TEXT NOT NULL,
         size_bytes      INTEGER NOT NULL,
         status          TEXT NOT NULL DEFAULT 'received' CHECK (status IN ('received', 'extracting', 'extracted', 'imported', 'failed')),
@@ -7973,6 +7976,35 @@ function migrateWinhotelImport(database: any) {
     `);
     database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_snapshots_org ON winhotel_snapshots(organization_id)');
     database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_snapshots_received ON winhotel_snapshots(organization_id, received_at)');
+    // 0145: режим `delta`. SQLite не вміє змінити CHECK — таблиця перебудовується,
+    // індекси знімаються до підміни й повертаються після (AGENTS §4).
+    const ddl = String((database.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'winhotel_snapshots'").get() as any)?.sql ?? '');
+    if (ddl && !ddl.includes("'delta'")) {
+      const indexes = (database.prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'winhotel_snapshots' AND sql IS NOT NULL").all() as any[]).map((r) => String(r.sql));
+      database.exec(`
+        CREATE TABLE winhotel_snapshots_new (
+          id              TEXT PRIMARY KEY,
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          taken_at        TEXT,
+          mode            TEXT NOT NULL CHECK (mode IN ('backup', 'gbak', 'copy', 'delta')),
+          sha256          TEXT NOT NULL,
+          size_bytes      INTEGER NOT NULL,
+          status          TEXT NOT NULL DEFAULT 'received' CHECK (status IN ('received', 'extracting', 'extracted', 'imported', 'failed')),
+          error           TEXT,
+          counts_json     TEXT,
+          received_at     TEXT NOT NULL DEFAULT (datetime('now')),
+          imported_at     TEXT,
+          UNIQUE(organization_id, sha256)
+        )
+      `);
+      database.exec(`INSERT INTO winhotel_snapshots_new (id, organization_id, taken_at, mode, sha256, size_bytes, status, error, counts_json, received_at, imported_at)
+                     SELECT id, organization_id, taken_at, mode, sha256, size_bytes, status, error, counts_json, received_at, imported_at FROM winhotel_snapshots`);
+      database.exec('DROP TABLE winhotel_snapshots');
+      database.exec('ALTER TABLE winhotel_snapshots_new RENAME TO winhotel_snapshots');
+      for (const sqlText of indexes) database.exec(sqlText);
+      const after = (database.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'index' AND tbl_name = 'winhotel_snapshots' AND sql IS NOT NULL").get() as any).n;
+      if (Number(after) !== indexes.length) console.error(`[DB] 0145 winhotel_snapshots: індексів було ${indexes.length}, стало ${after}`);
+    }
   } catch (e) {
     console.error('[DB] 0143 winhotel_snapshots:', (e as Error).message);
   }
@@ -7987,11 +8019,17 @@ function migrateWinhotelImport(database: any) {
         winhotel_lnr    INTEGER NOT NULL,
         our_id          TEXT NOT NULL,
         fingerprint     TEXT,
+        source_taken_at TEXT,
         created_at      TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
         UNIQUE(organization_id, entity, winhotel_lnr)
       )
     `);
+    // 0145: час знімка, що писав рядок, — старіший знімок не перепише новіше (дельта).
+    {
+      const refCols = (database.prepare('PRAGMA table_info(winhotel_refs)').all() as any[]).map((c: any) => c.name);
+      if (!refCols.includes('source_taken_at')) database.exec('ALTER TABLE winhotel_refs ADD COLUMN source_taken_at TEXT');
+    }
     database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_refs_org ON winhotel_refs(organization_id)');
     database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_refs_our ON winhotel_refs(organization_id, entity, our_id)');
     database.exec(`

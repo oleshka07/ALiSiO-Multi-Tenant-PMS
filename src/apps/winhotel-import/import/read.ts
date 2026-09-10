@@ -22,6 +22,9 @@ export function readJsonl<T>(dir: string, entity: string): { rows: T[]; present:
 
 export interface Aggregates {
   snapshot?: unknown;
+  /** `delta` — вікно дат агента (міст пише його з `.ready`); інакше повний знімок. */
+  mode?: 'delta' | string;
+  window?: { from: string; to: string } | null;
   entities?: Record<string, number>;
   numbers?: Record<string, { label: string; value: string }>;
 }

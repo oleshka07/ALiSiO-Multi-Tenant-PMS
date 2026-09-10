@@ -305,9 +305,9 @@ try {
     const out = path.join(tmp, 'extract');
     const result = await processSnapshot({ archive: p.archive, mode: 'gbak', sqlDir: SQL_DIR, outDir: out, workDir: path.join(tmp, 'work') }) as { entities: Record<string, number>; numbers: Record<string, { value: string }> };
     const expect: Record<string, number> = {
-      mandant: 1, tax_codes: 3, unit_types: 3, units: 4, services: 7, service_groups: 4, rate_codes: 3, seasons: 2, prices: 3,
-      price_splits: 1, segments: 2, address_types: 2, age_bands: 3, payment_methods: 5, consent_types: 2, addresses: 4,
-      bookings: 5, occupancy: 4, booking_refs: 1, folio_lines: 5, invoices: 3, invoice_lines: 3, invoice_ledger: 2,
+      mandant: 1, tax_codes: 3, unit_types: 3, units: 4, services: 10, service_groups: 6, rate_codes: 3, seasons: 2, prices: 3,
+      price_splits: 1, segments: 2, address_types: 2, age_bands: 3, payment_methods: 5, consent_types: 2, addresses: 5,
+      bookings: 5, occupancy: 4, booking_refs: 1, folio_lines: 7, invoices: 3, invoice_lines: 3, invoice_ledger: 2,
       payments: 4, cash_book: 1, consents: 2, day_closings: 2,
     };
     for (const [entity, n] of Object.entries(expect)) {
@@ -351,7 +351,7 @@ try {
     assert.strictEqual(result.numbers.invoice_no_generator.value, '22591', `генератор фактур: ${result.numbers.invoice_no_generator.value}`);
     assert.strictEqual(result.numbers.bookings_future.value, '2', `майбутніх броней: ${result.numbers.bookings_future.value}`);
     assert.strictEqual(result.numbers.occupancy_junk_dates.value, '1');
-    assert.match(result.numbers.open_guest_balances.value, /^2 283\.5/, `відкриті сальдо: ${result.numbers.open_guest_balances.value}`);
+    assert.match(result.numbers.open_guest_balances.value, /^2 321\.5/, `відкриті сальдо: ${result.numbers.open_guest_balances.value}`);
     assert.ok(!fs.existsSync(path.join(tmp, 'work')), 'робоча тека з відновленою базою лишилась');
     console.log(`  ok  11. живий Firebird: стаб → ${Object.keys(result.entities).length} сутностей; видалене не витягнуто, умлаути, домени сум і нуль Delphi — правильні, база прибрана`);
   } else {
@@ -375,13 +375,14 @@ try {
     for (const code of ['102', '103']) {
       await sql.run('INSERT INTO units (id, property_id, unit_type_id, category_id, name, code) VALUES (?, ?, ?, ?, ?, ?)', [`${A}_u${code}`, PROP, `${A}_dzd`, CAT, code, code]);
     }
-    for (const name of ['Frühstück-Speisen', 'Frühstück-Getränke']) {
+    for (const name of ['Frühstück – Speisen', 'Frühstück-Getränke']) {
       await sql.run('INSERT INTO additional_services (id, property_id, name, price) VALUES (?, ?, ?, ?)', [`${A}_svc_${name.length}`, PROP, name, 12]);
     }
     for (const [code, rate] of [['zero', 0], ['reduced', 7], ['standard', 19]] as const) {
       await sql.run('INSERT INTO fin_tax_rates (id, organization_id, property_id, code, rate, valid_from) VALUES (?, ?, ?, ?, ?, ?)', [`${A}_tax_${code}`, A, null, code, rate, '2020-01-01']);
     }
     await sql.run('INSERT INTO booking_sources (id, property_id, name, code) VALUES (?, ?, ?, ?)', [`${A}_src`, PROP, 'Direkt', 'direct']);
+    await sql.run('INSERT INTO booking_sources (id, property_id, name, code) VALUES (?, ?, ?, ?)', [`${A}_src_bk`, PROP, 'Booking.com', 'booking_com']);
   });
   // Знімок для імпорту: рядок + витяг зі стаба мосту + маркер.
   const IMP = repo.newSnapshotId(new Date('2026-09-12T03:00:00Z'));
@@ -425,11 +426,21 @@ try {
   const r1 = await runWithOrganization(A, () => importSnapshotNow(A, IMP));
   assert.strictEqual(r1.entities.reservation.imported, 5, `броней імпортовано ${r1.entities.reservation.imported}, стаб має 5 (4 живі + сторно з датою)`);
   assert.strictEqual(r1.entities.reservation.staged, 0, `брони в staging: ${JSON.stringify(r1.entities.reservation)}`);
-  assert.strictEqual(r1.entities.guest.imported, 3, `гостей ${r1.entities.guest.imported}, адрес без DEBI_NR у стабі 3 (четверта — компанія)`);
-  assert.strictEqual(r1.entities.company.imported, 1, 'компанія з DEBI_NR не імпортована');
-  assert.strictEqual(r1.entities.folio_line.imported, 5, `рядків рахунку ${r1.entities.folio_line.imported}, живих у стабі 5`);
-  assert.strictEqual(r1.entities.payment.imported, 1, `оплат у фоліо ${r1.entities.payment.imported} — лише ваучер проходить фіскальну варту`);
-  assert.strictEqual(r1.entities.payment.staged, 3, `оплат у staging ${r1.entities.payment.staged} — готівка й картка на DE без TSE`);
+  // Задача 8 §1.2: компанія — це ADR_WAHL = 1, не DEBI_NR > 0; адреса 6 має дебіторський номер і є гостем.
+  assert.strictEqual(r1.entities.guest.imported, 4, `гостей ${r1.entities.guest.imported}, адрес з ADR_WAHL 0 у стабі 4 (одна з DEBI_NR > 0)`);
+  assert.strictEqual(r1.entities.company.imported, 1, 'компанія з ADR_WAHL 1 не імпортована');
+  // §1.1: рід рядка — з групи через LNR (wg ≠ wgnr у стабі): 5 у фоліо; «Tanken» (750 Ausgaben) і «Gutschein» (700 Geldtransit) — staging cash_article.
+  assert.strictEqual(r1.entities.folio_line.imported, 5, `рядків рахунку ${r1.entities.folio_line.imported}, у фоліо гостя мають бути 5 із 7`);
+  assert.strictEqual(r1.entities.folio_line.staged, 2, `касові статті (групи 700/750) не в staging: ${JSON.stringify(r1.entities.folio_line)}`);
+  // §1.4: історичні оплати йдуть у фоліо повз фіскальну варту з позначкою походження (З34).
+  assert.strictEqual(r1.entities.payment.imported, 4, `оплат у фоліо ${r1.entities.payment.imported} — усі 4, включно з готівкою й карткою на DE`);
+  assert.strictEqual(r1.entities.payment.staged, 0, `оплат у staging ${r1.entities.payment.staged} — фіскальна варта не має зупиняти імпорт`);
+  // §1.3: послуга без пари в каталозі — не відмова, а рядок у explained; «Frühstück - Speisen» ↔ «Frühstück – Speisen» — пара.
+  const unmatched = r1.reconcile.explained.find((x) => /послуг/.test(x.name));
+  assert.ok(unmatched, 'у explained немає рядка про послуги без пари');
+  assert.strictEqual(unmatched!.winhotel, 1, `послуг без пари ${unmatched!.winhotel}: чекали лише «Haustier» — ${unmatched!.why}`);
+  assert.match(unmatched!.why, /Haustier/, `перелік без назви: ${unmatched!.why}`);
+  assert.doesNotMatch(unmatched!.why, /Speisen/, `«Frühstück - Speisen» мала знайти пару через нормалізацію: ${unmatched!.why}`);
   assert.strictEqual(r1.entities.invoice.staged, 3, 'фактури не всі в staging');
   assert.strictEqual(r1.mismatch, false, `розбіжність у числах, що мусять зійтись: ${JSON.stringify(r1.reconcile.mustMatch.filter((m) => !m.ok))}`);
   const res101 = await runWithOrganization(A, () => sql.row<any>(
@@ -448,12 +459,15 @@ try {
   assert.ok(rg.some((g) => g.last_name === 'Müller-Stub'), `умлаут у гості: ${rg.map((g) => g.last_name).join(', ')}`);
   const res102 = await runWithOrganization(A, () => sql.row<any>('SELECT payment_status, status, unit_id FROM reservations WHERE organization_id = ? AND external_uid = ?', [A, 'winhotel:GASTKONT:102']));
   assert.strictEqual(res102?.status, 'checked_out');
-  assert.strictEqual(res102?.payment_status, 'partial', `оплата 102: ваучер 100 з 327 у фоліо → partial, а є ${res102?.payment_status}`);
+  assert.strictEqual(res102?.payment_status, 'paid', `оплата 102: у фоліо 179 + 48 + 8 = 235 (Gutschein-рядок — каса), оплат 227 + 100 − 1.5 = 325.5 → paid, а є ${res102?.payment_status}`);
   const res104 = await runWithOrganization(A, () => sql.row<any>('SELECT status FROM reservations WHERE organization_id = ? AND external_uid = ?', [A, 'winhotel:GASTKONT:104']));
   assert.strictEqual(res104?.status, 'cancelled', 'сторнована з датою 104 не cancelled');
-  const res106 = await runWithOrganization(A, () => sql.row<any>('SELECT unit_id, unit_type_id FROM reservations WHERE organization_id = ? AND external_uid = ?', [A, 'winhotel:GASTKONT:106']));
+  const res106 = await runWithOrganization(A, () => sql.row<any>('SELECT unit_id, unit_type_id, source FROM reservations WHERE organization_id = ? AND external_uid = ?', [A, 'winhotel:GASTKONT:106']));
   assert.strictEqual(res106?.unit_id, null, 'бронь на псевдо-номері 9999 дістала номер');
   assert.strictEqual(res106?.unit_type_id, `${A}_dzd`);
+  // Джерело — з GASTKREF.EXT_SOURCE («Booking.com» у стабі), не з MARKSEG (задача 8 §2).
+  assert.strictEqual(res106?.source, 'booking_com', `джерело броні 106: ${res106?.source}, чекали booking_com з GASTKREF.EXT_SOURCE`);
+  assert.strictEqual(res101.status === 'confirmed' && (await runWithOrganization(A, () => sql.row<any>('SELECT source FROM reservations WHERE id = ?', [res101.id])))?.source, 'direct', 'бронь без GASTKREF має бути direct');
   assert.strictEqual(await countA("SELECT COUNT(*) AS n FROM reservations WHERE organization_id = ? AND external_uid = 'winhotel:GASTKONT:105'"), 0, 'видалена без дати сторно 105 імпортована');
   const snap = await runWithOrganization(A, () => repo.findSnapshot(A, IMP));
   assert.strictEqual(snap?.status, 'imported');
@@ -465,8 +479,31 @@ try {
   const stagedOf = (e: string, r: string) => Number(staged.find((x) => x.entity === e && x.reason === r)?.n ?? 0);
   assert.strictEqual(stagedOf('invoice', 'frozen_sammelrechnung'), 1, `Sammelrechnung у staging: ${JSON.stringify(staged)}`);
   assert.strictEqual(stagedOf('invoice', 'frozen'), 2);
-  assert.strictEqual(stagedOf('payment', 'fiscal_guard'), 3);
-  console.log('  ok  Б2. імпорт: 5 броней, 3 адреси → 3 reservation_guests, 141.000 → 423 за 3 ночі, ÜF/ü у ядрі, Sammelrechnung → staging, готівка DE → staging');
+  assert.strictEqual(stagedOf('payment', 'fiscal_guard'), 0, 'fiscal_guard більше не причина (З34)');
+  assert.strictEqual(stagedOf('folio_line', 'cash_article'), 2, `«Tanken» (750) і «Gutschein» (700) не в staging cash_article: ${JSON.stringify(staged)}`);
+  assert.strictEqual(stagedOf('company', 'debtor_no_pending'), 1, `DEBI_NR компанії не відкладено до колонки debtor_no: ${JSON.stringify(staged)}`);
+  // Рід рядків фоліо — з групи: Logis → lodging, Kurtaxe (600) → city_tax, Frühstück (200) → service.
+  const kinds = await runWithOrganization(A, () => sql.rows<{ kind: string; n: number }>(
+    'SELECT kind, COUNT(*) AS n FROM fin_folio_items WHERE organization_id = ? GROUP BY kind ORDER BY kind', [A]));
+  const kindOf = (k: string) => Number(kinds.find((x) => x.kind === k)?.n ?? 0);
+  assert.strictEqual(kindOf('lodging'), 3, `lodging ${kindOf('lodging')} (чекали 3: ÜF, Logis, Logis Firmen) — ${JSON.stringify(kinds)}`);
+  assert.strictEqual(kindOf('city_tax'), 1, `city_tax ${kindOf('city_tax')} (чекали Kurtaxe) — ${JSON.stringify(kinds)}`);
+  assert.strictEqual(kindOf('service'), 1, `service ${kindOf('service')} (чекали лише Frühstück; Gutschein — каса) — ${JSON.stringify(kinds)}`);
+  // Оплати — дверима фасаду (`listPayments`), не SQL до таблиці модуля (check-boundaries).
+  const { listPayments, ensureReservationFolio: folioOf } = await import('@invoicing/kernel');
+  const pays = (await runWithOrganization(A, async () => {
+    const out: Array<{ method: string; source: string | null; origin: string | null; tse_status?: string | null }> = [];
+    for (const uid of ['winhotel:GASTKONT:101', 'winhotel:GASTKONT:102']) {
+      const r = await sql.row<{ id: string }>('SELECT id FROM reservations WHERE organization_id = ? AND external_uid = ?', [A, uid]);
+      out.push(...(await listPayments(await folioOf(String(r!.id)))) as any[]);
+    }
+    return out;
+  }));
+  assert.strictEqual(pays.length, 4, `оплат у фоліо ${pays.length}`);
+  assert.ok(pays.every((x) => x.source === 'import' && /^winhotel:\d+$/.test(String(x.origin))), `імпортна оплата без позначки походження: ${JSON.stringify(pays)}`);
+  assert.ok(pays.some((x) => x.method === 'cash') && pays.some((x) => x.method === 'card_terminal'), `готівка й картка мали дійти: ${JSON.stringify(pays)}`);
+  assert.ok(pays.every((x) => x.tse_status === null), `імпортна оплата не підписується і не «tse_failed»: ${JSON.stringify(pays)}`);
+  console.log('  ok  Б2. імпорт: 5 броней, 4 гості + 1 фірма за ADR_WAHL, рід рядків із групи через LNR, каса → staging, оплати з походженням повз варту, послуга без пари — у explained, джерело з GASTKREF');
 
   // ── Б3. Той самий знімок удруге → нуль нових рядків у ядрі й у refs ──────
   const refsBefore = await countA('SELECT COUNT(*) AS n FROM winhotel_refs WHERE organization_id = ?');
@@ -517,6 +554,146 @@ try {
     assert.strictEqual(Number(seenStaging?.n), 0, 'політика winhotel_staging не тримає');
   }
   console.log(`  ok  Б6. гість A через refs і таблиці з B невидимий${isPg ? ' — і політикою теж' : ' (політика — у check:pg)'}`);
+
+  // ══ Задача 8 §3 — кіоск: незатирання і денна дельта ═══════════════════════
+  const { recordReservationPayment, ensureReservationFolio } = await import('@invoicing/kernel');
+  const resA101 = await runWithOrganization(A, () => sql.row<any>('SELECT id, status FROM reservations WHERE organization_id = ? AND external_uid = ?', [A, 'winhotel:GASTKONT:101']));
+  assert.ok(resA101, 'бронь 101 має бути в ядрі перед сценами кіоска');
+  const rgCount = () => countA("SELECT COUNT(*) AS n FROM reservation_guests WHERE reservation_id = (SELECT id FROM reservations WHERE organization_id = ? AND external_uid = 'winhotel:GASTKONT:101')");
+
+  // ── Б7. Кіоск заселив → повторний імпорт того ж знімка (CI_STATUS 0) нічого не затирає ──
+  await runWithOrganization(A, async () => {
+    await sql.run("UPDATE reservations SET status = 'checked_in', registration_status = 'registered' WHERE id = ? AND organization_id = ?", [resA101.id, A]);
+    await sql.run(
+      `INSERT INTO reservation_guests (id, reservation_id, first_name, last_name, date_of_birth, nationality, document_number, guest_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [`${A}_kiosk_rg`, resA101.id, 'Kiosk', 'Gast', null, null, null, null]);
+    await ensureReservationFolio(resA101.id);
+    await recordReservationPayment({ reservationId: resA101.id, amount: 50, method: 'transfer' });
+  });
+  const rgBefore = await rgCount();
+  const folio101 = await runWithOrganization(A, () => ensureReservationFolio(resA101.id));
+  const paysOf101 = () => runWithOrganization(A, async () => (await listPayments(folio101)).map((x: any) => ({ id: x.id, source: x.source ?? null, origin: x.origin ?? null, amount: Number(x.amount) })));
+  const payBefore = await paysOf101();
+  // Знімок мусить справді ПИСАТИ бронь (інакше «нічого не затерто» доводить лише
+  // «нічого не робилось»): у ньому змінена примітка, а CI_STATUS — 0.
+  fs.writeFileSync(bookingsFile, original.replace('"bemerk":"Späte Anreise"', '"bemerk":"Späte Anreise, Zimmer oben"'));
+  const r5 = await runWithOrganization(A, () => importSnapshotNow(A, IMP));
+  fs.writeFileSync(bookingsFile, original);
+  assert.strictEqual(r5.entities.reservation.updated, 1, `бронь 101 мала оновитись (примітка): ${JSON.stringify(r5.entities.reservation)}`);
+  assert.match(String((await runWithOrganization(A, () => sql.row<any>('SELECT internal_notes FROM reservations WHERE id = ?', [resA101.id])))?.internal_notes), /Zimmer oben/, 'оновлення примітки не дійшло — UPDATE не було');
+  const after101 = await runWithOrganization(A, () => sql.row<any>('SELECT status, registration_status FROM reservations WHERE id = ? AND organization_id = ?', [resA101.id, A]));
+  assert.strictEqual(after101?.status, 'checked_in', `кіоск заселив, знімок каже CI_STATUS 0 — стан мав лишитись checked_in, а став ${after101?.status}`);
+  assert.strictEqual(after101?.registration_status, 'registered', `registration_status затерто: ${after101?.registration_status}`);
+  assert.strictEqual(await rgCount(), rgBefore, 'гостей броні, створених кіоском, стало інакше');
+  assert.ok(await runWithOrganization(A, () => sql.row<any>('SELECT id FROM reservation_guests WHERE id = ?', [`${A}_kiosk_rg`])), 'гостя броні від кіоска видалено');
+  const payAfter = await paysOf101();
+  assert.deepStrictEqual(payAfter, payBefore, 'оплати змінились після повторного імпорту');
+  assert.ok(payAfter.some((x: any) => x.source === null && Number(x.amount) === 50), 'оплата рецепції (без source) зникла');
+  assert.strictEqual(r5.entities.reservation.skipped.status_kept_forward ?? 0, 1, `стан «лише вперед» мав спрацювати рівно раз: ${JSON.stringify(r5.entities.reservation.skipped)}`);
+  console.log('  ok  Б7. кіоск заселив і зареєстрував, рецепція взяла оплату → повторний імпорт із CI_STATUS 0 нічого не затер');
+
+  // ── Б8. Дельта: лише вікно, без скасувань за відсутністю; старіший повний не відкочує ──
+  const DELTA = repo.newSnapshotId(new Date('2026-09-13T09:15:00Z'));
+  const deltaSha = crypto.createHash('sha256').update('fixture-delta').digest('hex');
+  await runWithOrganization(A, () => repo.insertSnapshot({ id: DELTA, organizationId: A, takenAt: '2026-09-13 09:15:00', mode: 'delta', sha256: deltaSha, sizeBytes: 1 }));
+  const pd = snapshotPaths(A, DELTA);
+  fs.mkdirSync(pd.out, { recursive: true });
+  const onlyWindow = (entity: string, keep: (row: any) => boolean) => {
+    const src = fs.readFileSync(path.join(FIX, `${entity}.jsonl`), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    fs.writeFileSync(path.join(pd.out, `${entity}.jsonl`), src.filter(keep).map((r) => `${JSON.stringify(r)}\n`).join(''));
+  };
+  for (const dict of ['unit_types', 'units', 'services', 'service_groups', 'tax_codes', 'segments', 'payment_methods']) onlyWindow(dict, () => true);
+  // Вікно 2027-03-09..2027-03-13: лише бронь 101; у дельті вона виїжджає на два дні пізніше.
+  onlyWindow('bookings', (b) => b.lnr === 101);
+  fs.writeFileSync(path.join(pd.out, 'bookings.jsonl'), fs.readFileSync(path.join(pd.out, 'bookings.jsonl'), 'utf8').replace('"bisaufh":"2027-03-13"', '"bisaufh":"2027-03-15"').replace('"auftage":3', '"auftage":5'));
+  onlyWindow('addresses', (a) => [1, 2, 5].includes(a.lnr));
+  onlyWindow('folio_lines', (l) => l.gk_lnr === 101);
+  onlyWindow('payments', (x) => x.lnr_gk === 101);
+  onlyWindow('booking_refs', (x) => x.gk_lnr === 101);
+  onlyWindow('occupancy', (x) => x.lnr_gk === 101);
+  const writeAgg = (window: unknown) => fs.writeFileSync(path.join(pd.out, 'aggregates.json'), JSON.stringify({ snapshot: { id: DELTA, mode: 'delta' }, mode: 'delta', window, entities: { bookings: 1 }, numbers: {} }));
+  writeAgg(null);
+  fs.writeFileSync(pd.extracted, '{}');
+  await runWithOrganization(A, () => repo.syncMarkers(A));
+  await assert.rejects(() => runWithOrganization(A, () => importSnapshotNow(A, DELTA)), /без вікна/, 'дельта без вікна мала відмовити');
+  writeAgg({ from: '2027-03-09', to: '2027-03-13' });
+  const before103 = await runWithOrganization(A, () => sql.row<any>('SELECT status, check_out FROM reservations WHERE organization_id = ? AND external_uid = ?', [A, 'winhotel:GASTKONT:103']));
+  const r6 = await runWithOrganization(A, () => importSnapshotNow(A, DELTA));
+  assert.strictEqual(r6.mode, 'delta');
+  assert.strictEqual(r6.entities.reservation.updated, 1, `дельта мала оновити рівно одну бронь: ${JSON.stringify(r6.entities.reservation)}`);
+  assert.strictEqual(r6.entities.reservation.skipped.cancelled_missing_in_snapshot ?? 0, 0, 'дельта скасувала бронь за відсутністю');
+  const moved101 = await runWithOrganization(A, () => sql.row<any>('SELECT check_out, nights, status FROM reservations WHERE id = ?', [resA101.id]));
+  assert.strictEqual(String(moved101.check_out).slice(0, 10), '2027-03-15', 'нова дата виїзду з дельти не дійшла');
+  assert.strictEqual(moved101.status, 'checked_in', 'дельта затерла стан кіоска');
+  const after103 = await runWithOrganization(A, () => sql.row<any>('SELECT status, check_out FROM reservations WHERE organization_id = ? AND external_uid = ?', [A, 'winhotel:GASTKONT:103']));
+  assert.deepStrictEqual(after103, before103, 'бронь поза вікном дельти змінилась');
+  assert.strictEqual((r6.entities.invoice?.staged ?? 0) + (r6.entities.balance?.staged ?? 0), 0, 'дельта не несе фактур і сальдо');
+  // Повний знімок, узятий РАНІШЕ за дельту, не відкочує її.
+  const r7 = await runWithOrganization(A, () => importSnapshotNow(A, IMP));
+  assert.strictEqual(r7.entities.reservation.skipped.older_snapshot ?? 0, 1, `старіший повний знімок мав пропустити бронь дельти: ${JSON.stringify(r7.entities.reservation.skipped)}`);
+  const kept101 = await runWithOrganization(A, () => sql.row<any>('SELECT check_out FROM reservations WHERE id = ?', [resA101.id]));
+  assert.strictEqual(String(kept101.check_out).slice(0, 10), '2027-03-15', 'повний імпорт після дельти відкотив дату виїзду');
+  // Приймання: дельта без заголовка вікна → 400, і рядка немає.
+  const deltaBody = zlib.gzipSync(Buffer.from('bookings\n'));
+  const deltaSha2 = crypto.createHash('sha256').update(deltaBody).digest('hex');
+  let dres = await post(good(tokenA, { 'x-winhotel-sha256': deltaSha2, 'x-winhotel-mode': 'delta' }), deltaBody);
+  assert.strictEqual(dres.status, 400, `дельта без X-Winhotel-Window: очікували 400, отримали ${dres.status}`);
+  assert.match((await dres.json()).error ?? '', /вікна/);
+  assert.ok(!(await rowsOf(A)).some((r) => r.sha256 === deltaSha2), 'дельта без вікна лишила рядок');
+  dres = await post(good(tokenA, { 'x-winhotel-sha256': deltaSha2, 'x-winhotel-mode': 'delta', 'x-winhotel-window': '2026-09-12..2026-09-16' }), deltaBody);
+  assert.strictEqual(dres.status, 201, `дельта з вікном: очікували 201, отримали ${dres.status} ${await dres.text()}`);
+  const deltaRow = (await rowsOf(A)).find((r) => r.sha256 === deltaSha2)!;
+  assert.strictEqual(deltaRow.mode, 'delta');
+  assert.ok(fs.existsSync(snapshotPaths(A, deltaRow.id).deltaArchive), 'дельта не лягла як .delta.gz');
+  assert.match(fs.readFileSync(snapshotPaths(A, deltaRow.id).ready, 'utf8'), /"window":\{"from":"2026-09-12","to":"2026-09-16"\}/);
+  // Друга дельта того ж дня — не «один на добу»: приймається.
+  const deltaBody3 = zlib.gzipSync(Buffer.from('bookings\n\n'));
+  dres = await post(good(tokenA, { 'x-winhotel-sha256': crypto.createHash('sha256').update(deltaBody3).digest('hex'), 'x-winhotel-mode': 'delta', 'x-winhotel-window': '2026-09-12..2026-09-16' }), deltaBody3);
+  assert.strictEqual(dres.status, 201, `друга дельта за добу: очікували 201, отримали ${dres.status}`);
+  console.log('  ok  Б8. дельта: без вікна — відмова в імпорті й 400 на прийомі; оновлює лише бронь у вікні, не скасовує поза ним; старіший повний знімок її не відкочує; дельти не рахуються «один на добу»');
+
+  // ── Б9. Шаблони дельти агента = SQL мосту по колонках; живий isql зі стаба → пакет → jsonl ──
+  const DELTA_SQL = path.join(ROOT, 'apps/winhotel-agent/sql-delta');
+  const GS = Buffer.from([0x1d]);
+  for (const f of fs.readdirSync(DELTA_SQL).filter((x) => x.endsWith('.sql'))) {
+    const full = fs.readFileSync(path.join(SQL_DIR, f), 'utf8');
+    const mine = fs.readFileSync(path.join(DELTA_SQL, f), 'utf8');
+    const cols = (t: string) => (t.match(/^--\s*columns:\s*(.+)$/m) ?? [])[1];
+    assert.strictEqual(cols(mine), cols(full), `${f}: колонки шаблону дельти розійшлися з SQL мосту — міст розбере вивід не так`);
+    assert.ok(/\{\{FROM\}\}/.test(mine) || /^--.*довідник/m.test(mine), `${f}: ні вікна {{FROM}}, ні позначки довідника`);
+  }
+  if (FIREBIRD) {
+    const { processDelta } = await import('../../../deploy/bridge/lib/extract.mjs');
+    const wdir = path.join(tmp, 'delta-live');
+    fs.mkdirSync(wdir, { recursive: true });
+    const env = { ...process.env, FIREBIRD_LOCK: wdir, FIREBIRD_TMP: wdir };
+    const fdb = path.join(wdir, 'stub.fdb');
+    fs.writeFileSync(path.join(wdir, 'stub.sql'), fs.readFileSync(path.join(ROOT, 'apps/winhotel-import/fixture/stub-db.sql'), 'utf8').replace('__DB__', fdb));
+    execFileSync('isql-fb', ['-q', '-b', '-user', 'SYSDBA', '-charset', 'NONE', '-i', path.join(wdir, 'stub.sql')], { env, stdio: 'pipe' });
+    const parts: Buffer[] = [];
+    for (const f of fs.readdirSync(DELTA_SQL).filter((x) => x.endsWith('.sql')).sort()) {
+      const entity = f.slice(0, -4);
+      const script = path.join(wdir, f);
+      fs.writeFileSync(script, fs.readFileSync(path.join(DELTA_SQL, f), 'utf8').replace(/\{\{FROM\}\}/g, '2027-03-09').replace(/\{\{TO\}\}/g, '2027-03-13'));
+      const outBytes = execFileSync('isql-fb', ['-q', '-b', '-user', 'SYSDBA', '-charset', 'NONE', '-i', script, fdb], { env, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
+      parts.push(GS, Buffer.from(`${entity}\n`, 'latin1'), outBytes);
+    }
+    const bundle = path.join(wdir, 'delta.bin.gz');
+    fs.writeFileSync(bundle, zlib.gzipSync(Buffer.concat(parts)));
+    const live = await processDelta({ archive: bundle, sqlDir: SQL_DIR, outDir: path.join(wdir, 'out'), window: { from: '2027-03-09', to: '2027-03-13' }, snapshot: { id: 'live', mode: 'delta' } }) as { entities: Record<string, number> };
+    assert.strictEqual(live.entities.bookings, 1, `у вікні одна бронь (101), отримали ${live.entities.bookings}`);
+    assert.strictEqual(live.entities.addresses, 3, `три адреси броні 101, отримали ${live.entities.addresses}`);
+    assert.strictEqual(live.entities.folio_lines, 1);
+    assert.strictEqual(live.entities.payments, 1);
+    assert.strictEqual(live.entities.services, 10, 'довідник послуг у дельті має бути цілим');
+    const liveB = JSON.parse(fs.readFileSync(path.join(wdir, 'out', 'bookings.jsonl'), 'utf8').trim());
+    assert.strictEqual(liveB.lnr, 101);
+    assert.strictEqual(liveB.bemerk, 'Späte Anreise', `умлаут у дельті: ${liveB.bemerk}`);
+    await assert.rejects(() => processDelta({ archive: bundle, sqlDir: SQL_DIR, outDir: path.join(wdir, 'out2'), window: null, snapshot: null }), /без вікна/);
+    console.log('  ok  Б9. шаблони дельти = SQL мосту по колонках; живий isql зі стаба у вікні 03-09..03-13 → пакет → 1 бронь, 3 адреси, 1 рядок, 1 оплата, довідники цілі');
+  } else {
+    console.log('  ok  Б9. шаблони дельти = SQL мосту по колонках; ПРОПУЩЕНО живий isql (немає Firebird) — пакет дельти перевіряється локально і в проході контролера');
+  }
 
   console.log('  ok  winhotel-import: знімок доходить лише зі своїм токеном, лягає під орендаря і витягається');
 } finally {

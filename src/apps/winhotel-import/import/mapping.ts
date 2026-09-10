@@ -15,6 +15,10 @@ export interface WhUnit { lnr: number; zinr: string | null; lnr_kate: number | n
 export interface WhService { lnr: number; kurzbez: string | null; bezeichn: string | null; wg: number | null; sts: number | null; betrag: number | null; ta_status: number | null }
 export interface WhTaxCode { lnr: number; sts: number | null; stsatz: number | null; von: string | null; bis: string | null }
 export interface WhSegment { lnr: number; segmcode: number | null; bezeichn: string | null }
+/** WARENGRUPPE: `lnr` — те, на що посилається `LEISTSTA.WG`; `wgnr` — КОД групи (100…800). */
+export interface WhServiceGroup { lnr: number; wgnr: number | null; bezeichn: string | null; durchl: boolean | null }
+/** GASTKREF: посилання каналу на бронь — `ext_source` («Booking.com», «DIRS21»…) і його номер. */
+export interface WhBookingRef { lnr: number; gk_lnr: number | null; ref_nr: string | null; inet_ref_nr: string | null; ext_source: string | null; ext_refnr: string | null }
 export interface WhPaymentMethod { lnr: number; kurzbez: string | null; bezeichn: string | null; zahlungsart: number | null; m_depitor: boolean | null; ta_status: number | null }
 export interface WhAddress {
   lnr: number; adr_wahl: number | null; anrede: string | null; titel: string | null; name1: string | null; name2: string | null;
@@ -30,7 +34,7 @@ export interface WhAddress {
 }
 export interface WhBooking {
   lnr: number; vonaufh: string | null; bisaufh: string | null; auftage: number | null; lnr_kate: number | null; lnr_zinr: number | null;
-  resv_kate_lnr: number | null; gastnr_1: number | null; gastnr_2: number | null; gastnr_3: number | null;
+  resv_kate_lnr: number | null; umzug_zinr: string | null; gastnr_1: number | null; gastnr_2: number | null; gastnr_3: number | null;
   perszahl: number | null; anzkinder: number | null; anzkinder2: number | null; anzkleinkind: number | null; anzjugend: number | null;
   begleitok: boolean | null; kind1ok: boolean | null; kind2ok: boolean | null; kind3ok: boolean | null; kind4ok: boolean | null; kind5ok: boolean | null;
   buch_status: number | null; ci_status: number | null; ta_status: number | null; storno_datum: string | null; verk_nr: number | null;
@@ -56,6 +60,21 @@ export interface WhLedger { lnr: number; rechnr: number | null; adr_lnr: number 
 // й виставлені; (0,0,1001)/(0,0,1000)/(0,0,1500) — видалені/сторновані;
 // (0,0,0) ×926 — чинні до заїзду; (100,0,*) — Option/Angebot; (0,1,*) — в домі.
 export type CoreStatus = 'tentative' | 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled' | 'no_show';
+
+/**
+ * Незатирання (задача 8 §3): імпорт пише стан лише ВПЕРЕД — `tentative →
+ * confirmed → checked_in → checked_out`. Кіоск заселив, а нічний знімок ще
+ * каже CI_STATUS 0 — стан лишається `checked_in`. `cancelled` — лише з
+ * TA_STATUS (тут) або відсутності в повному знімку (імпортер); і назад із
+ * `cancelled` — лише коли Winhotel сам зняв сторно (TA_STATUS < 1000).
+ */
+const STATUS_RANK: Record<string, number> = { tentative: 0, confirmed: 1, checked_in: 2, checked_out: 3 };
+
+export function statusForward(current: string | null | undefined, incoming: CoreStatus): CoreStatus {
+  if (incoming === 'cancelled') return 'cancelled';
+  if (!current || current === 'cancelled' || !(current in STATUS_RANK)) return incoming;
+  return STATUS_RANK[incoming] >= STATUS_RANK[current] ? incoming : (current as CoreStatus);
+}
 
 export function bookingStatus(b: Pick<WhBooking, 'buch_status' | 'ci_status' | 'ta_status' | 'storno_datum'>): CoreStatus {
   if ((b.ta_status ?? 0) >= 1000) return 'cancelled';
@@ -90,22 +109,53 @@ export function taxCode(sts: number | null | undefined): CoreTaxCode | null {
 }
 
 // ── Рід рядка рахунку за товарною групою послуги (IMPORT-PLAN §2.4, §2.9) ──
+//
+// `LEISTSTA.WG` — це LNR рядка WARENGRUPPE, а не код групи: живі значення
+// `wg` ∈ {1…9}, коди — `service_groups.wgnr` ∈ {100…800} (рецензія Б, п. 1).
+// Тому рід питається ЛИШЕ за кодом, отриманим джойном `wg → lnr → wgnr`; число
+// групи без цього джойна тут не приймається (`groupCodeOf`), і фікстура
+// тримає `wg ≠ wgnr` (інваріант 26).
 
 export type LineKind = 'lodging' | 'service' | 'city_tax';
+/** Касова стаття (700 Geldtransit, 750 Ausgaben, 800 Kein Umsatz) — не рядок фоліо гостя. */
+export type LineRoute = LineKind | 'cash_article';
 
-export function lineKind(service: Pick<WhService, 'wg'> | undefined): LineKind {
-  const wg = service?.wg ?? 0;
-  if (wg === 100) return 'lodging';
-  if (wg === 600) return 'city_tax';
+/** Код групи послуги через WARENGRUPPE.LNR; групи немає — null (рід тоді `service`). */
+export function groupCodeOf(service: Pick<WhService, 'wg'> | undefined, groups: Map<number, WhServiceGroup>): number | null {
+  const g = service?.wg != null ? groups.get(service.wg) : undefined;
+  return g?.wgnr ?? null;
+}
+
+const LODGING_WORDS = /logis|übernachtung|uebernachtung/i;
+
+export function lineKind(groupCode: number | null, groupName?: string | null): LineRoute {
+  if (groupCode === 100 || (groupCode === null && groupName && LODGING_WORDS.test(groupName))) return 'lodging';
+  if (groupCode === 600) return 'city_tax';
+  if (groupCode !== null && groupCode >= 700) return 'cash_article';
   return 'service';
 }
 
-/** Послуга, яку імпорт мусить знайти в каталозі готелю: жива, не логіс, не каса. */
-export function needsCatalogMatch(s: WhService): boolean {
+/**
+ * Послуга, для якої шукається пара в каталозі готелю: жива, і не з груп
+ * 100/600/700/750/800 (логіс, збори, каса). Пара потрібна лише для майбутнього
+ * продажу, не для перенесеної історії, тому її відсутність — не відмова, а
+ * рядок у `reconcile.explained` (рецензія Б, п. 3).
+ */
+export function needsCatalogMatch(s: WhService, groupCode: number | null): boolean {
   if ((s.ta_status ?? 0) >= 1000) return false;
-  const wg = s.wg ?? 0;
-  if (wg === 100 || wg === 600 || wg >= 700) return false;
+  if (groupCode === 100 || (groupCode !== null && groupCode >= 600)) return false;
   return !!s.bezeichn;
+}
+
+/** Назва послуги для звірки: регістр, пробіли, `-`/`–`/`—` і пробіли навколо них — одне. */
+export function normalizeServiceName(name: string | null | undefined): string {
+  return (name ?? '')
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/[\u2010\u2011\u2012\u2013\u2014\u2212]/g, '-')
+    .replace(/\s*-\s*/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 // ── Люди ────────────────────────────────────────────────────────────────
@@ -136,8 +186,13 @@ export function language(sprache: number | null | undefined): string | null {
   return null;
 }
 
-export function isCompany(a: Pick<WhAddress, 'debi_nr'>): boolean {
-  return (a.debi_nr ?? 0) > 0;
+/**
+ * Компанія — це `ADR_WAHL = 1` («Firma» в ADRESSEN_ART). `DEBI_NR` ознакою не є:
+ * Winhotel дає дебіторський номер кожному, хто отримував рахунок, — на живому
+ * 15 421 приватних осіб із 17 461 (рецензія Б, п. 2).
+ */
+export function isCompany(a: Pick<WhAddress, 'adr_wahl'>): boolean {
+  return a.adr_wahl === 1;
 }
 
 /** Ім'я гостя: NAME1 — прізвище або фірма, NAME2 — імʼя (MAPPING п. 2). */

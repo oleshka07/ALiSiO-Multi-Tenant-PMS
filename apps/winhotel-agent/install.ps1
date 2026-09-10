@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-  Registriert den ALiSiO Winhotel-Agenten als geplante Aufgabe (täglich 03:00).
+  Registriert den ALiSiO Winhotel-Agenten als geplante Aufgaben: nächtlicher
+  Schnappschuss (täglich 03:00) und Tagesdelta (alle 15 Minuten, -Mode Delta).
 
 .DESCRIPTION
   Als Administrator ausführen. Legt die Aufgabe "ALiSiO Winhotel-Agent" an,
@@ -19,7 +20,10 @@ param(
   [string]$BackupDir = '',
   [string]$Password = '',
   [string]$Time = '03:00',
-  [string]$TaskName = 'ALiSiO Winhotel-Agent'
+  [string]$TaskName = 'ALiSiO Winhotel-Agent',
+  [int]$DeltaMinutes = 15,
+  [string]$DeltaTaskName = 'ALiSiO Winhotel-Delta',
+  [switch]$NoDelta
 )
 
 Set-StrictMode -Version Latest
@@ -59,3 +63,22 @@ if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
 }
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal | Out-Null
 Write-Host ('Aufgabe "' + $TaskName + '" registriert: täglich ' + $Time + '. Test: Start-ScheduledTask -TaskName "' + $TaskName + '"')
+
+# ── Tagesdelta: alle N Minuten, nur lesen (Kiosk sieht Buchungen des Tages) ──
+if (Get-ScheduledTask -TaskName $DeltaTaskName -ErrorAction SilentlyContinue) {
+  Unregister-ScheduledTask -TaskName $DeltaTaskName -Confirm:$false
+}
+if (-not $NoDelta) {
+  $deltaArgs = @(
+    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $Agent + '"'),
+    '-AlisioUrl', ('"' + $AlisioUrl + '"'),
+    '-Database', ('"' + $Database + '"'),
+    '-Mode', 'Delta'
+  )
+  if ($Password) { $deltaArgs += @('-Password', ('"' + $Password + '"')) }
+  $deltaAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ($deltaArgs -join ' ') -WorkingDirectory $ScriptDir
+  $deltaTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Minutes $DeltaMinutes) -RepetitionDuration (New-TimeSpan -Days 3650)
+  $deltaSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 10) -MultipleInstances IgnoreNew
+  Register-ScheduledTask -TaskName $DeltaTaskName -Action $deltaAction -Trigger $deltaTrigger -Settings $deltaSettings -Principal $principal | Out-Null
+  Write-Host ('Aufgabe "' + $DeltaTaskName + '" registriert: alle ' + $DeltaMinutes + ' Minuten (Tagesdelta). Test: Start-ScheduledTask -TaskName "' + $DeltaTaskName + '"')
+}

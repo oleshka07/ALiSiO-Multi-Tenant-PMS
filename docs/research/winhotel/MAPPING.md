@@ -59,8 +59,8 @@
 | Таблиця Winhotel | **та сама `ADRESSEN`** — **упевнено**: `DEBI_NR INTEGER` на адресі; окремої таблиці фірм немає (`ANSPRECHP` контактних осіб — 0 рядків; view `VIEW_ADR_ANSPRECHP_VERB` показує `DEBI_NR` поруч із контактом) |
 | Ключові колонки | `ADR_WAHL` (тип «фірма» — який із трьох, побачити в `ADR_AUSWAHL.BEZEICHN` на прогоні), `NAME1` (назва), `DEBI_NR` (10000–12599), `STEUERNUMMER`, `PR_CODE` (фірмовий прайс-код 3 = Firmenpreise або 8/10 корпоративні), `RABATT` (%), `PROV_PROZ` (комісія — для турагентів), `LOGI_OK`/`KURT_OK`/`LOGI_BETRAG` (що фірма оплачує: проживання, курортний збір, ліміт), `KONTONR`/`IBAN`/`BANK`/`BLZ`/`SWIFT` — **не імпортувати** |
 | Лічильник дебітора | `MANDANT.LFDDEBITOR` (FLOAT) + `LFDDEBIOK` — наступний номер; `DEFAULT_DEBINR` — дебітор за замовчуванням для готівкових |
-| Наша ціль | `companies` ← `ADRESSEN WHERE DEBI_NR IS NOT NULL` (або `ADR_WAHL` = фірма); `DEBI_NR` зберегти як зовнішній код для звірки з DATEV; знижка → `price_rules`/поле на `companies` |
-| Незрозуміло | чи всі фірми мають `DEBI_NR`, чи лише ті, що платили з відстрочкою — перевірити `COUNT(*) WHERE DEBI_NR > 0` проти `ADR_WAHL` |
+| Наша ціль | `companies` ← `ADRESSEN WHERE ADR_WAHL = 1` («Firma»); **не `DEBI_NR`** — живий прохід 10.09 (рецензія Б): `DEBI_NR > 0` у 17 461 адрес, з них 15 421 приватні особи; `ADR_WAHL = 1` — 2 143. `DEBI_NR` зберегти як `companies.debtor_no` (сесія 1) для звірки з DATEV; знижка → `price_rules`/поле на `companies` |
+| Зʼясовано 10.09 | `DEBI_NR` має кожен, хто отримував рахунок (17 461), фірм за `ADR_WAHL = 1` — 2 143; ознака фірми — лише `ADR_WAHL` |
 
 ## 4. Брони (`Beleg-Nr`, `Verkn-Nr`, стани) → `reservations`, `reservation_sub_bookings`
 
@@ -78,7 +78,7 @@
 | `AGB/Storno` | не знайдено на броні (див. п. 9) |
 | Особи | `PERSZAHL`, `ANZKINDER`, `ANZKINDER2`, `ANZKLEINKIND`, `ANZJUGEND` |
 | Ціна | `PR_CODE` (прайс-код броні), `TARIF`; сама ціна — у рядках `BUCHKONT` (п. 5) |
-| Наша ціль | `reservations` ← `GASTKONT` (1:1); `VERK_NR` → `reservation_sub_bookings`/group id; `MARKSEG` → `booking_sources`; `GASTKREF.REF_NR` → зовнішній номер; `BELEGUNG` з різними номерами на один `GASTKONT` → переселення (наш `reservation_sub_bookings` або історія) |
+| Наша ціль | `reservations` ← `GASTKONT` (1:1); `VERK_NR` → `parent_id`; **джерело — `GASTKREF.EXT_SOURCE`** («Booking.com», «DIRS21»…) за назвою в `booking_sources`, бо `MARKSEG` — ринковий сегмент і на живому 0/null у 2 995 з 3 009 (рецензія Б); `GASTKREF.REF_NR`/`EXT_REFNR` → зовнішній номер; `BELEGUNG` з різними номерами на один `GASTKONT` → переселення (наш `reservation_sub_bookings` або історія) |
 | Незрозуміло | `BELEGUNGSART` (0 звичайна, ≥ 3 інше — семінар/апартамент?); `ABR_TYP`; `REG_MODE`; `GAST_GR` — усе рахувати `GROUP BY` на прогоні |
 
 ## 5. Послуги на броні (`Leistungen`, `Menge × Tage`, щоденні) → `reservation_line_items`, `service_orders`
@@ -88,7 +88,7 @@
 | Таблиці Winhotel | **`BUCHKONT`** (195 303) + довідник **`LEISTSTA`** (132), `WARENGRU` (9), `KATESTAM_LEISTUNG` (7), `GLOB_LEISTUNG` (7), `PREISSPLITTING` (455) — **упевнено** |
 | Рядок рахунку | `BUCHKONT`: `GK_LNR → GASTKONT` (FK), `LEIST_LNR → LEISTSTA.LNR`, `VON`–`BIS`, `TAGE`, `ME` (Menge), `E_PREIS` (ціна одиниці), `TAGBETRAG` (за день), `GBETRAG` (разом = `ME × TAGE × E_PREIS`), `BEZEICHN` (текст на момент запису), `PRL_LNR → PREISLIST.LNR` (з якого цінового рядка), `ZIPREIS`/`PAUSCH` (ціна номера / пакет), `AUFP` (на особу), `RECHNR`/`LNR_CO`/`RE_LAUF` (у якій фактурі, чек-аут), `STO_KENNUNG` (1/2 сторно), `UMB_GK_LNR` (перенесено на інший рахунок), `ONLINE_GEBUCHT`, `GS_LNR` (ваучер), `BASIS_LNR` (базовий рядок для похідних), `ZAHLUNG_LNR` |
 | Щоденна (зірочка) | не окремий прапорець на рядку — рядок із `VON < BIS` і `TAGE > 1` є щоденним; на довіднику `LEISTSTA.M_FIX` (фіксована) / `KATESTAM_LEISTUNG.TAEGLICH` (автопослуга категорії щодня) |
-| Übernachtung | `LEISTSTA LNR 1 LOGIS` (WG 100, STS 2 = 7 %), `67 ÜN`, `78 LOG_FIRMEN`; сніданок розділено: `11 FS Frühstück-Speisen` (WG 200, STS 2 = 7 %), `96 FG Frühstück-Getränke` (WG 300, STS 3 = 19 %) — **Winhotel уже спліщить сніданок на їжу/напої**, і саме так робить наш `service-vat-split` |
+| Übernachtung | `LEISTSTA LNR 1 LOGIS` (група 100 — **`WG` це LNR рядка `WARENGRU`, код групи — `WGNR`**; на живому `wg` ∈ {1…9}, `wgnr` 100…800; рецензія Б п. 1; STS 2 = 7 %), `67 ÜN`, `78 LOG_FIRMEN`; сніданок розділено: `11 FS Frühstück-Speisen` (WG 200, STS 2 = 7 %), `96 FG Frühstück-Getränke` (WG 300, STS 3 = 19 %) — **Winhotel уже спліщить сніданок на їжу/напої**, і саме так робить наш `service-vat-split` |
 | ПДВ на рядку | `LEISTSTA.STS` — **код** (1/2/3), не відсоток; ставка на дату — з `STEUSTAM` за `VON`–`BIS` (п. 11). У `FAKT_ERLOESE.STEUERSATZ` і `FISKAL_RECH_POS.STSATZ` вона вже записана числом |
 | Спліт ціни | `PREISSPLITTING` (FK → `PREISLIST`): як ціновий рядок розкладається на послуги (`LEISTUNG_LNR`, `BETRAG`/`BETRAG_PROZ`, `TAEGLICH`, `PROPERSON`) — джерело того, що «ÜF 141 €» = Logis 7 % + сніданок |
 | Наша ціль | Logis-рядки → нічна ціна `reservation_line_items` **через `priceNights()`** з відновлених тарифів (п. 8), а `GBETRAG` з Winhotel — як контрольна сума для звірки (інваріант 16); решта послуг → `service_orders`/`reservation_line_items` з `unit_price = E_PREIS / 1000`, кількість `ME`, днів `TAGE` |

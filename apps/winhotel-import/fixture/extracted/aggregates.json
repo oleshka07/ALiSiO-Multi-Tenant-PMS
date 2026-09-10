@@ -1,12 +1,12 @@
 {
   "snapshot": {
-    "file": "stub.fbk",
+    "file": ".stub.fbk",
     "mode": "gbak"
   },
-  "extractedAt": "2026-09-10T00:00:00.000Z",
+  "extractedAt": "2026-09-10T13:38:50.759Z",
   "entities": {
     "address_types": 2,
-    "addresses": 4,
+    "addresses": 5,
     "age_bands": 3,
     "booking_refs": 1,
     "bookings": 5,
@@ -14,7 +14,7 @@
     "consent_types": 2,
     "consents": 2,
     "day_closings": 2,
-    "folio_lines": 5,
+    "folio_lines": 7,
     "invoice_ledger": 2,
     "invoice_lines": 3,
     "invoices": 3,
@@ -27,8 +27,8 @@
     "rate_codes": 3,
     "seasons": 2,
     "segments": 2,
-    "service_groups": 4,
-    "services": 7,
+    "service_groups": 6,
+    "services": 10,
     "tax_codes": 3,
     "unit_types": 3,
     "units": 4
@@ -80,19 +80,19 @@
     },
     "addresses_live": {
       "label": "адрес живих",
-      "value": "4"
+      "value": "5"
     },
     "addresses_with_debtor_no": {
       "label": "адрес з номером дебітора (N, min, max)",
-      "value": "1 10001 10001"
+      "value": "2 10001 10002"
     },
     "addresses_by_type": {
       "label": "адрес за типом ADR_WAHL (код×N)",
-      "value": "0 3 1 1"
+      "value": "0 4 1 1"
     },
     "addresses_anonymised": {
       "label": "адрес анонімізованих (DS_VORGENOMMEN×N)",
-      "value": "0 5"
+      "value": "0 6"
     },
     "units_real_pseudo": {
       "label": "номерів справжніх / псевдо",
@@ -104,7 +104,7 @@
     },
     "folio_lines_live": {
       "label": "рядків рахунку (BUCHKONT) живих, сума",
-      "value": "5 1032.000"
+      "value": "7 1070.000"
     },
     "payments_live": {
       "label": "платежів живих, сума",
@@ -116,7 +116,7 @@
     },
     "open_guest_balances": {
       "label": "відкриті позиції по рахунках гостей (виїхали, offen<>0): N, сума",
-      "value": "2 283.500"
+      "value": "2 321.500"
     },
     "invoice_ledger_by_status": {
       "label": "книга вихідних рахунків за DB_STATUS (код×N×сума)",

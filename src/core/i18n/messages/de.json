@@ -3639,5 +3639,9 @@
   "депозити броней": "Anzahlungen auf Buchungen",
   "депозити майбутніх броней": "Anzahlungen auf künftige Buchungen",
   "останнє закриття дня": "letzter Tagesabschluss",
-  "оплати дебіторів": "Debitorenzahlungen"
+  "оплати дебіторів": "Debitorenzahlungen",
+  "вікно": "Fenster",
+  "дельта дня": "Tagesdelta",
+  "касові статті (не фоліо гостя)": "Kassenposten (nicht Gastfolio)",
+  "дебіторський номер фірми до колонки": "Debitorennummer der Firma bis zur Spalte"
 }

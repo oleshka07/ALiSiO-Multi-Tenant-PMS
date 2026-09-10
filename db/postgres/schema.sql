@@ -836,6 +836,8 @@ CREATE TABLE "fin_folio_payments" (
   "method" TEXT NOT NULL,
   "paid_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "received_by" TEXT,
+  "source" TEXT,
+  "origin" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "tse_status" TEXT,
   "tse_serial" TEXT,
@@ -2241,6 +2243,7 @@ CREATE TABLE "winhotel_refs" (
   "winhotel_lnr" BIGINT NOT NULL,
   "our_id" TEXT NOT NULL,
   "fingerprint" TEXT,
+  "source_taken_at" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
@@ -2261,7 +2264,7 @@ CREATE TABLE "winhotel_snapshots" (
   "imported_at" TIMESTAMPTZ,
   PRIMARY KEY ("id"),
   UNIQUE ("organization_id", "sha256"),
-  CHECK (mode IN ('backup', 'gbak', 'copy')),
+  CHECK (mode IN ('backup', 'gbak', 'copy', 'delta')),
   CHECK (status IN ('received', 'extracting', 'extracted', 'imported', 'failed'))
 );
 

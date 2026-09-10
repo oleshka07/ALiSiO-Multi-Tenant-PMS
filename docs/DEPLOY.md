@@ -419,7 +419,11 @@ same login.
 
 - **агент** стоїть на Windows-сервері готелю (`apps/winhotel-agent/README.de.md`)
   і щоночі шле gzip-знімок бази на `POST /api/apps/winhotel-import/snapshots`
-  з токеном агента з картки застосунку;
+  з токеном агента з картки застосунку; **другою задачею Планувальника — кожні
+  15 хв — денну дельту** (`-Mode Delta`, задача 8 сесії 5): `isql` читає лише
+  броні з заїздом або виїздом у вікні −1…+3 дні і шле сирий вивід одним
+  gzip-пакетом (`X-Winhotel-Mode: delta`, `X-Winhotel-Window`); на томі це
+  `<id>.delta.gz`, і міст перетворює його тими самими правилами без `gbak`;
 - **застосунок** кладе файл на том `winhotel-snapshots` (у контейнері `app` —
   `/app/data/winhotel/<організація>/<id>.fbk.gz` + маркер `.ready`);
 - **міст** — окремий контейнер `alisio-<env>-bridge` (`deploy/bridge/Dockerfile`:

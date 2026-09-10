@@ -3671,5 +3671,9 @@
   "депозити броней": "zálohy rezervací",
   "депозити майбутніх броней": "zálohy budoucích rezervací",
   "останнє закриття дня": "poslední denní uzávěrka",
-  "оплати дебіторів": "platby odběratelů"
+  "оплати дебіторів": "platby odběratelů",
+  "вікно": "okno",
+  "дельта дня": "denní delta",
+  "касові статті (не фоліо гостя)": "pokladní položky (ne folio hosta)",
+  "дебіторський номер фірми до колонки": "číslo odběratele firmy do sloupce"
 }

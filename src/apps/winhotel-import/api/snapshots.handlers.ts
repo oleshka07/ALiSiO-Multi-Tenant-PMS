@@ -9,7 +9,9 @@
  *
  *   Authorization:          Bearer <організація>.<секрет>   (agent-token.ts)
  *   X-Winhotel-Sha256:      sha256 ТІЛА, hex — звіряється під час прийому
- *   X-Winhotel-Mode:        backup | gbak | copy             (режим агента)
+ *   X-Winhotel-Mode:        backup | gbak | copy | delta     (режим агента)
+ *   X-Winhotel-Window:      YYYY-MM-DD..YYYY-MM-DD — лише для delta: вікно дат
+ *                           заїзду/виїзду, яке агент читав; без нього — 400
  *   X-Winhotel-Taken-At:    ISO-час знімка
  *   X-Winhotel-Hostname:    імʼя машини готелю — лише в лог відмови, не в базу
  *
@@ -59,12 +61,21 @@ import {
   type SnapshotMode,
   type SnapshotRow,
 } from '../data/snapshots.repo';
-import { discardSnapshotFiles, ensureDir, snapshotPaths } from '../storage';
+import { archiveFor, discardSnapshotFiles, ensureDir, snapshotPaths } from '../storage';
 import { runImport, type ImportReport } from '../import/importer';
 import { isRefusal } from '@core/http/refusal';
 
 const APP = 'winhotel_import';
 const SHA_HEX = /^[0-9a-f]{64}$/;
+const WINDOW = /^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/;
+
+/** Вікно дельти з заголовка: `from..to`, обидві дати, from ≤ to; інакше null. */
+export function parseWindow(header: string | null): { from: string; to: string } | null {
+  const m = WINDOW.exec((header ?? '').trim());
+  if (!m) return null;
+  if (Number.isNaN(Date.parse(m[1])) || Number.isNaN(Date.parse(m[2])) || m[1] > m[2]) return null;
+  return { from: m[1], to: m[2] };
+}
 
 /**
  * Відмова, яку організація побачить на картці, — і той самий текст клієнту.
@@ -110,20 +121,27 @@ export async function receiveSnapshot(request: Request): Promise<Response> {
       const sha256 = (request.headers.get('x-winhotel-sha256') ?? '').trim().toLowerCase();
       if (!SHA_HEX.test(sha256)) await refuseReported(organizationId, 'Заголовок X-Winhotel-Sha256 має бути sha256 у hex', 400);
       const mode = (request.headers.get('x-winhotel-mode') ?? '').trim().toLowerCase() as SnapshotMode;
-      if (!SNAPSHOT_MODES.includes(mode)) await refuseReported(organizationId, `Режим знімка «${mode || '—'}» невідомий: очікуємо backup, gbak або copy`, 400);
+      if (!SNAPSHOT_MODES.includes(mode)) await refuseReported(organizationId, `Режим знімка «${mode || '—'}» невідомий: очікуємо backup, gbak, copy або delta`, 400);
       const takenAt = takenAtFrom(request.headers.get('x-winhotel-taken-at'));
+      // Дельта без вікна — не дельта: імпорт не знав би, що вважати «повним»
+      // у ній, і скасовував би все, чого не бачить (задача 8 §3).
+      const window = mode === 'delta' ? parseWindow(request.headers.get('x-winhotel-window')) : null;
+      if (mode === 'delta' && !window) await refuseReported(organizationId, 'Дельта без вікна дат: заголовок X-Winhotel-Window має бути YYYY-MM-DD..YYYY-MM-DD', 400);
 
       const same = await findSnapshotBySha(organizationId, sha256);
       if (same) {
         return NextResponse.json({ snapshotId: same.id, status: same.status, duplicate: true }, { status: 200 });
       }
-      const today = await snapshotsReceivedToday(organizationId);
-      if (today.length) {
-        await refuseReported(organizationId, `За сьогодні знімок уже прийнято (${today[0].id}); наступний — завтра`, 409);
+      if (mode !== 'delta') {
+        const today = await snapshotsReceivedToday(organizationId);
+        if (today.length) {
+          await refuseReported(organizationId, `За сьогодні знімок уже прийнято (${today[0].id}); наступний — завтра`, 409);
+        }
       }
 
       const id = newSnapshotId();
       const p = snapshotPaths(organizationId, id);
+      const archive = archiveFor(p, mode);
       ensureDir(p.dir);
       let received: { sha256: string; size: number };
       try {
@@ -143,7 +161,7 @@ export async function receiveSnapshot(request: Request): Promise<Response> {
         await refuseReported(organizationId, 'Контрольна сума не збігається із заголовком — файл пошкоджено дорогою', 400);
       }
 
-      fs.renameSync(p.part, p.archive);
+      fs.renameSync(p.part, archive);
       try {
         await insertSnapshot({ id, organizationId, takenAt, mode, sha256, sizeBytes: received.size });
       } catch (e) {
@@ -156,7 +174,7 @@ export async function receiveSnapshot(request: Request): Promise<Response> {
         throw e;
       }
       // `.ready` — останнім: міст бере лише файл, за який хтось поручився.
-      fs.writeFileSync(p.ready, JSON.stringify({ id, mode, sha256, takenAt, sizeBytes: received.size }));
+      fs.writeFileSync(p.ready, JSON.stringify({ id, mode, sha256, takenAt, sizeBytes: received.size, window }));
       await reportOk(APP, organizationId);
       return NextResponse.json({ snapshotId: id, status: 'received' }, { status: 201 });
     });

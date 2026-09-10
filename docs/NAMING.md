@@ -151,7 +151,9 @@ Charter описує, ЯК називати. Він не вимагає нега
     читаючи маркери мосту з тією самою назвою (`<id>.extracting`,
     `.extracted`, `.failed`). `winhotel_snapshots.mode` (**як агент зняв
     базу**): `backup` — готовий `.fbk` з теки бекапів Winhotel | `gbak` —
-    `gbak -b` агентом | `copy` — копія `winhotel.fdb` при закритому Winhotel.
+    `gbak -b` агентом | `copy` — копія `winhotel.fdb` при закритому Winhotel |
+    `delta` — не база, а вивід `isql` за вікном дат (0145), файл `<id>.delta.gz`,
+    заголовок `X-Winhotel-Window`, без правила «один на добу».
     Таблиці застосунку — префікс `winhotel_*`, кожна з `organization_id`;
     у таблиці ядра колонок застосунок не додає.
     `winhotel_refs.entity` (**що за рядок Winhotel став нашим**, 0144):
@@ -169,9 +171,16 @@ Charter описує, ЯК називати. Він не вимагає нега
     `no_unit_type` — бронь без категорії, що є в нас | `no_guest` — бронь без
     жодної адреси | `changed` — рядок або оплата змінені у Winhotel після
     нашого імпорту, дверей на зміну немає | `refused_by_core` — фасад відмовив
-    (текст у payload) | `core_gap_gdpr_journal`, `core_gap_cash_book` —
-    CORE-GAPS 6 і 9 | ключі агрегатів (`open_guest_balances`, …) — сальдо
-    числом. Нова причина = рядок тут + слово у `STAGING_REASON` картки.
+    (текст у payload) | `cash_article` — рядок BUCHKONT групи 700/750/800
+    (Geldtransit, Ausgaben, Kein Umsatz): каса/витрати, не фоліо гостя |
+    `debtor_no_pending` — `DEBI_NR` компанії, доки немає `companies.debtor_no` |
+    `core_gap_gdpr_journal`, `core_gap_cash_book` — CORE-GAPS 6 і 9 | ключі
+    агрегатів (`open_guest_balances`, …) — сальдо числом. У payload `overlap`
+    — `cause`: `winhotel_double` (дві живі броні Winhotel на одному номері в ті
+    ж дати) | `umzug` (`UMZUG_ZINR`) | `other`. Нова причина = рядок тут + слово
+    у `STAGING_REASON` картки. `fiscal_guard` скасовано 10.09 (З34): імпортна
+    оплата йде у фоліо з `fin_folio_payments.source = 'import'` і
+    `origin = winhotel:<LNR>`; `source` NULL — наша каса.
   Новий статус = міграція + рядок тут + бейдж у UI. Статус, якого немає в
   мапі UI, — баг (`partial` у календарі був невидимим саме так).
 - **Без назв юрисдикцій у схемі** (AGENTS.md, інваріант 22): ні в таблиці, ні

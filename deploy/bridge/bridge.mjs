@@ -11,7 +11,9 @@
  * живого проходу контролера (задача §2.8).
  *
  * Протокол на томі — `src/apps/winhotel-import/storage.ts`:
- *   <org>/<id>.fbk.gz + <org>/<id>.ready  → беремо
+ *   <org>/<id>.fbk.gz + <org>/<id>.ready  → беремо (повний знімок: gbak -c → isql)
+ *   <org>/<id>.delta.gz + .ready          → беремо (дельта: сирий вивід isql агента
+ *                                            за вікном дат → ті самі jsonl, без бази)
  *   <org>/<id>.extracting                 → узяли
  *   <org>/<id>/*.jsonl, aggregates.json, <org>/<id>.extracted → готово
  *   <org>/<id>.failed                     → текст відмови
@@ -23,7 +25,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { processSnapshot } from './lib/extract.mjs';
+import { processDelta, processSnapshot } from './lib/extract.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SQL_DIR = process.env.WINHOTEL_SQL_DIR || path.resolve(HERE, 'sql');
@@ -72,24 +74,26 @@ function pending(root) {
       const id = f.slice(0, -'.ready'.length);
       const base = path.join(dir, id);
       if (fs.existsSync(`${base}.extracted`) || fs.existsSync(`${base}.failed`)) continue;
-      if (!fs.existsSync(`${base}.fbk.gz`)) continue;
-      out.push({ org: org.name, id, base });
+      if (fs.existsSync(`${base}.fbk.gz`)) out.push({ org: org.name, id, base, delta: false });
+      else if (fs.existsSync(`${base}.delta.gz`)) out.push({ org: org.name, id, base, delta: true });
     }
   }
   return out;
 }
 
-async function handle({ org, id, base }, work) {
+async function handle({ org, id, base, delta }, work) {
   let ready = {};
   try { ready = JSON.parse(fs.readFileSync(`${base}.ready`, 'utf8')); } catch { /* маркер без JSON — режим за іменем */ }
-  const mode = ready.mode === 'copy' ? 'copy' : 'gbak';
+  const mode = delta ? 'delta' : ready.mode === 'copy' ? 'copy' : 'gbak';
   fs.writeFileSync(`${base}.extracting`, new Date().toISOString());
   log(`${org}/${id}: беру (${mode})`);
   try {
-    const result = await processSnapshot({
-      archive: `${base}.fbk.gz`, mode, sqlDir: SQL_DIR, outDir: base, workDir: path.join(work, id),
-      snapshot: { id, mode, sha256: ready.sha256 ?? null, takenAt: ready.takenAt ?? null }, log: (m) => log(`${id}: ${m}`),
-    });
+    const snapshot = { id, mode, sha256: ready.sha256 ?? null, takenAt: ready.takenAt ?? null };
+    const result = delta
+      ? await processDelta({ archive: `${base}.delta.gz`, sqlDir: SQL_DIR, outDir: base, window: ready.window ?? null, snapshot, log: (m) => log(`${id}: ${m}`) })
+      : await processSnapshot({
+        archive: `${base}.fbk.gz`, mode, sqlDir: SQL_DIR, outDir: base, workDir: path.join(work, id), snapshot, log: (m) => log(`${id}: ${m}`),
+      });
     fs.writeFileSync(`${base}.extracted`, JSON.stringify({ at: new Date().toISOString(), entities: result.entities }));
     log(`${org}/${id}: готово`);
   } catch (e) {
