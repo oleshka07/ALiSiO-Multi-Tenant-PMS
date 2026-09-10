@@ -24,14 +24,18 @@
  * них спокійно вставляє другу бронь — `пройшло 2`. Це записано тут, бо
  * «серіалізується транзакцією» звучить як достатня умова, а нею не є.
  *
- * ── Три осі, і кожна має пару ───────────────────────────────────────────
+ * ── Чотири осі, і кожна має пару ────────────────────────────────────────
  *
  *   перетин проти сусідства: 10–12 і 11–13 конфліктують, 10–12 і 12–14 — ні,
  *     бо виїзд і заїзд в один день це не ніч (напівінтервал);
  *   службовий фонд: на `is_pool` дві броні на ті самі дати проходять ОБИДВІ —
  *     інакше кемпінг став би непродаваним;
  *   скасована бронь місця не тримає: та сама пара дат після `cancelled`
- *     проходить.
+ *     проходить;
+ *   переселення проти самопереселення: переїзд у зайняте вікно відхилено, а
+ *     зсув дат САМОЇ броні (нове вікно перетинає її ж старе) проходить. Без
+ *     другої половини твердження було б зелене й на дверях, які просто не
+ *     дають чіпати бронь.
  */
 import assert from 'node:assert';
 import fs from 'node:fs';
@@ -62,9 +66,9 @@ let n = 0;
  * SQLite сама ходить у базу (перевірка в черзі), а запит без орендаря на
  * Postgres тихо повернув би порожнє й «звільнив» зайнятий номер.
  */
-const stay = (unitId: string | null, checkIn: string, checkOut: string, status = 'confirmed') => {
+const stay = async (unitId: string | null, checkIn: string, checkOut: string, status = 'confirmed') => {
   const id = `dbl_${++n}`;
-  return inOurs(() => insertingStay(
+  await inOurs(() => insertingStay(
     () => sql.run(
       `INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id,
                                  check_in, check_out, nights, adults, status, currency)
@@ -74,7 +78,23 @@ const stay = (unitId: string | null, checkIn: string, checkOut: string, status =
     ),
     { unitId, checkIn, checkOut },
   ));
+  return id;
 };
+
+/**
+ * Переселення броні — той самий писач, що в `reservation.handlers.ts`.
+ *
+ * `reservationId` тут не прикраса: без нього бронь, якій зсувають дати,
+ * знаходить у базі САМУ СЕБЕ і відмовляє. На Postgres такого не буває — рядок
+ * не перетинається сам із собою, — тож без цього поля SQLite почав би
+ * забороняти те, чого Postgres не забороняє.
+ */
+const move = (id: string, unitId: string, checkIn: string, checkOut: string) =>
+  inOurs(() => insertingStay(
+    () => sql.run('UPDATE reservations SET unit_id = ?, check_in = ?, check_out = ? WHERE id = ?',
+      [unitId, checkIn, checkOut, id]),
+    { unitId, checkIn, checkOut, reservationId: id },
+  ));
 
 /**
  * Скільки ЖИВИХ броней стоїть у номері на цих ночах.
@@ -159,7 +179,7 @@ console.log('  ok  службовий фонд: дві броні на ті са
 const GONE = fx.a.unitIds[2];
 await stay(GONE, '2027-05-01', '2027-05-03');
 await inOurs(() => sql.run("UPDATE reservations SET status = 'cancelled' WHERE unit_id = ?", [GONE]));
-await stay(GONE, '2027-05-01', '2027-05-03');
+const revived = await stay(GONE, '2027-05-01', '2027-05-03');
 assert.strictEqual(await livingOn(GONE, '2027-05-01', '2027-05-03'), 1,
   'після скасування ті самі дати мали звільнитись');
 console.log('  ok  скасована бронь звільняє ночі — той самий номер продається знову');
@@ -175,6 +195,29 @@ console.log('  ok  скасована бронь звільняє ночі — �
 await stay(null, '2027-03-10', '2027-03-12');
 await stay(null, '2027-03-10', '2027-03-12');
 console.log('  ok  дві броні без номера на ті самі ночі проходять — смуга «Без номера» жива');
+
+// ── 6. ПЕРЕСЕЛЕННЯ броні — той самий вектор, що створення ───────────────────
+//
+// PATCH броні теж перевіряє перетин, і теж не поруч із записом: між ними —
+// решта хендлера. Пара тут обовʼязкова, інакше твердження зелене й на дверях,
+// які просто забороняють будь-який UPDATE:
+//
+//   переїзд у ЗАЙНЯТЕ вікно — відхилено;
+//   зсув дат САМОЇ броні (її нове вікно перетинає її ж старе) — проходить.
+
+await assert.rejects(
+  () => move(revived, ROOM, '2027-03-10', '2027-03-12'),
+  'переселення в номер, зайнятий на ці ночі, мало бути відхилене',
+);
+assert.strictEqual(await livingOn(ROOM, '2027-03-10', '2027-03-12'), 1,
+  'відхилене переселення все одно щось записало');
+
+// А тепер та сама бронь на своєму місці, лише на ніч довше: 05-01–05-03 →
+// 05-01–05-04. Нове вікно перетинає старе, і сама вона собі не заважає.
+await move(revived, GONE, '2027-05-01', '2027-05-04');
+assert.strictEqual(await livingOn(GONE, '2027-05-01', '2027-05-04'), 1,
+  'бронь не змогла подовжитись у власному номері — вона знайшла саму себе');
+console.log('  ok  переселення в зайняте вікно відхилено; подовження власної броні пройшло');
 
 if (process.env.DB_DRIVER !== 'postgres') fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`double-booking: ${onPostgres
