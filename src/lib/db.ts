@@ -7741,6 +7741,9 @@ function runMigrations(database: any) {
   // 0140 — так само окремою функцією, з тієї самої причини.
   migrateApps(database);
 
+  // 0143 — застосунок winhotel_import: знімки бази Winhotel.
+  migrateWinhotelImport(database);
+
   // --- Migration: is_pool_unit на броні (INC-045) ---
   //
   // Пара до CREATE вище: «додаєш колонку — додай її і в CREATE, і в ALTER»
@@ -7939,6 +7942,39 @@ function migrateApps(database: any) {
     }
   } catch (e) {
     console.error('[DB] 0141/0142 fin_fiscal_settings TSE columns:', (e as Error).message);
+  }
+}
+
+/**
+ * Міграція 0143 — знімки бази Winhotel (застосунок `winhotel_import`,
+ * docs/tasks/2026-09-10-block-winhotel-import.md §2.2). Дзеркало
+ * `db/postgres/migrations/0143-*.sql`: один рядок на прийнятий gbak-знімок —
+ * коли знято, режим, sha256, розмір, стан і числа звірки. Файл лежить на
+ * томі; тут — лише те, що про нього треба знати без файлу.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function migrateWinhotelImport(database: any) {
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS winhotel_snapshots (
+        id              TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        taken_at        TEXT,
+        mode            TEXT NOT NULL CHECK (mode IN ('backup', 'gbak', 'copy')),
+        sha256          TEXT NOT NULL,
+        size_bytes      INTEGER NOT NULL,
+        status          TEXT NOT NULL DEFAULT 'received' CHECK (status IN ('received', 'extracting', 'extracted', 'imported', 'failed')),
+        error           TEXT,
+        counts_json     TEXT,
+        received_at     TEXT NOT NULL DEFAULT (datetime('now')),
+        imported_at     TEXT,
+        UNIQUE(organization_id, sha256)
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_snapshots_org ON winhotel_snapshots(organization_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_snapshots_received ON winhotel_snapshots(organization_id, received_at)');
+  } catch (e) {
+    console.error('[DB] 0143 winhotel_snapshots:', (e as Error).message);
   }
 }
 

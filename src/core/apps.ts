@@ -193,19 +193,25 @@ export const APPS: readonly AppManifest[] = [
     pricing: 'free',
     scope: 'organization',
   },
-  // ── «Скоро»: картка і кнопка «хочу», без коду ──────────────────────────
-  // Порядок за З4: winhotel_import → dirs21 → fiskaly (той уже live).
+  // Перший застосунок рівня 3 (З1: безкоштовний), live з 10.09.2026
+  // (docs/tasks/2026-09-10-block-winhotel-import.md). Полів ключів НЕМАЄ
+  // навмисно: ключ тут не вставляють, а ГЕНЕРУЮТЬ — токен агента робиться на
+  // картці, показується раз, і в `channel_credentials` лягає лише його хеш
+  // (`src/apps/winhotel-import/data/agent-token.ts`). Поле з формою «вставте
+  // ключ» зберігало б сам токен — тобто те, чого в базі не має бути.
   {
     id: 'winhotel_import',
     kind: 'import',
     label: 'Імпорт із Winhotel',
-    feature: null,
+    feature: 'winhotel_import',
     fields: [],
-    where: '',
-    live: false,
+    where: 'Токен агента — кнопка на цій картці; агент — apps/winhotel-agent/ (README.de.md)',
+    live: true,
     pricing: 'free',
     scope: 'organization',
   },
+  // ── «Скоро»: картка і кнопка «хочу», без коду ──────────────────────────
+  // Порядок за З4: dirs21 → fiskaly (той уже live).
   {
     // Адаптер буде — окремим застосунком після Schnittstellenvertrag з
     // TourOnline (уточнення власника 09.09). Публічної документації немає.

@@ -2234,6 +2234,24 @@ CREATE TABLE "widget_price_list" (
   UNIQUE ("organization_id", "item_code")
 );
 
+CREATE TABLE "winhotel_snapshots" (
+  "id" TEXT NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "taken_at" TIMESTAMPTZ,
+  "mode" TEXT NOT NULL,
+  "sha256" TEXT NOT NULL,
+  "size_bytes" BIGINT NOT NULL,
+  "status" TEXT DEFAULT 'received' NOT NULL,
+  "error" TEXT,
+  "counts_json" JSONB,
+  "received_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "imported_at" TIMESTAMPTZ,
+  PRIMARY KEY ("id"),
+  UNIQUE ("organization_id", "sha256"),
+  CHECK (mode IN ('backup', 'gbak', 'copy')),
+  CHECK (status IN ('received', 'extracting', 'extracted', 'imported', 'failed'))
+);
+
 -- ── Foreign keys ────────────────────────────────────────────────────────
 
 ALTER TABLE "accruals" ADD CONSTRAINT "fk_accruals_fin_operation_id_1"
@@ -2740,6 +2758,8 @@ ALTER TABLE "widget_handshakes" ADD CONSTRAINT "fk_widget_handshakes_organizatio
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "widget_price_list" ADD CONSTRAINT "fk_widget_price_list_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "winhotel_snapshots" ADD CONSTRAINT "fk_winhotel_snapshots_organization_id_1"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 
 -- ── Constraints SQLite cannot express ───────────────────────────────────
 --
@@ -2963,6 +2983,8 @@ CREATE INDEX "idx_we_site" ON "widget_events" ("site_id");
 CREATE INDEX "idx_we_type" ON "widget_events" ("event_type");
 CREATE INDEX "idx_widget_handshakes_org" ON "widget_handshakes" ("organization_id");
 CREATE INDEX "idx_widget_price_list_org" ON "widget_price_list" ("organization_id");
+CREATE INDEX "idx_winhotel_snapshots_org" ON "winhotel_snapshots" ("organization_id");
+CREATE INDEX "idx_winhotel_snapshots_received" ON "winhotel_snapshots" ("organization_id", "received_at");
 
 -- Indexes the row-level security predicates depend on.
 CREATE INDEX IF NOT EXISTS "idx_accruals_org" ON "accruals" ("organization_id");
@@ -3047,6 +3069,7 @@ CREATE INDEX IF NOT EXISTS "idx_unit_cleaning_log_org" ON "unit_cleaning_log" ("
 CREATE INDEX IF NOT EXISTS "idx_unit_type_amenities_org" ON "unit_type_amenities" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_widget_handshakes_org" ON "widget_handshakes" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_widget_price_list_org" ON "widget_price_list" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_winhotel_snapshots_org" ON "winhotel_snapshots" ("organization_id");
 
 -- ── The tenant an inserted row belongs to ───────────────────────────────
 --
@@ -3217,6 +3240,8 @@ ALTER TABLE "unit_type_amenities" ALTER COLUMN "organization_id"
 ALTER TABLE "widget_handshakes" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "widget_price_list" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "winhotel_snapshots" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 
 -- ── Row-level security ──────────────────────────────────────────────────
@@ -3925,6 +3950,12 @@ CREATE POLICY "widget_handshakes_tenant" ON "widget_handshakes"
 ALTER TABLE "widget_price_list" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "widget_price_list" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "widget_price_list_tenant" ON "widget_price_list"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "winhotel_snapshots" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "winhotel_snapshots" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "winhotel_snapshots_tenant" ON "winhotel_snapshots"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 

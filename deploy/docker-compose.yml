@@ -71,6 +71,12 @@ services:
     volumes:
       - app-data:/app/data
       - app-uploads:/app/public/uploads
+      # Знімки Winhotel — спільний том із мостом (сервіс `bridge` нижче).
+      # Застосунок пише сюди файл і маркер `.ready`, міст — витяг і маркери
+      # `.extracted`/`.failed` (src/apps/winhotel-import/storage.ts). Окремий
+      # том, а не тека в app-data: його можна знести після переїзду з
+      # Winhotel, не чіпаючи даних застосунку.
+      - winhotel-snapshots:/app/data/winhotel
     # A ceiling, because the host is 4 GB shared with unrelated projects and
     # the OOM killer goes for the fattest process — which is prod's Postgres.
     # Without limits one hungry neighbour takes everyone down; with them the
@@ -123,9 +129,44 @@ services:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
 
+  # Міст Winhotel — лише з профілем:
+  #   docker compose ... --profile bridge up -d --build bridge
+  # Готель без Winhotel його не запускає; `deploy.sh` без профілю його не
+  # збирає і не піднімає (docs/tasks/2026-09-10-block-winhotel-import.md §2.3).
+  #
+  # Без мережі взагалі і без DATABASE_URL: міст бачить лише том зі знімками
+  # (той самий, що застосунок монтує в /app/data/winhotel) і власну робочу
+  # теку, куди `gbak -c` кладе відновлену базу на час витягу. Стеля памʼяті —
+  # виміряти на живому знімку (407 МБ бекапу → ~1 ГБ бази на диску; RAM —
+  # кеш сторінок gbak/isql, очікувано ~300 МБ) і записати в DEPLOY.md.
+  bridge:
+    profiles: ["bridge"]
+    build:
+      context: ..
+      dockerfile: deploy/bridge/Dockerfile
+    image: alisio-bridge:${ENV_NAME}
+    container_name: alisio-${ENV_NAME}-bridge
+    restart: unless-stopped
+    network_mode: none
+    volumes:
+      - winhotel-snapshots:/snapshots
+      - bridge-work:/work
+    mem_limit: ${BRIDGE_MEM_LIMIT:-768m}
+    mem_reservation: ${BRIDGE_MEM_RESERVATION:-128m}
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
 volumes:
   app-data:
   app-uploads:
+  # Знімки бази Winhotel і витяг мосту — спільний для `app` і `bridge`.
+  winhotel-snapshots:
+  # Робоча тека мосту: відновлена база живе тут лише на час витягу. Том, а
+  # не tmpfs — база на 1 ГБ у памʼяті зʼїла б стелю контейнера.
+  bridge-work:
   # Separate from app-data on purpose: the SQLite file stays where it is after
   # the move, untouched, which is what makes removing DB_DRIVER a real rollback
   # rather than a hope.

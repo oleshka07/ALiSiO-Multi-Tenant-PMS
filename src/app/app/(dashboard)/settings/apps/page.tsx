@@ -43,6 +43,25 @@ interface HealthRow {
   key: string; label: string; property_id: string | null; status: string;
   last_ok_at: string | null; last_error_at: string | null; last_error: string | null;
 }
+/** Знімок Winhotel — рядок `winhotel_snapshots` (застосунок winhotel_import, §2.4). */
+interface WinhotelSnapshot {
+  id: string; taken_at: string | null; mode: string; sha256: string; size_bytes: number; status: string;
+  error: string | null; counts_json: string | null; received_at: string; imported_at: string | null;
+}
+interface WinhotelCard { hasToken: boolean; last: WinhotelSnapshot | null; snapshots: WinhotelSnapshot[] }
+
+/** Стан знімка Winhotel — словом і кольором; `imported` і `failed` — крайні. */
+const SNAPSHOT_STATUS: Record<string, { word: string; badge: string }> = {
+  received: { word: 'прийнято', badge: 'badge-info' },
+  extracting: { word: 'витягається', badge: 'badge-warning' },
+  extracted: { word: 'витягнуто', badge: 'badge-primary' },
+  imported: { word: 'імпортовано', badge: 'badge-success' },
+  failed: { word: 'відмова', badge: 'badge-danger' },
+};
+const SNAPSHOT_MODE: Record<string, string> = {
+  backup: 'готовий бекап', gbak: 'gbak', copy: 'копія файла',
+};
+const mb = (bytes: number) => `${(Number(bytes) / 1048576).toFixed(1)} MB`;
 
 /** Слово і колір стану — одна мапа на картки й на здоровʼя. */
 const STATUS: Record<string, { word: string; badge: string }> = {
@@ -77,6 +96,9 @@ export default function AppsSettingsPage() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
   const [saved, setSaved] = useState('');
+  const [winhotel, setWinhotel] = useState<WinhotelCard | null>(null);
+  const [agentToken, setAgentToken] = useState('');
+  const [importNote, setImportNote] = useState('');
 
   const load = useCallback(async () => {
     const res = await fetch('/api/settings/apps');
@@ -88,6 +110,16 @@ export default function AppsSettingsPage() {
     setCards(d.cards);
     setHealth(d.health);
     setFiscalProperties(d.fiscalProperties ?? []);
+    // Картка Winhotel читає свої знімки окремим запитом: він ще й звіряє
+    // маркери мосту на томі, і робити це на кожне відкриття екрана для
+    // готелів без Winhotel не треба.
+    const wh = (d.cards as Card[]).find((c) => c.id === 'winhotel_import');
+    if (wh && wh.live && wh.enabled) {
+      const r = await fetch('/api/settings/apps/winhotel-import/snapshots');
+      setWinhotel(r.ok ? await r.json() : null);
+    } else {
+      setWinhotel(null);
+    }
   }, [t]);
 
   useEffect(() => {
@@ -159,6 +191,35 @@ export default function AppsSettingsPage() {
       const d = await res.json().catch(() => ({}));
       if (!res.ok) { setError(d.error || t('Не вдалося підключити TSE')); await load(); return; }
       setTseResult(`${t('підключено')} · TSS ${d.tss}`);
+      await load();
+    } finally {
+      setBusy('');
+    }
+  };
+
+  // «Токен агента»: створити або замінити; значення показується один раз.
+  const issueToken = async () => {
+    setBusy('winhotel_import');
+    setError('');
+    try {
+      const res = await fetch('/api/settings/apps/winhotel-import/token', { method: 'POST' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setError(d.error || t('Не вдалося створити токен')); return; }
+      setAgentToken(d.token);
+      await load();
+    } finally {
+      setBusy('');
+    }
+  };
+
+  // «Імпортувати знімок»: відповідь читається завжди — успіх і відмова показуються словами.
+  const importSnapshot = async (id: string) => {
+    setBusy('winhotel_import');
+    setImportNote('');
+    try {
+      const res = await fetch(`/api/settings/apps/winhotel-import/snapshots/${encodeURIComponent(id)}/import`, { method: 'POST' });
+      const d = await res.json().catch(() => ({}));
+      setImportNote(res.ok ? t('Імпорт запущено') : (d.error || t('Не вдалося імпортувати')));
       await load();
     } finally {
       setBusy('');
@@ -240,6 +301,83 @@ export default function AppsSettingsPage() {
                           {t('остання помилка')}: {c.last_error} · {fmt(c.last_error_at)}
                         </div>
                       ))}
+                    </div>
+                  )}
+
+                  {card.id === 'winhotel_import' && card.live && card.enabled && (
+                    <div data-testid="winhotel-card" style={{ padding: '12px 18px 16px 18px', borderTop: line, fontSize: 12 }}>
+                      <div style={{ color: 'var(--text-secondary)', marginBottom: 8 }}>
+                        {winhotel?.last ? (
+                          <>
+                            {t('Останній знімок')}: {fmt(winhotel.last.taken_at ?? winhotel.last.received_at)} · {t(SNAPSHOT_MODE[winhotel.last.mode] ?? winhotel.last.mode)} · {mb(winhotel.last.size_bytes)} ·{' '}
+                            <span className={`badge ${(SNAPSHOT_STATUS[winhotel.last.status] ?? SNAPSHOT_STATUS.received).badge}`} data-testid="winhotel-last-status">
+                              {t((SNAPSHOT_STATUS[winhotel.last.status] ?? SNAPSHOT_STATUS.received).word)}
+                            </span>
+                          </>
+                        ) : t('Знімків ще немає: агент на сервері готелю ще не приносив бази')}
+                      </div>
+                      {winhotel && !winhotel.hasToken && (
+                        <div style={{ color: 'var(--warning)', marginBottom: 8 }}>{t('Токена агента ще немає — без нього агент нічого не завантажить')}</div>
+                      )}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+                        <button className="btn btn-secondary" style={{ fontSize: 13 }} data-testid="winhotel-token" disabled={busy === card.id} onClick={issueToken}>
+                          {winhotel?.hasToken ? t('Замінити токен агента') : t('Створити токен агента')}
+                        </button>
+                        <span style={{ color: 'var(--text-tertiary)' }}>{t('Агент і інструкція')}: apps/winhotel-agent/README.de.md</span>
+                      </div>
+                      {agentToken && (
+                        <div style={{ marginBottom: 10 }} data-testid="winhotel-token-value">
+                          <div style={{ color: 'var(--danger)', marginBottom: 4 }}>{t('Скопіюйте токен зараз — удруге він не покажеться. Старий токен уже не діє.')}</div>
+                          <input readOnly value={agentToken} onFocus={(e) => e.currentTarget.select()} style={{ width: '100%', padding: '8px 10px', fontSize: 12, fontFamily: 'monospace', borderRadius: 6, border: line, background: 'var(--bg-secondary)', color: 'var(--text-primary)' }} />
+                        </div>
+                      )}
+                      {importNote && <div data-testid="winhotel-import-note" style={{ color: 'var(--text-secondary)', marginBottom: 8 }}>{importNote}</div>}
+                      {winhotel && winhotel.snapshots.length > 0 && (
+                        <div style={{ overflowX: 'auto' }}>
+                          <table className="table" data-testid="winhotel-snapshots" style={{ width: '100%', fontSize: 12 }}>
+                            <thead>
+                              <tr>
+                                <th>{t('Знімок')}</th>
+                                <th>{t('Режим')}</th>
+                                <th>{t('Розмір')}</th>
+                                <th>{t('Стан')}</th>
+                                <th>{t('Звірка')}</th>
+                                <th />
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {winhotel.snapshots.map((snap) => {
+                                const ss = SNAPSHOT_STATUS[snap.status] ?? SNAPSHOT_STATUS.received;
+                                let counts: Record<string, number> = {};
+                                try { counts = (JSON.parse(snap.counts_json ?? '{}') as { winhotel?: Record<string, number> }).winhotel ?? {}; } catch { counts = {}; }
+                                return (
+                                  <tr key={snap.id} data-testid={`winhotel-snapshot-${snap.id}`}>
+                                    <td title={snap.id}>{fmt(snap.taken_at ?? snap.received_at)}</td>
+                                    <td>{t(SNAPSHOT_MODE[snap.mode] ?? snap.mode)}</td>
+                                    <td>{mb(snap.size_bytes)}</td>
+                                    <td>
+                                      <span className={`badge ${ss.badge}`}>{t(ss.word)}</span>
+                                      {snap.error && <div style={{ color: 'var(--danger)', marginTop: 4 }}>{snap.error}</div>}
+                                    </td>
+                                    <td style={{ color: 'var(--text-tertiary)' }}>
+                                      {Object.keys(counts).length
+                                        ? `${t('брони')} ${counts.bookings ?? '—'} · ${t('адреси')} ${counts.addresses ?? '—'} · ${t('фактури')} ${counts.invoices ?? '—'}`
+                                        : '—'}
+                                    </td>
+                                    <td>
+                                      {snap.status === 'extracted' && (
+                                        <button className="btn btn-primary btn-sm" data-testid={`winhotel-import-${snap.id}`} disabled={busy === card.id} onClick={() => importSnapshot(snap.id)}>
+                                          {t('Імпортувати знімок')}
+                                        </button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </div>
                   )}
 

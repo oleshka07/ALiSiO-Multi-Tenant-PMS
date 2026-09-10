@@ -57,7 +57,7 @@ const strict = process.argv.includes('--strict');
  * доводить секретом із оточення. Той гейт його не бачить, бо він не під
  * вартою й не в списку публічних; тут він на місці.
  */
-const PUBLIC_PREFIX = /^(widget|booking|guest|public|webhooks?|health|cron)(\/|$)/;
+const PUBLIC_PREFIX = /^(widget|booking|guest|public|webhooks?|health|cron|apps\/winhotel-import\/snapshots)(\/|$)/;
 
 /**
  * Двері, які доводять право ПЕРЕПУСТКОЮ в самому запиті.
@@ -81,6 +81,9 @@ const TOKEN_DOORS = [
   'cronAuthFailure',
   'connectionByWebhookToken',
   'verifySignature',
+  // Токен агента Winhotel у заголовку: без нього прийом знімка відмовляє
+  // 401 до першого байта (src/apps/winhotel-import/data/agent-token.ts).
+  'organizationByAgentToken',
 ];
 
 /**

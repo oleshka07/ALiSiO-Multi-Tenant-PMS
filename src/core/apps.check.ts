@@ -69,6 +69,9 @@ const EXPECTED_KIND: Record<Key, Kind> = {
   sites: 'module',
   fiscal_de: 'app',
   online_payments: 'app',
+  // Знімок Winhotel → дзеркало (10.09.2026): розмова з чужою базою, картка на
+  // «Застосунках», розділу в меню немає.
+  winhotel_import: 'app',
 };
 
 for (const key of Object.keys(FEATURE_SPEC) as Key[]) {
@@ -415,11 +418,11 @@ try {
   console.log('  ok  7. smtp без обʼєкта, fiskaly з обʼєктом — інакше рядка немає');
 
   // ── 8. «Хочу» ідемпотентно, чужа організація не бачить ──────────────────
-  await runWithOrganization(A, () => wishApp(A, 'winhotel_import'));
-  await runWithOrganization(A, () => wishApp(A, 'winhotel_import'));
+  await runWithOrganization(A, () => wishApp(A, 'dirs21'));
+  await runWithOrganization(A, () => wishApp(A, 'dirs21'));
   const wishesA = await runWithOrganization(A, () => wishedApps(A));
-  assert.deepStrictEqual(wishesA, ['winhotel_import'], `два натиски дали ${JSON.stringify(wishesA)}`);
-  const nA = await runWithOrganization(A, () => sql.row<{ n: number }>('SELECT COUNT(*) AS n FROM app_wishes WHERE organization_id = ? AND app = ?', [A, 'winhotel_import']));
+  assert.deepStrictEqual(wishesA, ['dirs21'], `два натиски дали ${JSON.stringify(wishesA)}`);
+  const nA = await runWithOrganization(A, () => sql.row<{ n: number }>('SELECT COUNT(*) AS n FROM app_wishes WHERE organization_id = ? AND app = ?', [A, 'dirs21']));
   assert.strictEqual(Number(nA?.n), 1, 'другий натиск «хочу» створив другий рядок');
   const wishesB = await runWithOrganization(B, () => wishedApps(B));
   assert.deepStrictEqual(wishesB, [], 'готель B бачить «хочу» готелю A');
@@ -429,7 +432,7 @@ try {
   // ставиться в `check:pg`; тут воно було червоним 09.09.2026 саме на SQLite,
   // і це показало, що на цьому рушії воно не стверджує нічого.
   if (process.env.DB_DRIVER === 'postgres') {
-    const seenByB = await runWithOrganization(B, () => sql.row<{ n: number }>('SELECT COUNT(*) AS n FROM app_wishes WHERE app = ?', ['winhotel_import']));
+    const seenByB = await runWithOrganization(B, () => sql.row<{ n: number }>('SELECT COUNT(*) AS n FROM app_wishes WHERE app = ?', ['dirs21']));
     assert.strictEqual(Number(seenByB?.n), 0, 'у контексті B видно рядок A (політика app_wishes не тримає)');
     const connSeenByB = await runWithOrganization(B, () => sql.row<{ n: number }>('SELECT COUNT(*) AS n FROM app_connections WHERE app = ?', ['fiskaly']));
     assert.strictEqual(Number(connSeenByB?.n), 0, 'у контексті B видно стан звʼязку A (політика app_connections не тримає)');
@@ -467,11 +470,11 @@ try {
   assert.strictEqual(aFiskaly?.status, 'error');
   // Попит — ДЕЛЬТОЮ, не абсолютним числом: у базі стенда можуть жити інші
   // готелі зі своїм «хочу» (e2e-готель — теж). Натиск B додає рівно один.
-  const wishRow = report.wishes.find((w) => w.app === 'winhotel_import');
-  assert.ok(Number(wishRow?.hotels) >= 1, `попит Winhotel = ${wishRow?.hotels}, а готель A натиснув`);
-  await runWithOrganization(B, () => wishApp(B, 'winhotel_import'));
+  const wishRow = report.wishes.find((w) => w.app === 'dirs21');
+  assert.ok(Number(wishRow?.hotels) >= 1, `попит DIRS21 = ${wishRow?.hotels}, а готель A натиснув`);
+  await runWithOrganization(B, () => wishApp(B, 'dirs21'));
   const report2 = await (await platformAppsReport('__apps_check__ps')).json() as typeof report;
-  const after = report2.wishes.find((w) => w.app === 'winhotel_import');
+  const after = report2.wishes.find((w) => w.app === 'dirs21');
   assert.strictEqual(Number(after?.hotels), Number(wishRow?.hotels) + 1, 'другий готель натиснув «хочу», а попит не зріс рівно на один');
   console.log('  ok  9. постачальник: власнику 401, платформі — обидва готелі й попит');
 

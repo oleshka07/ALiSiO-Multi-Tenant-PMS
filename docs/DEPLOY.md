@@ -411,6 +411,62 @@ same login.
   standing between you and a lost hotel, check what it actually contains first.
 
 
+## Міст Winhotel (профіль `bridge`)
+
+Лише для готелю, що переїжджає з Winhotel.MX (застосунок `winhotel_import`,
+`docs/tasks/2026-09-10-block-winhotel-import.md`). Три частини, і на сервері
+живе одна — міст:
+
+- **агент** стоїть на Windows-сервері готелю (`apps/winhotel-agent/README.de.md`)
+  і щоночі шле gzip-знімок бази на `POST /api/apps/winhotel-import/snapshots`
+  з токеном агента з картки застосунку;
+- **застосунок** кладе файл на том `winhotel-snapshots` (у контейнері `app` —
+  `/app/data/winhotel/<організація>/<id>.fbk.gz` + маркер `.ready`);
+- **міст** — окремий контейнер `alisio-<env>-bridge` (`deploy/bridge/Dockerfile`:
+  `node:22-bookworm-slim` + `firebird3.0-utils` + `firebird3.0-server-core`,
+  вбудований режим Firebird — без сервера, порту й пароля). Він **не має мережі**
+  (`network_mode: none`), не знає `DATABASE_URL`, бачить лише той самий том
+  (`/snapshots`) і свою робочу теку (`bridge-work`, `/work`), куди `gbak -c`
+  кладе відновлену базу на час витягу і звідки її видаляє завжди. Результат —
+  `<id>/<сутність>.jsonl` (27 файлів), `<id>/aggregates.json` і маркер
+  `<id>.extracted` або `<id>.failed` з текстом; застосунок читає маркери при
+  відкритті картки й переводить стан рядка.
+
+`deploy.sh` міст **не збирає і не піднімає** — профіль `bridge` навмисно поза
+звичайним розгортанням. Команди оператора — скрипт, не compose руками:
+
+```bash
+./deploy/bridge.sh prod up        # зібрати образ і підняти міст (профіль bridge)
+./deploy/bridge.sh prod status    # стан контейнера і маркери на томі
+./deploy/bridge.sh prod logs      # хвіст журналу мосту
+./deploy/bridge.sh prod down      # зупинити; том зі знімками лишається
+```
+
+Що змінено в deploy-файлах (частина А, 10.09.2026):
+
+| Файл | Зміна |
+|---|---|
+| `deploy/docker-compose.yml` | у `app` — том `winhotel-snapshots:/app/data/winhotel`; новий сервіс `bridge` під `profiles: ["bridge"]` (без портів, `network_mode: none`, `cap_drop: [ALL]`, `no-new-privileges`, `mem_limit ${BRIDGE_MEM_LIMIT:-768m}`); томи `winhotel-snapshots`, `bridge-work` |
+| `deploy/nginx/alisio.conf` | у обох server-блоках окремий `location = /api/apps/winhotel-import/snapshots` з `client_max_body_size 200m` (знімок — ~80 МБ gzip); решта лишається `25m` |
+| `deploy/env.*.example` | `BRIDGE_MEM_LIMIT=` (порожньо = 768m) |
+| `deploy/bridge.sh` | команди оператора вище |
+
+**Стеля памʼяті ще не виміряна на живому знімку.** Дефолт 768m — з досвіду
+`docs/research/winhotel/extract.sh` (407 МБ бекапу → ~1 ГБ бази на диску,
+кеш сторінок gbak/isql у сотнях МБ); після першого проходу на беті
+`deploy/check-oom.sh beta` і `docker stats` скажуть справжнє число — тоді сюди.
+
+Міст працює від uid 1001 — того самого, що `nextjs` в образі застосунку:
+файли на спільному томі мають читатись з обох боків. `read_only` на кореневу
+ФС **не ставиться**: вбудований Firebird пише таблицю блокувань і
+`firebird.log`; замість цього — `cap_drop: [ALL]`, `no-new-privileges` і
+відсутність мережі.
+
+Відкат: `./deploy/bridge.sh <env> down` і вимкнути застосунок на картці —
+приймальний маршрут відповідатиме агентові 404, файли на томі лишаються.
+Знести том після переїзду: `docker volume rm alisio-<env>_winhotel-snapshots`
+(окремий том саме для цього — дані застосунку в `app-data` не чіпаються).
+
 ---
 
 ## Деплой автоматичний
