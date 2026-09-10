@@ -3,13 +3,13 @@
     "file": ".stub.fbk",
     "mode": "gbak"
   },
-  "extractedAt": "2026-09-10T13:38:50.759Z",
+  "extractedAt": "2026-09-10T14:56:48.659Z",
   "entities": {
     "address_types": 2,
     "addresses": 5,
     "age_bands": 3,
-    "booking_refs": 1,
-    "bookings": 5,
+    "booking_refs": 2,
+    "bookings": 6,
     "cash_book": 1,
     "consent_types": 2,
     "consents": 2,
@@ -19,7 +19,7 @@
     "invoice_lines": 3,
     "invoices": 3,
     "mandant": 1,
-    "occupancy": 4,
+    "occupancy": 5,
     "payment_methods": 5,
     "payments": 4,
     "price_splits": 1,
@@ -40,7 +40,7 @@
     },
     "snapshot_max_booking_created": {
       "label": "знімок: max GASTKONT.ERF_DATUM",
-      "value": "2026-09-08"
+      "value": "2026-09-09"
     },
     "invoice_no_generator": {
       "label": "остання Rechnung-Nr (генератор)",
@@ -60,11 +60,11 @@
     },
     "bookings_live": {
       "label": "броней (GASTKONT) живих",
-      "value": "4"
+      "value": "5"
     },
     "bookings_future": {
       "label": "броней із заїздом після знімка",
-      "value": "2"
+      "value": "3"
     },
     "bookings_in_snapshot_year": {
       "label": "броней із заїздом у році знімка",
@@ -72,7 +72,7 @@
     },
     "booking_status_mix": {
       "label": "стани броней BUCH/CI/TA (код×N)",
-      "value": "0 2 0 2 0 0 1000 2 0 0 0 1 100 0 0 1"
+      "value": "0 0 0 2 0 2 0 2 0 0 1000 2 100 0 0 1"
     },
     "occupancy_junk_dates": {
       "label": "BELEGUNG сміттєвих дат (<1900)",

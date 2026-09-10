@@ -172,7 +172,7 @@
 | `GASTNR_1` | `guest_id` (через мапу злиття) | замовник |
 | `GASTNR_2`, `GASTNR_3` | `reservation_guests` (з `guest_id`) | гість/платник — порядок звірити на прогоні через `PROC_GET_GK3_ADR` |
 | `PERSZAHL`, `ANZKINDER` (+`ANZKINDER2`), `ANZKLEINKIND` | `adults`, `children`, `infants` | `ANZJUGEND` → у `children` (у нас підлітки — вилка дітей) |
-| `GASTKREF.EXT_SOURCE` (не `MARKSEG` — сегмент, на живому порожній) | `source` (код `booking_sources` за назвою; без пари — `direct`) | значення — у `reconcile.explained` живого проходу |
+| `GASTKREF.TEXT1..5` / `EXT_SOURCE` за словом каналу (не `MARKSEG` — сегмент, на живому порожній; `EXT_SOURCE` — число) | `source` (код `booking_sources` за назвою; без пари — `direct`), номер каналу → `hostex_reservation_code` | розподіл і колонка з назвою — у `reconcile.explained` живого проходу |
 | `PR_CODE` | `rate_plan_id` | 0/NULL → Standard |
 | `ANZA_BETRAG`/`ANZA_DATUM` | `deposit_amount`, `deposit_status = 'paid'` + `deposit_paid_at` | якщо є платіж `LEIST 114` |
 | `BUCH_STATUS`, `CI_STATUS`, `TA_STATUS` | `status` — **гіпотеза з літералів процедур, звірити агрегатами**: `CI_STATUS 2` → `checked_out`; `1` → `checked_in`; `0` і `BUCH_STATUS 0` → `confirmed`; `0` і `BUCH_STATUS 100` → `tentative` (Option/Angebot); `ANG_LNR > 0` без `BUCH_STATUS 100` → `confirmed` з приміткою «з пропозиції»; `TA_STATUS >= 1000` + `STORNO_DATUM` → `cancelled`; `LEIST 12 NOSHOW` у рядках → `no_show` | Gastbestätigung/Reservierung з екрана — обидва `confirmed`, різниця в `TEXTE`, не в стані |

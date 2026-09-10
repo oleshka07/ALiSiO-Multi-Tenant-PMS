@@ -307,7 +307,7 @@ try {
     const expect: Record<string, number> = {
       mandant: 1, tax_codes: 3, unit_types: 3, units: 4, services: 10, service_groups: 6, rate_codes: 3, seasons: 2, prices: 3,
       price_splits: 1, segments: 2, address_types: 2, age_bands: 3, payment_methods: 5, consent_types: 2, addresses: 5,
-      bookings: 5, occupancy: 4, booking_refs: 1, folio_lines: 7, invoices: 3, invoice_lines: 3, invoice_ledger: 2,
+      bookings: 6, occupancy: 5, booking_refs: 2, folio_lines: 7, invoices: 3, invoice_lines: 3, invoice_ledger: 2,
       payments: 4, cash_book: 1, consents: 2, day_closings: 2,
     };
     for (const [entity, n] of Object.entries(expect)) {
@@ -349,7 +349,7 @@ try {
     assert.strictEqual(payments.find((x) => x.lnr === 4)!.betrag, -1.5, 'повернення -1.500 → -1.5');
     assert.strictEqual(payments.find((x) => x.lnr === 1)!.uhrzeit, '10:05:00');
     assert.strictEqual(result.numbers.invoice_no_generator.value, '22591', `генератор фактур: ${result.numbers.invoice_no_generator.value}`);
-    assert.strictEqual(result.numbers.bookings_future.value, '2', `майбутніх броней: ${result.numbers.bookings_future.value}`);
+    assert.strictEqual(result.numbers.bookings_future.value, '3', `майбутніх броней: ${result.numbers.bookings_future.value}`);
     assert.strictEqual(result.numbers.occupancy_junk_dates.value, '1');
     assert.match(result.numbers.open_guest_balances.value, /^2 321\.5/, `відкриті сальдо: ${result.numbers.open_guest_balances.value}`);
     assert.ok(!fs.existsSync(path.join(tmp, 'work')), 'робоча тека з відновленою базою лишилась');
@@ -383,6 +383,7 @@ try {
     }
     await sql.run('INSERT INTO booking_sources (id, property_id, name, code) VALUES (?, ?, ?, ?)', [`${A}_src`, PROP, 'Direkt', 'direct']);
     await sql.run('INSERT INTO booking_sources (id, property_id, name, code) VALUES (?, ?, ?, ?)', [`${A}_src_bk`, PROP, 'Booking.com', 'booking_com']);
+    await sql.run('INSERT INTO booking_sources (id, property_id, name, code) VALUES (?, ?, ?, ?)', [`${A}_src_d21`, PROP, 'DIRS21', 'dirs21']);
   });
   // Знімок для імпорту: рядок + витяг зі стаба мосту + маркер.
   const IMP = repo.newSnapshotId(new Date('2026-09-12T03:00:00Z'));
@@ -424,7 +425,7 @@ try {
     await sql.run('INSERT INTO units (id, property_id, unit_type_id, category_id, name, code) VALUES (?, ?, ?, ?, ?, ?)', [`${A}_u201`, PROP, `${A}_sd`, CAT, '201', '201']);
   });
   const r1 = await runWithOrganization(A, () => importSnapshotNow(A, IMP));
-  assert.strictEqual(r1.entities.reservation.imported, 5, `броней імпортовано ${r1.entities.reservation.imported}, стаб має 5 (4 живі + сторно з датою)`);
+  assert.strictEqual(r1.entities.reservation.imported, 6, `броней імпортовано ${r1.entities.reservation.imported}, стаб має 6 (5 живих + сторно з датою)`);
   assert.strictEqual(r1.entities.reservation.staged, 0, `брони в staging: ${JSON.stringify(r1.entities.reservation)}`);
   // Задача 8 §1.2: компанія — це ADR_WAHL = 1, не DEBI_NR > 0; адреса 6 має дебіторський номер і є гостем.
   assert.strictEqual(r1.entities.guest.imported, 4, `гостей ${r1.entities.guest.imported}, адрес з ADR_WAHL 0 у стабі 4 (одна з DEBI_NR > 0)`);
@@ -462,11 +463,19 @@ try {
   assert.strictEqual(res102?.payment_status, 'paid', `оплата 102: у фоліо 179 + 48 + 8 = 235 (Gutschein-рядок — каса), оплат 227 + 100 − 1.5 = 325.5 → paid, а є ${res102?.payment_status}`);
   const res104 = await runWithOrganization(A, () => sql.row<any>('SELECT status FROM reservations WHERE organization_id = ? AND external_uid = ?', [A, 'winhotel:GASTKONT:104']));
   assert.strictEqual(res104?.status, 'cancelled', 'сторнована з датою 104 не cancelled');
-  const res106 = await runWithOrganization(A, () => sql.row<any>('SELECT unit_id, unit_type_id, source FROM reservations WHERE organization_id = ? AND external_uid = ?', [A, 'winhotel:GASTKONT:106']));
+  const res106 = await runWithOrganization(A, () => sql.row<any>('SELECT unit_id, unit_type_id, source, hostex_channel_type, hostex_reservation_code FROM reservations WHERE organization_id = ? AND external_uid = ?', [A, 'winhotel:GASTKONT:106']));
   assert.strictEqual(res106?.unit_id, null, 'бронь на псевдо-номері 9999 дістала номер');
   assert.strictEqual(res106?.unit_type_id, `${A}_dzd`);
-  // Джерело — з GASTKREF.EXT_SOURCE («Booking.com» у стабі), не з MARKSEG (задача 8 §2).
-  assert.strictEqual(res106?.source, 'booking_com', `джерело броні 106: ${res106?.source}, чекали booking_com з GASTKREF.EXT_SOURCE`);
+  // Джерело — за словом у текстових колонках GASTKREF (на живому EXT_SOURCE — число), номер каналу — поруч (задача 9 п. 2).
+  assert.strictEqual(res106?.source, 'booking_com', `джерело броні 106: ${res106?.source}, чекали booking_com за TEXT1 «Booking.com»`);
+  assert.strictEqual(res106?.hostex_channel_type, 'Booking.com');
+  assert.strictEqual(res106?.hostex_reservation_code, '4100000001', `номер каналу 106: ${res106?.hostex_reservation_code}`);
+  const res107 = await runWithOrganization(A, () => sql.row<any>('SELECT source, hostex_channel_type, hostex_reservation_code FROM reservations WHERE organization_id = ? AND external_uid = ?', [A, 'winhotel:GASTKONT:107']));
+  assert.strictEqual(res107?.source, 'dirs21', `джерело броні 107: ${res107?.source}, чекали dirs21 за «DIRS21 Onlinebuchung»`);
+  assert.strictEqual(res107?.hostex_reservation_code, '77001');
+  const chanRow = r1.reconcile.explained.find((x) => /GASTKREF/.test(x.name));
+  assert.match(chanRow?.why ?? '', /Booking\.com 1, DIRS21 1|DIRS21 1, Booking\.com 1/, `розподіл каналів: ${chanRow?.why}`);
+  assert.match(chanRow?.why ?? '', /колонка з назвою: text1 2/, `колонка з назвою каналу: ${chanRow?.why}`);
   assert.strictEqual(res101.status === 'confirmed' && (await runWithOrganization(A, () => sql.row<any>('SELECT source FROM reservations WHERE id = ?', [res101.id])))?.source, 'direct', 'бронь без GASTKREF має бути direct');
   assert.strictEqual(await countA("SELECT COUNT(*) AS n FROM reservations WHERE organization_id = ? AND external_uid = 'winhotel:GASTKONT:105'"), 0, 'видалена без дати сторно 105 імпортована');
   const snap = await runWithOrganization(A, () => repo.findSnapshot(A, IMP));
@@ -474,7 +483,7 @@ try {
   assert.ok(snap?.imported_at, 'imported_at порожній');
   const importCounts = JSON.parse(snap?.counts_json ?? '{}') as { import?: { mismatch: boolean; entities: Record<string, { imported: number }> } };
   assert.strictEqual(importCounts.import?.mismatch, false);
-  assert.strictEqual(importCounts.import?.entities.reservation.imported, 5, 'counts_json без чисел імпорту');
+  assert.strictEqual(importCounts.import?.entities.reservation.imported, 6, 'counts_json без чисел імпорту');
   const staged = await runWithOrganization(A, () => sql.rows<{ entity: string; reason: string; n: number }>('SELECT entity, reason, COUNT(*) AS n FROM winhotel_staging WHERE organization_id = ? GROUP BY entity, reason', [A]));
   const stagedOf = (e: string, r: string) => Number(staged.find((x) => x.entity === e && x.reason === r)?.n ?? 0);
   assert.strictEqual(stagedOf('invoice', 'frozen_sammelrechnung'), 1, `Sammelrechnung у staging: ${JSON.stringify(staged)}`);
@@ -510,7 +519,7 @@ try {
   assert.ok(pays.every((x) => x.source === 'import' && /^winhotel:\d+$/.test(String(x.origin))), `імпортна оплата без позначки походження: ${JSON.stringify(pays)}`);
   assert.ok(pays.some((x) => x.method === 'cash') && pays.some((x) => x.method === 'card_terminal'), `готівка й картка мали дійти: ${JSON.stringify(pays)}`);
   assert.ok(pays.every((x) => x.tse_status === null), `імпортна оплата не підписується і не «tse_failed»: ${JSON.stringify(pays)}`);
-  console.log('  ok  Б2. імпорт: 5 броней, 4 гості + 1 фірма за ADR_WAHL, рід рядків із групи через LNR, каса → staging, оплати з походженням повз варту, послуга без пари — у explained, джерело з GASTKREF');
+  console.log('  ok  Б2. імпорт: 6 броней, 4 гості + 1 фірма за ADR_WAHL, рід рядків із групи через LNR, каса → staging, оплати з походженням повз варту, послуга без пари — у explained, джерело з GASTKREF');
 
   // ── Б3. Той самий знімок удруге → нуль нових рядків у ядрі й у refs ──────
   const refsBefore = await countA('SELECT COUNT(*) AS n FROM winhotel_refs WHERE organization_id = ?');
@@ -561,6 +570,24 @@ try {
     assert.strictEqual(Number(seenStaging?.n), 0, 'політика winhotel_staging не тримає');
   }
   console.log(`  ok  Б6. гість A через refs і таблиці з B невидимий${isPg ? ' — і політикою теж' : ' (політика — у check:pg)'}`);
+
+  // ── Б10. Майбутня бронь, яку ми ТРИМАЄМО, стає перетином на UPDATE → staging, рядок лишається, звірка сходиться ──
+  // (задача 9 п. 1: обидва боки рядка «майбутні живі» — з тих самих рядків; вісь «staged майбутніх ≠ 0» не вироджена)
+  fs.writeFileSync(bookingsFile, original.split('\n').map((l) => (l.includes('"lnr":101,')
+    ? l.replace('"vonaufh":"2027-03-10"', '"vonaufh":"2027-04-01"').replace('"bisaufh":"2027-03-13"', '"bisaufh":"2027-04-03"').replace('"lnr_zinr":1,', '"lnr_zinr":2,').replace('"auftage":3', '"auftage":2')
+    : l)).join('\n'));
+  const r8 = await runWithOrganization(A, () => importSnapshotNow(A, IMP));
+  fs.writeFileSync(bookingsFile, original);
+  assert.strictEqual(r8.entities.reservation.skipped.overlap_winhotel_double ?? 0, 1, `101 на номері й датах 107 — перетин winhotel_double: ${JSON.stringify(r8.entities.reservation.skipped)}`);
+  assert.strictEqual(r8.entities.reservation.skipped.staged_future ?? 0, 1, 'майбутня відкладена має лічитись');
+  assert.strictEqual(await countA('SELECT COUNT(*) AS n FROM reservations WHERE organization_id = ?'), resBefore, 'перетин на UPDATE видалив або продублював рядок');
+  const futureRow = r8.reconcile.mustMatch.find((m) => /майбутні брони/.test(m.name))!;
+  assert.ok(futureRow.ok, `рядок майбутніх бреше: Winhotel ${futureRow.winhotel} ≠ наші ${futureRow.ours}`);
+  assert.strictEqual(futureRow.winhotel, 3, `майбутніх живих із нашим рядком: ${futureRow.winhotel} (101, 106, 107)`);
+  assert.strictEqual(r8.mismatch, false, `розбіжність: ${JSON.stringify(r8.reconcile.mustMatch.filter((m) => !m.ok))}`);
+  const notHeld = r8.reconcile.explained.find((x) => /без нашого рядка/.test(x.name))!;
+  assert.strictEqual(notHeld.winhotel, 0, `без рядка мало бути 0 (101 уже наша), а є ${notHeld.winhotel}: ${notHeld.why}`);
+  console.log('  ok  Б10. бронь, яку тримаємо, стала перетином на UPDATE → staging без втрати рядка; «майбутні живі з нашим рядком» 3 = 3, mismatch false');
 
   // ══ Задача 8 §3 — кіоск: незатирання і денна дельта ═══════════════════════
   const { recordReservationPayment, ensureReservationFolio } = await import('@invoicing/kernel');

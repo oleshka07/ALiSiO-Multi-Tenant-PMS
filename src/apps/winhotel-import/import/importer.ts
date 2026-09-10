@@ -57,7 +57,7 @@ import { noteAvailabilityChanged } from '@channels/outbox';
 import { fingerprintOf, findRef, putRef, refsOf, stage, stagedLnrs, stagingCounts, countRefs } from '../data/refs.repo';
 import { readAggregates, readJsonl, snapshotDate } from './read';
 import {
-  EXTERNAL_PREFIX, bookingStatus, countryCode, gender, groupCodeOf, guestName, household, internalNotes, isCompany,
+  EXTERNAL_PREFIX, bookingStatus, channelOf, countryCode, gender, groupCodeOf, guestName, household, internalNotes, isCompany,
   language, lineKind, lineQuantity, needsCatalogMatch, nightsOf, normalizeServiceName, paymentMethod, statusForward, taxCode,
   type WhAddress, type WhBooking, type WhBookingRef, type WhFolioLine, type WhInvoice, type WhInvoiceLine, type WhLedger,
   type WhPayment, type WhPaymentMethod, type WhSegment, type WhService, type WhServiceGroup, type WhTaxCode, type WhUnit, type WhUnitType,
@@ -342,9 +342,22 @@ export async function runImport(opts: ImportOptions): Promise<ImportReport> {
   // канал називає `GASTKREF.EXT_SOURCE` («Booking.com», «DIRS21»…). Немає рядка —
   // `direct`, і це названо в `explained` разом із розподілом значень.
   const refByBooking = new Map<number, WhBookingRef>();
-  for (const r of wh.bookingRefs) if (r.gk_lnr && r.ext_source && !refByBooking.has(r.gk_lnr)) refByBooking.set(r.gk_lnr, r);
-  const extSourceCounts = new Map<string, number>();
-  for (const r of refByBooking.values()) { const k = r.ext_source!.trim(); extSourceCounts.set(k, (extSourceCounts.get(k) ?? 0) + 1); }
+  for (const r of wh.bookingRefs) if (r.gk_lnr && !refByBooking.has(r.gk_lnr)) refByBooking.set(r.gk_lnr, r);
+  // Розподіл: який канал і В ЯКІЙ колонці GASTKREF його названо — щоб живий
+  // прохід сказав, де саме лежить назва (Б2: EXT_SOURCE виявився числом).
+  const channelCounts = new Map<string, number>();
+  const channelColumns = new Map<string, number>();
+  let refsWithNumber = 0;
+  for (const r of refByBooking.values()) {
+    const c = channelOf(r);
+    if (c.number) refsWithNumber += 1;
+    if (c.channel) { channelCounts.set(c.channel, (channelCounts.get(c.channel) ?? 0) + 1); channelColumns.set(c.column!, (channelColumns.get(c.column!) ?? 0) + 1); }
+  }
+  const sourceOfChannel = (name: string | null): string | null => {
+    if (!name) return null;
+    const key = name.trim().toLowerCase();
+    return cat.sourceByName.get(key) ?? cat.sourceByName.get(key.replace(/\W+/g, '')) ?? [...cat.sourceByName.entries()].find(([n]) => n.replace(/\W+/g, '') === key.replace(/\W+/g, ''))?.[1] ?? null;
+  };
   const liveByUnit = new Map<number, WhBooking[]>();
   for (const b of wh.bookings) {
     if ((b.ta_status ?? 0) >= 1000 || !b.lnr_zinr || !b.vonaufh || !b.bisaufh) continue;
@@ -386,8 +399,9 @@ export async function runImport(opts: ImportOptions): Promise<ImportReport> {
 
     const status = bookingStatus(b);
     const ref = refByBooking.get(b.lnr);
+    const channel = ref ? channelOf(ref) : { channel: null, column: null, number: null };
     const segment = segmentByCode.get(b.markseg ?? -1);
-    const source = (ref?.ext_source && cat.sourceByName.get(ref.ext_source.trim().toLowerCase()))
+    const source = sourceOfChannel(channel.channel)
       || (segment?.bezeichn && cat.sourceByName.get(segment.bezeichn.trim().toLowerCase()))
       || 'direct';
     const nights = nightsOf(b);
@@ -398,6 +412,9 @@ export async function runImport(opts: ImportOptions): Promise<ImportReport> {
       status, source, total_price: totalsByGk.get(b.lnr) ?? 0,
       internal_notes: internalNotes(b), deposit_amount: b.anza_betrag ?? 0, deposit_status: (b.anza_betrag ?? 0) > 0 ? 'paid' : 'none',
       company_id: companyId,
+      // Канал і його номер броні — у ті самі колонки, що читають екрани броні
+      // (`isChannelBooking`, бейдж каналу): `external_ref` у схемі немає.
+      channel_type: channel.channel, channel_code: channel.number,
     };
     const fp = fingerprintOf(fields);
     const known = bookingRefs.get(b.lnr);
@@ -425,11 +442,11 @@ export async function runImport(opts: ImportOptions): Promise<ImportReport> {
           await sql.run(
             `UPDATE reservations SET property_id = ?, unit_id = ?, unit_type_id = ?, guest_id = ?, check_in = ?, check_out = ?, nights = ?,
                adults = ?, children = ?, infants = ?, status = ?, source = ?, total_price = ?, internal_notes = ?,
-               deposit_amount = ?, deposit_status = ?, company_id = ?, updated_at = CURRENT_TIMESTAMP
+               deposit_amount = ?, deposit_status = ?, company_id = ?, hostex_channel_type = ?, hostex_reservation_code = ?, updated_at = CURRENT_TIMESTAMP
              WHERE id = ? AND organization_id = ?`,
             [fields.property_id, fields.unit_id, fields.unit_type_id, fields.guest_id, fields.check_in, fields.check_out, fields.nights,
              fields.adults, fields.children, fields.infants, nextStatus, fields.source, fields.total_price, fields.internal_notes,
-             fields.deposit_amount, fields.deposit_status, fields.company_id, known.our_id, org]);
+             fields.deposit_amount, fields.deposit_status, fields.company_id, fields.channel_type, fields.channel_code, known.our_id, org]);
         }, { unitId: fields.unit_id, checkIn: fields.check_in, checkOut: fields.check_out, reservationId: known.our_id });
         if (nextStatus !== status) skip(bookings, 'status_kept_forward');
         // Двері каналу — старе й нове вікно (Ц16); без підключення це нуль записів.
@@ -445,11 +462,11 @@ export async function runImport(opts: ImportOptions): Promise<ImportReport> {
         await sql.run(
           `INSERT INTO reservations (id, organization_id, property_id, unit_id, unit_type_id, guest_id, check_in, check_out, nights,
                                      adults, children, infants, status, payment_status, source, total_price, currency,
-                                     internal_notes, deposit_amount, deposit_status, company_id, external_uid)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid', ?, ?, (SELECT default_currency FROM organizations WHERE id = ?), ?, ?, ?, ?, ?)`,
+                                     internal_notes, deposit_amount, deposit_status, company_id, external_uid, hostex_channel_type, hostex_reservation_code)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid', ?, ?, (SELECT default_currency FROM organizations WHERE id = ?), ?, ?, ?, ?, ?, ?, ?)`,
           [id, org, fields.property_id, fields.unit_id, fields.unit_type_id, fields.guest_id, fields.check_in, fields.check_out, fields.nights,
            fields.adults, fields.children, fields.infants, fields.status, fields.source, fields.total_price, org,
-           fields.internal_notes, fields.deposit_amount, fields.deposit_status, fields.company_id, `${EXTERNAL_PREFIX}${b.lnr}`]);
+           fields.internal_notes, fields.deposit_amount, fields.deposit_status, fields.company_id, `${EXTERNAL_PREFIX}${b.lnr}`, fields.channel_type, fields.channel_code]);
       }, { unitId: fields.unit_id, checkIn: fields.check_in, checkOut: fields.check_out });
       await noteAvailabilityChanged(sql, { propertyId, unitTypeId: typeRow.id, from: fields.check_in, to: fields.check_out });
       await putRef(org, 'reservation', b.lnr, id, fp, takenAtKey);
@@ -666,8 +683,21 @@ export async function runImport(opts: ImportOptions): Promise<ImportReport> {
   const whRealTypes = wh.unitTypes.filter((t) => !t.pseudo && t.lnr !== 0 && t.lnr !== 99999).length;
   const whRealUnits = wh.units.filter((u) => u.zinr && Number(u.zinr) < 9000 && u.stock !== 99).length;
   const resCount = Number((await sql.row<{ n: number }>(`SELECT COUNT(*) AS n FROM reservations r WHERE r.organization_id = ? AND r.external_uid LIKE ? AND ${ACROSS.sql}`, [org, `${EXTERNAL_PREFIX}%`, ...ACROSS.params]))?.n ?? 0);
-  const inWindow = wh.bookings.filter((b) => b.vonaufh && b.bisaufh && (delta || (snapDate && b.vonaufh > snapDate) || b.vonaufh >= since)).length;
-  const futureWh = snapDate ? wh.bookings.filter((b) => b.vonaufh && b.vonaufh > snapDate && (b.ta_status ?? 0) < 1000).length : 0;
+  const inWindowAll = wh.bookings.filter((b) => b.vonaufh && b.bisaufh && (delta || (snapDate && b.vonaufh > snapDate) || b.vonaufh >= since));
+  const inWindow = inWindowAll.length;
+  // Той самий принцип, що й для майбутніх: рядок «скільки наших» звіряється з
+  // «скільки броней вікна МАЮТЬ наш рядок», а не з «усі мінус staging» — бронь,
+  // відкладена на UPDATE, рядок не втрачає.
+  const inWindowHeld = inWindowAll.filter((b) => bookingRefs.has(b.lnr)).length;
+  // Майбутні живі брони — ОБИДВА боки з тих самих рядків (задача 9 п. 1): не
+  // «Winhotel мінус лічильник staging», а «скільки живих майбутніх броней
+  // Winhotel МАЮТЬ наш рядок» проти «скільки наших майбутніх живих». Бронь,
+  // яку ми вже тримали, а цього разу відклали в staging (перетин на UPDATE),
+  // має ref і рядок — вона в обох числах, і рядок не бреше.
+  const futureLive = snapDate ? wh.bookings.filter((b) => b.vonaufh && b.vonaufh > snapDate && (b.ta_status ?? 0) < 1000) : [];
+  const futureWh = futureLive.length;
+  const futureHeld = futureLive.filter((b) => bookingRefs.has(b.lnr)).length;
+  const futureNotHeld = futureWh - futureHeld;
   const futureOurs = snapDate ? Number((await sql.row<{ n: number }>(`SELECT COUNT(*) AS n FROM reservations r WHERE r.organization_id = ? AND r.external_uid LIKE ? AND r.check_in > ? AND r.status <> 'cancelled' AND ${ACROSS.sql}`, [org, `${EXTERNAL_PREFIX}%`, snapDate, ...ACROSS.params]))?.n ?? 0) : 0;
   const guestLines = wh.folioLines.filter((l) => l.gk_lnr && reservationIdOf.has(l.gk_lnr)
     && lineKind(groupCodeOf(serviceByLnr.get(l.leist_lnr ?? -1), groupByLnr)) !== 'cash_article');
@@ -679,8 +709,8 @@ export async function runImport(opts: ImportOptions): Promise<ImportReport> {
     { name: 'unit_types = категорії PSEUDO 0', winhotel: whRealTypes, ours: ourUnitTypes, ok: ourUnitTypes >= whRealTypes },
     { name: 'units = номери ZINR < 9000', winhotel: whRealUnits, ours: ourUnits, ok: ourUnits >= whRealUnits },
     { name: 'fin_tax_rates покривають коди STS', winhotel: wh.taxCodes.length, ours: cat.taxRates.length, ok: cat.taxRates.length > 0 },
-    { name: delta ? 'reservations ⊇ GASTKONT дельти (вікно)' : 'reservations = GASTKONT у вікні імпорту', winhotel: inWindow, ours: resCount, ok: delta ? resCount >= inWindow - bookings.staged : resCount === inWindow - (bookings.staged) },
-    { name: 'майбутні брони (після знімка), живі, без staging', winhotel: futureWh - (bookings.skipped.staged_future ?? 0), ours: futureOurs, ok: futureOurs === futureWh - (bookings.skipped.staged_future ?? 0) },
+    { name: delta ? 'reservations ⊇ GASTKONT дельти з нашим рядком' : 'reservations = GASTKONT у вікні імпорту з нашим рядком', winhotel: inWindowHeld, ours: resCount, ok: delta ? resCount >= inWindowHeld : resCount === inWindowHeld },
+    { name: 'майбутні брони (після знімка), живі, з нашим рядком', winhotel: futureHeld, ours: futureOurs, ok: futureOurs === futureHeld },
     { name: 'fin_folio_items = BUCHKONT імпортованих броней без касових статей, кількість', winhotel: whLineCount, ours: lines.imported + (lines.skipped.unchanged ?? 0), ok: lines.imported + (lines.skipped.unchanged ?? 0) + (lines.staged - cashArticles.n) === whLineCount },
     { name: 'fin_folio_items = BUCHKONT без касових статей, сума', winhotel: whLineSum, ours: importedLineSum, ok: Math.abs(importedLineSum - whLineSum) < 0.005 || lines.staged - cashArticles.n > 0 },
     { name: 'платежі: у фоліо + staging = ZAHLUNGEN імпортованих броней', winhotel: whPayCount, ours: payments.imported + (payments.skipped.unchanged ?? 0) + payments.staged, ok: payments.imported + (payments.skipped.unchanged ?? 0) + payments.staged + (payments.skipped.zero_amount ?? 0) === whPayCount },
@@ -691,12 +721,13 @@ export async function runImport(opts: ImportOptions): Promise<ImportReport> {
     { name: 'guests ≤ адрес без DEBI_NR', winhotel: guests.winhotel, ours: guests.imported + (guests.skipped.unchanged ?? 0), why: 'різниця — злиті дублікати (email/телефон/імʼя, правило @guests)' },
     { name: 'companies = адрес з DEBI_NR', winhotel: companies.winhotel, ours: companies.imported + (companies.skipped.unchanged ?? 0) + companies.staged, why: 'staging — відмова ядра (дубль business_id) або зміна без дверей' },
     { name: 'брони до дати «з»', winhotel: bookings.skipped.before_since ?? 0, ours: 0, why: `минулі брони із заїздом до ${since} не імпортуються (параметр)` },
-    { name: 'бронь без категорії/гостя/із перетином', winhotel: bookings.staged, ours: 0, why: 'staging із причиною: no_unit_type, no_guest, overlap' },
+    { name: 'майбутні живі без нашого рядка', winhotel: futureNotHeld, ours: 0, why: `у staging без рядка в ядрі (перетин, без категорії, без гостя); ще ${bookings.skipped.staged_future ?? 0} майбутніх відкладено цього прогону, з них із наявним рядком — ${Math.max(0, (bookings.skipped.staged_future ?? 0) - futureNotHeld)}` },
+    { name: 'бронь без категорії/гостя/із перетином', winhotel: bookings.staged, ours: inWindow - inWindowHeld, why: `staging із причиною: no_unit_type, no_guest, overlap; з них без рядка в ядрі — ${inWindow - inWindowHeld}, решта — відкладені на UPDATE, рядок лишився` },
     { name: 'номери псевдо (ZINR ≥ 9000)', winhotel: wh.units.length - whRealUnits, ours: 0, why: 'не імпортуються навмисно; брони на них — без номера' },
     { name: 'послуги без пари в каталозі', winhotel: unmatchedServices.length, ours: 0, why: unmatchedServices.length ? `пара потрібна лише майбутньому продажу; без пари: ${unmatchedServices.slice(0, 40).join(', ')}${unmatchedServices.length > 40 ? '…' : ''}` : 'усі живі послуги груп 200–500 мають пару' },
     { name: 'касові статті BUCHKONT (групи 700/750/800)', winhotel: cashArticles.n, ours: 0, why: `staging cash_article, сума ${cashArticles.sum}: каса/витрати, не фоліо гостя` },
     { name: 'DEBI_NR компаній → companies.debtor_no', winhotel: (companies.skipped.debtor_no_adopted ?? 0) + (companies.skipped.debtor_no_pending ?? 0), ours: companies.skipped.debtor_no_adopted ?? 0, why: `прийнято дверима adoptDebtorNo; зайнятий іншою фірмою → staging debtor_no_pending: ${companies.skipped.debtor_no_pending ?? 0}` },
-    { name: 'брони з посиланням каналу (GASTKREF.EXT_SOURCE)', winhotel: refByBooking.size, ours: [...extSourceCounts.entries()].filter(([k]) => cat.sourceByName.has(k.toLowerCase())).reduce((a, [, n]) => a + n, 0), why: `джерело — з EXT_SOURCE, не з MARKSEG; значення: ${[...extSourceCounts.entries()].sort((x, y) => y[1] - x[1]).slice(0, 8).map(([k, n]) => `${k} ${n}`).join(', ') || 'немає'}; без пари в booking_sources → direct` },
+    { name: 'брони з посиланням каналу (GASTKREF)', winhotel: refByBooking.size, ours: [...channelCounts.entries()].filter(([k]) => sourceOfChannel(k)).reduce((a, [, n]) => a + n, 0), why: `канал за словом у колонках GASTKREF: ${[...channelCounts.entries()].sort((x, y) => y[1] - x[1]).map(([k, n]) => `${k} ${n}`).join(', ') || 'не впізнано жодного'}; колонка з назвою: ${[...channelColumns.entries()].map(([k, n]) => `${k} ${n}`).join(', ') || '—'}; номер каналу є у ${refsWithNumber}; без пари в booking_sources → direct` },
     { name: 'перетини (overlap) за причиною', winhotel: bookings.skipped.overlap_winhotel_double ?? 0, ours: bookings.skipped.overlap_umzug ?? 0, why: `winhotel_double ${bookings.skipped.overlap_winhotel_double ?? 0} (дві живі броні Winhotel на одному номері в ті ж дати), umzug ${bookings.skipped.overlap_umzug ?? 0} (UMZUG_ZINR), other ${bookings.skipped.overlap_other ?? 0}` },
     { name: 'злиття гостей лише за імʼям з іншою датою народження / містом', winhotel: guests.skipped.merged_by_name ?? 0, ours: (guests.skipped.merged_by_name_other_birthdate ?? 0) + (guests.skipped.merged_by_name_other_city ?? 0), why: `інша дата народження ${guests.skipped.merged_by_name_other_birthdate ?? 0}, інше місто ${guests.skipped.merged_by_name_other_city ?? 0} — число для сесії 3 (правило @guests, З32)` },
   ];

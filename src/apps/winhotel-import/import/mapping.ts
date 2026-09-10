@@ -17,8 +17,44 @@ export interface WhTaxCode { lnr: number; sts: number | null; stsatz: number | n
 export interface WhSegment { lnr: number; segmcode: number | null; bezeichn: string | null }
 /** WARENGRUPPE: `lnr` — те, на що посилається `LEISTSTA.WG`; `wgnr` — КОД групи (100…800). */
 export interface WhServiceGroup { lnr: number; wgnr: number | null; bezeichn: string | null; durchl: boolean | null }
-/** GASTKREF: посилання каналу на бронь — `ext_source` («Booking.com», «DIRS21»…) і його номер. */
-export interface WhBookingRef { lnr: number; gk_lnr: number | null; ref_nr: string | null; inet_ref_nr: string | null; ext_source: string | null; ext_refnr: string | null }
+/**
+ * GASTKREF: посилання каналу на бронь. На живому `EXT_SOURCE`/`REF_NR`/`EXT_REFNR` —
+ * ЧИСЛА (номер броні каналу: `18778622`, `2140901178`), а назва каналу — в одному з
+ * `TEXT1..TEXT5` (рецензія Б2, п. 2). Тому канал шукається по всіх текстових
+ * колонках за словами, а номер — перше числове значення.
+ */
+export interface WhBookingRef {
+  lnr: number; gk_lnr: number | null; ref_nr: string | null; inet_ref_nr: string | null; ext_source: string | null; ext_refnr: string | null;
+  text1?: string | null; text2?: string | null; text3?: string | null; text4?: string | null; text5?: string | null;
+}
+
+/** Канали, які впізнаються за словом; порядок — від специфічного до загального. */
+const CHANNEL_WORDS: Array<[RegExp, string]> = [
+  [/booking\.?com/i, 'Booking.com'],
+  [/expedia|hotels\.com/i, 'Expedia'],
+  [/\bhrs\b/i, 'HRS'],
+  [/airbnb/i, 'Airbnb'],
+  [/dirs\s*21/i, 'DIRS21'],
+  [/onlinebuchung|online-buchung|ibe\b|website|homepage/i, 'Onlinebuchung'],
+];
+
+export interface ChannelRef { channel: string | null; column: string | null; number: string | null }
+
+/** Назва каналу і номер броні каналу з рядка GASTKREF; нічого не впізнано — null. */
+export function channelOf(r: WhBookingRef): ChannelRef {
+  const cols: Array<[string, string | null | undefined]> = [
+    ['text1', r.text1], ['text2', r.text2], ['text3', r.text3], ['text4', r.text4], ['text5', r.text5],
+    ['ext_source', r.ext_source], ['ref_nr', r.ref_nr], ['inet_ref_nr', r.inet_ref_nr], ['ext_refnr', r.ext_refnr],
+  ];
+  let channel: string | null = null; let column: string | null = null;
+  for (const [name, value] of cols) {
+    if (!value) continue;
+    const hit = CHANNEL_WORDS.find(([re]) => re.test(value));
+    if (hit) { channel = hit[1]; column = name; break; }
+  }
+  const number = [r.ext_refnr, r.ext_source, r.inet_ref_nr, r.ref_nr].map((v) => (v ?? '').trim()).find((v) => /^\d{4,}$/.test(v)) ?? null;
+  return { channel, column, number };
+}
 export interface WhPaymentMethod { lnr: number; kurzbez: string | null; bezeichn: string | null; zahlungsart: number | null; m_depitor: boolean | null; ta_status: number | null }
 export interface WhAddress {
   lnr: number; adr_wahl: number | null; anrede: string | null; titel: string | null; name1: string | null; name2: string | null;
