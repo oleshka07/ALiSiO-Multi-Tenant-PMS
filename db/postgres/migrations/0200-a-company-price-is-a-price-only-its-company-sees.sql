@@ -57,3 +57,40 @@ CREATE INDEX IF NOT EXISTS "idx_company_rate_plans_plan"
   ON "company_rate_plans" ("rate_plan_id");
 
 COMMIT;
+
+-- ── Другий пояс: політика орендаря (INC-206) ────────────────────────────
+--
+-- Дописано 11.09.2026, після того як репетиція злиття впала словами
+-- `tables without row-level security: company_rate_plans`.
+--
+-- Перша редакція цієї міграції завела таблицю без жодного рядка про RLS —
+-- і розійшлася зі СВІЖОЮ базою, де генератор політику ставить сам
+-- (`schema.sql`). Тобто новий клієнт діставав пояс, а бета й прод — ні.
+--
+-- Чому цього не побачила жодна сцена: код тут несе `organization_id` у
+-- КОЖНОМУ запиті явно, тож дірки немає й сьогодні — перший пояс тримає. Але
+-- другий існує рівно для писача, який завтра забуде орендаря в підзапиті: на
+-- свіжій базі його зловить політика, на мігрованій — ніщо. Властивість, яку
+-- не видно, поки тримає інша, доводиться не гейтом, а репетицією.
+--
+-- Форма взята з ГЕНЕРАТОРА дослівно (`scripts/pg-schema.mjs`, вивід у
+-- `schema.sql`), а не написана своя: розбіжність у тексті предиката дала б
+-- той самий дрейф іншими словами.
+--
+-- Ідемпотентність — `DROP POLICY IF EXISTS` перед `CREATE`, як у 0300:
+-- `CREATE POLICY IF NOT EXISTS` у Postgres немає, а міграція вже накотилась
+-- там, де її встигли накотити, і накотиться вдруге.
+
+BEGIN;
+
+ALTER TABLE "company_rate_plans" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+
+ALTER TABLE "company_rate_plans" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "company_rate_plans" FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "company_rate_plans_tenant" ON "company_rate_plans";
+CREATE POLICY "company_rate_plans_tenant" ON "company_rate_plans"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+COMMIT;

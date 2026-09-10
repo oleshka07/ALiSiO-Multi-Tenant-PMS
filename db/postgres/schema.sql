@@ -514,6 +514,16 @@ CREATE TABLE "companies" (
   PRIMARY KEY ("id")
 );
 
+CREATE TABLE "company_rate_plans" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "company_id" TEXT NOT NULL,
+  "rate_plan_id" TEXT NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  UNIQUE ("organization_id", "company_id", "rate_plan_id")
+);
+
 CREATE TABLE "consent_texts" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "organization_id" TEXT NOT NULL,
@@ -2360,6 +2370,12 @@ ALTER TABLE "cm_sends" ADD CONSTRAINT "fk_cm_sends_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "companies" ADD CONSTRAINT "fk_companies_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "company_rate_plans" ADD CONSTRAINT "fk_company_rate_plans_rate_plan_id_1"
+  FOREIGN KEY ("rate_plan_id") REFERENCES "rate_plans" ("id") ON DELETE CASCADE;
+ALTER TABLE "company_rate_plans" ADD CONSTRAINT "fk_company_rate_plans_company_id_2"
+  FOREIGN KEY ("company_id") REFERENCES "companies" ("id") ON DELETE CASCADE;
+ALTER TABLE "company_rate_plans" ADD CONSTRAINT "fk_company_rate_plans_organization_id_3"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "consent_texts" ADD CONSTRAINT "fk_consent_texts_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "coupons" ADD CONSTRAINT "fk_coupons_organization_id_1"
@@ -2832,6 +2848,8 @@ CREATE INDEX "idx_cm_sends_org" ON "cm_sends" ("organization_id");
 CREATE UNIQUE INDEX "idx_companies_debtor_no" ON "companies" ("organization_id", "debtor_no") WHERE debtor_no IS NOT NULL ;
 CREATE INDEX "idx_companies_org" ON "companies" ("organization_id", "name");
 CREATE UNIQUE INDEX "idx_companies_org_business_id" ON "companies" ("organization_id", "business_id") WHERE business_id IS NOT NULL;
+CREATE INDEX "idx_company_rate_plans_org" ON "company_rate_plans" ("organization_id");
+CREATE INDEX "idx_company_rate_plans_plan" ON "company_rate_plans" ("rate_plan_id");
 CREATE INDEX "idx_consent_texts_org" ON "consent_texts" ("organization_id");
 CREATE UNIQUE INDEX "idx_consent_texts_org_kind_version" ON "consent_texts" ("organization_id", "consent_kind", "version", "locale");
 CREATE INDEX "idx_ct_hash" ON "content_translations" ("text_hash");
@@ -3021,6 +3039,7 @@ CREATE INDEX IF NOT EXISTS "idx_cm_mappings_org" ON "cm_mappings" ("organization
 CREATE INDEX IF NOT EXISTS "idx_cm_outbox_org" ON "cm_outbox" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_cm_sends_org" ON "cm_sends" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_companies_org" ON "companies" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_company_rate_plans_org" ON "company_rate_plans" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_consent_texts_org" ON "consent_texts" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_coupons_org" ON "coupons" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_event_addons_org" ON "event_addons" ("organization_id");
@@ -3131,6 +3150,8 @@ ALTER TABLE "cm_outbox" ALTER COLUMN "organization_id"
 ALTER TABLE "cm_sends" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "companies" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "company_rate_plans" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "consent_texts" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -3415,6 +3436,12 @@ CREATE POLICY "cm_sends_tenant" ON "cm_sends"
 ALTER TABLE "companies" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "companies" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "companies_tenant" ON "companies"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "company_rate_plans" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "company_rate_plans" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "company_rate_plans_tenant" ON "company_rate_plans"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
