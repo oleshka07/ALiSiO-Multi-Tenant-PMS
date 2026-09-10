@@ -7915,6 +7915,25 @@ function runMigrations(database: any) {
   // `tsc` або дасть видимий повтор у лозі — замість тиші.
   migrateOtaMirror(database);
 
+  // --- Migration: ключ походження на грошах і документах (INC-307) ---
+  //
+  // Пара до 0303. Колонки додаються ALTER-ом, бо ці таблиці створюються в
+  // різних місцях схеми, а індекси — після них.
+  try {
+    for (const t of ['companies', 'invoices', 'fin_invoice_lines', 'fin_invoice_tax_totals',
+      'fin_folio_items', 'fin_folio_payments']) {
+      const cols = database.prepare(`PRAGMA table_info(${t})`).all() as { name: string }[];
+      if (cols.length > 0 && !cols.some((c) => c.name === 'external_ref')) {
+        database.exec(`ALTER TABLE ${t} ADD COLUMN external_ref TEXT`);
+        console.log(`[DB] ${t}: external_ref (INC-307)`);
+      }
+      database.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_${t}_external_ref
+        ON ${t} (organization_id, external_ref) WHERE external_ref IS NOT NULL`);
+    }
+  } catch (e: any) {
+    console.log('[DB] money external_ref migration note:', e.message);
+  }
+
   // --- Migration: «різні люди» і хто злив (INC-304) ---
   try {
     database.exec(`
