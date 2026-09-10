@@ -1,70 +1,70 @@
-TASK: 2
+TASK: 3
 
-# Сесія 5 (дослідження Winhotel) — задача 2: завершити §2 з готового витягу
+# Сесія 5 (дослідження Winhotel) — задача 3: план імпорту і дірки ядра
 
-Гілка та сама: `claude/winhotel-schema`. Спершу `git fetch origin && git merge
-origin/claude/winhotel-schema` — контролер додав коміт `ccc6cf6b` зверху твого `c391ad5f`:
-**`docs/research/winhotel/extract-out/`** — це вихід ТВОГО `extract.sh`, запущеного в хмарі
-контролера на справжніх `WINHOTEL.fbk` (407 МБ, знімок **11.03.2025**, не 01.09.2025) і
-`WHMXVAKANZ.fbk`. Бази з контейнера видалено; Drive тобі більше не потрібен. Читай
-`extract-out/README.md` першим — там дата знімка, головні таблиці, що видно зі зразків,
-знахідка про TSE (fiskaltrust, не fiskaly) і що замасковано.
+Задачу 2 прийнято — `docs/tasks/2026-09-10-review-winhotel-2.md` на
+`origin/claude/controller-2`. Гілка та сама, пишеш лише в `docs/research/winhotel/**` і у
+свій звіт. Бази немає і не буде в цій задачі; усе — з `extract-out/`, `MAPPING.md` і коду
+ALiSiO (читати можна все, змінювати — нічого поза `docs/research/winhotel/`).
 
-Рецензію задачі 1 (`docs/tasks/2026-09-09-review-winhotel-1.md` на `origin/claude/controller-2`)
-прочитай: скрипт і конвенції прийнято; блокер знято шляхом 3.
+## 1. Імена колонок — дослівно
 
-## Обсяг (один блок, без зупинок)
+Рішення контролера: імена таблиць і колонок вендора — не персональні дані. Поверни
+дослівні `PLZ_STRASSE`, `STRASSE`, `IBAN` тощо в `TABLES.md`, `notes.md`, `MAPPING.md`,
+де вони були скорочені. PII-grep у `REFERENCE-SAMPLES.md` і в `extract.sh` перепиши так,
+щоб він виключав відомі імена колонок **словом**, а не текою: наприклад
+`grep -riE "iban|@|strasse|str\." docs/research/winhotel/ | grep -vE
+"PLZ_STRASSE|\.STRASSE|B_STRASSE|ADRESSEN\.IBAN|Musterstr"` — і щоб цей самий рядок стояв
+у README як команда приймання. Після правки він має бути порожнім.
 
-1. **`TABLES.md`** — заповнити з `extract-out/main/table-counts.by-size.tsv` і
-   `table-columns.tsv`: усі 258 таблиць, для кожної — рядків, здогадка «що це» з позначкою
-   упевнено/гіпотеза; порожні (0 рядків) — окремим списком одним абзацом. `TEMP_*`, `STAT_*`,
-   `WEB_ABF_*`, `ARCHIV_*`, `*_PROT` — групами, не по одній.
-2. **`MAPPING.md`** — 11 сутностей §2.3 задачі 1 з таблицями, ключовими колонками і
-   зв'язками, читаючи `DDL.sql` (FK, тригери) і `table-columns.tsv`. Уже відомо з README:
-   об'єкт/номери (`KATESTAM`, `ZIMMSTAM`), ПДВ (`STEUSTAM`), послуги (`LEISTSTA`, `WARENGRU`),
-   ціни (`PREISCODE` → `SAISSTAM` → `PREISLIST`, `KATESTAM_LEISTUNG`), TSE (`MANDANT_FISKAL`,
-   `FISKAL_BK`, `FISKAL_RECHNUNG`, `FISKAL_RECH_POS`). Знайти по DDL: гості/адреси
-   (`ADRESSEN` + `ADR_ZUSATZ`/`GASTHIST`/`GASTKREF` — де три адреси і `Gast-Nr 1/2/3`),
-   компанії/дебітори (де `Debitoren-Nummer` 10000–12599 — колонка в `ADRESSEN`?), брони
-   (`BELEGUNG`: `Beleg-Nr`, `Verkn-Nr`, стани, `Buchungs-Segm.`, `Referenz-Nr`, FIX,
-   `Anzahlung`; зверни увагу на 1899-12-30 у `ANREISE` — сміттєві рядки), послуги на броні
-   (`GASTKONT`/`BUCHKONT`: `Menge × Tage`, щоденна), фактури (`RECHNUNG`, `RECHNUNGSDRUCK`,
-   `CHECKOUT`, `FAKT_ERLOESE`; де `Rechnung-Nr` і `offener Betrag`), оплати (`ZAHLUNGEN`,
-   `ZAHLUNG_ZUS`, `KASSEN` 206 рядків — що це), політики Storno (`STORNO_BED` порожня —
-   шукати в `PREISLIST`/`LEISTSTA`/`MANDANT`), ваучери (`GUTSCHEINE` порожня — шукати як
-   послуги `GS`/`GUTSCHEIN` у `LEISTSTA` і рядки в `GASTKONT`). Де не знайдено — чесне
-   «не знайдено» з тим, що перевірив.
-3. **`REFERENCE-SAMPLES.md`** — переписати з `extract-out/main/samples.txt` у читабельні
-   таблиці (по 5–10 рядків, ті самі довідники). Нічого нового з бази не діставати — бази
-   нема.
-4. **`COUNTS-2025-09.md` → перейменувати в `COUNTS-2025-03.md`** (знімок 11.03.2025) і
-   заповнити те, що виводиться з `table-counts.tsv` та README (броней усього, з заїздом у
-   2025 = 3 086, у 2026 = 33, фактур усього, гостей/адрес, номерів справжніх/псевдо);
-   решту (остання `Rechnung-Nr`, відкриті дебіторські, ваучери) — позначити «потрібен
-   запит до бази» з готовим SQL по знайдених колонках, щоб наступний прогін `extract.sh`
-   міг їх узяти. Додати в `extract.sh` крок «агрегати» з цими запитами (лише числа).
-5. **`notes.md`** — доповнити: дата знімка 11.03.2025 і що перед перенесенням потрібен
-   свіжий `.fbk`; кодування NONE/CP1252; суми BIGINT ×1000; `PLZ_STRASSE` — довідник, не
-   дані; `ADR_DATENSCHUTZ` 61 305 — що це (GDPR-журнал?); тригери, що пишуть у
-   `FISKAL_*`/`STAT_*`; чи є в DDL процедура анонімізації (`'Musterstr. 99'`) і що вона
-   робить; знахідка TSE = fiskaltrust з `MANDANT_FISKAL` (CashBox/Queue/SCU) — наслідок для
-   ALiSiO: нова TSE fiskaly + експорт старої.
-6. **`README.md`** теки — оновити навігацію (extract-out є).
+## 2. `IMPORT-PLAN.md` — як `winhotel-import` переносить дані
+
+Один документ для того, хто писатиме застосунок. Не код. Розділи:
+
+- **Порядок сутностей** з `MAPPING.md` і чому такий (довідники → адреси → фірми → брони →
+  послуги → фактури → оплати; що від чого залежить за FK і за нашою схемою).
+- **Правила перетворення на сутність**: ключ у Winhotel → наш ключ (`external_ref`),
+  фільтр `TA_STATUS < 1000`, мапа станів (`BUCH_STATUS`, `CI_STATUS` → наші статуси броні
+  — як гіпотеза з літералів процедур, з позначкою «звірити агрегатами»), дати з
+  `1899-12-30` → NULL, суми `BIGINT / 1000`, CP1252 → UTF-8, `MATCHC ÜF_n` →
+  `price_occupancy`, ставка ПДВ за датою з `STEUSTAM` → `fin_tax_rates`, псевдо-номери
+  (`PSEUDO`, `ZINR ≥ 9000`) — що з ними (не імпортувати / окремий тип юніта), дублікати
+  адрес — ключ злиття `SUCHNAME+PLZ+GEBDAT` і що робити з сумнівними.
+- **Що імпортується сальдо, а не історією**: ваучери, відкриті дебіторські, депозити —
+  з номерами таблиць і SQL сальдо.
+- **Два способи доставки даних і рекомендація сесії** з аргументами: (а) готель кладе
+  щоденний `gbak`-бекап (він у них уже є) у теку/завантажує в ALiSiO, сервер відновлює
+  Firebird 3 в контейнері й імпортує (перевірений шлях: так зроблено 10.09); (б) агент
+  на сервері готелю читає `WINHOTEL.FDB` напряму (потрібен Firebird-клієнт на Windows,
+  доступ до сервера, ODS). Рішення — власника (чекпоінт); твоя справа — порівняти чесно:
+  свіжість даних, що треба ставити в готелі, ризик для їхньої бази, обсяг коду.
+- **Звірка після імпорту**: які числа з `COUNTS-2025-03.md`/`aggregates.txt` мусять
+  зійтися один в один, які — з поясненою різницею (сторно, псевдо).
+
+## 3. `CORE-GAPS.md` — дірки ядра ALiSiO, показані базою
+
+Для кожного пункту з дорожньої карти 1.3 (фірмові тарифи; дебітор + `offener Betrag` +
+Sammelrechnung; `Zimmer FIX`; три вікові групи; знижка успадковує ПДВ) — що саме є в
+Winhotel (таблиця, колонки, зразок із `extract-out`), що є в нашій схемі (`db/postgres/
+schema.sql`, `src/modules/**` — файл:рядок), і чого бракує: колонка, таблиця, правило
+або лише UI. Плюс усе, що ти побачив у базі і чого в нас немає взагалі (наприклад,
+`ADR_DATENSCHUTZ` як журнал згод, `DEVISEN` 24 способи оплати, `SEGMSTAM`, `TAG_ABS`
+денні закриття) — з оцінкою «ядро / модуль / застосунок / не потрібно» за
+`docs/ARCHITECTURE.md` і трирівневою моделлю. Це вхід для задач іншим сесіям — пиши
+так, щоб з кожного пункту можна було зробити задачу.
 
 ## Чого не робити
 
-Не чіпати `extract-out/**` (це сирий вихід, тільки читати). Не завантажувати нічого з
-Drive. Не писати поза `docs/research/winhotel/**` і звітом. Жодних персональних даних:
-`grep -riE "iban|@|strasse|str\." docs/research/winhotel/` поза `extract-out/` і
-`extract.sh` має бути порожнім (у `extract-out` це лише назви колонок — так і лишається).
+Не чіпати `extract-out/**`, не писати код, не чіпати `src/**` і схему. Не завантажувати
+базу. Питань власнику не ставити — варіанти доставки описати, а не обирати за нього.
 
 ## Приймання і звіт
 
-`npm run check` зелений (гейт `check-no-tenant-names` — назва готелю в `docs/research/`
-дозволена; перевір). Звіт — доповнити `docs/tasks/2026-09-09-winhotel-schema.report.md`
-розділом «Задача 2»: коміти, п'ять найважливіших знахідок для імпортера, що не знайдено.
-Потім — цикл очікування з `origin/claude/controller-2`, `MINE=2`:
+`npm run check` зелений (`check-no-tenant-names`, `check-docs-current`); PII-grep за новим
+правилом порожній; `TABLES.md` містить усі 258 імен дослівно. Звіт — розділ «Задача 3» у
+`docs/tasks/2026-09-09-winhotel-schema.report.md`: коміти, рекомендація щодо доставки одним
+абзацом, пʼять найбільших дірок ядра. Потім цикл очікування, `MINE=3`:
 
 ```
-MINE=2; while :; do git fetch -q origin; N=$(git show origin/claude/controller-2:docs/tasks/inbox/session-5.md 2>/dev/null | head -1 | sed 's/TASK: //'); [ "${N:-0}" -gt "$MINE" ] && { git show origin/claude/controller-2:docs/tasks/inbox/session-5.md; break; }; sleep 300; done
+MINE=3; while :; do git fetch -q origin; N=$(git show origin/claude/controller-2:docs/tasks/inbox/session-5.md 2>/dev/null | head -1 | sed 's/TASK: //'); [ "${N:-0}" -gt "$MINE" ] && { git show origin/claude/controller-2:docs/tasks/inbox/session-5.md; break; }; sleep 300; done
 ```
