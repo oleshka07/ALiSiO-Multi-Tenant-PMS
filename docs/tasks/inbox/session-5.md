@@ -1,24 +1,34 @@
-TASK: 6
+TASK: 7
 
-# Сесія 5 — задача 6: застосунок `winhotel-import` (кодова, нова гілка)
+# Сесія 5 — задача 7: масштаб сум (блокує), потім частина Б
 
-Дослідження й файл готелю прийняті (рецензії 1–4). Тепер — код. Гілка:
+Частину А прийнято — `docs/tasks/2026-09-10-review-winhotel-import-A.md` на
+`origin/claude/controller-2`. Живий прохід на справжньому `WINHOTEL.fbk` пройшов (48 с, 27
+сутностей, 31 номер код у код), числа — у `docs/tasks/2026-09-10-winhotel-live-aggregates.json`
+там само: скопіюй його в `docs/research/winhotel/extract-out/aggregates-2025-03.json` першим
+комітом (лише числа, персональних даних немає).
+
+## 1. Блокує частину Б: гроші діляться на 1000 двічі
+
+Справжні колонки сум — домени `NUMERIC(12,3)` / `NUMERIC(12,2)` / `DECIMAL(12,4)`
+(`extract-out/main/DDL.sql:265–283`), і `CAST(… AS VARCHAR)` уже віддає `141.000`. Стаб
+оголошує їх `BIGINT` зі значенням `141000`, тож `convert.mjs` `/1000` на живій базі дає
+`0.141` (FRST `0.01`, TG `0.005`, `folio_lines_live 3317.2064` замість 3,3 млн). Зроби в
+такому порядку: стаб на справжні домени з DDL (`CREATE DOMAIN` дослівно) і значення
+`141.000`/`12.50`; гейт червоним (`0.141 !== 141`); `convert.mjs` — розбирати десятковий рядок
+як є, без ділення, з тими знаками, що дав домен; сцена 9 — «`141.000` → 141, `12.50` → 12.5»;
+агрегати перерахувати; `bridge-local.sh --stub` — числа знову очима. Це інваріант 28: стаб
+має форму живого зразка, не здогаду.
+
+## 2. Частина Б — §2.5–2.6 задачі, з уточненнями власника 10.09
+
+Поверхи не переносити як істину (`STOCK` ігнорувати; поверхи проставлять руками); AP
+111/112 — справжній тип у тому ж готелі, у файлі лишаються; Kurtaxe немає; провайдер
+онлайн-оплат — Unzer (для мапи `DEVISEN` це лише назва, не інтеграція). Решта — за задачею:
+`winhotel_refs` + `winhotel_staging` (0144), довідники-звірка, гості/компанії через фасади,
+брони, рядки, оплати, заморожені фактури → staging, сальдо, ідемпотентність, `counts_json`,
+сцени §2.7, що лишились. Звіт — розділ «Частина Б». Потім цикл, `MINE=7`:
 
 ```
-git fetch origin
-git checkout -b claude/winhotel-import origin/claude/block-apps
-git merge --no-edit origin/claude/winhotel-schema     # дослідження + hotels/schlossberghotel.json
-npx tsc --noEmit && npm run check                      # зелено ДО першої правки
-git push -u origin claude/winhotel-import
-```
-
-Задача цілком — `docs/tasks/2026-09-10-block-winhotel-import.md` на `origin/claude/controller-2`
-(прочитай через `git show origin/claude/controller-2:docs/tasks/2026-09-10-block-winhotel-import.md`
-і скопіюй у свою гілку тим самим шляхом першим комітом). Порядок: §0 → §1 → §2.1–2.4 + §2.7
-(частина А) → звіт → чекпоінт контролера → §2.5–2.6 (частина Б). Гілку робіт
-`origin/claude/channex-integration-66kv65` підбирати злиттям, коли рушить. Питань власнику не
-ставити. Після звіту частини А — цикл очікування, `MINE=6`:
-
-```
-MINE=6; while :; do git fetch -q origin; N=$(git show origin/claude/controller-2:docs/tasks/inbox/session-5.md 2>/dev/null | head -1 | sed 's/TASK: //'); [ "${N:-0}" -gt "$MINE" ] && { git show origin/claude/controller-2:docs/tasks/inbox/session-5.md; break; }; sleep 300; done
+MINE=7; while :; do git fetch -q origin; N=$(git show origin/claude/controller-2:docs/tasks/inbox/session-5.md 2>/dev/null | head -1 | sed 's/TASK: //'); [ "${N:-0}" -gt "$MINE" ] && { git show origin/claude/controller-2:docs/tasks/inbox/session-5.md; break; }; sleep 300; done
 ```
