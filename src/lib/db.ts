@@ -319,9 +319,70 @@ function buildSchema(database: any) {
       document_number TEXT,
       date_of_birth TEXT,
       notes TEXT,
+      -- Звідки цей рядок прийшов: система, таблиця, ідентифікатор у ній
+      -- (INC-301, міграція 0301). Порожньо — завели в нас. Тримає повторний
+      -- прогін імпорту від подвоєння, і тримає це UNIQUE-індекс, а не цикл.
+      external_ref TEXT,
+      -- Кого лишили, коли цей рядок злили дублікатом (INC-300, міграція 0300).
+      -- Рядок злитого гостя НЕ ВИДАЛЯЄТЬСЯ: посилання на нього лежать у
+      -- виданих документах і в чужих системах, і «такого гостя немає» — гірша
+      -- відповідь, ніж «це та сама людина». Ланцюгів не буває: злиття
+      -- перенацілює старі посилання, тож це завжди один крок до живого.
+      merged_into TEXT REFERENCES guests(id) ON DELETE SET NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    -- Списки гостей питають «живі, тобто не злиті» на кожному екрані.
+    CREATE INDEX IF NOT EXISTS idx_guests_merged_into
+      ON guests (organization_id) WHERE merged_into IS NULL;
+
+    -- Унікальність включає орендаря: ADRESSEN.LNR = 1 є в кожній базі
+    -- Winhotel, тож тотальний індекс зробив би неможливим імпорт другого
+    -- готелю. Предикат — щоб гості без походження (їх більшість) не
+    -- конфліктували між собою.
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_guests_external_ref
+      ON guests (organization_id, external_ref) WHERE external_ref IS NOT NULL;
+
+    -- Згоди GDPR живуть на ОСОБІ й переживають бронь (INC-300, міграція 0300).
+    --
+    -- Колонки consent_* у guest_registrations лишаються і значать ІНШЕ: згоду на
+    -- ЦЬОМУ перебуванні, частину Meldeschein. Ця пара таблиць — про особу:
+    -- «цій людині можна слати листи», і воно переживає всі її брони, включно
+    -- з нульом броней. Через місяць вони виглядатимуть як дублікати одне
+    -- одного — не зливайте: перше зруйнує Meldeschein, друге — доказ згоди.
+    CREATE TABLE consent_texts (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      consent_kind TEXT NOT NULL,
+      version TEXT NOT NULL,
+      locale TEXT NOT NULL,
+      body TEXT NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    -- Версію обирає людина, тож унікальність включає організацію (інваріант 3).
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_consent_texts_org_kind_version
+      ON consent_texts (organization_id, consent_kind, version, locale);
+    CREATE INDEX IF NOT EXISTS idx_consent_texts_org ON consent_texts (organization_id);
+
+    -- Журнал згод особи. Колонка revoked_at замість видалення рядка: наглядачеві
+    -- показують «згода була і її відкликали тоді-то», а рядка, якого немає,
+    -- не досить в ОБИДВА боки.
+    CREATE TABLE guest_consents (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      guest_id TEXT NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
+      consent_kind TEXT NOT NULL,
+      version TEXT NOT NULL,
+      source TEXT NOT NULL,
+      given_at TEXT NOT NULL DEFAULT (datetime('now')),
+      revoked_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_guest_consents_org ON guest_consents (organization_id);
+    CREATE INDEX IF NOT EXISTS idx_guest_consents_guest
+      ON guest_consents (organization_id, guest_id, consent_kind);
 
     -- Reservations
     CREATE TABLE reservations (
@@ -379,6 +440,11 @@ function buildSchema(database: any) {
       -- Postgres-клієнт отримав би колонку не зі schema.sql, а лише з ALTER-у
       -- в 0133 — рівно та розбіжність, про яку AGENTS §4 каже про індекси.
       is_pool_unit INTEGER NOT NULL DEFAULT 0,
+      -- Походження імпорту (INC-301). Окремо від external_uid: те поле
+      -- ділять iCal-синк і канали, воно навмисно не ключ, і класти туди ще
+      -- й імпорт означало б, що «звідки ця бронь» відповідає той, хто
+      -- записав останнім.
+      external_ref TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -6313,6 +6379,9 @@ function runMigrations(database: any) {
         payer_address   TEXT,
         payer_vat_no    TEXT,
         payer_debtor_no TEXT,
+        -- Платник НАЗВАНИЙ, а не знятий текстом (Д57): фоліо фірми збирає
+        -- рядки кількох перебувань, і payer_name для порівняння не годиться.
+        company_id      TEXT REFERENCES companies(id) ON DELETE SET NULL,
         property_id     TEXT,
         status          TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','settled')),
         label           TEXT,
@@ -7269,12 +7338,23 @@ function runMigrations(database: any) {
         email           TEXT,
         phone           TEXT,
         notes           TEXT,
+        -- Номер дебітора видає ГОТЕЛЬ, не держава (Д56): business_id це
+        -- реєстраційний номер фірми, і підміняти ним номер у книзі дебіторів
+        -- означало лишати без номера кожну фірму без реєстрації.
+        debtor_no          INTEGER,
+        payment_terms_days INTEGER,
         archived_at     TEXT,
         created_at      TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
     database.exec('CREATE INDEX IF NOT EXISTS idx_companies_org ON companies(organization_id, name)');
+    // Унікальність НА ОРГАНІЗАЦІЮ, і предикат обовʼязковий: без нього наявні
+    // фірми без номера зіштовхнулись би одна з одною на NULL.
+    database.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_debtor_no
+        ON companies(organization_id, debtor_no) WHERE debtor_no IS NOT NULL
+    `);
     database.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_org_business_id ON companies(organization_id, business_id) WHERE business_id IS NOT NULL');
     const resCols93 = (database.prepare('PRAGMA table_info(reservations)').all() as any[]).map((c: any) => c.name);
     if (!resCols93.includes('company_id')) {
@@ -7806,6 +7886,76 @@ function runMigrations(database: any) {
   // `tsc` або дасть видимий повтор у лозі — замість тиші.
   migrateOtaMirror(database);
 
+  // --- Migration: ключ походження імпорту (INC-301) ---
+  //
+  // Пара до CREATE вище (AGENTS §4). Індекси — ПІСЛЯ колонок.
+  try {
+    for (const t of ['guests', 'reservations']) {
+      const cols = database.prepare(`PRAGMA table_info(${t})`).all() as { name: string }[];
+      if (cols.length > 0 && !cols.some((c) => c.name === 'external_ref')) {
+        database.exec(`ALTER TABLE ${t} ADD COLUMN external_ref TEXT`);
+        console.log(`[DB] ${t}: external_ref (INC-301)`);
+      }
+    }
+    database.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_guests_external_ref
+        ON guests (organization_id, external_ref) WHERE external_ref IS NOT NULL;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_reservations_external_ref
+        ON reservations (organization_id, external_ref) WHERE external_ref IS NOT NULL;
+    `);
+  } catch (e: any) {
+    console.log('[DB] external_ref migration note:', e.message);
+  }
+
+  // --- Migration: згоди на особі і слід злиття (INC-300) ---
+  //
+  // Пара до CREATE вище: «додаєш колонку — додай її і в CREATE, і в ALTER»
+  // (AGENTS §4). Таблиці — `IF NOT EXISTS`, колонка — з переглядом PRAGMA:
+  // на мігрованій базі це no-op, на свіжій усе вже створене вище.
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS consent_texts (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        consent_kind TEXT NOT NULL,
+        version TEXT NOT NULL,
+        locale TEXT NOT NULL,
+        body TEXT NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_consent_texts_org_kind_version
+        ON consent_texts (organization_id, consent_kind, version, locale);
+      CREATE INDEX IF NOT EXISTS idx_consent_texts_org ON consent_texts (organization_id);
+      CREATE TABLE IF NOT EXISTS guest_consents (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        guest_id TEXT NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
+        consent_kind TEXT NOT NULL,
+        version TEXT NOT NULL,
+        source TEXT NOT NULL,
+        given_at TEXT NOT NULL DEFAULT (datetime('now')),
+        revoked_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_guest_consents_org ON guest_consents (organization_id);
+      CREATE INDEX IF NOT EXISTS idx_guest_consents_guest
+        ON guest_consents (organization_id, guest_id, consent_kind);
+    `);
+    const guestCols = database.prepare('PRAGMA table_info(guests)').all() as { name: string }[];
+    if (guestCols.length > 0 && !guestCols.some((c) => c.name === 'merged_into')) {
+      database.exec('ALTER TABLE guests ADD COLUMN merged_into TEXT REFERENCES guests(id) ON DELETE SET NULL');
+      console.log('[DB] guests: merged_into (INC-300)');
+    }
+    // Частковий індекс — ПІСЛЯ колонки, і предикат тут не косметика: без нього
+    // це інший індекс, і `check-schema-drift` каже, що новий клієнт заводиться
+    // без того, що є в мігрованого (AGENTS §4).
+    database.exec(`CREATE INDEX IF NOT EXISTS idx_guests_merged_into
+      ON guests (organization_id) WHERE merged_into IS NULL`);
+  } catch (e: any) {
+    console.log('[DB] guest consents migration note:', e.message);
+  }
+
   // --- Migration: is_pool_unit на броні (INC-045) ---
   //
   // Пара до CREATE вище: «додаєш колонку — додай її і в CREATE, і в ALTER»
@@ -7935,6 +8085,40 @@ function runMigrations(database: any) {
     } catch (e: any) {
       console.error(`[DB] ${tbl} property axis:`, e.message);
     }
+  }
+
+  // ── Хвиля Winhotel: номер дебітора і фоліо платника (Д56, Д57) ──────
+  //
+  // Колонки стоять І в CREATE вище, І тут (AGENTS §4): CREATE — для нового
+  // клієнта, ALTER — для бази, яка вже живе. Старт лічильника 1, а не 10000:
+  // діапазон 10000–12599 це діапазон ОДНОГО клієнта, і в коді його немає
+  // (інваріант 20); готель, що переїжджає зі своєю книгою, ставить свій старт.
+  try {
+    const orgCols = (database.prepare('PRAGMA table_info(organizations)').all() as any[]).map((c: any) => c.name);
+    if (!orgCols.includes('next_debtor_no')) {
+      database.exec('ALTER TABLE organizations ADD COLUMN next_debtor_no INTEGER NOT NULL DEFAULT 1');
+      console.log('[DB] organizations: лічильник номерів дебітора');
+    }
+    const coCols = (database.prepare('PRAGMA table_info(companies)').all() as any[]).map((c: any) => c.name);
+    if (!coCols.includes('debtor_no')) {
+      database.exec('ALTER TABLE companies ADD COLUMN debtor_no INTEGER');
+      console.log('[DB] companies: номер дебітора (видає готель, не держава)');
+    }
+    if (!coCols.includes('payment_terms_days')) {
+      database.exec('ALTER TABLE companies ADD COLUMN payment_terms_days INTEGER');
+    }
+    database.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_debtor_no
+        ON companies(organization_id, debtor_no) WHERE debtor_no IS NOT NULL
+    `);
+    const foCols = (database.prepare('PRAGMA table_info(fin_folios)').all() as any[]).map((c: any) => c.name);
+    if (!foCols.includes('company_id')) {
+      database.exec('ALTER TABLE fin_folios ADD COLUMN company_id TEXT REFERENCES companies(id) ON DELETE SET NULL');
+      console.log('[DB] fin_folios: фоліо платника — знімок імені ним не порівняєш');
+    }
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folios_company ON fin_folios(organization_id, company_id)');
+  } catch (e: any) {
+    console.error('[DB] debtor/payer folio migration:', e.message);
   }
 
   console.log('[DB] migrations complete');

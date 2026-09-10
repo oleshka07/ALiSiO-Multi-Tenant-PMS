@@ -54,6 +54,38 @@ export type { GuestWithStats, CreateGuestInput, RegisteredGuest } from '../domai
 export { findOrCreateGuest } from '../data/guest-dedup.repo';
 export type { GuestDedupArgs, GuestDedupResult } from '../data/guest-dedup.repo';
 
+// Згоди GDPR живуть на ОСОБІ й переживають бронь (INC-300, CORE-GAPS п. 6).
+// `guest_registrations.consent_*` лишається і значить інше — згоду на ЦЬОМУ
+// перебуванні, частину Meldeschein. Через місяць вони виглядатимуть як
+// дублікати: перше зруйнує Meldeschein, друге — доказ згоди.
+//
+// Колонки `guests.marketing_opt_in` навмисно немає: «чи можна слати листи» —
+// похідне від журналу (`marketingAllowed`), бо два джерела розійдуться.
+export {
+  recordConsent, revokeConsent, consentState, marketingAllowed,
+} from '../data/guest-consents.repo';
+export type { ConsentKind, ConsentSource, ConsentRow, RecordConsentInput }
+  from '../data/guest-consents.repo';
+
+// Злиття дублікатів гостя (INC-300, CORE-GAPS п. 11). Дублікатів наробляє
+// портьє щодня, тож це ядро, а не імпортна обслуга. Злитий рядок не
+// видаляється — `merged_into` лишає його розвʼязним до живої людини.
+export { mergeGuests } from '../data/guest-merge.repo';
+export type { MergeGuestsInput, MergeGuestsResult } from '../data/guest-merge.repo';
+
+// «Схоже, це одна людина» — ПРОПОЗИЦІЯ злиття, ніколи не саме злиття
+// (INC-303). Пошта працює лише в парі з імʼям: сімʼя під однією поштою — не
+// одна людина, і правило IMPORT-PLAN §2.7 («однаковий E_MAIL → один гість»)
+// злило б подружжя з дітьми.
+export { guestDuplicateCandidates, searchName, STRONG_TIERS } from '../data/guest-duplicates.repo';
+export type { DuplicateCandidate, DuplicateTier } from '../data/guest-duplicates.repo';
+
+// Згоди Winhotel → наші таблиці (INC-302). Редакція береться з АДРЕСИ
+// (`ADRESSEN.DS_VERSION`), бо в довіднику пунктів колонки версії немає взагалі;
+// згода, чиєї редакції в базі немає, іде в карантин, а не під нинішній текст.
+export { planConsentImport, winhotelRef } from '../domain/consent-import';
+export type { ConsentImportPlan, QuarantinedConsent } from '../domain/consent-import';
+
 // Загальний пошук питає модуль, а не таблицю. Див. core/search-types.ts.
 export { searchGuests } from '../data/guest-search';
 

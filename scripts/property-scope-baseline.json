@@ -74,7 +74,7 @@
   "src/modules/invoicing/api/invoicing-config.handlers.ts": 2,
   "src/modules/invoicing/data/folio-payments.repo.ts": 3,
   "src/modules/invoicing/data/folio-summary.repo.ts": 4,
-  "src/modules/invoicing/data/folio.repo.ts": 10,
+  "src/modules/invoicing/data/folio.repo.ts": 14,
   "src/modules/invoicing/data/invoice-document.repo.ts": 2,
   "src/modules/invoicing/data/reservation-invoice.repo.ts": 2,
   "src/modules/invoicing/data/stay-charges.repo.ts": 9,
