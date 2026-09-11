@@ -20,7 +20,7 @@ import { propertyByAppKey } from '@/apps/guest-app/data/property.repo';
 import { readGuestAppKey } from '@/apps/guest-app/domain/key';
 import { GuestHome } from '@/apps/guest-app/ui/GuestHome';
 import { languageFromHeader } from '@/apps/guest-app/ui/translations';
-import './guest-app.css';
+import '../guest-app.css';
 
 export const dynamic = 'force-dynamic';
 
