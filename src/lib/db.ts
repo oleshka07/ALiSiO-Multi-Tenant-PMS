@@ -356,6 +356,25 @@ function buildSchema(database: any) {
       document_number TEXT,
       date_of_birth TEXT,
       notes TEXT,
+      -- Звернення й по-батькові — вільним текстом, не словником: набір
+      -- звертань різний у кожній мові (Herr/Frau, Pan/Paní, пан/пані), і
+      -- закритий CHECK тут закодував би одну юрисдикцію в ядро (інваріант 22).
+      salutation TEXT,
+      middle_name TEXT,
+      -- Номер авто: паркінг і шлагбаум. На ОСОБІ, а не на броні: постійний
+      -- гість приїздить тим самим авто, і перепитувати його щоразу — це й є те,
+      -- чого позбуваються карткою гостя.
+      vehicle_plate TEXT,
+      -- VIP — ПРАПОРЕЦЬ, а не слово в примітках. Екран гостей виводив його з
+      -- з підрядка в примітках, тож гість із приміткою «VIP-паркінг НЕ
+      -- входить» отримував корону, а справжній VIP без цього слова — ні.
+      is_vip BOOLEAN NOT NULL DEFAULT 0,
+      -- Чорний список — ТРИ колонки, і вони їздять разом. Прапорець без
+      -- причини й автора — це відмова гостеві, яку наступна зміна не може ні
+      -- пояснити, ні оскаржити. Наявність blacklisted_at і є ознакою.
+      blacklisted_at TEXT,
+      blacklisted_by TEXT,
+      blacklist_reason TEXT,
       -- Звідки цей рядок прийшов: система, таблиця, ідентифікатор у ній
       -- (INC-301, міграція 0301). Порожньо — завели в нас. Тримає повторний
       -- прогін імпорту від подвоєння, і тримає це UNIQUE-індекс, а не цикл.
@@ -8115,6 +8134,34 @@ function runMigrations(database: any) {
     }
   } catch (e: any) {
     console.log('[DB] not-duplicates migration note:', e.message);
+  }
+
+  // --- Migration: поля картки гостя (С76) ---
+  //
+  // Додається І в `CREATE TABLE` вище, І тут: міграції написані як
+  // «оновити з попереднього стану», і колонка, дописана лише сюди, є в
+  // мігрованій базі й відсутня в нового клієнта (AGENTS §4).
+  try {
+    const cols = database.prepare('PRAGMA table_info(guests)').all() as { name: string }[];
+    const add = (col: string, decl: string) => {
+      if (cols.length > 0 && !cols.some((c) => c.name === col)) {
+        database.exec(`ALTER TABLE guests ADD COLUMN ${col} ${decl}`);
+        console.log(`[DB] guests: ${col} (С76)`);
+      }
+    };
+    add('salutation', 'TEXT');
+    add('middle_name', 'TEXT');
+    add('vehicle_plate', 'TEXT');
+    add('is_vip', 'BOOLEAN NOT NULL DEFAULT 0');
+    add('blacklisted_at', 'TEXT');
+    add('blacklisted_by', 'TEXT');
+    add('blacklist_reason', 'TEXT');
+    // Списки гостей фільтрують за обома ознаками, і обидві — меншість
+    // рядків, тож частковий індекс дешевший за тотальний.
+    database.exec(`CREATE INDEX IF NOT EXISTS idx_guests_blacklisted
+      ON guests (organization_id) WHERE blacklisted_at IS NOT NULL`);
+  } catch (e: any) {
+    console.log('[DB] guest card fields note:', e.message);
   }
 
   // --- Migration: ключ походження імпорту (INC-301) ---

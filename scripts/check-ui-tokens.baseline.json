@@ -106,7 +106,7 @@
   "src/components/mobile/pages/MobileCalendar.tsx": 51,
   "src/components/mobile/pages/MobileDashboard.tsx": 38,
   "src/components/mobile/pages/MobileFinanceOverview.tsx": 29,
-  "src/components/mobile/pages/MobileGuests.tsx": 28,
+  "src/components/mobile/pages/MobileGuests.tsx": 26,
   "src/components/mobile/pages/MobileTasks.tsx": 50,
   "src/components/ui/ImageUploadField.tsx": 3,
   "src/components/ui/SourceIcon.tsx": 8,

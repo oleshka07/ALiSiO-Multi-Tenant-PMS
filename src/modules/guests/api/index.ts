@@ -10,6 +10,9 @@ import { requestPayment as _requestPayment } from './payment-request.handlers';
 
 export { listGuests, createGuest, exportGuests } from './guests.handlers';
 export { getGuest, updateGuest, deleteGuest } from './guest.handlers';
+// VIP і чорний список — ОКРЕМИМ маршрутом: форма картки шле `{...form}`
+// цілком, і прапорець у ній переставлявся б на кожному збереженні адреси.
+export { setGuestFlags } from './guest-flags.handlers';
 
 /**
  * The guest portal's guard: resolve the link's token, then run as that hotel.

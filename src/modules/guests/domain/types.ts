@@ -25,6 +25,10 @@ export interface CreateGuestInput {
   documentNumber?: string;
   dateOfBirth?: string;
   notes?: string;
+  /** Звернення, по-батькові й номер авто — поля картки (С76). */
+  salutation?: string;
+  middleName?: string;
+  vehiclePlate?: string;
 }
 
 export interface RegisteredGuest {

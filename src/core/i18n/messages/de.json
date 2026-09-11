@@ -3718,5 +3718,10 @@
   "Заявника змінено": "Hauptgast geändert",
   "Meldeschein": "Meldeschein",
   "Заявник — підписує за всіх": "Hauptgast — unterschreibt für alle",
-  "Зробити заявником": "Als Hauptgast festlegen"
+  "Зробити заявником": "Als Hauptgast festlegen",
+  "Звернення": "Anrede",
+  "пан / пані / Dr.": "Herr / Frau / Dr.",
+  "По-батькові": "Vatersname",
+  "Номер авто": "Kennzeichen",
+  "для паркінгу й шлагбаума": "für Parkplatz und Schranke"
 }

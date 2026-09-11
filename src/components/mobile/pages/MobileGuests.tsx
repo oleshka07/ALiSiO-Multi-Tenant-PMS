@@ -16,6 +16,13 @@ interface GuestRow {
   city: string | null;
   address?: string | null;
   notes?: string | null;
+  /** Поля картки (С76): корона й блокування — колонки, не текст. */
+  is_vip?: boolean | number | null;
+  blacklisted_at?: string | null;
+  blacklist_reason?: string | null;
+  salutation?: string | null;
+  middle_name?: string | null;
+  vehicle_plate?: string | null;
   document_number?: string | null;
   document_type?: string | null;
   nationality?: string | null;
@@ -572,9 +579,26 @@ export default function MobileGuests({ openNew, initialSearch }: { openNew?: boo
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  {g.notes && (
-                    <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 6, background: 'rgba(234,179,8,0.18)', color: '#eab308', fontWeight: 700 }}>
-                      {g.notes.toLowerCase().includes('vip') ? '👑 VIP' : '📝'}
+                  {/*
+                    Корона — з КОЛОНКИ `is_vip`, а не з підрядка в примітках.
+                    Доти тут стояло `g.notes.includes('vip')`, тож гість із приміткою
+                    «VIP-паркінг НЕ входить» діставав корону, а справжній VIP без
+                    цього слова — ні (С76, гейт `guest-flags.check`).
+                  */}
+                  {(g.is_vip === true || Number(g.is_vip) === 1) && (
+                    <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 6, background: 'var(--accent-warning-light)', color: 'var(--accent-warning)', fontWeight: 700 }}>
+                      👑 VIP
+                    </span>
+                  )}
+                  {g.blacklisted_at && (
+                    <span title={g.blacklist_reason || undefined}
+                      style={{ fontSize: 10, padding: '2px 6px', borderRadius: 6, background: 'var(--accent-danger-light)', color: 'var(--accent-danger)', fontWeight: 700 }}>
+                      ⛔
+                    </span>
+                  )}
+                  {g.notes && !(g.is_vip === true || Number(g.is_vip) === 1) && (
+                    <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 6, background: 'var(--surface-elevated)', color: 'var(--text-tertiary)', fontWeight: 700 }}>
+                      📝
                     </span>
                   )}
                   {g.total_stays > 0 && (

@@ -167,13 +167,14 @@ export async function createGuest(organizationId: string, input: CreateGuestInpu
   const guestId = `g_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   await sql.run(`
-    INSERT INTO guests (id, organization_id, first_name, last_name, email, phone, country, city, address, document_type, document_number, date_of_birth, notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO guests (id, organization_id, first_name, last_name, email, phone, country, city, address, document_type, document_number, date_of_birth, notes, salutation, middle_name, vehicle_plate)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [guestId, organizationId, input.firstName, input.lastName,
     input.email ?? null, input.phone ?? null, input.country ?? null,
     input.city ?? null, input.address ?? null,
     input.documentType ?? null, input.documentNumber ?? null,
-    input.dateOfBirth ?? null, input.notes ?? null]);
+    input.dateOfBirth ?? null, input.notes ?? null,
+    input.salutation ?? null, input.middleName ?? null, input.vehiclePlate ?? null]);
 
   return guestId;
 }
@@ -185,7 +186,15 @@ export async function updateGuest(organizationId: string, id: string, body: Reco
     country: 'country', city: 'city', address: 'address',
     documentType: 'document_type', documentNumber: 'document_number',
     dateOfBirth: 'date_of_birth', whatsapp: 'whatsapp', language: 'language', notes: 'notes',
+    // Поля картки (С76). Ключ, якого тут немає, зникає МОВЧКИ: форма
+    // каже «збережено», колонка лишається старою. Саме це й сталось при
+    // першому прогоні `guest-flags.check`.
+    salutation: 'salutation', middleName: 'middle_name', vehiclePlate: 'vehicle_plate',
   };
+
+  // Прапорців тут НЕМАЄ свідомо: рядок нижче кладе `body[jsKey] || null`,
+  // тож `false` став би NULL — у `NOT NULL` колонку `is_vip`. VIP і чорний
+  // список пише `guest-flags.repo`, і в нього ще й правила (причина блокування).
 
   const sets: string[] = [];
   const values: (string | null)[] = [];

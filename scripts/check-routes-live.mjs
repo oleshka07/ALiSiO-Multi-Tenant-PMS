@@ -642,6 +642,81 @@ async function main() {
       claim('броні', alienCoRes.status === 404,
         `чужа фірма — 404, не 500 (${alienCoRes.status})`);
 
+      // ── Картка гостя: поля й ознаки ──────────────────────────
+      //
+      // Три текстові поля й дві ознаки (С76, С77). Твердження про ФОРМУ
+      // відповіді картки: поле, що зникло між формою й базою, віддає 201 і 200
+      // так само бездоганно, як і збережене — саме це й сталось на першому
+      // прогоні `guest-flags.check` (мапа полів `updateGuest` їх не знала).
+      const cardRes2 = await call(cookie, '/api/guests', {
+        method: 'POST',
+        body: JSON.stringify({
+          firstName: 'Прапор', lastName: 'Карточний',
+          salutation: 'пан', middleName: 'Тестович', vehiclePlate: 'BB9999CC',
+        }),
+      });
+      const carded = await body(cardRes2);
+      const cardedId = carded?.id ?? carded?.guest?.id;
+      if (claim('гість', cardRes2.status === 201 && !!cardedId, `гостя з полями картки заведено (${cardRes2.status})`)) {
+        const one = await body(await call(cookie, `/api/guests/${cardedId}`));
+        claim('гість', one?.salutation === 'пан', `звернення доїхало (${one?.salutation ?? 'зникло'})`);
+        claim('гість', one?.middle_name === 'Тестович', `по-батькові доїхало (${one?.middle_name ?? 'зникло'})`);
+        claim('гість', one?.vehicle_plate === 'BB9999CC', `номер авто доїхав (${one?.vehicle_plate ?? 'зник'})`);
+
+        // Правка — окреме твердження: створення й правка — РІЗНІ писачі
+        // (`INSERT` і мапа полів), і зелене перше нічого не каже про друге.
+        await call(cookie, `/api/guests/${cardedId}`, {
+          method: 'PATCH', body: JSON.stringify({ vehiclePlate: 'CC1111DD' }),
+        });
+        const edited = await body(await call(cookie, `/api/guests/${cardedId}`));
+        claim('гість', edited?.vehicle_plate === 'CC1111DD',
+          `правка поля картки доїхала (${edited?.vehicle_plate ?? 'зник'})`);
+
+        // VIP — ОКРЕМИМ маршрутом, не полем картки.
+        const vipRes = await call(cookie, `/api/guests/${cardedId}/flags`, {
+          method: 'PATCH', body: JSON.stringify({ is_vip: true }),
+        });
+        const vipped = await body(await call(cookie, `/api/guests/${cardedId}`));
+        claim('гість', vipRes.status === 200
+          && (vipped?.is_vip === true || Number(vipped?.is_vip) === 1),
+          `корона в картці (${vipRes.status}, ${vipped?.is_vip})`);
+
+        // Блокування без причини — НАЗВАНА відмова СВОЇМ текстом, не 500.
+        const noReason = await call(cookie, `/api/guests/${cardedId}/flags`, {
+          method: 'PATCH', body: JSON.stringify({ blacklisted: true }),
+        });
+        const nrBody = await body(noReason);
+        claim('гість', noReason.status === 400, `блокування без причини — 400 (${noReason.status})`);
+        claim('гість', typeof nrBody?.error === 'string' && nrBody.error.includes('Причина'),
+          `і речення доїхало портьє, а не загальне 500 («${String(nrBody?.error ?? '').slice(0, 40)}…»)`);
+
+        const blRes = await call(cookie, `/api/guests/${cardedId}/flags`, {
+          method: 'PATCH', body: JSON.stringify({ blacklisted: true, blacklist_reason: 'Пошкодив номер' }),
+        });
+        const blocked2 = await body(await call(cookie, `/api/guests/${cardedId}`));
+        claim('гість', blRes.status === 200 && !!blocked2?.blacklisted_at
+          && blocked2?.blacklist_reason === 'Пошкодив номер' && !!blocked2?.blacklisted_by,
+          `три колонки в картці, автор від СЕРВЕРА (${blocked2?.blacklist_reason}, ${blocked2?.blacklisted_by ? 'автор є' : 'АВТОРА НЕМАЄ'})`);
+
+        const unRes = await call(cookie, `/api/guests/${cardedId}/flags`, {
+          method: 'PATCH', body: JSON.stringify({ blacklisted: false }),
+        });
+        const unblocked = await body(await call(cookie, `/api/guests/${cardedId}`));
+        claim('гість', unRes.status === 200 && !unblocked?.blacklisted_at && !unblocked?.blacklist_reason,
+          `зняття почистило ВСЕ (${unblocked?.blacklist_reason ?? 'порожньо'})`);
+
+        // Порожнє тіло — це не «успішно нічого».
+        const nothing = await call(cookie, `/api/guests/${cardedId}/flags`, {
+          method: 'PATCH', body: JSON.stringify({}),
+        });
+        claim('гість', nothing.status === 400, `порожнє тіло — 400, не тихе «збережено» (${nothing.status})`);
+      }
+
+      const alienFlag = await call(cookie, '/api/guests/g_definitely_not_ours/flags', {
+        method: 'PATCH', body: JSON.stringify({ is_vip: true }),
+      });
+      claim('гість', alienFlag.status === 404, `чужий гість — 404, не 500 (${alienFlag.status})`);
+
       // ── Заявник на броні ПЕРЕЇЖДЖАЄ ─────────────────────
       //
       // Зірка вирішує, чиє прізвище стане на Meldeschein. Двоє на броні —
