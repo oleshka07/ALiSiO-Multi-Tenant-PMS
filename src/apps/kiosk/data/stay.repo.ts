@@ -98,11 +98,32 @@ export async function findStays(input: {
     params.push(`%${digits.slice(-PHONE_MIN_DIGITS)}`);
   }
   if (clean(s.confirmation)) {
-    // Номер підтвердження — наш id АБО ключ походження з чужої системи
-    // (`winhotel-ob:<номер>`): для гостя це одне й те саме число з листа.
-    where.push('(r.id = ? OR r.external_ref = ? OR r.external_uid = ?)');
+    // «Номер броні» — одне слово для гостя і ТРИ різні поля в базі, бо
+    // залежить, звідки бронь приїхала:
+    //
+    //   наш `id`                    — бронь завели ми;
+    //   `external_uid`              — код каналу (Booking.com і решта);
+    //   `external_ref` з префіксом  — номер онлайн-модуля готелю.
+    //
+    // Гість цього не знає й не має знати: він друкує те число, що бачить у
+    // листі.
+    //
+    // ── Груповий заїзд, і чому без нього код не знаходився ────────────────
+    //
+    // Одне бронювання Booking.com на три кімнати стає в нас трьома бронями, і
+    // писач каналу кладе в `external_uid` не код, а `<код>#<ключ кімнати>` —
+    // інакше рядки не були б унікальні (`inbound-bookings.repo`). Тобто гість
+    // друкував рівно те, що в листі, а рівність не збігалася ЖОДНОГО разу:
+    // в базі `4451234567#a`, на екрані «броні не знайдено».
+    //
+    // Тому друга умова — префікс до `#`. Підстановні знаки в коді
+    // ЕКРАНУЮТЬСЯ: без цього `%` у полі перетворив би пошук за номером на
+    // пошук за зразком, тобто на підбір чужих броней.
     const c = clean(s.confirmation);
-    params.push(c, `winhotel-ob:${c}`, c);
+    const likePrefix = `${c.replace(/[\\%_]/g, (ch) => `\\${ch}`)}#%`;
+    where.push(
+      "(r.id = ? OR r.external_ref = ? OR r.external_uid = ? OR r.external_uid LIKE ? ESCAPE '\\')");
+    params.push(c, `winhotel-ob:${c}`, c, likePrefix);
   }
 
   const rows = (await sql.rows<StayRow>(`${SELECT} WHERE ${where.join(' AND ')} LIMIT 20`, params)) as StayRow[];

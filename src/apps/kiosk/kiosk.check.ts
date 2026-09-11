@@ -807,6 +807,53 @@ try {
   assert.strictEqual(seen.backgroundUrl, null, 'незаданий фон мав приїхати як null, а не зникнути');
   console.log('  ok  25. лого й фон доходять до екрана; javascript:, data: і «//» — відкинуті');
 
+  // ── 26. Код броні: їх у однієї броні КІЛЬКА, і гість знає будь-який ─────
+  //
+  // Гість читає в листі один номер, і чий він — залежить від того, звідки
+  // бронь приїхала: наш `id`, номер Booking.com, номер онлайн-модуля готелю.
+  // Усі три — «номер броні» для людини біля термінала.
+  //
+  // Дірка, знайдена читанням писача каналів: груповий заїзд (кілька кімнат
+  // одним бронюванням Booking.com) кладе в `external_uid` не код, а
+  // `<код>#<ключ кімнати>` — інакше рядки не були б унікальні. Тобто гість
+  // друкує рівно те, що бачить у листі, і не знаходить нічого, бо в базі
+  // лежить `1234567890#a`, а не `1234567890`.
+  await runWithOrganization(A, () => seedStay(A, P1, 'kc_code', { unitId: `${P1}_u2`, paymentStatus: 'paid', from: 7, to: 8 }));
+  await runWithOrganization(A, () => sql.run(
+    "UPDATE reservations SET check_in = ?, check_out = ?, status = 'confirmed' WHERE id = ?",
+    [day(0), day(1), 'kc_code']));
+  await runWithOrganization(A, () => sql.run(
+    "UPDATE guests SET last_name = 'Kodow' WHERE id = ?", ['kc_code_g']));
+
+  const byCode = async (code: string) => {
+    const r = await stay.findStay(post('find', { lastName: 'Kodow', confirmation: code }, datedTok));
+    return await r.json() as { found: boolean; stay?: { reservationId: string } };
+  };
+
+  // Одномісна бронь із каналу: код лежить у `external_uid` як є.
+  await runWithOrganization(A, () => sql.run(
+    'UPDATE reservations SET external_uid = ? WHERE id = ?', ['4451234567', 'kc_code']));
+  assert.strictEqual((await byCode('4451234567')).stay?.reservationId, 'kc_code',
+    'код Booking.com одномісної броні не знайшовся');
+
+  // ГРУПОВА: той самий код із ключем кімнати. Гість друкує код без ключа.
+  await runWithOrganization(A, () => sql.run(
+    'UPDATE reservations SET external_uid = ? WHERE id = ?', ['4451234567#a', 'kc_code']));
+  assert.strictEqual((await byCode('4451234567')).stay?.reservationId, 'kc_code',
+    'груповий заїзд Booking.com: гість друкує код із листа, а в базі «код#кімната»');
+  // І ключ кімнати НЕ стає чужим кодом: `445123` не має знаходити `4451234567`.
+  assert.strictEqual((await byCode('445123')).found, false,
+    'частина коду знайшла бронь — пошук став підбором');
+
+  // Номер онлайн-модуля готелю (`winhotel-ob:<номер>`) — третій вигляд того
+  // самого питання, і він уже працював; сцена тримає його від регресії.
+  await runWithOrganization(A, () => sql.run(
+    'UPDATE reservations SET external_uid = NULL, external_ref = ? WHERE id = ?',
+    ['winhotel-ob:88120', 'kc_code']));
+  assert.strictEqual((await byCode('88120')).stay?.reservationId, 'kc_code',
+    'номер онлайн-модуля перестав знаходитись');
+  console.log('  ok  26. номер броні: код каналу, «код#кімната» групового заїзду і номер онлайн-модуля');
+
   console.log('  ok  kiosk: термінал робить лише своє — свій рахунок, свій корпус, свою бронь');
 } finally {
   await cleanup();
