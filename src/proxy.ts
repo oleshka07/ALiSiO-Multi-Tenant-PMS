@@ -65,6 +65,11 @@ const PUBLIC_PREFIXES = [
   // показує, приходить із маршрутів за токеном пристрою.
   '/kiosk',
   '/guest/', // guest portal page
+  // Гостьовий застосунок: те, що відкривається з QR на склі при вході. Гість
+  // ще не гість — сесії немає й бути не може. Орендаря називає ключ у самій
+  // адресі (`properties.guest_app_key`, 0414), а не мовчазний дефолт
+  // (інваріант 8); невідомий ключ дає 404, як і чужий (інваріант 5).
+  '/stay/',
   '/report/', // published partner report — the 64-hex token in the URL is the credential
   '/privacy', // the privacy policy — a legal page guests must reach without a login
   '/w/', // booking widget
