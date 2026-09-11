@@ -743,7 +743,8 @@ try {
   // Свій термінал: попередній уже відкликано сценою 22, і сцена, яка цього не
   // помітила б, читала б 401 замість відповіді про дату.
   const dated = await runWithOrganization(A, () => devices.createPairing({ organizationId: A, propertyId: P1, name: 'Date' }));
-  const datedTok = ((await (await pair(dated.code)).json()) as { token: string }).token;
+  const datedDev = (await (await pair(dated.code)).json()) as { token: string; deviceId: string };
+  const datedTok = datedDev.token;
   for (const bad of ['11.09.2026', '11092026', '09/11/2026', '11-09-2026', '2026-13-01', '2026-02-30', '.']) {
     found = await stay.findStay(post('find', { lastName: 'Fenster', checkIn: bad }, datedTok));
     assert.strictEqual(found.status, 400,
@@ -767,6 +768,44 @@ try {
   assert.strictEqual(search.readSearchDate('2024-02-29'), '2024-02-29', '29 лютого 2024 — справжній день');
   assert.strictEqual(search.readSearchDate('2026-02-29'), null, '29 лютого 2026 не існує, а прийнято');
   console.log('  ok  24. дата не в тій формі — 400 «введіть ще одне поле», не 500 і не «не знайдено»');
+
+  // ── 25. Вигляд: лого й фон доходять до екрана, і тільки безпечною адресою ─
+  //
+  // Картка застосунку зберігає `logo_url` і `background_url` у `config_json`
+  // пристрою з частини В — а сесія їх НЕ віддавала. Тобто оператор заповнював
+  // два поля, тиснув «Зберегти», бачив підтвердження, і на терміналі не
+  // мінялось нічого: запис, якого ніхто не читає (клас `audit-dead-data`).
+  //
+  // Друга половина сцени важливіша за першу. Адресу набирає ЛЮДИНА в полі
+  // форми, а екран підставляє її в `src` картинки — тобто `javascript:` там
+  // це виконаний код на терміналі, до якого підходить будь-хто. Тому
+  // дозволені рівно три форми: `https://`, `http://` і свій шлях від кореня.
+  const look = (cfg: unknown) => session.readAppearance(JSON.stringify(cfg));
+  assert.deepStrictEqual(
+    look({ logo_url: 'https://cdn.example.test/l.png', background_url: '/uploads/b.jpg' }),
+    { logoUrl: 'https://cdn.example.test/l.png', backgroundUrl: '/uploads/b.jpg' },
+    'звичайні адреси не дійшли до екрана');
+  for (const bad of [
+    'javascript:alert(1)', 'JaVaScRiPt:alert(1)', ' javascript:alert(1)',
+    'data:text/html,<script>x</script>', 'vbscript:x', '//evil.test/l.png',
+    'file:///etc/passwd', 42, null, {}, [],
+  ]) {
+    assert.deepStrictEqual(look({ logo_url: bad, background_url: bad }),
+      { logoUrl: null, backgroundUrl: null },
+      `адреса ${JSON.stringify(bad)} мала бути відкинута`);
+  }
+  // І сесія віддає їх ПОРУЧ зі смугою — інакше сцена доводила б лише те, що
+  // чиста функція чиста, а екран і далі не мав би чого показати.
+  await runWithOrganization(A, () => sql.run(
+    'UPDATE kiosk_devices SET config_json = ? WHERE id = ? AND organization_id = ?',
+    [JSON.stringify({ touch_band: { top: 30, bottom: 90 }, logo_url: '/uploads/logo.svg' }),
+      datedDev.deviceId, A]));
+  const seen = await (await session.deviceSession(new Request('http://alisio.test/api/apps/kiosk/session', {
+    headers: { authorization: `Bearer ${datedTok}` },
+  }))).json() as { logoUrl?: string | null; backgroundUrl?: string | null };
+  assert.strictEqual(seen.logoUrl, '/uploads/logo.svg', `лого не приїхало в сесію: ${JSON.stringify(seen)}`);
+  assert.strictEqual(seen.backgroundUrl, null, 'незаданий фон мав приїхати як null, а не зникнути');
+  console.log('  ok  25. лого й фон доходять до екрана; javascript:, data: і «//» — відкинуті');
 
   console.log('  ok  kiosk: термінал робить лише своє — свій рахунок, свій корпус, свою бронь');
 } finally {

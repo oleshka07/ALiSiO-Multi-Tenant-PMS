@@ -45,6 +45,11 @@ export const DEFAULT_TOUCH_BAND = { top: 35, bottom: 85 };
  * функцію, що й сесія термінала. Копія правила в перевірці доводила б, що
  * правильна копія правильна.
  */
+// Правило адреси — одне на запис і на читання, у домені. Тут лише
+// переекспорт: сцена гейта питає сесію, писач картки — домен, функція та сама.
+export { readAppearance } from '../domain/appearance';
+import { readAppearance as appearanceOf } from '../domain/appearance';
+
 export function readTouchBand(configJson: string | null): { top: number; bottom: number } {
   if (!configJson) return DEFAULT_TOUCH_BAND;
   try {
@@ -117,6 +122,9 @@ export async function deviceSession(request: Request): Promise<Response> {
         // сторінкою — це справа частини Б, тут лише адреса.
         walkinUrl: property.kiosk_walkin_url?.trim() || null,
         touchBand: readTouchBand(device.configJson),
+        // Вигляд — звідти ж, звідки смуга: лого й фон цього ГОТЕЛЮ, а не
+        // картинка в коді (інваріант 20).
+        ...appearanceOf(device.configJson),
       });
     });
   } catch (error) {

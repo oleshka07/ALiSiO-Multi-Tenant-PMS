@@ -54,6 +54,7 @@ export interface KioskStrings {
   lastName: string;
   arrivalDate: string;
   pickDate: string;
+  extras: string;
   confirmationNo: string;
   emailOrPhone: string;
   scanQr: string;
@@ -98,7 +99,7 @@ export interface KioskStrings {
 }
 
 const de: KioskStrings = {
-  welcome: 'Herzlich willkommen',
+  welcome: 'Willkommen',
   checkIn: 'Check-in',
   checkOut: 'Check-out',
   info: 'Info & Services',
@@ -115,6 +116,7 @@ const de: KioskStrings = {
   lastName: 'Nachname',
   arrivalDate: 'Anreisedatum',
   pickDate: 'Datum auswählen',
+  extras: 'Extras',
   confirmationNo: 'Buchungsnummer',
   emailOrPhone: 'E-Mail oder Telefon',
   scanQr: 'QR-Code scannen',
@@ -176,6 +178,7 @@ const en: KioskStrings = {
   lastName: 'Last name',
   arrivalDate: 'Arrival date',
   pickDate: 'Choose a date',
+  extras: 'Extras',
   confirmationNo: 'Booking number',
   emailOrPhone: 'E-mail or phone',
   scanQr: 'Scan QR code',

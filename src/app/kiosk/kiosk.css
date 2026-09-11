@@ -1,17 +1,45 @@
 /*
- * Екран у холі: великий, темний, з великими кнопками.
+ * Екран у холі: великий, теплий, з великими кнопками.
  *
  * Одиниці — `vh`/`vw`, а не пікселі: дисплей 86" 4K вертикально, і 16-піксельний
  * шрифт на ньому — це шрифт, якого не видно з двох кроків. Розміри в частках
  * екрана дають той самий вигляд і на стенді в браузері, і на самому дисплеї.
+ *
+ * ── Палітра: світла й тепла, а не темна ─────────────────────────────────
+ *
+ * Перша редакція була темно-синя. На стартовому екрані під нею лежить
+ * ФОТОГРАФІЯ холу самого готелю (`config_json.background_url`), і темний
+ * інтерфейс поверх світлого знімка читається як чужа накладка. Теплий
+ * кремовий — це той самий колір, що в холі, і картка на ньому виглядає
+ * предметом на стійці, а не вікном програми.
+ *
+ * Кольори — токенами в одному місці. Готель, який захоче свій акцент, міняє
+ * один рядок, а не тридцять; і жоден із них не є ДАНИМИ клієнта (інваріант
+ * 20): назва, лого й фон приходять із бази, а це — вигляд продукту.
  */
+
+:root {
+  --k-ink: #2c2724;          /* теплий майже-чорний: текст на кремовому */
+  --k-ink-soft: #6b625a;
+  --k-gold: #9a7b42;         /* акцент: іконки, підписи карток, головна дія */
+  --k-gold-deep: #7d6234;
+  --k-paper: #f6f2ec;        /* тло екранів, де фотографії немає */
+  --k-card: #fffdfa;
+  --k-line: #e4dbcd;
+  --k-shadow: 0 1.2vh 3.2vh rgba(44, 39, 36, 0.16);
+  /* Шрифт заголовка — той самий настрій, що на зразку. Вебшрифту тут немає
+     навмисно: термінал у холі не має чекати на мережу, щоб показати «Welcome»,
+     а Georgia стоїть на кожному Windows, де цей екран і працює. */
+  --k-serif: 'Cormorant Garamond', 'Playfair Display', Georgia, 'Times New Roman', serif;
+  --k-sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
 
 .kiosk-root {
   position: fixed;
   inset: 0;
-  background: #0b1120;
-  color: #f8fafc;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: var(--k-paper);
+  color: var(--k-ink);
+  font-family: var(--k-sans);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -22,13 +50,75 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* ── Фотографія холу: лише стартовий екран ────────────────────────────────
+ *
+ * Далі вона зникає навмисно. На кроці пошуку під полями й клавіатурою знімок
+ * стає шумом, у якому не видно, куди тиснути, — а гість там уже не милується
+ * холом, він шукає свою бронь.
+ */
+.kiosk-backdrop { position: absolute; inset: 0; overflow: hidden; }
+.kiosk-backdrop-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Затемнення — без нього білий напис зникає на світлому знімку холу, а на
+   темному знімку зникають картки. Градієнт, а не суцільна плівка: низ екрана
+   має лишитись світлим під картками. */
+.kiosk-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(28, 24, 21, 0.34) 0%, rgba(28, 24, 21, 0.06) 40%, rgba(28, 24, 21, 0.04) 62%, rgba(28, 24, 21, 0.22) 100%);
+}
+/* Підняти над фоном — САМИМ z-index, не зміною `position`.
+   Перша редакція ставила тут `position: relative` усім трьом, і рецепція, яка
+   притиснута до низу через `position: absolute`, повернулась у звичайний потік:
+   виміряно — смуга «Rezeption anrufen» опинилась на y = 630 під заголовком
+   замість y = 1853. Той самий клас, що `marginTop` у смузі. */
+.kiosk-root[data-step='start'] .kiosk-top { position: relative; z-index: 1; }
+.kiosk-root[data-step='start'] .kiosk-band,
+.kiosk-root[data-step='start'] .kiosk-reception { z-index: 1; }
+
 /* ── Інформаційна зона: верх, куди не дотягуються пальцем ───────────────── */
 .kiosk-top {
   padding: 3vh 4vw 0;
   text-align: center;
 }
-.kiosk-title { font-size: 4.2vh; font-weight: 700; margin: 0 0 1vh; }
-.kiosk-subtitle { font-size: 2.4vh; opacity: 0.75; margin: 0; }
+/* Смуга починається на 35 % висоти, тож над нею рівно стільки ж — і вітання
+   стоїть посередині цього простору, а не притиснуте до верхнього краю. */
+.kiosk-root[data-step='start'] .kiosk-top {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 35vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 2vh 4vw;
+}
+.kiosk-title { font-size: 3.6vh; font-weight: 600; margin: 0 0 1vh; font-family: var(--k-serif); }
+.kiosk-subtitle { font-size: 2.4vh; color: var(--k-ink-soft); margin: 0; }
+
+/* Назва готелю над «Welcome» — коли лого немає. Не заголовок: заголовок тут
+   один, і це вітання. */
+.kiosk-house {
+  font-family: var(--k-serif);
+  font-size: 2.8vh;
+  letter-spacing: 0.35vh;
+  text-transform: uppercase;
+  margin: 0 0 1vh;
+  color: #fff;
+}
+.kiosk-logo { max-height: 9vh; max-width: 60vw; margin: 0 auto 1vh; display: block; }
+/* Вітання — те, що видно з іншого кінця холу. */
+.kiosk-hero {
+  font-family: var(--k-serif);
+  font-size: 8vh;
+  font-weight: 500;
+  line-height: 1.05;
+  margin: 0;
+  color: #fff;
+  text-shadow: 0 0.4vh 2.4vh rgba(28, 24, 21, 0.45);
+}
 
 /* ── Робоча смуга: усе, що натискають ─────────────────────────────────────
  *
@@ -58,30 +148,77 @@
 }
 .kiosk-big {
   font-size: 3vh;
-  font-weight: 650;
+  font-weight: 600;
   padding: 3vh 3vw;
-  border-radius: 2vh;
-  border: 0.3vh solid #1e293b;
-  background: #111c31;
-  color: inherit;
+  border-radius: 1.6vh;
+  border: 0.2vh solid var(--k-line);
+  background: var(--k-card);
+  color: var(--k-ink);
+  cursor: pointer;
+  box-shadow: var(--k-shadow);
+}
+.kiosk-big:active { background: #f1ebe1; }
+.kiosk-big[data-primary='true'] {
+  background: var(--k-gold);
+  border-color: var(--k-gold);
+  color: #fff;
+}
+.kiosk-big[data-primary='true']:active { background: var(--k-gold-deep); }
+
+/* ── Три картки стартового екрана ─────────────────────────────────────────
+ *
+ * Рядом, рівної ширини: заїзд і виїзд — рівноцінні дії, і стовпчик робив би
+ * верхню «головною» самим порядком. Три по 1080 — це ~30 vw на картку, тобто
+ * 324 px на дисплеї: більше за будь-який палець.
+ */
+.kiosk-cards { display: flex; gap: 2vw; align-items: stretch; }
+.kiosk-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.6vh;
+  min-height: 15vh;
+  padding: 2.6vh 1vw;
+  border-radius: 1.6vh;
+  border: 0;
+  background: rgba(255, 253, 250, 0.94);
+  color: var(--k-gold);
+  cursor: pointer;
+  box-shadow: var(--k-shadow);
+}
+.kiosk-card:active { background: #f3ece1; }
+.kiosk-card-icon { width: 4vh; height: 4vh; }
+.kiosk-card-label { font-size: 2.5vh; font-weight: 500; letter-spacing: 0.05vh; }
+
+/* Дія для того, хто ще НЕ гість: помітна, але не рівна трьом головним. */
+.kiosk-quiet {
+  align-self: center;
+  margin-top: 2.5vh;
+  font-size: 2.2vh;
+  font-weight: 600;
+  padding: 1.2vh 3vw;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  text-shadow: 0 0.3vh 1.6vh rgba(28, 24, 21, 0.6);
   cursor: pointer;
 }
-.kiosk-big:active { background: #16233d; }
-.kiosk-big[data-primary='true'] { background: #1d4ed8; border-color: #1d4ed8; }
 
 .kiosk-field { display: flex; flex-direction: column; gap: 0.5vh; }
-.kiosk-label { font-size: 1.8vh; opacity: 0.7; }
+.kiosk-label { font-size: 1.8vh; color: var(--k-ink-soft); }
 .kiosk-value {
   min-height: 4.5vh;
   font-size: 2.6vh;
   padding: 0.8vh 2vw;
   border-radius: 1.2vh;
-  border: 0.3vh solid #1e293b;
-  background: #0f172a;
+  border: 0.25vh solid var(--k-line);
+  background: var(--k-card);
   display: flex;
   align-items: center;
 }
-.kiosk-value[data-active='true'] { border-color: #3b82f6; }
+.kiosk-value[data-active='true'] { border-color: var(--k-gold); }
 
 /* ── Клавіатура ─────────────────────────────────────────────────────────── */
 .kiosk-keyboard { display: flex; flex-direction: column; gap: 0.7vh; padding: 0.5vh 0 0; }
@@ -91,15 +228,15 @@
   min-height: 5.2vh;
   font-size: 2.4vh;
   border-radius: 1vh;
-  border: 0.2vh solid #1e293b;
-  background: #16233d;
+  border: 0.2vh solid var(--k-line);
+  background: var(--k-card);
   color: inherit;
   cursor: pointer;
 }
-.kiosk-key:active { background: #24365c; }
+.kiosk-key:active { background: #ece4d8; }
 .kiosk-key-wide { flex: 1.6; }
 .kiosk-key-space { flex: 4; }
-.kiosk-key-done { flex: 2; background: #1d4ed8; border-color: #1d4ed8; }
+.kiosk-key-done { flex: 2; background: var(--k-gold); border-color: var(--k-gold); color: #fff; }
 .kiosk-keyboard[data-mode='digits'] .kiosk-key { min-height: 7vh; font-size: 3.4vh; }
 
 /* ── Календар: дату обирають, а не набирають ──────────────────────────────
@@ -121,12 +258,12 @@
   min-height: 5vh;
   font-size: 3vh;
   border-radius: 1vh;
-  border: 0.2vh solid #1e293b;
-  background: #16233d;
-  color: inherit;
+  border: 0.2vh solid var(--k-line);
+  background: var(--k-card);
+  color: var(--k-ink);
   cursor: pointer;
 }
-.kiosk-calendar-nav:active { background: #24365c; }
+.kiosk-calendar-nav:active { background: #ece4d8; }
 /* Місяць поза межами пошуку не сірий «зламаний», а просто недосяжний: гостю
    не обіцяють грудня, якого термінал однаково не знайде. */
 .kiosk-calendar-nav:disabled { opacity: 0.25; cursor: default; }
@@ -138,7 +275,7 @@
 }
 .kiosk-calendar-weekday {
   font-size: 1.7vh;
-  opacity: 0.6;
+  color: var(--k-ink-soft);
   text-align: center;
   padding-bottom: 0.3vh;
 }
@@ -147,16 +284,16 @@
   min-height: 4.6vh;
   font-size: 2.3vh;
   border-radius: 1vh;
-  border: 0.2vh solid #1e293b;
-  background: #16233d;
-  color: inherit;
+  border: 0.2vh solid var(--k-line);
+  background: var(--k-card);
+  color: var(--k-ink);
   cursor: pointer;
 }
-.kiosk-calendar-day:active { background: #24365c; }
+.kiosk-calendar-day:active { background: #ece4d8; }
 /* Сьогодні — обведенням, обране — заливкою: два різні питання («де я» і «що я
    вибрав»), і одним виглядом вони зливаються. */
-.kiosk-calendar-day[data-today='true'] { border-color: #64748b; }
-.kiosk-calendar-day[data-on='true'] { background: #1d4ed8; border-color: #1d4ed8; font-weight: 700; }
+.kiosk-calendar-day[data-today='true'] { border-color: var(--k-gold); }
+.kiosk-calendar-day[data-on='true'] { background: var(--k-gold); border-color: var(--k-gold); color: #fff; font-weight: 700; }
 
 /* Кнопка «назад» із календаря — тонша за `.kiosk-big`: та має 3vh поля згори
    й знизу, і разом із шістьма тижнями вилазила за низ смуги. */
@@ -165,23 +302,23 @@
   font-weight: 600;
   padding: 1.6vh 3vw;
   border-radius: 1.4vh;
-  border: 0.3vh solid #1e293b;
-  background: #111c31;
-  color: inherit;
+  border: 0.2vh solid var(--k-line);
+  background: var(--k-card);
+  color: var(--k-ink);
   cursor: pointer;
 }
-.kiosk-slim:active { background: #16233d; }
+.kiosk-slim:active { background: #ece4d8; }
 
 /* Порожнє поле дати каже словами, що тут вибирають, а не друкують. */
-.kiosk-placeholder { opacity: 0.5; }
+.kiosk-placeholder { color: var(--k-ink-soft); opacity: 0.75; }
 
 /* ── Підпис пальцем ─────────────────────────────────────────────────────── */
 .kiosk-signature {
   width: 100%;
   height: 28vh;
   border-radius: 1.5vh;
-  border: 0.3vh dashed #334155;
-  background: #f8fafc;
+  border: 0.3vh dashed var(--k-line);
+  background: #fff;
   touch-action: none;
 }
 
@@ -205,31 +342,31 @@
   font-size: 2.2vh;
   padding: 1.6vh 3vw;
   border-radius: 1.2vh;
-  border: 0.2vh solid #334155;
-  background: transparent;
-  color: inherit;
+  border: 0.2vh solid var(--k-line);
+  background: rgba(255, 253, 250, 0.9);
+  color: var(--k-ink);
   text-decoration: none;
   cursor: pointer;
 }
 
 /* ── Мова ───────────────────────────────────────────────────────────────── */
-.kiosk-langs { display: flex; gap: 1vw; justify-content: center; padding-top: 1.5vh; }
+.kiosk-langs { display: flex; gap: 1vw; justify-content: center; padding-top: 2.5vh; }
 .kiosk-lang {
-  font-size: 2vh;
-  padding: 1vh 2.5vw;
-  border-radius: 1vh;
-  border: 0.2vh solid #334155;
-  background: transparent;
-  color: inherit;
+  font-size: 1.9vh;
+  padding: 0.8vh 2.2vw;
+  border-radius: 4vh;
+  border: 0.2vh solid var(--k-line);
+  background: rgba(255, 253, 250, 0.86);
+  color: var(--k-ink);
   cursor: pointer;
 }
-.kiosk-lang[data-on='true'] { background: #1e293b; }
+.kiosk-lang[data-on='true'] { background: var(--k-gold); border-color: var(--k-gold); color: #fff; }
 
 /* ── Попередження про скидання ──────────────────────────────────────────── */
 .kiosk-idle {
   position: fixed;
   inset: 0;
-  background: rgba(2, 6, 23, 0.94);
+  background: rgba(246, 242, 236, 0.96);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -237,5 +374,5 @@
   gap: 3vh;
   z-index: 10;
 }
-.kiosk-note { font-size: 2.4vh; opacity: 0.8; text-align: center; }
-.kiosk-strong { font-size: 8vh; font-weight: 700; letter-spacing: 0.4vh; }
+.kiosk-note { font-size: 2.4vh; color: var(--k-ink-soft); text-align: center; }
+.kiosk-strong { font-size: 8vh; font-weight: 700; letter-spacing: 0.4vh; color: var(--k-gold); }

@@ -42,6 +42,9 @@ interface Session {
   systemOfRecord: string;
   walkinUrl: string | null;
   touchBand: { top: number; bottom: number };
+  /** Вигляд ЦЬОГО готелю: обидва з `config_json` пристрою, обидва можуть бути порожні. */
+  logoUrl: string | null;
+  backgroundUrl: string | null;
 }
 
 interface Stay {
@@ -52,6 +55,38 @@ interface Stay {
   unitName: string | null;
   registered: boolean;
 }
+
+/**
+ * Іконки карток — малюнком, не символом зі шрифту.
+ *
+ * `→]` чи `✦` виглядають однаково лише там, де шрифт має такий гліф: на
+ * терміналі під Chrome kiosk на Windows частина з них показується квадратиком,
+ * і гість бачить «□ Check in». Тонка лінія кольором тексту картки — те саме,
+ * що на зразку власника, і не залежить ні від чого.
+ */
+const ICON = {
+  width: '1em', height: '1em', viewBox: '0 0 24 24', fill: 'none',
+  stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const, 'aria-hidden': true,
+};
+
+const IconArrive = () => (
+  <svg {...ICON} className="kiosk-card-icon">
+    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+    <path d="M10 17l5-5-5-5" /><path d="M15 12H3" />
+  </svg>
+);
+const IconDepart = () => (
+  <svg {...ICON} className="kiosk-card-icon">
+    <path d="M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4" />
+    <path d="M16 17l5-5-5-5" /><path d="M21 12H9" />
+  </svg>
+);
+const IconExtras = () => (
+  <svg {...ICON} className="kiosk-card-icon">
+    <path d="M4 4h16l-8 8z" /><path d="M12 12v8" /><path d="M8 20h8" />
+  </svg>
+);
 
 export default function KioskPage() {
   const { token, setToken, ready } = useDeviceToken();
@@ -209,15 +244,44 @@ export default function KioskPage() {
   }
 
   return (
-    <div className="kiosk-root" onPointerDown={() => { touch(); setIdle(false); }}>
+    <div className="kiosk-root" data-step={step} onPointerDown={() => { touch(); setIdle(false); }}>
+      {/*
+        Фон — фотографія САМОГО готелю з налаштувань термінала, не картинка в
+        коді (інваріант 20): у сусіднього готелю свій хол. Немає адреси —
+        лишається тепла заливка, і екран виглядає закінченим, а не зламаним.
+        Затемнення окремим шаром: на світлому знімку холу білий напис зникає.
+      */}
+      {step === 'start' && (
+        <div className="kiosk-backdrop">
+          {session?.backgroundUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={session.backgroundUrl} alt="" className="kiosk-backdrop-img" />
+          )}
+          <div className="kiosk-scrim" />
+        </div>
+      )}
+
       <div className="kiosk-top">
-        <h1 className="kiosk-title">
-          {step === 'start' ? s.welcome : session?.property.name ?? ''}
-        </h1>
-        {step === 'start' && <p className="kiosk-subtitle">{session?.property.name ?? ''}</p>}
+        {step === 'start' ? (
+          <>
+            {session?.logoUrl
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={session.logoUrl} alt={session.property.name} className="kiosk-logo" />
+              : <p className="kiosk-house">{session?.property.name ?? ''}</p>}
+            <h1 className="kiosk-hero">{s.welcome}</h1>
+          </>
+        ) : (
+          <h1 className="kiosk-title">{session?.property.name ?? ''}</h1>
+        )}
         {stay && step !== 'start' && (
           <p className="kiosk-subtitle">{stay.guest} · {stay.checkIn} → {stay.checkOut}</p>
         )}
+        {/*
+          Мова — дві кнопки, не список, що розкривається: мов рівно дві, і
+          випадайка коштувала б гостю зайвого дотику заради того самого.
+          Прапорців немає навмисно: у Windows немає шрифту з прапорцями
+          взагалі, і 🇬🇧 показався б там як літери «GB».
+        */}
         <div className="kiosk-langs">
           {KIOSK_LANGS.map((code) => (
             <button
@@ -235,18 +299,31 @@ export default function KioskPage() {
 
       <div className="kiosk-band" style={band}>
         {step === 'start' && (
-          <div className="kiosk-choice">
-            <button type="button" className="kiosk-big" data-primary="true" onClick={wrap(() => setStep('find'))}>
-              {s.checkIn}
-            </button>
-            <button type="button" className="kiosk-big" onClick={wrap(() => { setStep('find'); setMessage(null); })}>
-              {s.checkOut}
-            </button>
-            <button type="button" className="kiosk-big" onClick={wrap(() => setStep('info'))}>{s.info}</button>
+          // Три дії в РЯД, а не стовпчиком: заїзд і виїзд рівноцінні, і
+          // стовпчик робив би верхню кнопку «головною» самим порядком. Walk-in
+          // лишається під ними окремим рядком — це дія для того, хто ще НЕ
+          // гість, і в одному ряду з «виселитись» вона читалась би як рівна.
+          <>
+            <div className="kiosk-cards">
+              <button type="button" className="kiosk-card" onClick={wrap(() => setStep('find'))}>
+                <IconArrive />
+                <span className="kiosk-card-label">{s.checkIn}</span>
+              </button>
+              <button type="button" className="kiosk-card" onClick={wrap(() => setStep('info'))}>
+                <IconExtras />
+                <span className="kiosk-card-label">{s.extras}</span>
+              </button>
+              <button type="button" className="kiosk-card" onClick={wrap(() => { setStep('find'); setMessage(null); })}>
+                <IconDepart />
+                <span className="kiosk-card-label">{s.checkOut}</span>
+              </button>
+            </div>
             {session?.walkinUrl && (
-              <button type="button" className="kiosk-big" onClick={wrap(() => setStep('walkin'))}>{s.bookNow}</button>
+              <button type="button" className="kiosk-quiet" onClick={wrap(() => setStep('walkin'))}>
+                {s.bookNow} ›
+              </button>
             )}
-          </div>
+          </>
         )}
 
         {step === 'find' && (

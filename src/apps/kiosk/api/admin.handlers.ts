@@ -31,7 +31,8 @@ import { kioskDay } from '../data/today.repo';
 import {
   KIOSK_SIGNATURE_MODES, readAutoAssign, readSignatureMode, readTime,
 } from '../domain/search';
-import { DEFAULT_TOUCH_BAND } from './session.handlers';
+import { DEFAULT_TOUCH_BAND, readTouchBand } from './session.handlers';
+import { readAppearance, safeAssetUrl } from '../domain/appearance';
 
 const APP = 'kiosk';
 
@@ -76,6 +77,11 @@ export const listKioskDevices = withOwner(async (request: Request, _ctx: unknown
         pairedAt: d.paired_at,
         lastSeenAt: d.last_seen_at,
         revokedAt: d.revoked_at,
+        // Вигляд — сюди ж: форма на картці мусить показати те, що вже стоїть,
+        // інакше кожне збереження стирало б сусіднє поле (усі три пишуться
+        // одним `config_json`).
+        touchBand: readTouchBand(d.config_json),
+        ...readAppearance(d.config_json),
       })),
     });
   } catch (error) {
@@ -221,10 +227,21 @@ export const saveDeviceConfig = withOwner(async (
       refuse('bad_touch_band', 400);
     }
 
+    // Адреси — тим самим правилом, що читає екран (`safeAssetUrl`), і
+    // відмовою, а не мовчазним `null`: оператор, який вставив адресу з
+    // «javascript:», мусить дізнатись про це тут, а не зі скарги «лого не
+    // показується». Порожнє поле — це не помилка, це «прибрати».
+    const asset = (raw: unknown, field: string): string | null => {
+      const v = String(raw ?? '').trim();
+      if (!v) return null;
+      const ok = safeAssetUrl(v);
+      if (!ok) refuse(`bad_${field}`, 400);
+      return ok;
+    };
     const config = JSON.stringify({
       touch_band: { top, bottom },
-      logo_url: String(body.logoUrl ?? '').trim() || null,
-      background_url: String(body.backgroundUrl ?? '').trim() || null,
+      logo_url: asset(body.logoUrl, 'logo_url'),
+      background_url: asset(body.backgroundUrl, 'background_url'),
     });
 
     const done = await getSql().run(

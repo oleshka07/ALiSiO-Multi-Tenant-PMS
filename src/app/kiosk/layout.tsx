@@ -25,7 +25,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
-  themeColor: '#0b1120',
+  themeColor: '#f6f2ec',
 };
 
 export default function KioskLayout({ children }: { children: React.ReactNode }) {
