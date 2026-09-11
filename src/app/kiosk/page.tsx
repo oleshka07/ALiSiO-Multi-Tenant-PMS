@@ -27,14 +27,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Keyboard } from '@/apps/kiosk/ui/Keyboard';
 import { KioskCalendar, formatDay, localToday } from '@/apps/kiosk/ui/KioskCalendar';
+import { Signature } from '@/apps/kiosk/ui/Signature';
 import { bandStyle, useDeviceToken, useIdleReset } from '@/apps/kiosk/ui/useKiosk';
 import {
-  KIOSK_LANGS, KIOSK_LANG_LABELS, KIOSK_STRINGS, kioskLang, type KioskLang,
+  KIOSK_LANGS, KIOSK_LANG_LABELS, KIOSK_STRINGS, kioskLang, refusalText, type KioskLang,
 } from '@/apps/kiosk/ui/translations';
 
 type Step =
-  | 'start' | 'pair' | 'lookup' | 'qr' | 'find' | 'stay' | 'sign' | 'payment' | 'key'
-  | 'checkout' | 'done' | 'info' | 'walkin';
+  | 'start' | 'pair' | 'lookup' | 'qr' | 'find' | 'stay' | 'register' | 'sign'
+  | 'key' | 'done' | 'info' | 'walkin' | 'claim';
 
 /**
  * Чим гість називає себе на кроці пошуку.
@@ -64,6 +65,24 @@ interface Stay {
   checkOut: string;
   unitName: string | null;
   registered: boolean;
+  /** Скільки дорослих у броні — стільки й треба вписати, щоб стан став «registered». */
+  adults: number;
+}
+
+/**
+ * Картка перебування — те, чого НЕ видно з пошуку: хто вже вписаний, чи
+ * потрібен підпис, чи він уже стоїть.
+ *
+ * Читається окремим кроком (`stay`), а не вгадується з відповіді пошуку:
+ * рішення про підпис ухвалює СЕРВЕР за політикою обʼєкта поверх громадянства
+ * (`signatureNeeded`, 0413), і другий примірник цього правила на екрані
+ * розійшовся б із першим при першій же правці.
+ */
+interface StayCard {
+  guests: { name: string; nationality: string | null; hasDocument: boolean }[];
+  signatureNeeded: boolean;
+  signed: boolean;
+  earliestCheckIn: string | null;
 }
 
 /**
@@ -140,6 +159,26 @@ export default function KioskPage() {
   // термінал простоїть через північ, календар не має перестрибувати під рукою
   // гостя, який уже дивиться на місяць.
   const [today] = useState(() => localToday());
+  // Картка перебування — окремим читанням (`stay`), бо рішення про підпис
+  // ухвалює СЕРВЕР, а не екран.
+  const [card, setCard] = useState<StayCard | null>(null);
+  // Один гість за прохід: форма на чотирьох одразу не вміщається в смугу, а
+  // гість вписує сімʼю по черзі і бачить, кого вже вписав.
+  const [person, setPerson] = useState({ firstName: '', lastName: '', nationality: '' });
+  // Накопичувача вписаних гостей тут НЕМАЄ, і це навмисно.
+  //
+  // Він тут був: екран тримав список у React-стані і слав його цілком, бо
+  // `saveRegistrations` замінює склад броні (`DELETE` і заново). Працювало
+  // рівно доти, доки гість не відходив від термінала: скидання за
+  // бездіяльністю (60 с) чистить стан, і другий натиск стирав першого
+  // гостя — обидві відповіді `ok`, бронь не зареєстрована ніколи.
+  //
+  // Памʼять тепер у базі: маршрут `register` ДОПИСУЄ (`mergeParty`, сцена
+  // 29), а скільки вже вписано — каже сервер у картці (`card.guests`).
+  const [personField, setPersonField] = useState<'firstName' | 'lastName' | 'nationality'>('firstName');
+  // «Щойно забронював» (К8): прізвище, номер підтвердження, дата заїзду.
+  const [claim, setClaim] = useState({ lastName: '', confirmation: '', checkIn: '' });
+  const [claimField, setClaimField] = useState<'lastName' | 'confirmation'>('lastName');
   const [pairCode, setPairCode] = useState('');
 
   const s = KIOSK_STRINGS[lang];
@@ -154,6 +193,11 @@ export default function KioskPage() {
     setActive('lastName');
     setFindBy('date');
     setPickingDate(false);
+    setCard(null);
+    setPerson({ firstName: '', lastName: '', nationality: '' });
+    setPersonField('firstName');
+    setClaim({ lastName: '', confirmation: '', checkIn: '' });
+    setClaimField('lastName');
     setIdle(false);
   }, []);
 
@@ -222,15 +266,115 @@ export default function KioskPage() {
       setMessage(answer.body.reason === 'need_more' ? s.needMore : s.notFound);
       return;
     }
-    setStay(answer.body.stay as Stay);
+    const found = answer.body.stay as Stay;
+    setStay(found);
+    setCard(null);
+    void loadCard(found.reservationId);
     setStep('stay');
+  }
+
+  /**
+   * Картка перебування: хто вже вписаний і чи треба підпис.
+   *
+   * Кличеться одразу після пошуку. Саме звідси екран дізнається про підпис —
+   * рішення ухвалює сервер (політика обʼєкта поверх громадянства), екран лише
+   * показує.
+   */
+  async function loadCard(reservationId: string) {
+    const answer = await call('stay', { reservationId });
+    if (answer?.ok) setCard(answer.body as StayCard);
+  }
+
+  /**
+   * Вписати ОДНОГО гостя. Реєстрація — закон (Meldeschein), не зручність.
+   *
+   * Їде рівно той, кого набрали: дописування — справа маршруту, який читає
+   * уже збережених і зливає їх із новим (`mergeParty`). Маскованих імен із
+   * картки сюди підмішати не можна — сервер віддає «A… B…», і воно лягло б у
+   * базу замість прізвища; саме тому склад тримає СЕРВЕР, а не екран.
+   *
+   * Куди далі — каже теж сервер: доки склад неповний, форма лишається
+   * порожньою під наступного; щойно бронь стала `registered`, екран вертає
+   * гостя на картку, де вже стоїть підпис або заселення. Форма, на якій
+   * гість лишається після останнього гостя, — це глухий кут у холі, де
+   * немає кому підказати, що робити далі.
+   */
+  async function doRegister() {
+    if (!stay) return;
+    setMessage(null);
+    const current = {
+      firstName: person.firstName.trim(),
+      lastName: person.lastName.trim(),
+      nationality: person.nationality.trim(),
+    };
+    if (!current.firstName || !current.lastName) { setMessage(s.needFactors); return; }
+    const answer = await call('register', {
+      reservationId: stay.reservationId,
+      guests: [{
+        firstName: current.firstName,
+        lastName: current.lastName,
+        nationality: current.nationality || null,
+      }],
+    });
+    if (!answer?.ok) { setMessage(s.notFoundHelp); return; }
+    setPerson({ firstName: '', lastName: '', nationality: '' });
+    setPersonField('firstName');
+    // Бронь перечитується: саме сервер знає, чи склад повний.
+    const again = await call('find', {
+      lastName: fields.lastName || undefined,
+      checkIn: findBy === 'date' ? (fields.checkIn || undefined) : undefined,
+      confirmation: findBy === 'confirmation' ? (fields.confirmation || undefined) : undefined,
+    });
+    const now = again?.ok && again.body?.found ? (again.body.stay as Stay) : null;
+    if (now) setStay(now);
+    await loadCard(stay.reservationId);
+    if (now?.registered) { setMessage(null); setStep('stay'); return; }
+    setMessage(s.registerDone);
+  }
+
+  /** Підпис пальцем під Meldeschein — лише там, де його вимагає політика. */
+  async function doSign(pngDataUrl: string) {
+    if (!stay) return;
+    const answer = await call('sign', { reservationId: stay.reservationId, signaturePng: pngDataUrl });
+    if (!answer?.ok) { setMessage(refusalText(lang, answer?.body?.error)); return; }
+    await loadCard(stay.reservationId);
+    setStep('stay');
+  }
+
+  /**
+   * «Ich habe gerade gebucht» (К8): попередня бронь за номером підтвердження
+   * з чужого модуля. Без номера сервер відмовляє — дельті не буде за чим
+   * привʼязатись, і за чверть години в базі будуть ДВІ броні на одне
+   * перебування.
+   */
+  async function doClaim() {
+    setMessage(null);
+    const answer = await call('walkin', {
+      lastName: claim.lastName.trim(),
+      confirmation: claim.confirmation.trim(),
+      checkIn: claim.checkIn,
+    });
+    if (!answer?.ok) { setMessage(s.needFactors); return; }
+    setMessage(s.claimSaved);
+    setFindBy('confirmation');
+    setFields((f) => ({ ...f, lastName: claim.lastName, confirmation: claim.confirmation }));
+    setStep('find');
   }
 
   async function doCheckIn() {
     if (!stay) return;
     setMessage(null);
     const answer = await call('checkin', { reservationId: stay.reservationId });
-    if (!answer?.ok) { setMessage(s.notFoundHelp); return; }
+    // Відмова — РЕЧЕННЯМ, і тим, що пояснює саме цю відмову.
+    //
+    // Тут стояло одне «зверніться на рецепцію» на всі випадки, а сама
+    // картка повідомлення взагалі не показувала: готель, який роздає номери
+    // руками, віддає `no_unit` 409-ю — і гість бачив, що кнопка не працює.
+    // Код фасаду сам по собі на екран не їде ніколи (інваріант 6).
+    if (!answer?.ok) {
+      setMessage(refusalText(lang, answer?.body?.error, answer?.body?.earliestCheckIn));
+      return;
+    }
     setKey(answer.body);
     setStep('key');
   }
@@ -238,7 +382,7 @@ export default function KioskPage() {
   async function doCheckOut() {
     if (!stay) return;
     const answer = await call('checkout', { reservationId: stay.reservationId });
-    if (!answer?.ok) { setMessage(s.payAtReception); return; }
+    if (!answer?.ok) { setMessage(refusalText(lang, answer?.body?.error)); return; }
     setMessage(answer.body.invoiceExpected ? s.invoiceByMail : s.summaryByMail);
     setStep('done');
   }
@@ -318,9 +462,11 @@ export default function KioskPage() {
               ✕
             </button>
             <h1 className="kiosk-title">
-              {step === 'qr'
-                ? s.qrTitle
-                : (step === 'lookup' || step === 'find' ? s.lookupTitle : session?.property.name ?? '')}
+              {step === 'qr' ? s.qrTitle
+                : step === 'register' ? s.registerTitle
+                  : step === 'sign' ? s.signTitle
+                    : step === 'claim' ? s.claimTitle
+                      : (step === 'lookup' || step === 'find' ? s.lookupTitle : session?.property.name ?? '')}
             </h1>
             <span className="kiosk-bar-tail" />
           </div>
@@ -523,13 +669,135 @@ export default function KioskPage() {
 
         {step === 'stay' && stay && (
           <div className="kiosk-choice">
-            <p className="kiosk-note">{s.paymentLater}</p>
-            <button type="button" className="kiosk-big" data-primary="true" onClick={wrap(() => void doCheckIn())}>
-              {s.checkIn}
-            </button>
+            {/*
+              Відповідь сервера ЗАМІСТЬ загального рядка про оплату: на цьому
+              кроці гість щойно щось натиснув, і те, чому воно не спрацювало,
+              важливіше за нагадування, яке він уже прочитав. Без цього рядка
+              відмова заселення не доходила до екрана взагалі.
+            */}
+            <p className="kiosk-note">{message ?? s.paymentLater}</p>
+            {/*
+              Порядок кроків тут не косметичний. Заселення фасад відхиляє, поки
+              бронь не зареєстрована (`not_registered`), а підпис вимагає
+              політика обʼєкта поверх громадянства. Доки екран не пропонував ні
+              того, ні того, гість натискав «Check-in» і читав «зверніться на
+              рецепцію» — тобто термінал був марний рівно для тих, заради кого
+              стоїть. Тому кнопка веде на те, чого бракує САМЕ ЗАРАЗ.
+            */}
+            {!stay.registered ? (
+              <button type="button" className="kiosk-big" data-primary="true" onClick={wrap(() => setStep('register'))}>
+                {s.registerTitle}
+              </button>
+            ) : card?.signatureNeeded && !card.signed ? (
+              <button type="button" className="kiosk-big" data-primary="true" onClick={wrap(() => setStep('sign'))}>
+                {s.signTitle}
+              </button>
+            ) : (
+              <button type="button" className="kiosk-big" data-primary="true" onClick={wrap(() => void doCheckIn())}>
+                {s.checkIn}
+              </button>
+            )}
+            {card && card.guests.length > 0 && (
+              <p className="kiosk-note">{s.registered}: {card.guests.map((g) => g.name).join(' · ')}</p>
+            )}
             <button type="button" className="kiosk-big" onClick={wrap(() => void doCheckOut())}>{s.checkOut}</button>
             <button type="button" className="kiosk-big" onClick={wrap(forget)}>{s.cancel}</button>
           </div>
+        )}
+
+        {step === 'register' && stay && (
+          <>
+            {/*
+              Пояснення АБО відповідь, не обидва: разом вони давали два рядки
+              там, де смуга має один, і форма виїжджала за низ рівно тоді,
+              коли гість уже щось зробив. Відповідь сервера важливіша — вона
+              про останній натиск, а пояснення гість уже прочитав.
+            */}
+            <p className="kiosk-note">
+              {message ?? s.registerLead}{' '}
+              {(card?.guests.length ?? 0) > 0 && `${card?.guests.length}/${stay.adults}`}
+            </p>
+            {(['firstName', 'lastName', 'nationality'] as const).map((f) => (
+              <div className="kiosk-field" key={f}>
+                <span className="kiosk-label">
+                  {f === 'firstName' ? s.firstName : f === 'lastName' ? s.lastName : s.nationality}
+                </span>
+                <div
+                  className="kiosk-value"
+                  data-active={personField === f}
+                  onClick={wrap(() => setPersonField(f))}
+                >
+                  {person[f]}
+                </div>
+              </div>
+            ))}
+            <Keyboard
+              mode="text"
+              onKey={(ch) => { touch(); setPerson((v) => ({ ...v, [personField]: v[personField] + ch })); }}
+              onBackspace={() => { touch(); setPerson((v) => ({ ...v, [personField]: v[personField].slice(0, -1) })); }}
+              onDone={() => { touch(); void doRegister(); }}
+              doneLabel={s.addGuest}
+            />
+            <button type="button" className="kiosk-slim" onClick={wrap(() => setStep('stay'))}>{s.back}</button>
+          </>
+        )}
+
+        {step === 'sign' && stay && (
+          <div className="kiosk-choice">
+            <Signature
+              hint={s.signHelp}
+              clearLabel={s.clearSignature}
+              doneLabel={s.next}
+              onDone={(png) => { touch(); void doSign(png); }}
+            />
+            <button type="button" className="kiosk-slim" onClick={wrap(() => setStep('stay'))}>{s.back}</button>
+          </div>
+        )}
+
+        {step === 'claim' && (
+          <>
+            <p className="kiosk-note">{s.claimLead}</p>
+            <div className="kiosk-field">
+              <span className="kiosk-label">{s.lastName}</span>
+              <div className="kiosk-value" data-active={claimField === 'lastName'} onClick={wrap(() => setClaimField('lastName'))}>
+                {claim.lastName}
+              </div>
+            </div>
+            <div className="kiosk-field">
+              <span className="kiosk-label">{s.confirmationNo}</span>
+              <div className="kiosk-value" data-active={claimField === 'confirmation'} onClick={wrap(() => setClaimField('confirmation'))}>
+                {claim.confirmation}
+              </div>
+            </div>
+            <div className="kiosk-field">
+              <span className="kiosk-label">{s.arrivalDate}</span>
+              <div className="kiosk-value" onClick={wrap(() => setPickingDate(true))}>
+                {claim.checkIn
+                  ? formatDay(claim.checkIn, lang)
+                  : <span className="kiosk-placeholder">{s.pickDate}</span>}
+              </div>
+            </div>
+            {message && <p className="kiosk-note">{message}</p>}
+            {pickingDate ? (
+              <>
+                <KioskCalendar
+                  value={claim.checkIn || null}
+                  today={today}
+                  lang={lang}
+                  onPick={(d) => { touch(); setClaim((v) => ({ ...v, checkIn: d })); setPickingDate(false); }}
+                />
+                <button type="button" className="kiosk-slim" onClick={wrap(() => setPickingDate(false))}>{s.back}</button>
+              </>
+            ) : (
+              <Keyboard
+                mode={claimField === 'confirmation' ? 'digits' : 'text'}
+                onKey={(ch) => { touch(); setClaim((v) => ({ ...v, [claimField]: v[claimField] + ch })); }}
+                onBackspace={() => { touch(); setClaim((v) => ({ ...v, [claimField]: v[claimField].slice(0, -1) })); }}
+                onDone={() => { touch(); void doClaim(); }}
+                doneLabel={s.next}
+              />
+            )}
+          </>
         )}
 
         {step === 'key' && (
@@ -572,7 +840,9 @@ export default function KioskPage() {
               (`apps/kiosk-shell/`), бо це вже чужий сайт.
             */}
             <a className="kiosk-big" data-primary="true" href={session.walkinUrl}>{s.walkinOpen}</a>
-            <button type="button" className="kiosk-big" onClick={wrap(() => setStep('find'))}>{s.justBooked}</button>
+            <button type="button" className="kiosk-big" onClick={wrap(() => { setMessage(null); setStep('claim'); })}>
+              {s.justBooked}
+            </button>
             <button type="button" className="kiosk-big" onClick={wrap(forget)}>{s.back}</button>
           </div>
         )}

@@ -139,12 +139,36 @@ export async function stayById(input: {
     [input.reservationId, input.organizationId, input.propertyId]);
 }
 
-/** Гості перебування — те, що показує картка реєстрації. */
+/**
+ * Гості перебування — ПОВНИЙ рядок реєстрації, не лише те, що видно в картці.
+ *
+ * Колонок тут більше, ніж показує екран, і навмисно. `saveRegistrations`
+ * замінює список броні цілком (`DELETE` і заново), тож кіоск, дописуючи
+ * другого гостя, мусить повернути писачеві першого ТАКИМ, ЯКИМ ТОЙ БУВ, —
+ * разом з адресою, документом і метою перебування, яких у картці немає за
+ * побудовою. Вузький `SELECT` тут означав би не «менше даних на екрані», а
+ * мовчазне стирання адреси гостя, який реєструвався через портал, у той
+ * момент, коли його супутник підходить до термінала.
+ *
+ * Що НЕ повертається: `fee_*` — їх писач рахує сам із ночей і ставки, і
+ * збережена копія розійшлася б із таблицею ставок; і `guest_id`, який він
+ * знаходить за іменем.
+ *
+ * Маскує ЕКРАН (`stayCard`), а не цей запит: репозиторій — серверний бік,
+ * і вирішувати, що з нього показати, — справа хендлера.
+ */
 export async function stayGuests(input: {
   organizationId: string; propertyId: string; reservationId: string;
-}): Promise<{ first_name: string; last_name: string; nationality: string | null; document_type: string | null; date_of_birth: string | null }[]> {
+}): Promise<{
+  first_name: string; last_name: string; nationality: string | null;
+  document_type: string | null; document_number: string | null;
+  date_of_birth: string | null; address: string | null;
+  purpose_of_stay: string | null; visa_number: string | null;
+}[]> {
   return (await getSql().rows(`
-    SELECT rg.first_name, rg.last_name, rg.nationality, rg.document_type, rg.date_of_birth
+    SELECT rg.first_name, rg.last_name, rg.nationality, rg.document_type,
+           rg.document_number, rg.date_of_birth, rg.address,
+           rg.purpose_of_stay, rg.visa_number
       FROM reservation_guests rg
       JOIN reservations r ON r.id = rg.reservation_id
      WHERE rg.reservation_id = ? AND r.organization_id = ? AND r.property_id = ?

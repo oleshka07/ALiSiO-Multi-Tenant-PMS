@@ -275,6 +275,61 @@
 }
 .kiosk-value[data-active='true'] { border-color: var(--k-gold); }
 
+/* ── Meldeschein: три поля І клавіатура в тій самій смузі ─────────────────
+ *
+ * Виміряно на 1080×1920, смуга 672…1632: у стовпчик — підпис над полем, як
+ * на кроці пошуку, — вміст кінчався на 2006. Тобто «Gast hinzufügen» і
+ * «Zurück» лежали ПІД низом смуги, а після першого гостя зрізало ще й
+ * «Vorname» згори. Гість у холі не прокручує — для нього форма просто не
+ * має кнопки, і поруч немає кому це сказати.
+ *
+ * Полів тут на одне більше, ніж на пошуку, тож підпис іде В РЯД зі значенням:
+ * «Vorname ▸ [______]». Це знімає по рядку з кожного поля, і смуги вистачає
+ * на всі три разом із клавіатурою. Той самий клас, що календар і місце під
+ * QR: вміст, більший за смугу, на цьому екрані не існує.
+ */
+/* Картка перебування тримає ТРИ кнопки і причину відмови, а причина буває
+   на три рядки («keine Zimmerkategorie hinterlegt…»): з рештою 3vh на кнопку
+   вміст виходив за низ смуги на 41 px — тобто «Abbrechen» зникав рівно тоді,
+   коли гість уже нічого іншого зробити не може. Кнопка лишається вищою за
+   150 px. */
+.kiosk-root[data-step='stay'] .kiosk-big { padding: 2.4vh 3vw; }
+.kiosk-root[data-step='stay'] .kiosk-choice { gap: 1.6vh; }
+
+.kiosk-root[data-step='register'] .kiosk-band { gap: 0.7vh; }
+.kiosk-root[data-step='register'] .kiosk-field {
+  flex-direction: row;
+  align-items: center;
+  gap: 2vw;
+}
+/* Колонка підписів — однакова для всіх трьох полів, інакше поля стоять
+   сходинкою: `flex-basis` не тримає елемент вужче за його ж текст, тож
+   довгий підпис зсував своє поле праворуч. Слова підібрані під цю ширину
+   (див. `nationality` у словнику), а не ширина під слова. */
+.kiosk-root[data-step='register'] .kiosk-label {
+  flex: 0 0 26vw;
+  text-align: right;
+  font-size: 2vh;
+}
+.kiosk-root[data-step='register'] .kiosk-value { flex: 1; }
+.kiosk-root[data-step='register'] .kiosk-note { font-size: 2.1vh; }
+.kiosk-root[data-step='register'] .kiosk-slim { padding: 1vh 3vw; font-size: 2.3vh; }
+/* Ще 75 px, яких бракувало: нижча клавіша і нижче поле. Обидва лишаються
+   вищими за 44 px — межу, нижче якої палець промахується.
+ *
+ * Шрифт і поля тут теж менші, і це не косметика: поле з `min-height` росте
+ * під ВМІСТ, тож форма, виміряна порожньою, вміщалась, а та сама форма з
+ * трьома набраними словами виштовхувала «Zurück» за низ смуги на 104 px.
+ * Порожня форма — не той стан, у якому гість тисне кнопки. Тепер рядок
+ * тексту нижчий за `min-height`, і висота поля не залежить від того, чи в
+ * ньому щось є. */
+.kiosk-root[data-step='register'] .kiosk-value {
+  min-height: 4vh;
+  font-size: 2.4vh;
+  padding: 0.4vh 2vw;
+}
+.kiosk-root[data-step='register'] .kiosk-key { min-height: 4.6vh; }
+
 /* ── Клавіатура ─────────────────────────────────────────────────────────── */
 .kiosk-keyboard { display: flex; flex-direction: column; gap: 0.7vh; padding: 0.5vh 0 0; }
 .kiosk-keyboard-row { display: flex; gap: 0.8vw; justify-content: center; }
@@ -390,14 +445,23 @@
 .kiosk-placeholder { color: var(--k-ink-soft); opacity: 0.75; }
 
 /* ── Підпис пальцем ─────────────────────────────────────────────────────── */
+/* 23vh, не 28: разом із поясненням, «Löschen», «Weiter» і «Zurück» вищий
+   аркуш виходив за низ смуги на 77 px — виміряно на 1080×1920. Підписуються
+   пальцем, і ширина тут важить більше за висоту. */
 .kiosk-signature {
   width: 100%;
-  height: 28vh;
+  height: 23vh;
   border-radius: 1.5vh;
   border: 0.3vh dashed var(--k-line);
   background: #fff;
   touch-action: none;
 }
+
+/* Два елементи в рядок — «очистити» і «готово» під підписом. */
+.kiosk-row { display: flex; gap: 2vw; align-items: stretch; }
+.kiosk-row .kiosk-slim { flex: 1; }
+.kiosk-row .kiosk-big { flex: 2; }
+.kiosk-row .kiosk-big:disabled { opacity: 0.45; cursor: default; }
 
 /* ── Рецепція: на кожному екрані (КІ9) ────────────────────────────────────
  *
