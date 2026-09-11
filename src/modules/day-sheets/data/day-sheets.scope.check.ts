@@ -50,7 +50,22 @@ const forOrg = <T>(organizationId: string, fn: () => Promise<T>) =>
   runWithOrganization(organizationId, fn);
 
 
-const DAY = '2026-11-10';
+/**
+ * Доба аркуша — У ФІКСТУРИ, не літералом.
+ *
+ * Літерал `2026-11-10` стояв тут доти, доки дати фікстури були літералами
+ * теж. Щойно вони стали відносними, він збігся з місяцем фікстури, і в «домі»
+ * обʼєкта А опинилось троє замість двох — бо одна бронь фікстури ночувала
+ * саме тієї доби. `freeDay` це виключає за побудовою: фікстура сама стверджує,
+ * що її броні того дня немає (`assertFreeDayIsFree`).
+ */
+const DAY = fx.freeDay;
+/** Сусідні доби — відступом від `DAY`, тією ж арифметикою, що й сам аркуш. */
+const shift = (days: number) =>
+  new Date(new Date(`${DAY}T00:00:00Z`).getTime() + days * 86_400_000).toISOString().slice(0, 10);
+const DAY_BEFORE = shift(-1);
+const TWO_BEFORE = shift(-2);
+const DAY_AFTER_2 = shift(2);
 
 /** Гість сусідньої організації — інакше вісь орендаря не доведена. */
 await inTheirs(() => sql.run('INSERT INTO guests (id, organization_id, first_name, last_name) VALUES (?, ?, ?, ?)',
@@ -72,12 +87,12 @@ const stay = async (id: string, organizationId: string, propertyId: string, unit
   ));
 
 // У домі 10-го: А — двоє, Б — троє. Заїжджає 10-го: А — один, Б — двоє.
-await stay('h_a1', fx.organizationId, fx.a.id, fx.a.unitIds[0], '__two_props__guest', '2026-11-09', '2026-11-12');
-await stay('h_a2', fx.organizationId, fx.a.id, fx.a.unitIds[1], '__two_props__guest', DAY, '2026-11-12');
-await stay('h_b1', fx.organizationId, fx.b.id, fx.b.unitIds[0], '__two_props__guest', '2026-11-08', '2026-11-12');
-await stay('h_b2', fx.organizationId, fx.b.id, fx.b.unitIds[1], '__two_props__guest', DAY, '2026-11-12');
-await stay('h_b3', fx.organizationId, fx.b.id, fx.b.unitIds[2], '__two_props__guest', DAY, '2026-11-12');
-await stay('h_n1', neighbour.organizationId, neighbour.propertyId, neighbour.unitIds[0], 'n_guest', '2026-11-09', '2026-11-12');
+await stay('h_a1', fx.organizationId, fx.a.id, fx.a.unitIds[0], '__two_props__guest', DAY_BEFORE, DAY_AFTER_2);
+await stay('h_a2', fx.organizationId, fx.a.id, fx.a.unitIds[1], '__two_props__guest', DAY, DAY_AFTER_2);
+await stay('h_b1', fx.organizationId, fx.b.id, fx.b.unitIds[0], '__two_props__guest', TWO_BEFORE, DAY_AFTER_2);
+await stay('h_b2', fx.organizationId, fx.b.id, fx.b.unitIds[1], '__two_props__guest', DAY, DAY_AFTER_2);
+await stay('h_b3', fx.organizationId, fx.b.id, fx.b.unitIds[2], '__two_props__guest', DAY, DAY_AFTER_2);
+await stay('h_n1', neighbour.organizationId, neighbour.propertyId, neighbour.unitIds[0], 'n_guest', DAY_BEFORE, DAY_AFTER_2);
 
 await runWithOrganization(fx.organizationId, async () => {
   // ─── У домі ──────────────────────────────────────────────────────────────

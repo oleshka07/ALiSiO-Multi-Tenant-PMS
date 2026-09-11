@@ -59,6 +59,10 @@ export interface FixtureProperty {
   stayTotal: number;
   /** Броні ЦЬОГО обʼєкта: 2 в А, 3 в Б. */
   reservationIds: string[];
+  /** День заїзду кожної броні, `YYYY-MM-DD`, у порядку `reservationIds`. */
+  checkIns: string[];
+  /** День виїзду кожної броні, у тому ж порядку. */
+  checkOuts: string[];
 }
 
 export interface TwoProperties {
@@ -71,9 +75,116 @@ export interface TwoProperties {
   totalUnits: number;
   /** 5 — і це не 2 і не 3. */
   totalReservations: number;
+  /**
+   * Місяць, у якому лежать УСІ броні фікстури, `YYYY-MM`.
+   *
+   * Він відносний до дня запуску (див. `MONTHS_AHEAD`), тож сцена, якій
+   * потрібен діапазон, бере його ЗВІДСИ, а не пише вересень 2026 руками.
+   * Саме літерали й були бомбою: вони не старіють, старіє календар.
+   */
+  month: string;
+  /** Перший день `month` — нижня межа діапазону звітів і експортів. */
+  from: string;
+  /** Останній день `month` — верхня межа. */
+  to: string;
+  /**
+   * Місяць, у якому фікстура НЕ має жодної броні, `YYYY-MM` — наступний після
+   * `month`.
+   *
+   * Для сцен, яким потрібне ЦІЛЕ вікно зі своїми числами: наявність,
+   * календар сайту, шахматка. Вони сіють власні броні на кілька тижнів і
+   * рахують зайняті дати точно, тож будь-який рядок фікстури в тому ж вікні
+   * робить їхнє число іншим.
+   *
+   * Раніше такі сцени писали «листопад» руками з приміткою «навмисно не
+   * перетинається з вереснем фікстури». Примітка була правдою рівно доти,
+   * доки вересень був літералом: щойно місяць фікстури став відносним, він
+   * став листопадом, і перетин, якого «навмисно немає», зʼявився. Тепер
+   * непересічність не обіцяна коментарем, а обчислена.
+   */
+  quietMonth: string;
+  /** Перший день `quietMonth`. */
+  quietFrom: string;
+  /** Останній день `quietMonth`. */
+  quietTo: string;
+  /**
+   * Доба ТИХОГО місяця, у яку фікстура НЕ має жодної броні.
+   *
+   * Для сцен, які будують ВЛАСНИЙ день (аркуші доби, доба готелю, прибирання):
+   * їм потрібні свої числа — «у домі двоє, заїжджає один», — а кожна зайва
+   * бронь фікстури зробила б їх іншими.
+   *
+   * Саме таке зіткнення й сталось при переїзді на відносні дати:
+   * `day-sheets.scope` тримався за літерал `2026-11-10`, і рівно того дня, коли
+   * місяць фікстури став листопадом, у «домі» обʼєкта А опинилось троє замість
+   * двох. Тобто той самий клас, лише з іншого боку — і саме тому доба тепер
+   * ПИТАЄТЬСЯ у фікстури, а не вгадується.
+   */
+  freeDay: string;
 }
 
 const ORG = '__two_props__org';
+
+/**
+ * На скільки місяців уперед лежать броні фікстури.
+ *
+ * Не «щоб було з запасом»: два місяці — це більше за будь-яке вікно, яким
+ * оперують читачі, що дивляться НА СЬОГОДНІ. Тривоги беруть тиждень назад,
+ * доба готелю — добу, наявність і шахматка — місяць від поточного дня. Бронь
+ * за два місяці не потрапляє в жодне з них, тож фікстура не додає рядків у
+ * твердження, які їх не чекають, — а саме це й сталося 11.09.2026.
+ *
+ * Менший зсув повернув би ту саму ваду в іншій формі: місяць уперед — і
+ * шахматка на 30 днів починає бачити фікстурні броні краєм.
+ */
+const MONTHS_AHEAD = 2;
+
+/** Заїзд першої броні обʼєкта А — десяте число, щоб усі 5 броней і виїзди
+ *  (до +8 днів) гарантовано лишались У ТОМУ САМОМУ місяці: звіти й експорти
+ *  питають діапазон МІСЯЦЯ, і бронь, що перелізла через межу, зробила б їхні
+ *  числа залежними від того, коли запустили перевірку. */
+const FIRST_DAY = 10;
+
+/** Десяте число ТИХОГО місяця — див. `TwoProperties.freeDay`. Десяте, а не
+ *  перше: сцені, яка будує свій день, потрібні й сусідні доби з обох боків
+ *  («заїхав позавчора», «виїжджає післязавтра»), і жодна з них не має
+ *  перелізти в попередній місяць. */
+const FREE_DAY = 10;
+
+/** Місяць фікстури, `YYYY-MM`, відносно дня запуску. */
+function fixtureMonth(today: string, ahead: number = MONTHS_AHEAD): string {
+  const [year, month] = today.split('-').map(Number);
+  const shifted = month + ahead;
+  return `${year + Math.floor((shifted - 1) / 12)}-${String(((shifted - 1) % 12) + 1).padStart(2, '0')}`;
+}
+
+/** Останній день місяця `YYYY-MM` — для верхньої межі діапазону звітів. */
+function lastDayOf(month: string): string {
+  const [year, m] = month.split('-').map(Number);
+  return new Date(Date.UTC(year, m, 0)).toISOString().slice(0, 10);
+}
+
+/** День номер `n` місяця фікстури, `YYYY-MM-DD`. */
+const dayOf = (month: string, n: number) => `${month}-${String(n).padStart(2, '0')}`;
+
+/** Зсув першої броні обʼєкта Б від першої броні обʼєкта А, у днях. Броні А
+ *  йдуть підряд від `FIRST_DAY`, броні Б — від `FIRST_DAY + B_OFFSET`, щоб
+ *  обʼєкти не ділили доби: інакше «у домі» одного обʼєкта залежало б від
+ *  броней другого. */
+const B_OFFSET = 5;
+
+/**
+ * Дата заїзду броні `i` обʼєкта `key`, якщо фікстуру сіють у день `today`.
+ *
+ * Функція ЧИСТА і бере день параметром — саме тому властивість «дати завжди
+ * попереду дня засіву» можна перевірити на чотириста днів уперед, не чіпаючи
+ * годинника (`two-properties.check.ts`). Засів кличе її ж: другий примірник
+ * цієї арифметики розійшовся б із першим, і перевірка стверджувала б про
+ * копію, а не про фікстуру.
+ */
+export function fixtureCheckIn(today: string, key: 'a' | 'b', i: number): string {
+  return dayOf(fixtureMonth(today), FIRST_DAY + i + (key === 'b' ? B_OFFSET : 0));
+}
 
 /**
  * Форма одного обʼєкта до засіву — числа зібрані в одному місці, щоб їх було видно.
@@ -208,6 +319,11 @@ async function seedInsideTenant(
   );
 
   const seeded: Record<string, FixtureProperty> = {};
+  // Один раз на весь засів: обчислити двічі означало б ризик розійтись на
+  // опівнічному прогоні, і половина броней лягла б в інший місяць.
+  const month = fixtureMonth(new Date().toISOString().slice(0, 10));
+  // Тихий місяць — наступний за місяцем фікстури, тією ж арифметикою.
+  const quietMonth = fixtureMonth(dayOf(month, 1), 1);
 
   for (const plan of PLAN) {
     await sql.run(
@@ -248,18 +364,22 @@ async function seedInsideTenant(
     }
 
     const reservationIds: string[] = [];
+    const checkIns: string[] = [];
+    const checkOuts: string[] = [];
     for (let i = 0; i < plan.reservations; i++) {
       const id = `${plan.id}_res_${i + 1}`;
       reservationIds.push(id);
       // Дати рознесені по обʼєктах, щоб «усі броні на цю ніч» теж давало
       // різні числа, а не одне спільне.
-      const day = 10 + i + (plan.key === 'b' ? 5 : 0);
+      const day = FIRST_DAY + i + (plan.key === 'b' ? B_OFFSET : 0);
+      checkIns.push(dayOf(month, day));
+      checkOuts.push(dayOf(month, day + 1));
       await sql.run(
         `INSERT INTO reservations (id, organization_id, property_id, unit_id, unit_type_id, guest_id,
                                    check_in, check_out, nights, adults, total_price, currency)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT default_currency FROM organizations WHERE id = ?))`,
         [id, ORG, plan.id, unitIds[i], unitTypeIds[0], '__two_props__guest',
-          `2026-09-${day}`, `2026-09-${day + 1}`, 1, 2, plan.stayTotal, ORG],
+          dayOf(month, day), dayOf(month, day + 1), 1, 2, plan.stayTotal, ORG],
       );
     }
 
@@ -273,6 +393,8 @@ async function seedInsideTenant(
       cityTaxPerNight: plan.cityTaxPerNight,
       stayTotal: plan.stayTotal,
       reservationIds,
+      checkIns,
+      checkOuts,
     };
   }
 
@@ -282,14 +404,83 @@ async function seedInsideTenant(
     b: seeded.b,
     totalUnits: seeded.a.unitIds.length + seeded.b.unitIds.length,
     totalReservations: seeded.a.reservationIds.length + seeded.b.reservationIds.length,
+    month,
+    from: dayOf(month, 1),
+    to: lastDayOf(month),
+    quietMonth,
+    quietFrom: dayOf(quietMonth, 1),
+    quietTo: lastDayOf(quietMonth),
+    freeDay: dayOf(quietMonth, FREE_DAY),
   };
 
   assertNotDegenerate(fixture);
+  assertStaysAreFuture(fixture, new Date().toISOString().slice(0, 10));
+  assertQuietMonthIsQuiet(fixture);
   // Рядки сцени сіються ТУТ — усередині того самого контексту. Інакше сцена
   // мусила б памʼятати про `runWithOrganization` сама, а те, що доводиться
   // памʼятати, рано чи пізно забувають.
   if (alsoSeed) await alsoSeed(fixture);
   return fixture;
+}
+
+/**
+ * Дати фікстури мусять лежати в МАЙБУТНЬОМУ, і це відмова на місці засіву.
+ *
+ * Правило заведене 11.09.2026, коли календар дійшов до літералів. Фікстура
+ * сіяла броні датами `2026-09-10…17` без явного статусу, тобто `confirmed`;
+ * 11.09 бронь обʼєкта А на 10.09 стала ПРОСТРОЧЕНИМ ЗАЇЗДОМ, і
+ * `alerts.scope.check` дістав 2 там, де стверджує 1. Сцена мала рацію:
+ * підтверджена бронь із минулою датою заїзду СПРАВДІ є простроченим заїздом.
+ * Брехала фікстура.
+ *
+ * Найгірше в цьому — не сам збій, а те, що він самоусувається: приблизно
+ * через два тижні рядки випали б із тижневого вікна тривог, сцена позеленіла
+ * б сама, і бомба перезарядилась би до наступного разу. Червоне, що
+ * зеленіє від календаря, — це не полагоджене, це відкладене.
+ *
+ * Тому дата тут не пишеться літералом ніде, а ця відмова стереже саме
+ * ВЛАСТИВІСТЬ («жодна бронь фікстури не в минулому»), а не форму запису:
+ * літерал майбутнього року пройшов би повз перевірку візерунка і став би
+ * тією самою бомбою з довшим ґнотом (§3.2.1).
+ */
+/**
+ * Тихий місяць мусить бути СПРАВДІ тихим — і це теж відмова, а не обіцянка.
+ *
+ * Раніше непересічність жила в коментарі сцени: «вікно запиту (листопад)
+ * навмисно не перетинається з бронями фікстури (вересень)». Коментар був
+ * правдою рівно доти, доки обидва місяці були літералами. Щойно місяць
+ * фікстури став відносним, він САМ став листопадом — і «навмисно немає»
+ * перетворилось на три червоні твердження про зайняті дати.
+ *
+ * Тому тепер перевіряється властивість: жодна бронь фікстури не торкається
+ * жодного дня тихого місяця. Не «місяці різні» (це візерунок — бронь через
+ * межу місяця його пройшла б), а саме перекриття відрізків: бронь
+ * `checkIn…checkOut` і відрізок `quietFrom…quietTo`.
+ */
+export function assertQuietMonthIsQuiet(fx: TwoProperties): void {
+  const stays = [
+    ...fx.a.checkIns.map((from, i) => [from, fx.a.checkOuts[i]] as const),
+    ...fx.b.checkIns.map((from, i) => [from, fx.b.checkOuts[i]] as const),
+  ];
+  const overlapping = stays.filter(([from, to]) => from <= fx.quietTo && to >= fx.quietFrom);
+  if (overlapping.length > 0) {
+    throw new Error(
+      `two-properties: ${overlapping.length} броней фікстури заходять у тихий місяць `
+      + `${fx.quietMonth} (${overlapping.map(([f, t]) => `${f}…${t}`).join(', ')}). `
+      + 'Сцена, яка рахує зайняті дати у своєму вікні, дістане зайві — і її числа перестануть означати те, що написано.',
+    );
+  }
+}
+
+export function assertStaysAreFuture(fx: TwoProperties, today: string): void {
+  const past = [...fx.a.checkIns, ...fx.b.checkIns].filter((d) => d <= today);
+  if (past.length > 0) {
+    throw new Error(
+      `two-properties: ${past.length} броней фікстури заїжджають не пізніше за сьогодні (${past.join(', ')}; сьогодні ${today}). `
+      + 'Підтверджена бронь із минулою датою заїзду — це прострочений заїзд, '
+      + 'і кожне твердження про тривоги, доба готелю і наявність починає рахувати її теж.',
+    );
+  }
 }
 
 /**

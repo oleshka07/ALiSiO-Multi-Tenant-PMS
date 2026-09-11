@@ -96,13 +96,13 @@ await runWithOrganization(fx.organizationId, async () => {
       await sql.run(
         `INSERT INTO invoices (id, organization_id, reservation_id, invoice_number, issued_at, amount, currency, status)
          VALUES (?, ?, ?, ?, ?, ?, 'EUR', 'issued')`,
-        [`__lex__inv${k}`, fx.organizationId, reservationId, `INV-${side}-${k}`, '2026-09-09', 100]);
+        [`__lex__inv${k}`, fx.organizationId, reservationId, `INV-${side}-${k}`, fx.from, 100]);
     }
   }
   await sql.run(
     `INSERT INTO invoices (id, organization_id, reservation_id, invoice_number, issued_at, amount, currency, status, is_custom, custom_buyer_name)
      VALUES (?, ?, NULL, ?, ?, ?, 'EUR', 'issued', TRUE, ?)`,
-    ['__lex__invnull', fx.organizationId, 'INV-БЕЗ-БРОНІ', '2026-09-09', 100, 'Компанія']);
+    ['__lex__invnull', fx.organizationId, 'INV-БЕЗ-БРОНІ', fx.from, 100, 'Компанія']);
 });
 
 const actor = { organizationId: fx.organizationId } as never;
@@ -118,7 +118,9 @@ const count = (text: string, needle: RegExp) => (text.match(needle) || []).lengt
 
 // ── Вивантаження броней ────────────────────────────────────────────────────
 
-const range = 'from=2026-09-01&to=2026-09-30&format=csv';
+// Діапазон — У ФІКСТУРИ: вивантаження бере її броні, і літерал тут означав би
+// «шукати там, де вони лежали в день, коли це писали».
+const range = `from=${fx.from}&to=${fx.to}&format=csv`;
 const bkA = await call(exportBookings as never, `http://local/api/bookings/export-csv?${range}&property_id=${fx.a.id}`);
 say(count(bkA.text, /A1-|A2-/g) > 0 && count(bkA.text, /B1-/g) === 0,
   `у файлі обʼєкта А немає номерів обʼєкта Б (чужих рядків ${count(bkA.text, /B1-/g)})`);

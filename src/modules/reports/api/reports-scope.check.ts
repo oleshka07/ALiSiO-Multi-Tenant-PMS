@@ -77,11 +77,11 @@ const url = (path: string, scope: string) =>
   ({ url: `http://local${path}&${scope}` } as never);
 
 const report = async (scope: string) => runWithOrganization(fx.organizationId, async () => {
-  const res = await getReport(url('/api/reports?from=2026-09-01&to=2026-09-30', scope), null, actor) as Response;
+  const res = await getReport(url(`/api/reports?from=${fx.from}&to=${fx.to}`, scope), null, actor) as Response;
   return { status: res.status, body: await res.json() as any };
 });
 const cityTax = async (scope: string) => runWithOrganization(fx.organizationId, async () => {
-  const res = await getCityTaxReport(url('/api/reports/city-tax?month=2026-09', scope), null, actor) as Response;
+  const res = await getCityTaxReport(url(`/api/reports/city-tax?month=${fx.month}`, scope), null, actor) as Response;
   return { status: res.status, body: await res.json() as any };
 });
 

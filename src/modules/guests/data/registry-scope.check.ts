@@ -74,7 +74,9 @@ await runWithOrganization(fx.organizationId, async () => {
   }
 });
 
-const MONTH = '2026-09';
+// Місяць — У ФІКСТУРИ: книга рахує саме її броні, тож літерал тут означав
+// «шукати там, де фікстура сіє СЬОГОДНІ», і завтра означав би інше.
+const MONTH = fx.month;
 const FEES_A = fx.a.reservationIds.length * fx.a.cityTaxPerNight;   // 2 × 20 = 40
 const FEES_B = fx.b.reservationIds.length * fx.b.cityTaxPerNight;   // 3 × 35 = 105
 const FEES_ALL = FEES_A + FEES_B;                                    // 145
