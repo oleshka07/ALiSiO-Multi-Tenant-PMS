@@ -174,6 +174,32 @@ function buildSchema(database: any) {
       -- (інваріант 20: значення належить готелю, не константі в коді).
       -- І тут, і в ALTER нижче (AGENTS §4).
       property_type TEXT,
+      -- Кіоск, 0410 (docs/tasks/2026-09-10-block-kiosk.md §3.1, К1/К8).
+      -- checkin_payment_policy — чи пускають у номер до оплати; дефолт
+      -- 'prepaid' дослівно повторює те, що робив PATCH-хендлер числом до
+      -- цієї колонки, тож наявні готелі поведінки не змінюють.
+      -- system_of_record — чия книга головна: доти головними були завжди
+      -- ми, і поки триває дзеркало Winhotel це неправда.
+      -- kiosk_walkin_url — адреса ВЛАСНОГО онлайн-модуля готелю (К8, CDSoft
+      -- Onlinebuchung); порожньо = walk-in на терміналі вимкнено. CHECK на
+      -- двох перших лише тут: SQLite не додає обмежень через ALTER, значення
+      -- звіряє писач (checkin-policy.ts).
+      checkin_payment_policy TEXT NOT NULL DEFAULT 'prepaid'
+        CHECK (checkin_payment_policy IN ('prepaid', 'allow_pay_later')),
+      system_of_record TEXT NOT NULL DEFAULT 'alisio'
+        CHECK (system_of_record IN ('external', 'alisio')),
+      kiosk_walkin_url TEXT,
+      -- 0413, частина В: політики картки застосунку.
+      -- kiosk_auto_assign — чи вільно терміналу обирати кімнату сам;
+      -- kiosk_signature — foreigners (КІ3, як закон) | always | never;
+      -- години NULL = як в обʼєкта (check_in_time / check_out_time), а не
+      -- «будь-коли»: на терміналі година буває інша, ніж на стійці.
+      -- І тут, і в ALTER нижче (AGENTS §4).
+      kiosk_auto_assign INTEGER NOT NULL DEFAULT 1,
+      kiosk_signature TEXT NOT NULL DEFAULT 'foreigners'
+        CHECK (kiosk_signature IN ('foreigners', 'always', 'never')),
+      kiosk_earliest_checkin TEXT,
+      kiosk_latest_checkout TEXT,
       UNIQUE(organization_id, slug)
     );
 
@@ -451,7 +477,22 @@ function buildSchema(database: any) {
       infants INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'confirmed' CHECK (status IN ('draft', 'tentative', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show')),
       payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'payment_requested', 'partial', 'prepaid', 'paid')),
-      source TEXT NOT NULL DEFAULT 'direct' CHECK (source IN ('direct', 'phone', 'whatsapp', 'booking_com', 'airbnb', 'other_ota')),
+      -- kiosk_walkin — гість забронював сам у власному онлайн-модулі готелю і
+      -- назвався на терміналі; бронь попередня, її підхопить денна дельта.
+      --
+      -- Слово стоїть тут, хоч цього CHECK-у на живій базі НЕМАЄ: міграція
+      -- «remove CHECK constraint from reservations.source» нижче знімає його з
+      -- КОЖНОЇ бази — і з мігрованої, і зі свіжої, за секунду після цього
+      -- CREATE. Перевірено прогоном на порожній теці: у щойно народженої бази
+      -- CHECK-у на source немає. На Postgres його не було ніколи (жодна
+      -- міграція не додає, у schema.sql його теж немає).
+      --
+      -- Тобто перелік родів походження сьогодні тримає ПИСАЧ, а не база, — як
+      -- property_type (О9). Слово лишається в цьому рядку, щоб перелік читався
+      -- з одного місця; повертати сам CHECK — окреме рішення про живі дані,
+      -- і воно не побічний ефект блоку «Кіоск». Бектиків у коментарях цього
+      -- блоку немає навмисно: уся схема — один шаблонний рядок JS.
+      source TEXT NOT NULL DEFAULT 'direct' CHECK (source IN ('direct', 'phone', 'whatsapp', 'booking_com', 'airbnb', 'other_ota', 'kiosk_walkin')),
       total_price REAL NOT NULL DEFAULT 0,
       currency TEXT NOT NULL DEFAULT 'CZK',
       notes TEXT,
@@ -3207,6 +3248,9 @@ function runMigrations(database: any) {
         registered_at TEXT,
         created_at TEXT DEFAULT (datetime('now')),
         reg_status TEXT NOT NULL DEFAULT 'not_started',
+        -- 0410: підпис пальцем на кіоску (К3). І тут, і в ALTER нижче.
+        signature_png TEXT,
+        signed_at TEXT,
         FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE,
         FOREIGN KEY (guest_id) REFERENCES guests(id) ON DELETE CASCADE
       )
@@ -5287,6 +5331,14 @@ function runMigrations(database: any) {
   try { database.exec("ALTER TABLE guest_registrations ADD COLUMN consent_ip TEXT"); } catch { /* already exists */ }
   try { database.exec("ALTER TABLE guest_registrations ADD COLUMN purpose_of_stay TEXT"); } catch { /* already exists */ }
   try { database.exec("ALTER TABLE guest_registrations ADD COLUMN visa_number TEXT"); } catch { /* already exists */ }
+  // 0410 — підпис пальцем (К3, кіоск §3.1). `data:image/png;base64,…` як його
+  // віддає полотно; ≤ 200 КБ стереже писач (`guests/data/signature.repo.ts`),
+  // а не обмеження бази: завеликий підпис — звичайний палець на великому
+  // екрані, і відповідь на нього має бути названою відмовою, не 500-кою.
+  // Знеособлення окремого правила не потребує: GDPR-ретенція видаляє рядок
+  // `guest_registrations` цілком, тож підпис іде разом із рештою.
+  try { database.exec("ALTER TABLE guest_registrations ADD COLUMN signature_png TEXT"); } catch { /* already exists */ }
+  try { database.exec("ALTER TABLE guest_registrations ADD COLUMN signed_at TEXT"); } catch { /* already exists */ }
 
   // --- Migration: add new columns to reservations for Analytics ---
   try {
@@ -6463,17 +6515,55 @@ function runMigrations(database: any) {
         source            TEXT NOT NULL DEFAULT 'manual'
                           CHECK (source IN ('nightly','ota_split','manual','restaurant','import','service')),
         voided_by_item_id TEXT,
+        -- Від чого ця знижка (0142, Д62). Факт, не текст опису: сторно
+        -- батьківського рядка інакше лишає знижку, яка вказує в нікуди.
+        discount_of_item_id TEXT REFERENCES fin_folio_items(id) ON DELETE CASCADE,
         invoice_id        TEXT,
         created_at        TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_items_folio ON fin_folio_items(folio_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_items_discount_of ON fin_folio_items(discount_of_item_id)');
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_items_date ON fin_folio_items(organization_id, service_date)');
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_items_invoice ON fin_folio_items(invoice_id)');
     // Same story as idx_event_bookings_day: this one was written only in the
     // ALTER branch that adds service_order_id, which never runs on a database
     // whose CREATE already has the column.
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_items_order ON fin_folio_items(service_order_id)');
+
+    // Довідник способів оплати (0141, Д61) — СПЕРШУ, бо платіжка нижче має
+    // на нього зовнішній ключ, а SQLite розбирає `REFERENCES` при створенні.
+    //
+    // Клас (`kind`) — ті самі чотири слова, що в CHECK платіжки: довідник
+    // стоїть НАД класом, а не замість нього. `name IS NULL` означає
+    // «стандартна назва класу»: засів не вигадує слів жодною мовою.
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS fin_payment_methods (
+        id                TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id   TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        code              TEXT NOT NULL,
+        name              TEXT,
+        kind              TEXT NOT NULL,
+        ledger_account    TEXT,
+        -- BOOLEAN оголошено ЯВНО, а не лишено на здогад за іменем.
+        -- pg-schema.mjs мапить INTEGER у BIGINT, а в BOOLEAN підвищує лише
+        -- те, чиє ІМʼЯ підпадає під BOOL-візерунок (is_*, has_*, …).
+        -- settles_to_debtor під нього не підпадає — і мовчки стала числом, у
+        -- яке писач клав true: на SQLite bindable() перетворює це на 1 без
+        -- слова, на Postgres виходить
+        -- invalid input syntax for type bigint: "false" (Д65).
+        -- Оголошений тип іменем не керується: case BOOLEAN у генераторі
+        -- відповідає раніше за будь-який візерунок.
+        settles_to_debtor BOOLEAN NOT NULL DEFAULT 0,
+        is_active         BOOLEAN NOT NULL DEFAULT 1,
+        position          INTEGER NOT NULL DEFAULT 0,
+        created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (organization_id, code),
+        CHECK (kind IN ('cash','card_terminal','transfer','voucher'))
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_payment_methods_org ON fin_payment_methods(organization_id, position)');
 
     // How a folio was paid — first-class, because KassenSichV asks the
     // DOCUMENT whether it needs a TSE signature (cash / card at the desk:
@@ -6505,10 +6595,12 @@ function runMigrations(database: any) {
         tse_client_id   TEXT,
         tse_process_type TEXT,
         tse_process_data TEXT,
+        method_id       TEXT REFERENCES fin_payment_methods(id) ON DELETE RESTRICT,
         CHECK (method IN ('cash','card_terminal','transfer','voucher'))
       )
     `);
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_payments_folio ON fin_folio_payments(folio_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_payments_method ON fin_folio_payments(method_id)');
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_payments_org ON fin_folio_payments(organization_id, paid_at)');
     // Databases whose CREATE predates the TSE columns catch up here — the
     // guarded ALTER stands AFTER the CREATE on purpose (lesson of 086ec1d).
@@ -7277,6 +7369,38 @@ function runMigrations(database: any) {
       database.exec('ALTER TABLE properties ADD COLUMN property_type TEXT');
       console.log('[DB] Added property_type to properties');
     }
+    // 0410 — політики кіоска на обʼєкті. І в CREATE вище, і тут (AGENTS §4).
+    // Дефолти повторюють дотеперішню поведінку: `prepaid` — та сама варта
+    // заселення, що стояла в хендлері; `alisio` — «книга наша», як було.
+    if (!propCols.includes('checkin_payment_policy')) {
+      database.exec("ALTER TABLE properties ADD COLUMN checkin_payment_policy TEXT NOT NULL DEFAULT 'prepaid'");
+      console.log('[DB] 0410: properties.checkin_payment_policy');
+    }
+    if (!propCols.includes('system_of_record')) {
+      database.exec("ALTER TABLE properties ADD COLUMN system_of_record TEXT NOT NULL DEFAULT 'alisio'");
+      console.log('[DB] 0410: properties.system_of_record');
+    }
+    if (!propCols.includes('kiosk_walkin_url')) {
+      database.exec('ALTER TABLE properties ADD COLUMN kiosk_walkin_url TEXT');
+      console.log('[DB] 0410: properties.kiosk_walkin_url');
+    }
+    // 0413 — політики картки застосунку (частина В).
+    if (!propCols.includes('kiosk_auto_assign')) {
+      database.exec('ALTER TABLE properties ADD COLUMN kiosk_auto_assign INTEGER NOT NULL DEFAULT 1');
+      console.log('[DB] 0413: properties.kiosk_auto_assign');
+    }
+    if (!propCols.includes('kiosk_signature')) {
+      database.exec("ALTER TABLE properties ADD COLUMN kiosk_signature TEXT NOT NULL DEFAULT 'foreigners'");
+      console.log('[DB] 0413: properties.kiosk_signature');
+    }
+    if (!propCols.includes('kiosk_earliest_checkin')) {
+      database.exec('ALTER TABLE properties ADD COLUMN kiosk_earliest_checkin TEXT');
+      console.log('[DB] 0413: properties.kiosk_earliest_checkin');
+    }
+    if (!propCols.includes('kiosk_latest_checkout')) {
+      database.exec('ALTER TABLE properties ADD COLUMN kiosk_latest_checkout TEXT');
+      console.log('[DB] 0413: properties.kiosk_latest_checkout');
+    }
   } catch (e: any) {
     console.error('[DB] properties checkout_balance_policy:', e.message);
   }
@@ -7915,6 +8039,25 @@ function runMigrations(database: any) {
   // `tsc` або дасть видимий повтор у лозі — замість тиші.
   migrateOtaMirror(database);
 
+  // --- Migration: ключ походження на грошах і документах (INC-307) ---
+  //
+  // Пара до 0303. Колонки додаються ALTER-ом, бо ці таблиці створюються в
+  // різних місцях схеми, а індекси — після них.
+  try {
+    for (const t of ['companies', 'invoices', 'fin_invoice_lines', 'fin_invoice_tax_totals',
+      'fin_folio_items', 'fin_folio_payments']) {
+      const cols = database.prepare(`PRAGMA table_info(${t})`).all() as { name: string }[];
+      if (cols.length > 0 && !cols.some((c) => c.name === 'external_ref')) {
+        database.exec(`ALTER TABLE ${t} ADD COLUMN external_ref TEXT`);
+        console.log(`[DB] ${t}: external_ref (INC-307)`);
+      }
+      database.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_${t}_external_ref
+        ON ${t} (organization_id, external_ref) WHERE external_ref IS NOT NULL`);
+    }
+  } catch (e: any) {
+    console.log('[DB] money external_ref migration note:', e.message);
+  }
+
   // --- Migration: «різні люди» і хто злив (INC-304) ---
   try {
     database.exec(`
@@ -7968,6 +8111,8 @@ function runMigrations(database: any) {
   // 0400 — так само окремою функцією, з тієї самої причини.
   migrateApps(database);
 
+  // 0411 — застосунок kiosk: термінал у холі, код парування, журнал доби.
+  migrateKiosk(database);
   // --- Migration: згоди на особі і слід злиття (INC-300) ---
   //
   // Пара до CREATE вище: «додаєш колонку — додай її і в CREATE, і в ALTER»
@@ -8184,6 +8329,81 @@ function runMigrations(database: any) {
     console.error('[DB] debtor/payer folio migration:', e.message);
   }
 
+  // ── Довідник способів оплати (0141, Д61) ────────────────────────────────
+  //
+  // І в CREATE вище, і тут. Засів чотирьох стандартних рядків КОЖНІЙ
+  // організації робить міграція, а не код при першому відкритті екрана:
+  // інакше готель, який туди ще не заходив, дістав би платіж, що вказує в
+  // нікуди. Назв засів не пише — `name IS NULL` означає «стандартна назва
+  // класу», і мову вибирає екран, а не міграція.
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS fin_payment_methods (
+        id                TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id   TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        code              TEXT NOT NULL,
+        name              TEXT,
+        kind              TEXT NOT NULL,
+        ledger_account    TEXT,
+        -- BOOLEAN оголошено ЯВНО, а не лишено на здогад за іменем.
+        -- pg-schema.mjs мапить INTEGER у BIGINT, а в BOOLEAN підвищує лише
+        -- те, чиє ІМʼЯ підпадає під BOOL-візерунок (is_*, has_*, …).
+        -- settles_to_debtor під нього не підпадає — і мовчки стала числом, у
+        -- яке писач клав true: на SQLite bindable() перетворює це на 1 без
+        -- слова, на Postgres виходить
+        -- invalid input syntax for type bigint: "false" (Д65).
+        -- Оголошений тип іменем не керується: case BOOLEAN у генераторі
+        -- відповідає раніше за будь-який візерунок.
+        settles_to_debtor BOOLEAN NOT NULL DEFAULT 0,
+        is_active         BOOLEAN NOT NULL DEFAULT 1,
+        position          INTEGER NOT NULL DEFAULT 0,
+        created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (organization_id, code),
+        CHECK (kind IN ('cash','card_terminal','transfer','voucher'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_fin_payment_methods_org
+        ON fin_payment_methods(organization_id, position);
+    `);
+    const payCols = (database.prepare('PRAGMA table_info(fin_folio_payments)').all() as any[]).map((c: any) => c.name);
+    if (!payCols.includes('method_id')) {
+      database.exec('ALTER TABLE fin_folio_payments ADD COLUMN method_id TEXT REFERENCES fin_payment_methods(id) ON DELETE RESTRICT');
+      console.log('[DB] fin_folio_payments: спосіб оплати став рядком довідника');
+    }
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_payments_method ON fin_folio_payments(method_id)');
+    // Засів і зворотне заповнення — питанням до ДАНИХ, не до імені обмеження.
+    for (const [code, pos] of [['cash', 0], ['card_terminal', 1], ['transfer', 2], ['voucher', 3]] as const) {
+      database.prepare(`
+        INSERT INTO fin_payment_methods (id, organization_id, code, kind, position)
+        SELECT lower(hex(randomblob(16))), o.id, ?, ?, ?
+          FROM organizations o
+         WHERE NOT EXISTS (SELECT 1 FROM fin_payment_methods m
+                            WHERE m.organization_id = o.id AND m.code = ?)
+      `).run(code, code, pos, code);
+    }
+    database.exec(`
+      UPDATE fin_folio_payments
+         SET method_id = (SELECT m.id FROM fin_payment_methods m
+                           WHERE m.organization_id = fin_folio_payments.organization_id
+                             AND m.code = fin_folio_payments.method)
+       WHERE method_id IS NULL
+    `);
+  } catch (e: any) {
+    console.error('[DB] payment methods migration:', e.message);
+  }
+
+  // ── Знижка знає, від чого вона (0142, Д62) ──────────────────────────────
+  try {
+    const itemCols = (database.prepare('PRAGMA table_info(fin_folio_items)').all() as any[]).map((c: any) => c.name);
+    if (!itemCols.includes('discount_of_item_id')) {
+      database.exec('ALTER TABLE fin_folio_items ADD COLUMN discount_of_item_id TEXT REFERENCES fin_folio_items(id) ON DELETE CASCADE');
+      console.log('[DB] fin_folio_items: знижка знає, від чого вона');
+    }
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_items_discount_of ON fin_folio_items(discount_of_item_id)');
+  } catch (e: any) {
+    console.error('[DB] discount link migration:', e.message);
+  }
+
   console.log('[DB] migrations complete');
   }
 
@@ -8356,6 +8576,69 @@ function migrateWinhotelImport(database: any) {
     database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_staging_entity ON winhotel_staging(organization_id, entity, reason)');
   } catch (e) {
     console.error('[DB] 0404 winhotel_refs/winhotel_staging:', (e as Error).message);
+  }
+}
+
+/**
+ * Міграція 0411 — застосунок `kiosk`: пристрій, код парування, журнал доби.
+ * Дзеркало `db/postgres/migrations/0411-*.sql`; окремою функцією з тієї самої
+ * причини, що `migrateWinhotelImport` (див. коментар у місці виклику).
+ *
+ * Політик тут немає й бути не може — на SQLite їх не існує. Тому все, що на
+ * Postgres тримає політика, тут тримає ЗАПИТ: кожен репозиторій застосунку
+ * називає `organization_id` явно (інваріант 12), а не покладається на
+ * контекст. Саме ця пара і є весь захист на машині розробника.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function migrateKiosk(database: any) {
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS kiosk_devices (
+        id              TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        property_id     TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        name            TEXT NOT NULL,
+        token_hash      TEXT NOT NULL,
+        paired_at       TEXT,
+        last_seen_at    TEXT,
+        revoked_at      TEXT,
+        config_json     TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS kiosk_pairings (
+        id              TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        property_id     TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        name            TEXT NOT NULL,
+        code_hash       TEXT NOT NULL,
+        expires_at      TEXT NOT NULL,
+        used_at         TEXT,
+        device_id       TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS kiosk_events (
+        id              TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        device_id       TEXT NOT NULL,
+        reservation_id  TEXT REFERENCES reservations(id) ON DELETE SET NULL,
+        kind            TEXT NOT NULL,
+        result          TEXT NOT NULL DEFAULT 'ok' CHECK (result IN ('ok', 'refused', 'error')),
+        detail          TEXT,
+        at              TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_kiosk_devices_org ON kiosk_devices(organization_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_kiosk_devices_property ON kiosk_devices(organization_id, property_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_kiosk_pairings_org ON kiosk_pairings(organization_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_kiosk_pairings_code ON kiosk_pairings(code_hash)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_kiosk_events_org ON kiosk_events(organization_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_kiosk_events_device_at ON kiosk_events(organization_id, device_id, at)');
+  } catch (e) {
+    console.error('[DB] 0411 kiosk_devices/kiosk_pairings/kiosk_events:', (e as Error).message);
   }
 }
 

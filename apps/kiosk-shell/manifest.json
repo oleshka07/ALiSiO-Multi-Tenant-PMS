@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "ALiSiO Kiosk Shell",
+  "version": "1.0.0",
+  "description": "Bringt den Terminal-Browser von fremden Seiten zurueck zum Kiosk-Startbildschirm.",
+  "permissions": ["storage", "browsingData", "tabs"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["bar.css"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "options_page": "options.html"
+}

@@ -201,9 +201,15 @@ $COMPOSE stop app
 
 # In a container built from the application's own image: the server has no
 # node_modules of its own — everything is built inside Docker — and that image
-# already carries better-sqlite3, pg and scripts/. The SQLite volume is mounted
+# carries better-sqlite3, pg and scripts/. The SQLite volume is mounted
 # READ-ONLY, so the import cannot write to the database it is reading, which is
 # also the database the rollback depends on.
+#
+# «carries … scripts/» ДО 10.09.2026 було неправдою: рантайм-шар Dockerfile
+# копіював лише public, standalone, static і bcryptjs, тож і цей виклик, і
+# check-isolation нижче падали б з «Cannot find module». Знайшлося не тут — на
+# кроці apply_hotels деплою, — і закрито одним рішенням на всі сім
+# інструментів образу (Д63), а не латкою на кожен.
 run_import() {
   docker run --rm \
     --network "${PROJECT}_default" \

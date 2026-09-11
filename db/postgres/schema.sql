@@ -534,6 +534,7 @@ CREATE TABLE "companies" (
   "archived_at" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "external_ref" TEXT,
   PRIMARY KEY ("id")
 );
 
@@ -844,8 +845,10 @@ CREATE TABLE "fin_folio_items" (
   "service_order_id" TEXT,
   "source" TEXT DEFAULT 'manual' NOT NULL,
   "voided_by_item_id" TEXT,
+  "discount_of_item_id" TEXT,
   "invoice_id" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "external_ref" TEXT,
   PRIMARY KEY ("id"),
   CHECK (kind IN ('lodging','service','fee','city_tax','manual')),
   CHECK (source IN ('nightly','ota_split','manual','restaurant','import','service'))
@@ -875,6 +878,8 @@ CREATE TABLE "fin_folio_payments" (
   "tse_client_id" TEXT,
   "tse_process_type" TEXT,
   "tse_process_data" TEXT,
+  "method_id" TEXT,
+  "external_ref" TEXT,
   PRIMARY KEY ("id"),
   CHECK (method IN ('cash','card_terminal','transfer','voucher'))
 );
@@ -917,6 +922,7 @@ CREATE TABLE "fin_invoice_lines" (
   "vat_rate" DOUBLE PRECISION DEFAULT 0 NOT NULL,
   "source_item_id" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "external_ref" TEXT,
   PRIMARY KEY ("id")
 );
 
@@ -929,6 +935,7 @@ CREATE TABLE "fin_invoice_tax_totals" (
   "gross_amount" NUMERIC(14,2) DEFAULT 0 NOT NULL,
   "net_amount" NUMERIC(14,2) DEFAULT 0 NOT NULL,
   "tax_amount" NUMERIC(14,2) DEFAULT 0 NOT NULL,
+  "external_ref" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("invoice_id", "vat_rate")
 );
@@ -1004,6 +1011,23 @@ CREATE TABLE "fin_operations" (
   PRIMARY KEY ("id"),
   CHECK (op_type IN ('income', 'expense', 'transfer')),
   CHECK (status IN ('completed','pending','failed','refunded'))
+);
+
+CREATE TABLE "fin_payment_methods" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "code" TEXT NOT NULL,
+  "name" TEXT,
+  "kind" TEXT NOT NULL,
+  "ledger_account" TEXT,
+  "settles_to_debtor" BOOLEAN DEFAULT false NOT NULL,
+  "is_active" BOOLEAN DEFAULT true NOT NULL,
+  "position" BIGINT DEFAULT 0 NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  UNIQUE ("organization_id", "code"),
+  CHECK (kind IN ('cash','card_terminal','transfer','voucher'))
 );
 
 CREATE TABLE "fin_recurring_templates" (
@@ -1314,6 +1338,8 @@ CREATE TABLE "guest_registrations" (
   "registered_at" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now(),
   "reg_status" TEXT DEFAULT 'not_started' NOT NULL,
+  "signature_png" TEXT,
+  "signed_at" TIMESTAMPTZ,
   "consent_given" BIGINT DEFAULT 0,
   "consent_at" TIMESTAMPTZ,
   "consent_ip" TEXT,
@@ -1446,9 +1472,50 @@ CREATE TABLE "invoices" (
   "custom_email" TEXT,
   "corrects_invoice_id" TEXT,
   "folio_id" TEXT,
+  "external_ref" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("organization_id", "invoice_number"),
   CHECK (status IN ('issued', 'cancelled', 'storno', 'corrected'))
+);
+
+CREATE TABLE "kiosk_devices" (
+  "id" TEXT NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "property_id" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "token_hash" TEXT NOT NULL,
+  "paired_at" TIMESTAMPTZ,
+  "last_seen_at" TIMESTAMPTZ,
+  "revoked_at" TIMESTAMPTZ,
+  "config_json" JSONB,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id")
+);
+
+CREATE TABLE "kiosk_events" (
+  "id" TEXT NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "device_id" TEXT NOT NULL,
+  "reservation_id" TEXT,
+  "kind" TEXT NOT NULL,
+  "result" TEXT DEFAULT 'ok' NOT NULL,
+  "detail" TEXT,
+  "at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  CHECK (result IN ('ok', 'refused', 'error'))
+);
+
+CREATE TABLE "kiosk_pairings" (
+  "id" TEXT NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "property_id" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "code_hash" TEXT NOT NULL,
+  "expires_at" TIMESTAMPTZ NOT NULL,
+  "used_at" TIMESTAMPTZ,
+  "device_id" TEXT,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id")
 );
 
 CREATE TABLE "menu_items" (
@@ -1696,9 +1763,19 @@ CREATE TABLE "properties" (
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "checkout_balance_policy" TEXT DEFAULT 'warning' NOT NULL,
   "property_type" TEXT,
+  "checkin_payment_policy" TEXT DEFAULT 'prepaid' NOT NULL,
+  "system_of_record" TEXT DEFAULT 'alisio' NOT NULL,
+  "kiosk_walkin_url" TEXT,
+  "kiosk_auto_assign" BOOLEAN DEFAULT true NOT NULL,
+  "kiosk_signature" TEXT DEFAULT 'foreigners' NOT NULL,
+  "kiosk_earliest_checkin" TEXT,
+  "kiosk_latest_checkout" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("organization_id", "slug"),
-  CHECK (checkout_balance_policy IN ('none', 'warning', 'blocking'))
+  CHECK (checkout_balance_policy IN ('none', 'warning', 'blocking')),
+  CHECK (checkin_payment_policy IN ('prepaid', 'allow_pay_later')),
+  CHECK (system_of_record IN ('external', 'alisio')),
+  CHECK (kiosk_signature IN ('foreigners', 'always', 'never'))
 );
 
 CREATE TABLE "property_amenities" (
@@ -2540,19 +2617,23 @@ ALTER TABLE "fin_fiscal_settings" ADD CONSTRAINT "fk_fin_fiscal_settings_propert
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "fin_fiscal_settings" ADD CONSTRAINT "fk_fin_fiscal_settings_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "fin_folio_items" ADD CONSTRAINT "fk_fin_folio_items_reservation_id_1"
+ALTER TABLE "fin_folio_items" ADD CONSTRAINT "fk_fin_folio_items_discount_of_item_id_1"
+  FOREIGN KEY ("discount_of_item_id") REFERENCES "fin_folio_items" ("id") ON DELETE CASCADE;
+ALTER TABLE "fin_folio_items" ADD CONSTRAINT "fk_fin_folio_items_reservation_id_2"
   FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE SET NULL;
-ALTER TABLE "fin_folio_items" ADD CONSTRAINT "fk_fin_folio_items_folio_id_2"
+ALTER TABLE "fin_folio_items" ADD CONSTRAINT "fk_fin_folio_items_folio_id_3"
   FOREIGN KEY ("folio_id") REFERENCES "fin_folios" ("id") ON DELETE CASCADE;
-ALTER TABLE "fin_folio_items" ADD CONSTRAINT "fk_fin_folio_items_organization_id_3"
+ALTER TABLE "fin_folio_items" ADD CONSTRAINT "fk_fin_folio_items_organization_id_4"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "fin_folio_payments" ADD CONSTRAINT "fk_fin_folio_payments_invoice_id_1"
+ALTER TABLE "fin_folio_payments" ADD CONSTRAINT "fk_fin_folio_payments_method_id_1"
+  FOREIGN KEY ("method_id") REFERENCES "fin_payment_methods" ("id") ON DELETE RESTRICT;
+ALTER TABLE "fin_folio_payments" ADD CONSTRAINT "fk_fin_folio_payments_invoice_id_2"
   FOREIGN KEY ("invoice_id") REFERENCES "invoices" ("id") ON DELETE SET NULL;
-ALTER TABLE "fin_folio_payments" ADD CONSTRAINT "fk_fin_folio_payments_folio_id_2"
+ALTER TABLE "fin_folio_payments" ADD CONSTRAINT "fk_fin_folio_payments_folio_id_3"
   FOREIGN KEY ("folio_id") REFERENCES "fin_folios" ("id") ON DELETE CASCADE;
-ALTER TABLE "fin_folio_payments" ADD CONSTRAINT "fk_fin_folio_payments_property_id_3"
+ALTER TABLE "fin_folio_payments" ADD CONSTRAINT "fk_fin_folio_payments_property_id_4"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE SET NULL;
-ALTER TABLE "fin_folio_payments" ADD CONSTRAINT "fk_fin_folio_payments_organization_id_4"
+ALTER TABLE "fin_folio_payments" ADD CONSTRAINT "fk_fin_folio_payments_organization_id_5"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "fin_folios" ADD CONSTRAINT "fk_fin_folios_company_id_1"
   FOREIGN KEY ("company_id") REFERENCES "companies" ("id") ON DELETE SET NULL;
@@ -2589,6 +2670,8 @@ ALTER TABLE "fin_operations" ADD CONSTRAINT "fk_fin_operations_account_to_id_6"
 ALTER TABLE "fin_operations" ADD CONSTRAINT "fk_fin_operations_account_from_id_7"
   FOREIGN KEY ("account_from_id") REFERENCES "finance_accounts" ("id");
 ALTER TABLE "fin_operations" ADD CONSTRAINT "fk_fin_operations_organization_id_8"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "fin_payment_methods" ADD CONSTRAINT "fk_fin_payment_methods_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "fin_recurring_templates" ADD CONSTRAINT "fk_fin_recurring_templates_counterparty_id_1"
   FOREIGN KEY ("counterparty_id") REFERENCES "finance_counterparties" ("id");
@@ -2687,6 +2770,18 @@ ALTER TABLE "invoices" ADD CONSTRAINT "fk_invoices_fin_operation_id_1"
 ALTER TABLE "invoices" ADD CONSTRAINT "fk_invoices_reservation_id_2"
   FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE CASCADE;
 ALTER TABLE "invoices" ADD CONSTRAINT "fk_invoices_organization_id_3"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "kiosk_devices" ADD CONSTRAINT "fk_kiosk_devices_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "kiosk_devices" ADD CONSTRAINT "fk_kiosk_devices_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "kiosk_events" ADD CONSTRAINT "fk_kiosk_events_reservation_id_1"
+  FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE SET NULL;
+ALTER TABLE "kiosk_events" ADD CONSTRAINT "fk_kiosk_events_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "kiosk_pairings" ADD CONSTRAINT "fk_kiosk_pairings_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "kiosk_pairings" ADD CONSTRAINT "fk_kiosk_pairings_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "menu_items" ADD CONSTRAINT "fk_menu_items_service_id_1"
   FOREIGN KEY ("service_id") REFERENCES "additional_services" ("id") ON DELETE CASCADE;
@@ -2957,6 +3052,7 @@ CREATE INDEX "idx_cm_outbox_pending" ON "cm_outbox" ("connection_id", "kind") WH
 CREATE INDEX "idx_cm_sends_connection" ON "cm_sends" ("connection_id", "sent_at");
 CREATE INDEX "idx_cm_sends_org" ON "cm_sends" ("organization_id");
 CREATE UNIQUE INDEX "idx_companies_debtor_no" ON "companies" ("organization_id", "debtor_no") WHERE debtor_no IS NOT NULL ;
+CREATE UNIQUE INDEX "idx_companies_external_ref" ON "companies" ("organization_id", "external_ref") WHERE external_ref IS NOT NULL;
 CREATE INDEX "idx_companies_org" ON "companies" ("organization_id", "name");
 CREATE UNIQUE INDEX "idx_companies_org_business_id" ON "companies" ("organization_id", "business_id") WHERE business_id IS NOT NULL;
 CREATE INDEX "idx_company_rate_plans_org" ON "company_rate_plans" ("organization_id");
@@ -2989,15 +3085,21 @@ CREATE INDEX "idx_fin_fiscal_outages_org" ON "fin_fiscal_outages" ("organization
 CREATE INDEX "idx_fin_fiscal_settings_org" ON "fin_fiscal_settings" ("organization_id");
 CREATE UNIQUE INDEX "idx_fin_fiscal_settings_row" ON "fin_fiscal_settings" ("property_id");
 CREATE INDEX "idx_fin_folio_items_date" ON "fin_folio_items" ("organization_id", "service_date");
+CREATE INDEX "idx_fin_folio_items_discount_of" ON "fin_folio_items" ("discount_of_item_id");
+CREATE UNIQUE INDEX "idx_fin_folio_items_external_ref" ON "fin_folio_items" ("organization_id", "external_ref") WHERE external_ref IS NOT NULL;
 CREATE INDEX "idx_fin_folio_items_folio" ON "fin_folio_items" ("folio_id");
 CREATE INDEX "idx_fin_folio_items_invoice" ON "fin_folio_items" ("invoice_id");
 CREATE INDEX "idx_fin_folio_items_order" ON "fin_folio_items" ("service_order_id");
+CREATE UNIQUE INDEX "idx_fin_folio_payments_external_ref" ON "fin_folio_payments" ("organization_id", "external_ref") WHERE external_ref IS NOT NULL;
 CREATE INDEX "idx_fin_folio_payments_folio" ON "fin_folio_payments" ("folio_id");
+CREATE INDEX "idx_fin_folio_payments_method" ON "fin_folio_payments" ("method_id");
 CREATE INDEX "idx_fin_folio_payments_org" ON "fin_folio_payments" ("organization_id", "paid_at");
 CREATE INDEX "idx_fin_folios_company" ON "fin_folios" ("organization_id", "company_id");
 CREATE INDEX "idx_fin_folios_org" ON "fin_folios" ("organization_id", "status");
 CREATE INDEX "idx_fin_folios_res" ON "fin_folios" ("reservation_id");
+CREATE UNIQUE INDEX "idx_fin_invoice_lines_external_ref" ON "fin_invoice_lines" ("organization_id", "external_ref") WHERE external_ref IS NOT NULL;
 CREATE INDEX "idx_fin_invoice_lines_invoice" ON "fin_invoice_lines" ("invoice_id", "position");
+CREATE UNIQUE INDEX "idx_fin_invoice_tax_totals_external_ref" ON "fin_invoice_tax_totals" ("organization_id", "external_ref") WHERE external_ref IS NOT NULL;
 CREATE UNIQUE INDEX "idx_fin_invoice_tax_totals_rate" ON "fin_invoice_tax_totals" ("invoice_id", "vat_rate");
 CREATE INDEX "idx_attach_op" ON "fin_operation_attachments" ("operation_id");
 CREATE INDEX "idx_attach_org" ON "fin_operation_attachments" ("organization_id");
@@ -3020,6 +3122,7 @@ CREATE INDEX "idx_fop_reservation" ON "fin_operations" ("reservation_id");
 CREATE INDEX "idx_fop_source_ref" ON "fin_operations" ("source", "source_ref");
 CREATE INDEX "idx_fop_status" ON "fin_operations" ("status");
 CREATE INDEX "idx_fop_type" ON "fin_operations" ("op_type");
+CREATE INDEX "idx_fin_payment_methods_org" ON "fin_payment_methods" ("organization_id", "position");
 CREATE INDEX "idx_rt_next_run" ON "fin_recurring_templates" ("next_run_at", "is_active");
 CREATE INDEX "idx_rt_org" ON "fin_recurring_templates" ("organization_id");
 CREATE INDEX "idx_fin_tax_rates_lookup" ON "fin_tax_rates" ("organization_id", "code", "valid_from");
@@ -3060,10 +3163,17 @@ CREATE INDEX "idx_invoice_series_channel" ON "invoice_series" ("organization_id"
 CREATE INDEX "idx_invoice_series_property" ON "invoice_series" ("organization_id", "property_id");
 CREATE UNIQUE INDEX "idx_invoice_series_row" ON "invoice_series" (organization_id, (COALESCE(property_id, '')), code);
 CREATE INDEX "idx_invoices_corrects" ON "invoices" ("corrects_invoice_id");
+CREATE UNIQUE INDEX "idx_invoices_external_ref" ON "invoices" ("organization_id", "external_ref") WHERE external_ref IS NOT NULL;
 CREATE INDEX "idx_invoices_folio" ON "invoices" ("folio_id");
 CREATE INDEX "idx_invoices_issued" ON "invoices" ("issued_at");
 CREATE INDEX "idx_invoices_number" ON "invoices" ("organization_id", "invoice_number");
 CREATE INDEX "idx_invoices_reservation" ON "invoices" ("reservation_id");
+CREATE INDEX "idx_kiosk_devices_org" ON "kiosk_devices" ("organization_id");
+CREATE INDEX "idx_kiosk_devices_property" ON "kiosk_devices" ("organization_id", "property_id");
+CREATE INDEX "idx_kiosk_events_device_at" ON "kiosk_events" ("organization_id", "device_id", "at");
+CREATE INDEX "idx_kiosk_events_org" ON "kiosk_events" ("organization_id");
+CREATE INDEX "idx_kiosk_pairings_code" ON "kiosk_pairings" ("code_hash");
+CREATE INDEX "idx_kiosk_pairings_org" ON "kiosk_pairings" ("organization_id");
 CREATE INDEX "idx_org_currencies_org" ON "organization_currencies" ("organization_id");
 CREATE INDEX "idx_partner_reports_period" ON "partner_reports" ("organization_id", "period");
 CREATE INDEX "idx_platform_audit_org" ON "platform_audit" ("organization_id", "at");
@@ -3182,6 +3292,7 @@ CREATE INDEX IF NOT EXISTS "idx_fin_invoice_tax_totals_org" ON "fin_invoice_tax_
 CREATE INDEX IF NOT EXISTS "idx_fin_operation_attachments_org" ON "fin_operation_attachments" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_operation_audit_org" ON "fin_operation_audit" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_operations_org" ON "fin_operations" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_fin_payment_methods_org" ON "fin_payment_methods" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_recurring_templates_org" ON "fin_recurring_templates" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_tax_rates_org" ON "fin_tax_rates" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_finance_accounts_org" ON "finance_accounts" ("organization_id");
@@ -3201,6 +3312,9 @@ CREATE INDEX IF NOT EXISTS "idx_invoice_counters_org" ON "invoice_counters" ("or
 CREATE INDEX IF NOT EXISTS "idx_invoice_periods_org" ON "invoice_periods" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_invoice_series_org" ON "invoice_series" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_invoices_org" ON "invoices" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_kiosk_devices_org" ON "kiosk_devices" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_kiosk_events_org" ON "kiosk_events" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_kiosk_pairings_org" ON "kiosk_pairings" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_organization_currencies_org" ON "organization_currencies" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_organization_features_org" ON "organization_features" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_organization_invoicing_org" ON "organization_invoicing" ("organization_id");
@@ -3324,6 +3438,8 @@ ALTER TABLE "fin_operation_audit" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "fin_operations" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "fin_payment_methods" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "fin_recurring_templates" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "fin_tax_rates" ALTER COLUMN "organization_id"
@@ -3361,6 +3477,12 @@ ALTER TABLE "invoice_periods" ALTER COLUMN "organization_id"
 ALTER TABLE "invoice_series" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "invoices" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "kiosk_devices" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "kiosk_events" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "kiosk_pairings" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "organization_currencies" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -3738,6 +3860,12 @@ CREATE POLICY "fin_operations_tenant" ON "fin_operations"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
+ALTER TABLE "fin_payment_methods" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "fin_payment_methods" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "fin_payment_methods_tenant" ON "fin_payment_methods"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
 ALTER TABLE "fin_recurring_templates" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "fin_recurring_templates" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "fin_recurring_templates_tenant" ON "fin_recurring_templates"
@@ -3880,6 +4008,24 @@ ALTER TABLE "invoices" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "invoices" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "invoices_tenant" ON "invoices"
   USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "kiosk_devices" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "kiosk_devices" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "kiosk_devices_tenant" ON "kiosk_devices"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "kiosk_events" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "kiosk_events" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "kiosk_events_tenant" ON "kiosk_events"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "kiosk_pairings" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "kiosk_pairings" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "kiosk_pairings_tenant" ON "kiosk_pairings"
+  USING ("organization_id" = current_setting('app.organization_id') OR "code_hash" = NULLIF(current_setting('app.public_token', true), ''))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
 ALTER TABLE "menu_items" ENABLE ROW LEVEL SECURITY;

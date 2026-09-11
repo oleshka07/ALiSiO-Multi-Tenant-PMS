@@ -257,6 +257,51 @@ if (problems.length) {
 const BASELINE_FILE = 'scripts/property-scope-baseline.json';
 const READ_BASELINE = JSON.parse(fs.readFileSync(path.join(ROOT, BASELINE_FILE), 'utf8'));
 
+/**
+ * Читання, для якого вісь обʼєкта зробила б запит НЕПРАВИЛЬНИМ.
+ *
+ * Два роди, і обидва — не «забули дописати умову», а «умова тут була б
+ * помилкою»:
+ *
+ *   обʼєкт — ВІДПОВІДЬ  запит саме для того й існує, щоб дізнатися, у якому
+ *                       будинку стоїть термінал (обмін коду парування);
+ *   обʼєкт ВУЖЧИЙ за    унікальність ключа — на рівні РАХУНКУ, і читання,
+ *   унікальність        звужене до будинку, не побачило б дубля із сусіднього
+ *                       корпусу: він проліз би до `INSERT` і виліз 500-кою на
+ *                       порушенні UNIQUE замість названої відмови.
+ *
+ * ── Навіщо окремо від базлайна ──────────────────────────────────────────
+ *
+ * Базлайн — це борг: число, яке треба опустити до нуля. Тут інше — рядки,
+ * де нуль недосяжний ЗА ПОБУДОВОЮ, бо обʼєкт є ВІДПОВІДДЮ запиту, а не його
+ * умовою. Так само `pg-schema.mjs` тримає окремо `rlsIdentity`: «читання до
+ * того, як відомий орендар; політика тут не обмежила б запит, вона зламала б
+ * його».
+ *
+ * Змішати їх означало б одне з двох: або новий файл дописує собі стелю в
+ * базлайн — і храповик перестає бути храповиком, бо «нове порушення» лікується
+ * рядком у JSON; або такий запит переписують так, щоб гейт замовк, і виходить
+ * імпорт заради гейта (§3.2.1).
+ *
+ * Ключ — файл І таблиця, а не файл: виняток на весь файл накрив би й наступне
+ * читання, дописане туди через місяць. Причина обовʼязкова і друкується в
+ * звіті: список без причин стає смітником за два тижні.
+ */
+const IDENTITY_READS = new Map([
+  ['src/apps/kiosk/data/devices.repo.ts:kiosk_pairings',
+    'обмін коду парування: рядок і КАЖЕ, у якому будинку стоїть термінал — '
+    + 'обʼєкт тут відповідь, а не умова. Читається одним запитом під '
+    + 'runWithPublicToken по sha256 коду (інваріант 14), і все, що далі, '
+    + 'уже названо цим будинком'],
+  ['src/apps/kiosk/api/walkin.handlers.ts:reservations',
+    'чи вже заводили попередню бронь за цим external_ref. Ключ унікальний '
+    + 'у межах РАХУНКУ (UNIQUE (organization_id, external_ref), INC-301), '
+    + 'бо контракт із дельтою Winhotel — winhotel-ob:<номер>, без будинку. '
+    + 'Звузити читання до корпусу означало б не побачити дубля із сусіднього '
+    + 'і впертися в UNIQUE 500-кою; будинок звіряється РЯДКОМ НИЖЧЕ і чужий '
+    + 'дає 404 (інваріант 5)'],
+]);
+
 const scopedTables = propertyScopedTables(ROOT);
 
 // ── Самоперевірка: правило, яке не червоніє на зразку, не правило ───────────
@@ -337,20 +382,29 @@ if (list) {
   console.log('');
   for (const [file, hits] of [...reads].sort((a, b) => b[1].length - a[1].length)) {
     console.log(`  ${file}  (${hits.length}, стеля ${READ_BASELINE[file] ?? 0})`);
-    for (const h of hits) console.log(`    :${h.line}  ${h.verdict === 'unknown' ? 'невизначено' : 'мовчить    '}  ${h.table}`);
+    for (const h of hits) {
+      const why = IDENTITY_READS.get(`${file}:${h.table}`);
+      console.log(`    :${h.line}  ${h.verdict === 'unknown' ? 'невизначено' : 'мовчить    '}  ${h.table}`
+        + (why ? `  — ВСТАНОВЛЮЄ ОБʼЄКТ: ${why}` : ''));
+    }
   }
   console.log('');
+  if (IDENTITY_READS.size > 0) {
+    console.log(`  ${IDENTITY_READS.size} читань не рахуються храповиком: обʼєкт у них — відповідь, не умова.`);
+    console.log('');
+  }
 }
 
 if (strict) {
   const grown = [];
   const shrunk = [];
   for (const [file, hits] of reads) {
+    const counted = hits.filter((h) => !IDENTITY_READS.has(`${file}:${h.table}`));
     const ceiling = READ_BASELINE[file] ?? 0;
-    if (hits.length > ceiling) grown.push({ file, now: hits.length, ceiling, hits });
+    if (counted.length > ceiling) grown.push({ file, now: counted.length, ceiling, hits: counted });
   }
   for (const [file, ceiling] of Object.entries(READ_BASELINE)) {
-    const now = reads.get(file)?.length ?? 0;
+    const now = (reads.get(file) ?? []).filter((h) => !IDENTITY_READS.has(`${file}:${h.table}`)).length;
     if (now < ceiling) shrunk.push({ file, now, ceiling });
   }
 

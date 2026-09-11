@@ -252,6 +252,7 @@ docker run --rm -v alisio-prod_app-data:/data -v "$PWD/deploy/backups:/b" \
 |---|---|---|
 | 03:10 / 03:40 | дамп дня + заливка у зовнішнє сховище | `deploy/backup.sh prod\|beta` |
 | 04:40 | GDPR-ретенція: знеособлення прострочених реєстрацій | `deploy/run-cron.sh <env> /api/cron/gdpr-retention` |
+| 07:00 | «Kiosk heute»: лист рецепції про добу терміналів — у фазі `external` це РОБОЧИЙ список («виїхали, фактуру виставити в чужій системі»), у `alisio` — журнал. Обʼєкт без живого термінала пропускається мовчки | `deploy/run-cron.sh <env> /api/cron/kiosk-day` |
 | кожні 5 хв | стрічки бронювань менеджера каналів | `deploy/run-cron.sh <env> /api/cron/channels-pull` |
 | щохвилини | розсилка наявності й цін у менеджер каналів; застрягле доповідає, не червоніє (екран «Канал-менеджер») | `deploy/run-cron.sh <env> /api/cron/channels-publish` |
 | 09:00 | вік дампа і off-site копії; >30 год — алерт | `deploy/check-backup-age.sh` |

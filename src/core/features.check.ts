@@ -53,6 +53,11 @@ const EXPECTED_DEFAULT: Record<Key, boolean> = {
   // OFF (10.09.2026): вмикає лише готель, який переїжджає з Winhotel; поки
   // вимкнено, приймальний маршрут знімка відповідає 404.
   winhotel_import: false,
+  // OFF (10.09.2026): платний застосунок — термінал у холі. Дефолт ON тут
+  // означав би, що кожен готель на сервері має маршрут, який приймає код
+  // парування; OFF робить його 400-кою для всіх, крім тих, хто термінал
+  // справді купив.
+  kiosk: false,
   // OFF від 05.09.2026 (П15): платний модуль. Наявні готелі мають явний
   // рядок enabled = TRUE, поставлений міграцією 0065.
   tasks: false,
@@ -125,6 +130,12 @@ const INTEGRATIONS: Partial<Record<Key, string>> = {
   // варта ключа стоїть у хендлері (`hasFeature`, 404 на вимкненому), а не в
   // `withModule`.
   winhotel_import: 'src/apps/winhotel-import/api/snapshots.handlers.ts',
+  // Кіоск — те саме, і з тієї самої причини: біля термінала немає людини з
+  // сесією, тож `withModule` не підходить. Варта стоїть у дверях пристрою
+  // (`requireDevice` → `hasFeature`, 404 на вимкненому) — тобто в ОДНОМУ
+  // місці на всі маршрути кіоска, а не в кожному. Парування питає той самий
+  // ключ окремо (`pairing.handlers.ts`), бо туди приходять ще без токена.
+  kiosk: 'src/apps/kiosk/api/session.handlers.ts',
 };
 for (const [key, file] of Object.entries(INTEGRATIONS)) {
   assert.ok(fs.existsSync(file!), `інтеграція «${key}»: файл варти ${file} зник`);

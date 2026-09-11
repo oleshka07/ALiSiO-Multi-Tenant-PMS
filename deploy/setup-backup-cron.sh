@@ -71,6 +71,7 @@ WANT="$(cat <<LINES
 ${DUMP_AT} cd ${ROOT} && ./deploy/backup.sh ${ENV_NAME} >> ${LOG} 2>&1 ${MARK}
 0 9 * * * cd ${ROOT} && ./deploy/check-backup-age.sh ${ENV_NAME} >> ${LOG} 2>&1 ${MARK}
 40 4 * * * cd ${ROOT} && ./deploy/run-cron.sh ${ENV_NAME} /api/cron/gdpr-retention >> ${LOG} 2>&1 ${MARK}
+0 7 * * * cd ${ROOT} && ./deploy/run-cron.sh ${ENV_NAME} /api/cron/kiosk-day >> ${LOG} 2>&1 ${MARK}
 */5 * * * * cd ${ROOT} && ./deploy/run-cron.sh ${ENV_NAME} /api/cron/channels-pull >> ${LOG} 2>&1 ${MARK}
 * * * * * cd ${ROOT} && ./deploy/run-cron.sh ${ENV_NAME} /api/cron/channels-publish >> ${LOG} 2>&1 ${MARK}
 LINES

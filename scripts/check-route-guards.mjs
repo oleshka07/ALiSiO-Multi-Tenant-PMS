@@ -157,6 +157,11 @@ const PUBLIC = new RegExp([
   // Прийом знімка Winhotel — за токеном агента, без сесії (proxy.ts). Рівно
   // цей шлях: решта `/api/apps/…`, якщо зʼявиться, лишається під вартою.
   '/api/apps/winhotel-import/snapshots\\b',
+  // Кіоск — увесь префікс безсесійний (proxy.ts): під ним лежить ЛИШЕ те, що
+  // відповідає терміналу. Картка застосунку живе під `/api/settings/apps/`,
+  // тобто в звичайному контурі, і цей перелік її не пропускає — варта в ній
+  // обовʼязкова, як у будь-якому маршруті адмінки.
+  '/api/apps/kiosk/',
 ].join('|'));
 
 // Read the alias table with a regex rather than JSON.parse: tsconfig.json is
