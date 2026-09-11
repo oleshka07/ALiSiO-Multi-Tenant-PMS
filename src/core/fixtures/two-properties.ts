@@ -41,6 +41,10 @@
  */
 import { getSql } from '../db/async.ts';
 import { runWithOrganization } from '../auth/tenant-context';
+// Дати броней фікстури рахуються ВІД СЬОГОДНІ — причина при самому обчисленні.
+// Пояс названо явно (`'UTC'`), а не лишено на дефолт: організація фікстури
+// його не має, і мовчазний запасний варіант тут читався б як вибір.
+import { shiftDays, shiftMonths, todayIn } from '../hotel-day.ts';
 
 /** Один обʼєкт фікстури — усе, що на ньому висить. */
 export interface FixtureProperty {
@@ -71,6 +75,15 @@ export interface TwoProperties {
   totalUnits: number;
   /** 5 — і це не 2 і не 3. */
   totalReservations: number;
+  /**
+   * Місяць, у якому лежать УСІ броні фікстури, як `YYYY-MM`.
+   *
+   * Фікстура називає його сама, і це не зручність. Доти дати були абсолютні
+   * (`2026-09-…`), і `registry-scope.check` зашив собі `MONTH = '2026-09'`
+   * окремим рядком — тобто те саме знання жило у двох місцях і мусило
+   * розійтися. Воно й розійшлося, щойно дати поїхали.
+   */
+  month: string;
 }
 
 const ORG = '__two_props__org';
@@ -209,6 +222,18 @@ async function seedInsideTenant(
 
   const seeded: Record<string, FixtureProperty> = {};
 
+  // Якір — ПЕРШЕ число наступного місяця, і це не косметика.
+  //
+  // «Сьогодні + 30» було б так само відносним і так само майбутнім, але
+  // завело б НОВУ календарну бомбу того самого роду: 25-го числа вікно
+  // фікстури перетнуло б межу місяця, і `registry-scope`, який питає книгу за
+  // ОДИН місяць, знайшов би лише частину броней. Тобто гейт зеленів би
+  // більшість днів і червонів кілька — найгірший з можливих станів.
+  //
+  // З якорем на 1-ше число всі пʼять броней лежать у межах 1–9 числа одного
+  // місяця ЗАВЖДИ, хай коли б його запустили.
+  const firstOfNextMonth = `${shiftMonths(`${todayIn('UTC').slice(0, 7)}-01`, 1).slice(0, 7)}-01`;
+
   for (const plan of PLAN) {
     await sql.run(
       'INSERT INTO properties (id, organization_id, name, slug, city_tax_per_night) VALUES (?, ?, ?, ?, ?)',
@@ -253,13 +278,31 @@ async function seedInsideTenant(
       reservationIds.push(id);
       // Дати рознесені по обʼєктах, щоб «усі броні на цю ніч» теж давало
       // різні числа, а не одне спільне.
-      const day = 10 + i + (plan.key === 'b' ? 5 : 0);
+      //
+      // ВІД СЬОГОДНІ і в МАЙБУТНЄ, ніколи абсолютні. Тут стояло
+      // `2026-09-${10 + i}`, і 11.09.2026 воно зробило рівно те, від чого
+      // фікстура мала б захищати: бронь `__two_props__prop_a_res_1` (10.09,
+      // `confirmed`) переїхала з «сьогодні» у «вчора» і стала для
+      // `alerts.scope.check` ПРОСТРОЧЕНИМ ЗАЇЗДОМ. Гейт чекав один, дістав
+      // два — і `npm run check` почервонів на обох гілках без жодної правки
+      // коду, від самого руху календаря. Напередодні CI був зелений (beta
+      // #894, main #869), тож причину не видно ні в діфі, ні в історії.
+      //
+      // Гірше за поломку: воно САМО вилікувалось би ~19.09, коли ці дати
+      // вийшли б за тижневе вікно прострочення, — тобто гейт червонів би
+      // тиждень, а потім зеленів, нікого нічого не навчивши.
+      //
+      // Майбутнє, а не минуле, бо ці броні не мусять потрапляти в ЖОДНЕ вікно
+      // «сьогодні / вчора / цього тижня»: фікстура несе вісь ОБʼЄКТА, і
+      // домішувати їй ще й вісь часу означає, що кожен гейт, який питає про
+      // сьогодні, мовчки успадковує чужі рядки. Рознесення A/B збережено.
+      const checkIn = shiftDays(firstOfNextMonth, i + (plan.key === 'b' ? 5 : 0));
       await sql.run(
         `INSERT INTO reservations (id, organization_id, property_id, unit_id, unit_type_id, guest_id,
                                    check_in, check_out, nights, adults, total_price, currency)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT default_currency FROM organizations WHERE id = ?))`,
         [id, ORG, plan.id, unitIds[i], unitTypeIds[0], '__two_props__guest',
-          `2026-09-${day}`, `2026-09-${day + 1}`, 1, 2, plan.stayTotal, ORG],
+          checkIn, shiftDays(checkIn, 1), 1, 2, plan.stayTotal, ORG],
       );
     }
 
@@ -282,6 +325,7 @@ async function seedInsideTenant(
     b: seeded.b,
     totalUnits: seeded.a.unitIds.length + seeded.b.unitIds.length,
     totalReservations: seeded.a.reservationIds.length + seeded.b.reservationIds.length,
+    month: firstOfNextMonth.slice(0, 7),
   };
 
   assertNotDegenerate(fixture);

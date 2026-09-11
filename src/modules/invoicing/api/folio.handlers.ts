@@ -11,6 +11,7 @@
  * what they did yesterday.
  */
 import { NextResponse } from 'next/server';
+import { isRefusal } from '@core/http/refusal';
 import { withPermission } from '@core/auth/session';
 import { requestPropertyScope } from '@core/auth/property-scope';
 import * as folios from '../data/folio.repo';
@@ -20,6 +21,29 @@ import { postCatalogService } from '../data/stay-charges.repo';
 
 /** An error a person should read, and one they should not. */
 function refuse(e: unknown) {
+  // ── ВЛАСТИВІСТЬ іде першою, візерунок — лише як спадок ──────────────────
+  //
+  // Названа відмова (`refuse(текст, статус)`) НЕСЕ СВІЙ РІД у собі, тож її не
+  // треба впізнавати за текстом. Писач платежів (`folio-payments.repo`) уже
+  // кидає саме так — усі десять місць, — і для нього список нижче більше не
+  // працює й не потрібен.
+  //
+  // Чому це не косметика. Список візерунків програвав рівно тим способом, від
+  // якого застерігає AGENTS §3.2.1, і це виміряно, а не помічено очима:
+  // прогін одинадцяти справжніх текстів відмов платіжного шляху через цей
+  // самий вираз дав ПʼЯТЬ незбігів, з них два досяжні по HTTP і обидва
+  // доведені живим прогоном 11.09.2026:
+  //
+  //   «A German cash or card payment must name its invoice …»  → 500 «Failed»
+  //   «Cash and card payments need a folio with a property …»  → 500 «Failed»
+  //
+  // Тобто сервер знав причину, а портьє бачив ПОЛОМКУ там, де було правило.
+  // Збіг «must be» ловив сусідні речення випадково — саме тому це був
+  // візерунок, а не твердження.
+  if (isRefusal(e)) {
+    return NextResponse.json({ error: e.message }, { status: e.status });
+  }
+
   const message = e instanceof Error ? e.message : 'Failed';
   // These are decisions, not faults: the caller asked for something the rules
   // do not allow, and the sentence explains which rule.

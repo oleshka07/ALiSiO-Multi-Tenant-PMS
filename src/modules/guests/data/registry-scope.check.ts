@@ -74,7 +74,11 @@ await runWithOrganization(fx.organizationId, async () => {
   }
 });
 
-const MONTH = '2026-09';
+// Місяць називає ФІКСТУРА, а не цей файл. Тут стояло `'2026-09'` — те саме
+// знання в другому місці, і воно розійшлося тієї ж миті, коли дати фікстури
+// стали відносними: книга за вересень не бачила жодної броні, і шість
+// тверджень поспіль віддали нуль.
+const MONTH = fx.month;
 const FEES_A = fx.a.reservationIds.length * fx.a.cityTaxPerNight;   // 2 × 20 = 40
 const FEES_B = fx.b.reservationIds.length * fx.b.cityTaxPerNight;   // 3 × 35 = 105
 const FEES_ALL = FEES_A + FEES_B;                                    // 145

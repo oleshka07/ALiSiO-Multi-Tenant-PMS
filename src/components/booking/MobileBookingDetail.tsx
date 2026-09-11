@@ -7,6 +7,8 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
+// Чим закінчився прийом оплати — одне рішення на обидва екрани броні.
+import { paymentOutcome } from '@/modules/bookings/ui/payment-outcome';
 import {
   X, MoreVertical, Phone, Mail, MessageCircle, Check, Clock, Lock,
   Plus, Copy, ExternalLink, Edit3, Loader2, Save, Receipt,
@@ -203,14 +205,25 @@ export default function MobileBookingDetail({
       }),
     });
     const data = await res.json().catch(() => ({}));
+    // Те саме рішення, що на десктопі, і тими самими дверима: доти обидва
+    // екрани мали цю ваду слово в слово, тож портьє з планшета і портьє з
+    // телефона бачили одну й ту саму неправду.
+    const outcome = paymentOutcome(res.ok, data);
+    if (outcome.kind === 'refused') {
+      showToast(`❌ ${outcome.message || tUi('Не вдалося записати оплату')}`);
+      return;
+    }
     setPayForm({ amount: '', method: 'cash', type: 'partial', notes: '' });
     setShowPayForm(false);
     onFetchPayments(b.id);
     onFetchBookings();
-    const msg = data?.kind === 'marker'
-      ? '✅ Позначка збережена'
-      : 'Платіж додано!';
-    showToast(msg);
+    if (outcome.kind === 'marker') {
+      showToast(tUi('✅ Позначка збережена'));
+    } else if (outcome.kind === 'recorded_not_in_folio') {
+      showToast(`⚠️ ${outcome.message || tUi('Гроші записано в касу, але не в рахунок гостя.')}`);
+    } else {
+      showToast(tUi('Платіж додано!'));
+    }
   };
 
   const handleDeletePayment = async (pId: string) => {

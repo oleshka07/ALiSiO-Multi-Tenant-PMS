@@ -20,6 +20,9 @@
  * way an invoice is corrected by storno, and DSFinV-K expects exactly that.
  */
 import { getSql } from '@core/db/async';
+// `@core/http/refusal`, не `errors`: цей файл читають перевірки під ГОЛИМ
+// node, а `errors.ts` тягне `next/server` (див. шапку refusal.ts, П3).
+import { refuse } from '@core/http/refusal';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { propertyOrSharedFilter, type PropertyScope } from '@core/property-scope';
 import { hasFeature } from '@core/features';
@@ -76,19 +79,19 @@ export async function recordPayment(input: {
   const sql = getSql();
 
   if (!PAYMENT_METHODS.includes(input.method as PaymentMethod)) {
-    throw new Error(`method must be one of ${PAYMENT_METHODS.join(', ')}`);
+    refuse(`method must be one of ${PAYMENT_METHODS.join(', ')}`, 409);
   }
   const imported = input.source === 'import';
-  if (input.source != null && !imported) throw new Error("source must be 'import' or absent");
+  if (input.source != null && !imported) refuse("source must be 'import' or absent", 409);
   if (imported && !IMPORT_ORIGIN.test(String(input.origin ?? ''))) {
-    throw new Error('An imported payment must name its origin (winhotel:<LNR>) — without it the import label would bypass the till guard');
+    refuse('An imported payment must name its origin (winhotel:<LNR>) — without it the import label would bypass the till guard', 409);
   }
-  if (!imported && input.origin) throw new Error('origin is only for imported payments');
+  if (!imported && input.origin) refuse('origin is only for imported payments', 409);
   const amount = Number(input.amount);
   // Zero is not a payment; negative IS one — cash handed back is a till
   // movement with its sign, not a deleted row.
   if (!Number.isFinite(amount) || amount === 0) {
-    throw new Error('amount must be a non-zero number');
+    refuse('amount must be a non-zero number', 409);
   }
 
   // The folio's property: directly for a reservation-less folio (events),
@@ -100,7 +103,7 @@ export async function recordPayment(input: {
        LEFT JOIN reservations r ON r.id = f.reservation_id
       WHERE f.id = ? AND f.organization_id = ?`,
     [input.folioId, organizationId]);
-  if (!folio) throw new Error('Folio not found');
+  if (!folio) refuse('Folio not found', 409);
 
   let mustSign = false;
   // Імпортована оплата — не наш касовий оборот: варту й підпис не проходить.
@@ -110,15 +113,15 @@ export async function recordPayment(input: {
     // prove its till is NOT German, so it fails closed: organizations do not
     // carry a country, only properties do.
     if (!folio.property_id) {
-      throw new Error('Cash and card payments need a folio with a property — the till belongs to a place');
+      refuse('Cash and card payments need a folio with a property — the till belongs to a place', 409);
     }
     const place = await sql.row<any>(
       'SELECT country FROM properties WHERE id = ?', [folio.property_id]);
     const country = String(place?.country || '').toUpperCase();
     if (country === 'DE') {
       if (!(await hasFeature(organizationId, 'fiscal_de'))) {
-        throw new Error(
-          'Cash and card payments for a German property are still recorded in the old till system — the fiscal module (TSE) is not enabled yet');
+        refuse(
+          'Cash and card payments for a German property are still recorded in the old till system — the fiscal module (TSE) is not enabled yet', 409);
       }
       mustSign = true;
     }
@@ -128,7 +131,7 @@ export async function recordPayment(input: {
     const inv = await sql.row<any>(
       'SELECT id FROM invoices WHERE id = ? AND organization_id = ?',
       [input.invoiceId, organizationId]);
-    if (!inv) throw new Error('Invoice not found');
+    if (!inv) refuse('Invoice not found', 409);
   }
 
   // The beleg the guest receives IS the invoice — Belegausgabepflicht wants
@@ -138,7 +141,7 @@ export async function recordPayment(input: {
   let vatAmounts: VatAmount[] = [];
   if (mustSign) {
     if (!input.invoiceId) {
-      throw new Error('A German cash or card payment must name its invoice — the invoice is the beleg being signed');
+      refuse('A German cash or card payment must name its invoice — the invoice is the beleg being signed', 409);
     }
     vatAmounts = (await sql.rows<any>(
       `SELECT vat_rate, gross_amount FROM fin_invoice_tax_totals

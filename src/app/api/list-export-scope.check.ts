@@ -118,7 +118,11 @@ const count = (text: string, needle: RegExp) => (text.match(needle) || []).lengt
 
 // ── Вивантаження броней ────────────────────────────────────────────────────
 
-const range = 'from=2026-09-01&to=2026-09-30&format=csv';
+// Вікно бере місяць У ФІКСТУРИ. Зашитий вересень був другим місцем, де жило
+// те саме знання, — і щойно дати фікстури стали відносними, вивантаження
+// броней віддало порожній файл, у якому «чужих рядків 0» істинне беззмістовно.
+// Фактури нижче лишаються на своїй даті: їх сіє цей файл, не фікстура.
+const range = `from=${fx.month}-01&to=${fx.month}-28&format=csv`;
 const bkA = await call(exportBookings as never, `http://local/api/bookings/export-csv?${range}&property_id=${fx.a.id}`);
 say(count(bkA.text, /A1-|A2-/g) > 0 && count(bkA.text, /B1-/g) === 0,
   `у файлі обʼєкта А немає номерів обʼєкта Б (чужих рядків ${count(bkA.text, /B1-/g)})`);
