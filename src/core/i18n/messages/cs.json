@@ -3720,5 +3720,11 @@
   "Платіж додано!": "Platba přidána!",
   "Гроші записано в касу, але не в рахунок гостя.": "Peníze jsou v pokladně, ale ne na účtu hosta.",
   "✅ Позначка збережена": "✅ Značka uložena",
-  "✅ Позначка збережена. Реальна транзакція з'явиться через Teya / банк.": "✅ Značka uložena. Skutečná transakce se objeví přes Teya / banku."
+  "✅ Позначка збережена. Реальна транзакція з'явиться через Teya / банк.": "✅ Značka uložena. Skutečná transakce se objeví přes Teya / banku.",
+  "Шукаю…": "Hledám…",
+  "Уже в базі — оберіть, щоб не заводити вдруге": "Už v databázi — vyberte, ať nezakládáte podruhé",
+  "Нікого не обрали — заведемо нового": "Nikdo nevybrán — založíme nového",
+  "гість із бази": "host z databáze",
+  "без контактів": "bez kontaktů",
+  "Відвʼязати і завести нового": "Odpojit a založit nového"
 }

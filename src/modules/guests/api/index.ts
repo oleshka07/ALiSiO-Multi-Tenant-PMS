@@ -54,6 +54,14 @@ export type { GuestWithStats, CreateGuestInput, RegisteredGuest } from '../domai
 export { findOrCreateGuest } from '../data/guest-dedup.repo';
 export type { GuestDedupArgs, GuestDedupResult } from '../data/guest-dedup.repo';
 
+// А це — для тих, хто гостя НЕ вгадує, а дає людині обрати зі списку
+// (форма броні). Названий id береться як названий і не звіряється з
+// ланцюжком: остання ланка дедупу — збіг за самим іменем, тож двоє
+// однофамільців для нього одна людина. Чужий і злитий id — названі відмови,
+// не мовчазна підміна (`booking-guest.repo`, гейт `booking-guest.check`).
+export { resolveBookingGuest } from '../data/booking-guest.repo';
+export type { BookingGuestArgs, BookingGuestResult } from '../data/booking-guest.repo';
+
 // Згоди GDPR живуть на ОСОБІ й переживають бронь (INC-300, CORE-GAPS п. 6).
 // `guest_registrations.consent_*` лишається і значить інше — згоду на ЦЬОМУ
 // перебуванні, частину Meldeschein. Через місяць вони виглядатимуть як

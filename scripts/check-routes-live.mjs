@@ -514,6 +514,52 @@ async function main() {
       claim('броні', String(row?.last_name ?? row?.lastName ?? one?.guest?.last_name ?? '') === 'Пробна',
         'у картці той самий гість');
 
+      // ── Названий гість: вибір проти здогаду ──────────────────────────
+      //
+      // Сервер вгадує людину ланцюжком пошта → телефон → ТОЧНЕ ІМʼЯ. Остання
+      // ланка зводить двох однофамільців без контактів в одного, і поки
+      // вибору не було, це просто траплялось. Тепер форма дає обрати, і
+      // твердження тут про те, що вибір ШАНУЮТЬ.
+      //
+      // Фікстура невироджена по головній осі: другий гість заводиться з ТИМ
+      // САМИМ імʼям і прізвищем, тобто здогад дав би ПЕРШОГО. Якби імена
+      // різнились, твердження було б зелене і на коді, який вибір ігнорує.
+      const twinRes = await call(cookie, '/api/guests', {
+        method: 'POST',
+        body: JSON.stringify({ firstName: 'Ганна', lastName: 'Пробна', email: 'twin@probe.test' }),
+      });
+      const twin = await body(twinRes);
+      const twinId = twin?.id ?? twin?.guest?.id;
+      if (claim('броні', twinRes.status === 201 && !!twinId, `однофамільця заведено (${twinRes.status})`)) {
+        const pickedRes = await call(cookie, '/api/bookings', {
+          method: 'POST',
+          body: JSON.stringify({
+            firstName: 'Ганна', lastName: 'Пробна', guestId: twinId,
+            unitId: unit.id, checkIn: day(41), checkOut: day(43), nights: 2,
+            adults: 1, status: 'confirmed', source: 'direct', totalPrice: 120,
+          }),
+        });
+        const picked = await body(pickedRes);
+        claim('броні', pickedRes.status === 201 && picked?.guestId === twinId,
+          `названий гість узятий як названий (${picked?.guestId === twinId ? 'він' : picked?.guestId})`);
+        claim('броні', picked?.guestId !== booking.guestId,
+          'вибір і здогад дали РІЗНИХ гостей — інакше твердження вище порожнє');
+      }
+
+      // Чужий ідентифікатор — 404 із ТЕКСТОМ, а не 500 «Failed to create».
+      // Саме так воно й поводилось, поки `catch` ковтав названу відмову:
+      // портьє бачив поломку там, де було правило (інваріант 6).
+      const alienRes = await call(cookie, '/api/bookings', {
+        method: 'POST',
+        body: JSON.stringify({
+          firstName: 'Ганна', lastName: 'Пробна', guestId: 'g_definitely_not_ours',
+          unitId: unit.id, checkIn: day(45), checkOut: day(47), nights: 2,
+          adults: 1, status: 'confirmed', source: 'direct', totalPrice: 120,
+        }),
+      });
+      claim('броні', alienRes.status === 404,
+        `чужий гість — 404, не 500 (${alienRes.status})`);
+
       // ── Гостьовий портал ───────────────────────────────────────────────
       //
       // Рівно та сторінка, яка не відкривалась півтора місяця. Токен береться

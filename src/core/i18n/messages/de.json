@@ -3688,5 +3688,11 @@
   "Платіж додано!": "Zahlung erfasst!",
   "Гроші записано в касу, але не в рахунок гостя.": "Das Geld ist in der Kasse, aber nicht auf der Gastrechnung.",
   "✅ Позначка збережена": "✅ Markierung gespeichert",
-  "✅ Позначка збережена. Реальна транзакція з'явиться через Teya / банк.": "✅ Markierung gespeichert. Die echte Transaktion erscheint über Teya / Bank."
+  "✅ Позначка збережена. Реальна транзакція з'явиться через Teya / банк.": "✅ Markierung gespeichert. Die echte Transaktion erscheint über Teya / Bank.",
+  "Шукаю…": "Suche…",
+  "Уже в базі — оберіть, щоб не заводити вдруге": "Bereits vorhanden — auswählen, statt neu anzulegen",
+  "Нікого не обрали — заведемо нового": "Niemand ausgewählt — ein neuer Gast wird angelegt",
+  "гість із бази": "Gast aus der Datenbank",
+  "без контактів": "ohne Kontaktdaten",
+  "Відвʼязати і завести нового": "Trennen und neuen Gast anlegen"
 }

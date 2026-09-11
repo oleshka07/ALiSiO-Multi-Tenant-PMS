@@ -2,7 +2,7 @@
 import { noteStay } from '../data/stay-notes';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
-import { findOrCreateGuest } from '@guests';
+import { resolveBookingGuest } from '@guests';
 import { writeBookingAudit, getBookingActor } from './audit-log.handlers';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
 import { ownedUnit } from '../data/owned.repo';
@@ -60,6 +60,8 @@ export const createReservation = withPermission('manage_bookings', async (reques
 
     const {
       firstName, lastName, email, phone,
+      // Гість, якого рецепція ОБРАЛА зі списку. Порожньо — як було, вгадування.
+      guestId,
       unitId, checkIn, checkOut, nights,
       adults, children, status, source, totalPrice,
       commissionAmount: commissionOverride,
@@ -104,14 +106,20 @@ export const createReservation = withPermission('manage_bookings', async (reques
 
     const org = { id: actor.organizationId };
 
-    const dedup = await findOrCreateGuest({
+    // Названий гість береться як названий; не названий — вгадується, як було.
+    // Різниця не косметична: остання ланка дедупу — збіг за САМИМ ІМЕНЕМ, тож
+    // двоє однофамільців без пошти й телефону для нього одна людина. Поки
+    // вибору не було, це просто траплялось; із вибором мовчазна підміна
+    // означала б «показали одного, записали іншого» (`booking-guest.repo`).
+    const dedup = await resolveBookingGuest({
       organizationId: org.id,
+      guestId: guestId || null,
       firstName,
       lastName,
       email: email || null,
       phone: phone || null,
     });
-    const guestId = dedup.id;
+    const resolvedGuestId = dedup.id;
 
     const resId = `r_${Date.now()}`;
     let commissionAmount = 0;
@@ -170,7 +178,7 @@ export const createReservation = withPermission('manage_bookings', async (reques
       await insertingStay(() => sql.run(`
         INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, check_in, check_out, nights, adults, children, status, payment_status, source, total_price, currency, commission_amount, guest_page_token, city_tax_amount, city_tax_included, city_tax_paid, internal_notes)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [resId, actor.organizationId, unit.property_id, unitId, guestId, checkIn, checkOut, nights || 1, adults || 1, children || 0, bookingStatus, body.paymentStatus || 'unpaid', source || 'direct', priceGiven, currency, commissionAmount, guestPageToken, finalCityTaxAmount, finalCityTaxIncluded, finalCityTaxPaid, internalNotes || null]),
+      `, [resId, actor.organizationId, unit.property_id, unitId, resolvedGuestId, checkIn, checkOut, nights || 1, adults || 1, children || 0, bookingStatus, body.paymentStatus || 'unpaid', source || 'direct', priceGiven, currency, commissionAmount, guestPageToken, finalCityTaxAmount, finalCityTaxIncluded, finalCityTaxPaid, internalNotes || null]),
       { unitId, checkIn, checkOut, reservationId: resId });
     } catch (e) {
       if (e instanceof UnitOverlap) {
@@ -190,9 +198,14 @@ export const createReservation = withPermission('manage_bookings', async (reques
       await writeBookingAudit(resId, 'created', `Створено: ${firstName} ${lastName} · ${source || 'direct'}`, actor, null, afterRow);
     } catch { /* non-critical */ }
 
-    return NextResponse.json({ id: resId, guestId, guestPageToken }, { status: 201 });
+    return NextResponse.json({ id: resId, guestId: resolvedGuestId, guestPageToken }, { status: 201 });
   } catch (error) {
-    console.error('POST /api/bookings error:', error);
-    return NextResponse.json({ error: 'Failed to create booking' }, { status: 500 });
+    // `handleError`, не голий 500: відмови, названі на місці кидання
+    // (`resolveBookingGuest` — чужий гість, злитий рядок), мусять дійти до
+    // портьє СВОЇМ текстом і своїм статусом. Доти цей `catch` згортав їх у
+    // «Failed to create booking», і екран показував поломку там, де було
+    // правило — рівно те, від чого інваріант 6. Решта й далі йде в лог і
+    // повертає 500 загальним реченням.
+    return handleError('POST /api/bookings', error, 'Failed to create booking');
   }
 });

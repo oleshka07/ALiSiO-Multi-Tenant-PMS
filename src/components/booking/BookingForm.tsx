@@ -7,6 +7,7 @@ import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import { shouldAskQuote, readQuote, type QuoteResponse } from './quote-prefill';
 import { percentOf } from '@core/money';
+import GuestPicker, { type PickedGuest } from './GuestPicker';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -169,6 +170,10 @@ export default function BookingForm({
   onCancel,
 }: BookingFormProps) {
   const t = useT();
+  // Гість, обраний зі списку. `null` — не обирали, і тоді сервер вгадує
+  // по-старому. Тримається ОКРЕМО від `form`, бо це не поле форми, а
+  // рішення «це та сама людина», яке форма лише передає далі.
+  const [pickedGuest, setPickedGuest] = useState<PickedGuest | null>(null);
   const [form, setForm] = useState<BookingFormValues>(() => {
     const base = emptyValues();
     if (!initial) return base;
@@ -472,6 +477,9 @@ export default function BookingForm({
             lastName: form.lastName.trim(),
             email: form.email.trim() || null,
             phone: form.phone.trim() || null,
+            // Названий гість — сервер бере його як названий і не звіряє з
+            // ланцюжком дедупу (`resolveBookingGuest`).
+            guestId: pickedGuest?.id ?? null,
             unitId,
             checkIn: form.checkIn,
             checkOut: form.checkOut,
@@ -666,9 +674,36 @@ export default function BookingForm({
           </div>
           <div className="form-group">
             <label className="form-label">{t('Прізвище *')}</label>
-            <input className="form-input" value={form.lastName} onChange={e => setForm(p => ({ ...p, lastName: e.target.value }))} placeholder={t('Іваненко')} />
+            <input className="form-input" value={form.lastName}
+              onChange={e => {
+                // Правка прізвища відвʼязує обраного: інакше на екрані стояло
+                // б одне прізвище, а на сервер їхав би id іншої людини — рівно
+                // та неправда, проти якої весь цей вибір і зроблено.
+                if (pickedGuest) setPickedGuest(null);
+                setForm(p => ({ ...p, lastName: e.target.value }));
+              }}
+              placeholder={t('Іваненко')} />
           </div>
         </div>
+        {/* Пошук іде за прізвищем — так шукає людина за стійкою. */}
+        <GuestPicker
+          term={form.lastName}
+          picked={pickedGuest}
+          onPick={(g) => {
+            setPickedGuest(g);
+            // Поля заповнюються з обраного, але лишаються редагованими:
+            // гість міг змінити телефон, і виправити його треба тут, а не
+            // окремим заходом у довідник.
+            setForm(p => ({
+              ...p,
+              firstName: g.first_name || p.firstName,
+              lastName: g.last_name || p.lastName,
+              email: g.email || p.email,
+              phone: g.phone || p.phone,
+            }));
+          }}
+          onClear={() => setPickedGuest(null)}
+        />
         <div className="form-row">
           <div className="form-group">
             <label className="form-label">Email</label>
