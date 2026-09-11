@@ -48,3 +48,32 @@
 .guest-card-help { font-size: 0.95rem; opacity: 0.85; }
 
 .guest-note { margin: 0; font-size: 0.95rem; color: #6b6157; text-align: center; }
+
+/* ── Крок пошуку ─────────────────────────────────────────────────────────
+ *
+ * Поля тут СПРАВЖНІ `<input>`, а не свої прямокутники з екранною клавіатурою,
+ * як у кіоску: у телефона клавіатура вже є, вона знає мову власника, його
+ * автозаповнення і його спосіб набирати номер. Своя тут була б гіршою в
+ * усьому.
+ */
+.guest-form { display: flex; flex-direction: column; gap: 1rem; }
+.guest-field { display: flex; flex-direction: column; gap: 0.35rem; }
+.guest-label { font-size: 0.95rem; color: #6b6157; }
+.guest-input {
+  padding: 0.9rem 1rem;
+  border-radius: 0.8rem;
+  border: 1px solid #e0d7c9;
+  background: #fffdf9;
+  color: inherit;
+  font-size: 1.1rem;
+  /* 16px і більше — інакше iOS Safari підсовує сторінку при фокусі. */
+}
+.guest-input:focus { outline: 2px solid #9a7b42; outline-offset: 1px; }
+.guest-quiet {
+  padding: 0.8rem;
+  border: 0;
+  background: none;
+  color: #6b6157;
+  font-size: 1rem;
+  cursor: pointer;
+}

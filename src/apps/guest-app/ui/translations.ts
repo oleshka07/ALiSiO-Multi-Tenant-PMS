@@ -67,6 +67,20 @@ export interface GuestStrings {
   welcome: string;
   lead: string;
   soon: string;
+
+  findTitle: string;
+  findLead: string;
+  phone: string;
+  guestName: string;
+  continue: string;
+  back: string;
+  searching: string;
+  /** «Не знайшли» — одне речення на «не те набрано» і на «немає»: різниця між
+   *  ними це спосіб промацати базу, а не допомога гостю. */
+  notFound: string;
+  /** Бронь є, гостьової сторінки немає — це ІНША порада, ніж «перевірте номер». */
+  noPage: string;
+  tooMany: string;
 }
 
 const de: GuestStrings = {
@@ -77,6 +91,17 @@ const de: GuestStrings = {
   noBooking: 'Ich brauche ein Zimmer',
   noBookingHelp: 'Verfügbarkeit ansehen und buchen',
   soon: 'Dieser Schritt wird gerade eingerichtet.',
+
+  findTitle: 'Ihre Buchung finden',
+  findLead: 'Telefonnummer und Name wie bei der Buchung.',
+  phone: 'Telefonnummer',
+  guestName: 'Name',
+  continue: 'Weiter',
+  back: 'Zurück',
+  searching: 'Wird gesucht…',
+  notFound: 'Wir konnten die Buchung nicht finden. Bitte prüfen Sie die Angaben oder wenden Sie sich an die Rezeption.',
+  noPage: 'Ihre Buchung ist da, aber der Online-Check-in ist dafür nicht freigeschaltet. Bitte wenden Sie sich an die Rezeption.',
+  tooMany: 'Zu viele Versuche. Bitte in einer Viertelstunde erneut versuchen.',
 };
 
 const en: GuestStrings = {
@@ -87,6 +112,17 @@ const en: GuestStrings = {
   noBooking: 'I need a room',
   noBookingHelp: 'See availability and book',
   soon: 'This step is still being set up.',
+
+  findTitle: 'Find your booking',
+  findLead: 'Phone number and name as in the booking.',
+  phone: 'Phone number',
+  guestName: 'Name',
+  continue: 'Continue',
+  back: 'Back',
+  searching: 'Searching…',
+  notFound: 'We could not find the booking. Please check the details or contact the reception.',
+  noPage: 'Your booking is there, but online check-in is not enabled for it. Please contact the reception.',
+  tooMany: 'Too many attempts. Please try again in fifteen minutes.',
 };
 
 export const GUEST_STRINGS: Record<GuestLang, GuestStrings> = { de, en };

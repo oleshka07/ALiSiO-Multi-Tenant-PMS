@@ -19,12 +19,21 @@ import {
 
 const LANG_KEY = 'alisio.guest.lang';
 
-export function GuestHome({ propertyName, initialLang }: {
+type Step = 'home' | 'find';
+
+export function GuestHome({ propertyName, appKey, initialLang }: {
   propertyName: string;
+  /** Ключ із адреси — його ж маршрут пошуку чекає в тілі (інваріант 8). */
+  appKey: string;
   /** Мова з `Accept-Language`, вирішена на СЕРВЕРІ — щоб перший екран не блимав. */
   initialLang: GuestLang;
 }) {
   const [lang, setLang] = useState<GuestLang>(initialLang);
+  const [step, setStep] = useState<Step>('home');
+  const [phone, setPhone] = useState('');
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
 
   // Вибір гостя перемагає пристрій — але читається вже після гідратації, тож
   // ЩЕ раз, і лише якщо він є. На телефоні це чесно: наступний відвідувач
@@ -45,12 +54,46 @@ export function GuestHome({ propertyName, initialLang }: {
 
   const s = GUEST_STRINGS[lang];
 
+  /**
+   * Пошук своєї броні.
+   *
+   * Відповідь маршруту навмисно бідна — `{ found, token }` і не більше, — тож
+   * екран не має що показати, крім переходу або речення. Саме так і треба:
+   * усе, що приїхало в браузер, уже видно тому, хто дивиться через плече.
+   */
+  async function doFind() {
+    setMessage(null);
+    setBusy(true);
+    try {
+      const res = await fetch('/api/apps/guest/find', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ key: appKey, phone, name }),
+      });
+      if (res.status === 429) { setMessage(s.tooMany); return; }
+      const body = await res.json().catch(() => ({})) as { found?: boolean; token?: string; reason?: string };
+      if (body.found && body.token) {
+        // Гостьова сторінка вже вміє реєстрацію, документ, згоди й Meldeschein —
+        // другого заселення в продукті не заводиться.
+        window.location.href = `/guest/${body.token}`;
+        return;
+      }
+      setMessage(body.reason === 'no_page' ? s.noPage : s.notFound);
+    } catch {
+      // Мережа впала — те саме речення, що й «не знайшли»: гостю однаково
+      // робити одне й те саме, а різниця нічого йому не додає.
+      setMessage(s.notFound);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <main className="guest-root" data-step="home">
+    <main className="guest-root" data-step={step}>
       <header className="guest-top">
         <p className="guest-house">{propertyName}</p>
-        <h1 className="guest-welcome">{s.welcome}</h1>
-        <p className="guest-lead">{s.lead}</p>
+        <h1 className="guest-welcome">{step === 'find' ? s.findTitle : s.welcome}</h1>
+        {step === 'home' && <p className="guest-lead">{s.lead}</p>}
         {/*
           Перемикач мови стоїть ЛИШЕ на перших двох екранах (КІ20): далі гість
           уже в потоці з набраними даними, і мову там міняють не «бо
@@ -71,24 +114,74 @@ export function GuestHome({ propertyName, initialLang }: {
         </div>
       </header>
 
-      <div className="guest-cards">
-        <button type="button" className="guest-card" data-primary="true" disabled>
-          <span className="guest-card-title">{s.haveBooking}</span>
-          <span className="guest-card-help">{s.haveBookingHelp}</span>
-        </button>
-        <button type="button" className="guest-card" disabled>
-          <span className="guest-card-title">{s.noBooking}</span>
-          <span className="guest-card-help">{s.noBookingHelp}</span>
-        </button>
-      </div>
+      {step === 'home' && (
+        <>
+          <div className="guest-cards">
+            <button
+              type="button"
+              className="guest-card"
+              data-primary="true"
+              onClick={() => { setStep('find'); setMessage(null); }}
+            >
+              <span className="guest-card-title">{s.haveBooking}</span>
+              <span className="guest-card-help">{s.haveBookingHelp}</span>
+            </button>
+            {/*
+              Гілка «немає бронювання» — крок 4, ще не підключена, і екран каже
+              це СЛОВАМИ. Кнопка, яка виглядає робочою і нічого не робить, —
+              той самий рід, що намальований QR у нікуди: гість вирішує, що
+              зламаний готель, а не що функція ще не дороблена.
+            */}
+            <button type="button" className="guest-card" disabled>
+              <span className="guest-card-title">{s.noBooking}</span>
+              <span className="guest-card-help">{s.noBookingHelp}</span>
+            </button>
+          </div>
+          <p className="guest-note">{s.soon}</p>
+        </>
+      )}
 
-      {/*
-        Обидві картки поки неактивні, і екран каже це СЛОВАМИ. Кнопка, яка
-        виглядає робочою і нічого не робить, — це той самий рід, що
-        намальований QR у нікуди: гість вирішує, що зламаний готель, а не що
-        функція ще не дороблена.
-      */}
-      <p className="guest-note">{s.soon}</p>
+      {step === 'find' && (
+        <form
+          className="guest-form"
+          onSubmit={(e) => { e.preventDefault(); void doFind(); }}
+        >
+          <p className="guest-lead">{s.findLead}</p>
+          <label className="guest-field">
+            <span className="guest-label">{s.phone}</span>
+            {/* `tel` — щоб телефон відкрив цифрову клавіатуру, а не літери. */}
+            <input
+              className="guest-input"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+          </label>
+          <label className="guest-field">
+            <span className="guest-label">{s.guestName}</span>
+            <input
+              className="guest-input"
+              type="text"
+              autoComplete="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </label>
+          {message && <p className="guest-note" role="status">{message}</p>}
+          <button type="submit" className="guest-card" data-primary="true" disabled={busy}>
+            <span className="guest-card-title">{busy ? s.searching : s.continue}</span>
+          </button>
+          <button
+            type="button"
+            className="guest-quiet"
+            onClick={() => { setStep('home'); setMessage(null); }}
+          >
+            {s.back}
+          </button>
+        </form>
+      )}
     </main>
   );
 }

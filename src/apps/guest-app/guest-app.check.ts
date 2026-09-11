@@ -29,6 +29,7 @@ const { runWithOrganization } = await import('@core/auth/tenant-context.ts');
 const { propertyByAppKey } = await import('./data/property.repo.ts');
 const { generateGuestAppKey, readGuestAppKey } = await import('./domain/key.ts');
 const { languageFromHeader } = await import('./ui/translations.ts');
+const lookup = await import('./api/lookup.handlers.ts');
 
 const sql = getSql();
 
@@ -122,6 +123,146 @@ try {
   assert.strictEqual(languageFromHeader('en;q=0'), 'de',
     'вага 0 означає «не треба», а не «треба найбільше»');
   console.log('  ok  5. мова з Accept-Language: за вагою, з регіоном, із запасним дефолтом');
+
+  // ── 6. Пошук своєї броні: обидва чинники, вузьке вікно, лише токен ──────
+  //
+  // Найчутливіше місце застосунку: маршрут шукає ЖИВИХ ЛЮДЕЙ без жодної
+  // автентифікації і відкритий з будь-якого телефона. Тому тут не одне
+  // твердження, а всі чотири властивості з розбору односерверної вирви, і
+  // кожна — обома боками: «чуже не знаходиться» істинне й на маршруті, який
+  // не знаходить нічого ніколи.
+  const today = new Date().toISOString().slice(0, 10);
+  const day = (n: number) =>
+    new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+
+  const seedStay = async (org: string, prop: string, id: string, opts: {
+    first: string; last: string; phone: string | null; from: number;
+    token?: string | null; unit?: string | null;
+  }) => runWithOrganization(org, async () => {
+    await sql.run(
+      'INSERT INTO guests (id, organization_id, first_name, last_name, phone) VALUES (?, ?, ?, ?, ?)',
+      [`${id}_g`, org, opts.first, opts.last, opts.phone]);
+    await sql.run(
+      `INSERT INTO reservations (id, organization_id, property_id, guest_id, check_in, check_out,
+                                 nights, adults, status, currency, guest_page_token)
+       VALUES (?, ?, ?, ?, ?, ?, 1, 2, 'confirmed', 'EUR', ?)`,
+      [id, org, prop, `${id}_g`, day(opts.from), day(opts.from + 1),
+        opts.token === undefined ? `${id}_tok` : opts.token]);
+  });
+
+  await seedStay(A, PA, 'ga_ok', { first: 'Anna', last: 'Beispiel', phone: '+49 170 5551234', from: 0 });
+  await seedStay(A, PA, 'ga_far', { first: 'Fern', last: 'Weit', phone: '+49 170 5559999', from: 30 });
+  await seedStay(A, PA, 'ga_nopage', { first: 'Ohne', last: 'Seite', phone: '+49 170 5557777', from: 0, token: null });
+  // Той самий рахунок, ДРУГИЙ обʼєкт: вісь будинку, якої не видно з осі орендаря.
+  await runWithOrganization(A, () => sql.run(
+    `INSERT INTO properties (id, organization_id, name, slug, country) VALUES (?, ?, ?, ?, 'DE')`,
+    [`${PA}_2`, A, 'Haus Alpha Zwei', `${PA}_2`]));
+  await seedStay(A, `${PA}_2`, 'ga_other_house', { first: 'Neben', last: 'Haus', phone: '+49 170 5556666', from: 0 });
+  // Чужий рахунок.
+  await seedStay(B, PB, 'gb_alien', { first: 'Fremd', last: 'Gast', phone: '+49 170 5554444', from: 0 });
+
+  // Кожен виклик — зі СВОЄЇ адреси, і це не дрібниця сцени.
+  //
+  // Маршрут рахує невдалі спроби на IP (десять за чверть години), тож
+  // двадцять тверджень з однієї адреси впираються в ліміт, і кожне наступне
+  // починає стверджувати про 429 замість того, про що написано. Перша
+  // редакція цієї сцени так і впала — «бронь без сторінки віддала токен» на
+  // відповіді `429`. Ліміт перевіряється ОКРЕМО, унизу, і саме там він і
+  // має спрацювати.
+  let probe = 0;
+  const find = async (body: unknown, ip?: string) => {
+    probe += 1;
+    const res = await lookup.findStay(new Request('http://local/api/apps/guest/find', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': ip ?? `10.0.0.${probe}` },
+      body: JSON.stringify(body),
+    }));
+    return { status: res.status, body: await res.json() as Record<string, unknown> };
+  };
+
+  // а) правильна пара знаходить — і віддає ЛИШЕ токен
+  const hit = await find({ key: keyA, phone: '+49 170 5551234', name: 'Beispiel' });
+  assert.strictEqual(hit.body.found, true, `правильна пара не знайшла: ${JSON.stringify(hit.body)}`);
+  assert.strictEqual(hit.body.token, 'ga_ok_tok', 'віддано не той токен');
+  assert.deepStrictEqual(Object.keys(hit.body).sort(), ['found', 'token'],
+    `у відповіді є щось, крім токена: ${JSON.stringify(hit.body)}`);
+  const asText = JSON.stringify(hit.body);
+  for (const leak of ['Anna', 'Beispiel', day(0), '5551234']) {
+    assert.ok(!asText.includes(leak), `у відповідь протекло «${leak}»: ${asText}`);
+  }
+
+  // б) один чинник без другого — не знаходить. ОБИДВА боки.
+  assert.strictEqual((await find({ key: keyA, phone: '+49 170 5551234', name: 'Falsch' })).body.found, false,
+    'правильний телефон із чужим імʼям знайшов бронь — другий чинник не працює');
+  assert.strictEqual((await find({ key: keyA, phone: '+49 170 5550000', name: 'Beispiel' })).body.found, false,
+    'чужий телефон із правильним імʼям знайшов бронь');
+
+  // в) телефон у будь-якій формі — той самий номер (останні шість цифр)
+  for (const form of ['+49 170 5551234', '01705551234', '00491705551234', '170-555-1234']) {
+    assert.strictEqual((await find({ key: keyA, phone: form, name: 'Beispiel' })).body.found, true,
+      `форма номера «${form}» не знайшла ту саму бронь`);
+  }
+  // І зустрічна вісь: занадто короткий номер чинником НЕ є.
+  assert.strictEqual((await find({ key: keyA, phone: '1234', name: 'Beispiel' })).body.found, false,
+    'чотири цифри зійшли за номер — пошук звузився до половини готелю');
+
+  // г) імʼя і прізвище взаємозамінні: канали привозять їх переставленими
+  assert.strictEqual((await find({ key: keyA, phone: '+49 170 5551234', name: 'Anna' })).body.found, true,
+    'імʼя замість прізвища не спрацювало — гість із переставленою бронню розвернеться');
+
+  // ґ) вікно: бронь за 30 днів не знаходиться, сьогоднішня — так
+  assert.strictEqual((await find({ key: keyA, phone: '+49 170 5559999', name: 'Weit' })).body.found, false,
+    'бронь за 30 днів знайшлась — вікно не працює, і множина для вгадування знову вся база');
+
+  // д) бронь є, сторінки немає — ОКРЕМИЙ рід, не «не знайдено»
+  const noPage = await find({ key: keyA, phone: '+49 170 5557777', name: 'Seite' });
+  assert.strictEqual(noPage.body.found, false, 'бронь без сторінки віддала токен');
+  assert.strictEqual(noPage.body.reason, 'no_page',
+    'бронь без гостьової сторінки не відрізнена від «не знайдено» — гість шукатиме помилку в тому, що набрав');
+
+  // е) чужий БУДИНОК того самого рахунку — не своя бронь (INC-029)
+  assert.strictEqual((await find({ key: keyA, phone: '+49 170 5556666', name: 'Haus' })).body.found, false,
+    'ключ корпусу А знайшов бронь корпусу Б того ж рахунку');
+  // ж) чужий РАХУНОК — тим більше
+  assert.strictEqual((await find({ key: keyA, phone: '+49 170 5554444', name: 'Gast' })).body.found, false,
+    'ключ рахунку А знайшов бронь рахунку Б');
+  // І зустрічна вісь для обох: своїм ключем ці броні ЗНАХОДЯТЬСЯ — інакше
+  // твердження вище були б зелені й на маршруті, що не знаходить нічого.
+  assert.strictEqual((await find({ key: keyB, phone: '+49 170 5554444', name: 'Gast' })).body.found, true,
+    'рахунок Б не знаходить власної броні — тоді «чуже не знайшлось» нічого не доводить');
+
+  // з) сміття і неправильне — ОДНАКОВА відповідь: різниця це спосіб промацати
+  const garbage = await find({ key: keyA, phone: null, name: 42 });
+  const wrong = await find({ key: keyA, phone: '+49 170 5550000', name: 'Niemand' });
+  assert.deepStrictEqual(garbage.body, wrong.body,
+    `криве і неправильне відповідають по-різному: ${JSON.stringify(garbage.body)} проти ${JSON.stringify(wrong.body)}`);
+  assert.strictEqual(garbage.status, wrong.status, 'різні статуси на криве і на неправильне');
+
+  // и) без ключа — 404, як і на сторінці
+  assert.strictEqual((await find({ phone: '+49 170 5551234', name: 'Beispiel' })).status, 404,
+    'запит без ключа не відмовив 404');
+  console.log('  ok  6. пошук: два чинники, вікно, лише токен, окремий no_page, свій будинок і свій рахунок');
+
+  // ── 7. Лічильник спроб: четверта властивість, без якої решта марна ───────
+  //
+  // Вікно ±1 день робить множину для вгадування маленькою — і це ж робить її
+  // придатною до ПЕРЕБОРУ. Пара «телефон + імʼя» без ліміту підбирається за
+  // вечір. Тому десять невдач на адресу за чверть години — і адреса відмовлена.
+  //
+  // Обидва боки, як і скрізь: одинадцята спроба з ТІЄЇ САМОЇ адреси
+  // відмовляється, а з іншої — ні. Без другої половини твердження було б
+  // зелене й на маршруті, який відмовляє всім.
+  const attacker = '203.0.113.7';
+  for (let i = 0; i < 10; i++) {
+    await find({ key: keyA, phone: `+49 170 111${String(i).padStart(4, '0')}`, name: 'Niemand' }, attacker);
+  }
+  const blocked = await find({ key: keyA, phone: '+49 170 5551234', name: 'Beispiel' }, attacker);
+  assert.strictEqual(blocked.status, 429,
+    `одинадцята спроба з тієї самої адреси пройшла (${blocked.status}) — пару «телефон + імʼя» можна підбирати перебором`);
+  const fromElsewhere = await find({ key: keyA, phone: '+49 170 5551234', name: 'Beispiel' }, '198.51.100.4');
+  assert.strictEqual(fromElsewhere.body.found, true,
+    'інша адреса теж відмовлена — ліміт стоїть не на адресі, і один перебірник закриває готель для всіх гостей');
+  console.log('  ok  7. десять невдач — адреса відмовлена; сусідня адреса працює');
 
   console.log('guest-app: ключ називає один будинок — свій, і сторінка говорить мовою телефона');
 } finally {

@@ -36,5 +36,5 @@ export default async function StayPage({ params }: { params: Promise<{ key: stri
 
   const lang = languageFromHeader((await headers()).get('accept-language'));
 
-  return <GuestHome propertyName={home.propertyName} initialLang={lang} />;
+  return <GuestHome propertyName={home.propertyName} appKey={key} initialLang={lang} />;
 }

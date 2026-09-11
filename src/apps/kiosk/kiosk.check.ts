@@ -819,7 +819,7 @@ try {
   // `<код>#<ключ кімнати>` — інакше рядки не були б унікальні. Тобто гість
   // друкує рівно те, що бачить у листі, і не знаходить нічого, бо в базі
   // лежить `1234567890#a`, а не `1234567890`.
-  await runWithOrganization(A, () => seedStay(A, P1, 'kc_code', { unitId: `${P1}_u2`, paymentStatus: 'paid', from: 7, to: 8 }));
+  await runWithOrganization(A, () => seedStay(A, P1, 'kc_code', { unitId: null, paymentStatus: 'paid', from: 7, to: 8 }));
   await runWithOrganization(A, () => sql.run(
     "UPDATE reservations SET check_in = ?, check_out = ?, status = 'confirmed' WHERE id = ?",
     [day(0), day(1), 'kc_code']));
@@ -965,10 +965,26 @@ try {
   // саме), і прізвища РІЗНІ — інакше «двоє Мустерів» не відрізнити від
   // одного, записаного двічі. Число 2 несумісне з прочитанням «замінює»:
   // те дає рівно 1.
-  await runWithOrganization(A, () => seedStay(A, P1, 'kc_pair', { unitId: `${P1}_u2`, paymentStatus: 'paid' }));
+  // Номер НЕ називається: його підбере саме заселення (auto-assign увімкнено
+  // дефолтом). Це не спрощення, а вимога СПРАВЖНЬОГО Postgres: там стоїть
+  // `no_double_booking` (EXCLUDE USING gist, 0133), і дві фікстури, що ділять
+  // один номер на ті самі ночі, відхиляються базою. На SQLite і на PGlite
+  // обмеження немає, тож сцена була зелена в обох — і впала лише на стенді
+  // AGENTS §7. Рівно те, від чого застерігає §7: PGlite доводить діалект, не
+  // обмеження.
+  // Дати засіву — ДАЛЕКІ, і лише потім бронь переносять на потрібну добу.
+  // Причина не в охайності: `seedStay` за замовчуванням кладе на завтра, а
+  // завтра ці номери вже зайняті ранішими фікстурами. На SQLite і PGlite це
+  // проходить (обмеження немає), а справжній Postgres відхиляє сам ІНСЕРТ —
+  // ще до того, як `UPDATE` перенесе бронь туди, де вільно. Кінцевий розклад
+  // при цьому чистий, тож вада видна лише на живому рушії (AGENTS §7).
+  await runWithOrganization(A, () => seedStay(A, P1, 'kc_pair', {
+    unitId: `${P1}_u3`, unitTypeId: `${P1}_ut2`, paymentStatus: 'paid', from: 20, to: 21,
+  }));
   await runWithOrganization(A, () => sql.run(
     "UPDATE reservations SET check_in = ?, check_out = ?, status = 'confirmed', adults = 2, registration_status = 'not_registered' WHERE id = ?",
-    [day(0), day(1), 'kc_pair']));
+    [day(1), day(2), 'kc_pair']));
+  await runWithOrganization(A, () => clean(`${P1}_u3`, 'clean'));
 
   const regOne = (guest: unknown) =>
     stay.registerStay(post('register', { reservationId: 'kc_pair', guests: [guest] }, datedTok));
@@ -1073,7 +1089,7 @@ try {
   };
 
   // а) не зареєстрований — політика реєстрації
-  await runWithOrganization(A, () => seedStay(A, P1, 'kc_no_reg', { unitId: `${P1}_u2`, paymentStatus: 'paid' }));
+  await runWithOrganization(A, () => seedStay(A, P1, 'kc_no_reg', { unitId: `${P1}_u1`, paymentStatus: 'paid', from: 22, to: 23 }));
   await runWithOrganization(A, () => sql.run(
     "UPDATE reservations SET check_in = ?, check_out = ?, registration_status = 'not_registered' WHERE id = ?",
     [day(0), day(1), 'kc_no_reg']));
@@ -1083,9 +1099,9 @@ try {
     'not_registered', 'очікували саме not_registered');
 
   // б) не оплачено — політика оплати ГОТЕЛЮ, а не терміналу
-  await runWithOrganization(A, () => seedStay(A, P1, 'kc_unpaid', { unitId: `${P1}_u2`, paymentStatus: 'unpaid' }));
+  await runWithOrganization(A, () => seedStay(A, P1, 'kc_unpaid', { unitId: `${P1}_u4`, unitTypeId: `${P1}_ut2`, paymentStatus: 'unpaid', from: 24, to: 25 }));
   await runWithOrganization(A, () => sql.run(
-    "UPDATE reservations SET check_in = ?, check_out = ? WHERE id = ?", [day(0), day(1), 'kc_unpaid']));
+    "UPDATE reservations SET check_in = ?, check_out = ? WHERE id = ?", [day(1), day(2), 'kc_unpaid']));
   await runWithOrganization(A, () => policy(P1, 'prepaid'));
   assert.strictEqual(await runWithOrganization(A, () => refused('не оплачено', 'kc_unpaid')),
     'payment_required', 'очікували саме payment_required');
@@ -1106,7 +1122,7 @@ try {
     "UPDATE properties SET kiosk_earliest_checkin = NULL WHERE id = ?", [P1]));
 
   // г) номер роздає рецепція — саме той випадок, який мовчав на живому екрані
-  await runWithOrganization(A, () => seedStay(A, P1, 'kc_no_unit', { unitId: null, paymentStatus: 'paid' }));
+  await runWithOrganization(A, () => seedStay(A, P1, 'kc_no_unit', { unitId: null, paymentStatus: 'paid', from: 26, to: 27 }));
   await runWithOrganization(A, () => sql.run(
     "UPDATE reservations SET check_in = ?, check_out = ? WHERE id = ?", [day(0), day(1), 'kc_no_unit']));
   await runWithOrganization(A, () => sql.run(
