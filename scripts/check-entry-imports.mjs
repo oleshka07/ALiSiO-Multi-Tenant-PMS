@@ -65,6 +65,14 @@ const DECLARED = [
   // готелі від нуля до фактури. Вхід у тому самому сенсі — його запускає
   // людина проти живого середовища, і `next/*` у ньому нема чому взятись.
   'check-onboarding-live.mjs',
+  // ── Знайдені перехресною перевіркою по `deploy/*.sh` (11.09.2026) ──────
+  //
+  // Усі три запускають У КОНТЕЙНЕРІ, і жодного гейт не бачив, бо дивився
+  // лише в DEPLOY.md. `seed-chart-of-accounts` через це впав на живому
+  // деплої бети; два інші просто ніколи не перевірялись — їм пощастило.
+  'seed-chart-of-accounts.mjs',   // deploy.sh, після смоуку
+  'check-isolation.mjs',          // to-postgres.sh
+  'pg-import.mjs',                // to-postgres.sh, через `docker run --entrypoint node`
 ];
 
 const live = fs.readdirSync(path.join(ROOT, 'scripts'))
@@ -79,11 +87,56 @@ const ENTRIES = [...DECLARED, ...live];
 // оператора зʼявиться в DEPLOY.md і не зʼявиться тут.
 const deploy = fs.readFileSync(path.join(ROOT, 'docs/DEPLOY.md'), 'utf8');
 const named = [...deploy.matchAll(/node\s+scripts\/([a-z0-9-]+\.mjs)/g)].map((m) => m[1]);
-const missing = [...new Set(named)].filter((f) => !ENTRIES.includes(f)).sort();
+
+// ── І те, що кличуть САМІ СКРИПТИ ДЕПЛОЮ ─────────────────────────────────
+//
+// Перехресна перевірка вище дивилась тільки в DEPLOY.md — тобто на те, що
+// запускає ЛЮДИНА. Але більшість входів запускає не людина, а `deploy.sh`, і
+// для них список лишався курованим: `seed-demo-stays.mjs` довелось дописати
+// в `DECLARED` рукою, з коментарем «перехресна перевірка нижче до нього не
+// дійде» (П5).
+//
+// Курований список — друге джерело істини, і воно програло рівно так, як
+// обіцяло, 11.09.2026: `deploy.sh` навчили кликати `seed-chart-of-accounts.mjs`,
+// у DEPLOY.md його немає, у `DECLARED` теж — гейт лишився зеленим, а на
+// живому деплої бети крок упав із
+// `Cannot find module '/app/node_modules/next/server' imported from
+// src/modules/finance/api/_guard.ts`. Скрипт тягнув ПОВНИЙ HTTP-фасад
+// `@finance` заради трьох функцій, які живуть у `data/axis-repair`.
+//
+// Тому джерело входів тепер те саме, що в `check-image-tools`: рядки
+// `node scripts/…` у `deploy/*.sh`. Два гейти, які по-різному відповідають на
+// питання «що запускають у образі», — це та сама розбіжність, лише повільніша.
+// Рахується лише виклик У КОНТЕЙНЕРІ, і це не дрібниця: `rehearse-merge.sh`
+// запускає `check-schema-drift.mjs` НА ХОСТІ, з робочої копії, де
+// `node_modules` на місці — для нього `next/*` не проблема, і вимагати від
+// нього чистоти було б хибно-червоним. Ознака та сама, що в
+// `check-image-tools`: рядок відкриває блок на `docker exec` / `docker run` /
+// `--entrypoint node`, і блок триває, доки рядки переносяться зворотним
+// слешем (виклик `pg-import` розбитий на пʼять рядків — саме на цьому
+// спіткнулась перша редакція того гейта).
+const fromShell = [];
+for (const f of fs.readdirSync(path.join(ROOT, 'deploy')).filter((x) => x.endsWith('.sh'))) {
+  const lines = fs.readFileSync(path.join(ROOT, 'deploy', f), 'utf8').split('\n');
+  let inContainer = false;
+  for (const line of lines) {
+    if (/docker\s+exec|docker\s+run|--entrypoint\s+node/.test(line)) inContainer = true;
+    if (inContainer) {
+      for (const m of line.matchAll(/node\s+scripts\/([a-z0-9-]+\.mjs)|["'\s]scripts\/([a-z0-9-]+\.mjs)/g)) {
+        fromShell.push(m[1] || m[2]);
+      }
+    }
+    // Блок закінчується на рядку, який не переноситься далі.
+    if (inContainer && !/\\\s*$/.test(line)) inContainer = false;
+  }
+}
+
+const missing = [...new Set([...named, ...fromShell])].filter((f) => !ENTRIES.includes(f)).sort();
 
 const problems = [];
 for (const f of missing) {
-  problems.push(`DEPLOY.md велить запускати scripts/${f}, а гейт його не перевіряє — допишіть у ENTRIES`);
+  const where = named.includes(f) ? 'DEPLOY.md' : 'скрипт деплою';
+  problems.push(`${where} велить запускати scripts/${f}, а гейт його не перевіряє — допишіть у ENTRIES`);
 }
 
 // Аліаси СПЕРШУ, гачок ПОТІМ.

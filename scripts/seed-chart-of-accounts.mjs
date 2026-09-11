@@ -40,9 +40,19 @@ if (has('--help') || (!has('--list') && !has('--all') && !val('--slug'))) {
 const { getSql } = await import('../src/core/db/async.ts');
 const { runWithOrganization } = await import('../src/core/auth/tenant-context.ts');
 const { CHART_OF_ACCOUNTS, BUSINESS_UNITS } = await import('../src/core/chart-of-accounts.ts');
-// Фасадом `@finance`, не з `data/` напряму: цей скрипт — код ПОЗА модулем
-// (разова дія адміністратора), і прямий імпорт нутрощів пробиває межу.
-const { wrongAxisRows, unknownGroupRows, repairAxes } = await import('../src/modules/finance/api/index.ts');
+// ВУЗЬКІ ДВЕРІ `@finance/axis`, не повний фасад і не `data/` напряму.
+//
+// Тут стояв фасад `@finance` із доводом «скрипт це код поза модулем, прямий
+// імпорт нутрощів пробиває межу». Довід правильний, висновок був неповний:
+// повний фасад тягне HTTP-обробники, а ті — `next/server`, якого в
+// прод-образі немає. Поки скрипт запускали руками зі стенда, це не
+// проявлялось; щойно 11.09.2026 його почав кликати `deploy.sh`, крок упав на
+// живій беті рядком `Cannot find module '/app/node_modules/next/server'
+// imported from src/modules/finance/api/_guard.ts`.
+//
+// Третій варіант — двері, що реекспортують лише потрібне з шару даних, без
+// обробників. Той самий прийом, що `@pricing/plans` і `@channels/outbox`.
+const { wrongAxisRows, unknownGroupRows, repairAxes } = await import('../src/modules/finance/api/axis.ts');
 
 const sql = getSql();
 const rnd = () => Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2, 10);
