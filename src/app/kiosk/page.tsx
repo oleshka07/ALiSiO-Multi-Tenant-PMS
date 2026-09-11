@@ -33,7 +33,7 @@ import {
 } from '@/apps/kiosk/ui/translations';
 
 type Step =
-  | 'start' | 'pair' | 'lookup' | 'find' | 'stay' | 'sign' | 'payment' | 'key'
+  | 'start' | 'pair' | 'lookup' | 'qr' | 'find' | 'stay' | 'sign' | 'payment' | 'key'
   | 'checkout' | 'done' | 'info' | 'walkin';
 
 /**
@@ -140,6 +140,9 @@ export default function KioskPage() {
   // термінал простоїть через північ, календар не має перестрибувати під рукою
   // гостя, який уже дивиться на місяць.
   const [today] = useState(() => localToday());
+  // QR передачі на телефон: малює СЕРВЕР, бо бібліотека QR у браузері
+  // термінала більше ні для чого не потрібна.
+  const [qr, setQr] = useState<{ image: string } | null>(null);
   const [pairCode, setPairCode] = useState('');
 
   const s = KIOSK_STRINGS[lang];
@@ -154,6 +157,7 @@ export default function KioskPage() {
     setActive('lastName');
     setFindBy('date');
     setPickingDate(false);
+    setQr(null);
     setIdle(false);
   }, []);
 
@@ -204,6 +208,15 @@ export default function KioskPage() {
 
   const type = (ch: string) => setFields((f) => ({ ...f, [active]: f[active] + ch }));
   const backspace = () => setFields((f) => ({ ...f, [active]: f[active].slice(0, -1) }));
+
+  /** Попросити в сервера QR для передачі заселення на телефон. */
+  async function showQr() {
+    const answer = await call('handoff');
+    // Відповідь ЧИТАЄТЬСЯ: без цього екран показував би порожню рамку на
+    // будь-якій відмові й мовчав би про причину.
+    if (answer?.ok && typeof answer.body?.image === 'string') setQr({ image: answer.body.image });
+    else setMessage(s.notFoundHelp);
+  }
 
   async function doFind() {
     setMessage(null);
@@ -318,7 +331,9 @@ export default function KioskPage() {
               ✕
             </button>
             <h1 className="kiosk-title">
-              {step === 'lookup' || step === 'find' ? s.lookupTitle : session?.property.name ?? ''}
+              {step === 'qr'
+                ? s.qrTitle
+                : (step === 'lookup' || step === 'find' ? s.lookupTitle : session?.property.name ?? '')}
             </h1>
             <span className="kiosk-bar-tail" />
           </div>
@@ -402,12 +417,30 @@ export default function KioskPage() {
                 <span className="kiosk-tile-title">{s.byConfirmation}</span>
                 <span className="kiosk-tile-help">{s.byConfirmationHelp}</span>
               </button>
-              <button type="button" className="kiosk-tile" disabled>
+              <button
+                type="button"
+                className="kiosk-tile"
+                onClick={wrap(() => { setQr(null); setStep('qr'); void showQr(); })}
+              >
                 <IconQr />
                 <span className="kiosk-tile-title">{s.byQr}</span>
                 <span className="kiosk-tile-help">{s.byQrHelp}</span>
               </button>
             </div>
+          </div>
+        )}
+
+        {step === 'qr' && (
+          <div className="kiosk-choice">
+            <p className="kiosk-note">{s.qrHelp}</p>
+            {qr
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={qr.image} alt={s.byQr} className="kiosk-qr" />
+              : <p className="kiosk-note">{message ?? '…'}</p>}
+            <p className="kiosk-note">{s.qrExpires}</p>
+            <button type="button" className="kiosk-slim" onClick={wrap(() => setStep('lookup'))}>
+              {s.back}
+            </button>
           </div>
         )}
 

@@ -64,6 +64,9 @@ export interface KioskStrings {
   byConfirmationHelp: string;
   byQr: string;
   byQrHelp: string;
+  qrTitle: string;
+  qrHelp: string;
+  qrExpires: string;
   confirmationNo: string;
   emailOrPhone: string;
   scanQr: string;
@@ -135,6 +138,9 @@ const de: KioskStrings = {
   byConfirmationHelp: 'Suche mit Buchungsnummer und Nachname.',
   byQr: 'QR-Code',
   byQrHelp: 'QR-Code scannen und am eigenen Handy fortfahren.',
+  qrTitle: 'Am Handy fortfahren',
+  qrHelp: 'Scannen Sie den Code mit der Kamera Ihres Handys. Der Check-in geht dort weiter.',
+  qrExpires: 'Der Code gilt 30 Minuten.',
   confirmationNo: 'Buchungsnummer',
   emailOrPhone: 'E-Mail oder Telefon',
   scanQr: 'QR-Code scannen',
@@ -206,6 +212,9 @@ const en: KioskStrings = {
   byConfirmationHelp: 'Search by booking number and last name.',
   byQr: 'QR code',
   byQrHelp: 'Scan the QR code and continue on your phone.',
+  qrTitle: 'Continue on your phone',
+  qrHelp: 'Scan the code with your phone camera. Check-in continues there.',
+  qrExpires: 'The code is valid for 30 minutes.',
   confirmationNo: 'Booking number',
   emailOrPhone: 'E-mail or phone',
   scanQr: 'Scan QR code',

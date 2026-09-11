@@ -50,6 +50,8 @@ const ALLOWED = new Map([
   ['src/modules/properties/api/photos.handlers.ts', 'photos — картинки типу, не місткість і не ціна'],
   ['src/modules/properties/data/cleaning.repo.ts', 'cleaning_status — стан прибирання номера, не наявність і не ціна (0092)'],
   ['src/modules/bookings/data/payment-status.repo.ts', 'payment_status — гроші, не ночі (В3: єдиний перерахунок із фоліо)'],
+  ['src/apps/kiosk/api/handoff.handlers.ts',
+    'guest_page_token — перепустка гостя на портал, не ніч і не ціна: канал про неї не знає й знати не мусить'],
   ['src/lib/db.ts', 'схема й засів'],
   // Фікстура перевірок: сіє в тимчасову базу свого `.check.ts`, яку жоден
   // канал ніколи не бачить. Двері черги тут не «забуті» — вони були б

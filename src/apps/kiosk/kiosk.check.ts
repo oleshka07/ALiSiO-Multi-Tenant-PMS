@@ -807,6 +807,43 @@ try {
   assert.strictEqual(seen.backgroundUrl, null, 'незаданий фон мав приїхати як null, а не зникнути');
   console.log('  ok  25. лого й фон доходять до екрана; javascript:, data: і «//» — відкинуті');
 
+  // ── 26. Передача на телефон: QR несе будинок і строк, і нічого більше ───
+  //
+  // Камери в холі немає, тож напрямок зворотний до звичного: QR малює ЕКРАН,
+  // а сканує гість своїм телефоном. У токені рівно організація, БУДИНОК і
+  // строк — ні гостя, ні броні: на цьому кроці термінал ще не знає, хто
+  // підійшов.
+  //
+  // Найважливіше тут — третє твердження. `unseal()` за побудовою пропускає
+  // НЕзапечатане наскрізь (сумісність із рядками до шифрування), тож читач,
+  // який просто викликає `unseal`, прийняв би відкритий текст
+  // `{"o":"чужа","p":"чужий"}` як дійсний токен. Діра завширшки з ворота, і
+  // видно її лише сценою.
+  const hand = await import('./domain/handoff.ts');
+  const ticket = hand.buildHandoff({ organizationId: A, propertyId: P1 });
+  const read = hand.readHandoff(ticket);
+  assert.strictEqual(read?.organizationId, A, `токен не назвав організацію: ${JSON.stringify(read)}`);
+  assert.strictEqual(read?.propertyId, P1, `токен не назвав будинок: ${JSON.stringify(read)}`);
+  // Ні гостя, ні броні в токені немає — навіть у сирому вигляді.
+  assert.ok(!Buffer.from(ticket, 'base64url').toString('utf8').includes('kc_find'),
+    'у токені передачі опинилась бронь');
+
+  // Відкритий текст замість печатки — відмова.
+  const naked = Buffer.from(JSON.stringify({ o: B, p: P2, e: Date.now() + 60_000 }), 'utf8').toString('base64url');
+  assert.strictEqual(hand.readHandoff(naked), null,
+    'НЕзапечатаний токен прийнято: unseal пропускає такий рядок наскрізь');
+
+  // Строк вийшов — відмова, і та сама відповідь, що на підробку.
+  const expired = hand.buildHandoff({ organizationId: A, propertyId: P1, now: Date.now() - (hand.HANDOFF_TTL_MINUTES + 1) * 60_000 });
+  assert.strictEqual(hand.readHandoff(expired), null, 'прострочений токен прийнято');
+  // Живий — ще живий: інакше сцена доводила б, що токен не працює ніколи.
+  assert.ok(hand.readHandoff(hand.buildHandoff({ organizationId: A, propertyId: P1 })),
+    'свіжий токен відкинуто');
+  for (const bad of ['', '   ', 'не-base64!!', Buffer.from('enc1:сміття', 'utf8').toString('base64url'), null, 42]) {
+    assert.strictEqual(hand.readHandoff(bad as never), null, `сміття ${JSON.stringify(bad)} прийнято як токен`);
+  }
+  console.log('  ok  26. QR передачі несе лише будинок і строк; відкритий текст і прострочене — відмова');
+
   console.log('  ok  kiosk: термінал робить лише своє — свій рахунок, свій корпус, свою бронь');
 } finally {
   await cleanup();

@@ -863,6 +863,51 @@ async function main() {
         claim('кіоск', noAlone.status === 400,
           `сам номер броні без прізвища — 400 (${noAlone.status})`);
 
+        // ── Передача заселення на телефон гостя ────────────────────────────
+        //
+        // Камери в холі немає, тож QR малює ЕКРАН. Перевіряється ЛАНЦЮЖОК, а
+        // не одна ланка: термінал дістає код → сторінка за ним відкривається
+        // БЕЗ сесії → той самий пошук на ній вимагає двох чинників → і
+        // підроблений токен вона не приймає.
+        const qrRes = await asDevice('handoff');
+        const qr = await body(qrRes);
+        claim('кіоск', qrRes.status === 200 && typeof qr?.image === 'string'
+          && qr.image.startsWith('data:image/'),
+          `термінал дістав намальований QR (${qrRes.status})`);
+        claim('кіоск', typeof qr?.url === 'string' && qr.url.includes('/kiosk/go/'),
+          'QR веде на сторінку передачі, а не кудись іще');
+        const ticket = String(qr?.url ?? '').split('/kiosk/go/')[1] ?? '';
+
+        // Сторінка телефона — публічна за призначенням: на тому кінці людина з
+        // вулиці. 307 тут означав би форму входу оператора в руках гостя — рівно
+        // та вада, що була в самого `/kiosk` (див. вище).
+        const phone = await fetch(`${BASE}/kiosk/go/${ticket}`, { redirect: 'manual' });
+        claim('кіоск', phone.status === 200,
+          `сторінка телефона відкривається без сесії (${phone.status}; 307 = вхід оператора)`);
+
+        const handoff = (payload) => fetch(`${BASE}/api/apps/kiosk/handoff/find`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const hOne = await handoff({ ticket, lastName: 'Muster' });
+        claim('кіоск', hOne.status === 400,
+          `телефон з одним чинником — 400, те саме правило, що на терміналі (${hOne.status})`);
+        const hTwo = await handoff({ ticket, lastName: 'Muster', checkIn: new Date().toISOString().slice(0, 10) });
+        const hTwoBody = await body(hTwo);
+        claim('кіоск', hTwo.status === 200 && typeof hTwoBody?.found === 'boolean',
+          `телефон із двома чинниками — 200 і поле found (${hTwo.status})`);
+
+        // Підробка: той самий вміст, але ВІДКРИТИМ текстом. `unseal` пропускає
+        // незапечатане наскрізь, тож читач без перевірки `isSealed` прийняв би
+        // це як дійсну перепустку на чужий будинок.
+        const forged = Buffer.from(JSON.stringify({
+          o: 'org_forged', p: 'prop_forged', e: Date.now() + 3_600_000,
+        }), 'utf8').toString('base64url');
+        const hFake = await handoff({ ticket: forged, lastName: 'Muster', checkIn: '2026-09-11' });
+        claim('кіоск', hFake.status === 400,
+          `непідписаний токен передачі відкинуто (${hFake.status})`);
+
         // Чужий токен — 401 із живого маршруту, а не 500 і не 200.
         const alienRes = await fetch(`${BASE}/api/apps/kiosk/session`, {
           headers: { authorization: `Bearer ${ORG}.${property.id}.kd_nope.${'a'.repeat(64)}` },
