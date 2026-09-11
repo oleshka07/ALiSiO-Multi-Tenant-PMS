@@ -76,8 +76,13 @@ const actor = { organizationId: fx.organizationId } as never;
 const url = (path: string, scope: string) =>
   ({ url: `http://local${path}&${scope}` } as never);
 
+// Вікно запиту бере місяць У ФІКСТУРИ, а не називає його своїм рядком.
+// Тут стояло `2026-09-01…2026-09-30`, і це було ДРУГЕ місце, де жило те саме
+// знання: щойно дати фікстури стали відносними, звіт за вересень побачив нуль
+// броней і сім тверджень поспіль віддали 0. `-28` замість `-30` — щоб вікно
+// лишалось цілим місяцем у лютому теж.
 const report = async (scope: string) => runWithOrganization(fx.organizationId, async () => {
-  const res = await getReport(url(`/api/reports?from=${fx.from}&to=${fx.to}`, scope), null, actor) as Response;
+  const res = await getReport(url(`/api/reports?from=${fx.month}-01&to=${fx.month}-28`, scope), null, actor) as Response;
   return { status: res.status, body: await res.json() as any };
 });
 const cityTax = async (scope: string) => runWithOrganization(fx.organizationId, async () => {

@@ -845,9 +845,9 @@ CREATE TABLE "fin_folio_items" (
   "service_order_id" TEXT,
   "source" TEXT DEFAULT 'manual' NOT NULL,
   "voided_by_item_id" TEXT,
+  "discount_of_item_id" TEXT,
   "invoice_id" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "discount_of_item_id" TEXT,
   "external_ref" TEXT,
   PRIMARY KEY ("id"),
   CHECK (kind IN ('lodging','service','fee','city_tax','manual')),
@@ -864,6 +864,8 @@ CREATE TABLE "fin_folio_payments" (
   "method" TEXT NOT NULL,
   "paid_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "received_by" TEXT,
+  "source" TEXT,
+  "origin" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "tse_status" TEXT,
   "tse_serial" TEXT,
@@ -877,8 +879,6 @@ CREATE TABLE "fin_folio_payments" (
   "tse_process_type" TEXT,
   "tse_process_data" TEXT,
   "method_id" TEXT,
-  "source" TEXT,
-  "origin" TEXT,
   "external_ref" TEXT,
   PRIMARY KEY ("id"),
   CHECK (method IN ('cash','card_terminal','transfer','voucher'))
@@ -1020,7 +1020,7 @@ CREATE TABLE "fin_payment_methods" (
   "name" TEXT,
   "kind" TEXT NOT NULL,
   "ledger_account" TEXT,
-  "settles_to_debtor" BIGINT DEFAULT 0 NOT NULL,
+  "settles_to_debtor" BOOLEAN DEFAULT false NOT NULL,
   "is_active" BOOLEAN DEFAULT true NOT NULL,
   "position" BIGINT DEFAULT 0 NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
@@ -1362,6 +1362,10 @@ CREATE TABLE "guests" (
   "document_number" TEXT,
   "date_of_birth" TEXT,
   "notes" TEXT,
+  "external_ref" TEXT,
+  "merged_at" TIMESTAMPTZ,
+  "merged_by" TEXT,
+  "merged_into" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "gender" TEXT,
@@ -1369,10 +1373,6 @@ CREATE TABLE "guests" (
   "whatsapp" TEXT,
   "language" TEXT,
   "source" TEXT DEFAULT 'direct',
-  "merged_into" TEXT,
-  "external_ref" TEXT,
-  "merged_at" TIMESTAMPTZ,
-  "merged_by" TEXT,
   PRIMARY KEY ("id"),
   CHECK (gender IN ('female', 'male', 'other'))
 );
@@ -1500,7 +1500,7 @@ CREATE TABLE "kiosk_events" (
   "kind" TEXT NOT NULL,
   "result" TEXT DEFAULT 'ok' NOT NULL,
   "detail" TEXT,
-  "at" TEXT DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') NOT NULL,
+  "at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
   CHECK (result IN ('ok', 'refused', 'error'))
 );
@@ -1770,6 +1770,7 @@ CREATE TABLE "properties" (
   "kiosk_signature" TEXT DEFAULT 'foreigners' NOT NULL,
   "kiosk_earliest_checkin" TEXT,
   "kiosk_latest_checkout" TEXT,
+  "guest_app_key" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("organization_id", "slug"),
   CHECK (checkout_balance_policy IN ('none', 'warning', 'blocking')),
@@ -2000,8 +2001,8 @@ CREATE TABLE "reservations" (
   "lodging_discount_reason" TEXT,
   "breakfast_included" BOOLEAN,
   "company_id" TEXT,
-  "is_pool_unit" BOOLEAN DEFAULT false NOT NULL,
   "external_ref" TEXT,
+  "is_pool_unit" BOOLEAN DEFAULT false NOT NULL,
   PRIMARY KEY ("id"),
   UNIQUE ("guest_page_token"),
   CHECK (status IN ('draft', 'tentative', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show')),
@@ -3191,6 +3192,7 @@ CREATE UNIQUE INDEX "idx_price_occupancy_row" ON "price_occupancy" (organization
 CREATE INDEX "idx_price_rules_org" ON "price_rules" ("organization_id");
 CREATE UNIQUE INDEX "idx_price_rules_promo_code" ON "price_rules" (organization_id, lower(code)) WHERE code IS NOT NULL;
 CREATE INDEX "idx_price_rules_property" ON "price_rules" ("property_id", "priority");
+CREATE UNIQUE INDEX "idx_properties_guest_app_key" ON "properties" ("guest_app_key") WHERE guest_app_key IS NOT NULL;
 CREATE INDEX "idx_property_amenities_org" ON "property_amenities" ("organization_id");
 CREATE INDEX "idx_property_amenities_property" ON "property_amenities" ("property_id");
 CREATE INDEX "idx_reservation_files_org" ON "reservation_files" ("organization_id");
@@ -4091,7 +4093,7 @@ CREATE POLICY "price_rules_tenant" ON "price_rules"
 ALTER TABLE "properties" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "properties" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "properties_tenant" ON "properties"
-  USING ("organization_id" = current_setting('app.organization_id'))
+  USING ("organization_id" = current_setting('app.organization_id') OR "guest_app_key" = NULLIF(current_setting('app.public_token', true), ''))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
 ALTER TABLE "property_amenities" ENABLE ROW LEVEL SECURITY;

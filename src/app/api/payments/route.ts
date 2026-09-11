@@ -99,6 +99,11 @@ export const POST = withPermission('manage_payments', async (
       // Route to the logged-in user's personal cash account.
       // Each admin has a default_cash_account_id in app_users (e.g. Андрій → 'Андріїв cash').
       // Without this, every cash payment falls to the first cash account by sort_order (Олег's).
+      //
+      // Це ПЕРЕВАГА, а не наказ: придатність рахунку (ще діє? та сама
+      // валюта?) звіряє місток, там, де вже відома валюта броні. Тут
+      // додаткове читання означало б і другий доказ осі обʼєкта, і другу
+      // копію правила.
       let accountId: string | undefined;
       if (actor?.id) {
         const userRow = await sql.row<{ default_cash_account_id: string | null }>(

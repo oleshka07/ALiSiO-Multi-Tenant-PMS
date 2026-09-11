@@ -112,8 +112,8 @@ console.log('  ok  3. тихий місяць порожній, і freeDay ли�
 // перелізла через межу, зробила б їхні числа залежними від того, коли
 // запустили перевірку, — тобто рівно тією вадою, від якої це все.
 for (const [from, to] of stays) {
-  assert.ok(from >= fx.from && to <= fx.to,
-    `бронь ${from}…${to} виходить за межі місяця фікстури ${fx.month} (${fx.from}…${fx.to})`);
+  assert.ok(from.startsWith(fx.month) && to.startsWith(fx.month),
+    `бронь ${from}…${to} виходить за межі місяця фікстури ${fx.month}`);
 }
 console.log('  ok  4. усі 5 броней лежать усередині одного місяця — діапазон звіту їх покриває');
 

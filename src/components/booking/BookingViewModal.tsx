@@ -11,6 +11,8 @@ import StatusActions from './card/StatusActions';
 import RequotePanel from './card/RequotePanel';
 import PayerPicker from './card/PayerPicker';
 import { isChannelBooking } from '@/modules/bookings/ui/requote';
+// Чим закінчився прийом оплати — одне рішення на обидва екрани броні.
+import { paymentOutcome } from '@/modules/bookings/ui/payment-outcome';
 import { useHotelCurrency, useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import {
   Edit3, X, Save, Plus, Check, ArrowRight, Copy, ExternalLink,
@@ -983,14 +985,31 @@ export default function BookingViewModal({
                           body: JSON.stringify({ reservation_id: b.id, amount: Number(payForm.amount), method: payForm.method, type: payForm.type, notes: payForm.notes || undefined }),
                         });
                         const data = await res.json().catch(() => ({}));
+                        // Рід відповіді судить `paymentOutcome`, не цей екран:
+                        // доти тут стояло `kind === 'marker' ? … : 'Платіж
+                        // додано!'`, тобто відмова 409 («немає каси в EUR»)
+                        // теж ставала підтвердженням. Форма не закривається і
+                        // введене не стирається, поки запис не відбувся —
+                        // інакше портьє довелось би набирати суму заново.
+                        const outcome = paymentOutcome(res.ok, data);
+                        if (outcome.kind === 'refused') {
+                          showToast(`❌ ${outcome.message || tUi('Не вдалося записати оплату')}`);
+                          return;
+                        }
                         setPayForm({ amount: '', method: 'cash', type: 'partial', notes: '' });
                         setShowPayForm(false);
                         onFetchPayments(b.id);
                         onFetchBookings();
-                        const msg = data?.kind === 'marker'
-                          ? '✅ Позначка збережена. Реальна транзакція з\'явиться через Teya / банк.'
-                          : 'Платіж додано!';
-                        showToast(msg);
+                        if (outcome.kind === 'marker') {
+                          showToast(tUi('✅ Позначка збережена. Реальна транзакція з\'явиться через Teya / банк.'));
+                        } else if (outcome.kind === 'recorded_not_in_folio') {
+                          // Гроші в касі, у рахунку гостя — ні. Не помилка
+                          // запиту, але й не «додано»: на виселенні борг
+                          // рахується з фоліо, і мовчати про це не можна.
+                          showToast(`⚠️ ${outcome.message || tUi('Гроші записано в касу, але не в рахунок гостя.')}`);
+                        } else {
+                          showToast(tUi('Платіж додано!'));
+                        }
                       }}>
                       <Save size={12} /> {payForm.method === 'cash' ? tUi('Зберегти платіж') : tUi('Позначити як оплачено')}
                     </button>

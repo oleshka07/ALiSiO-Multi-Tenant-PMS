@@ -3726,5 +3726,9 @@
   "🧹 Прибирання (": "🧹 Úklid (",
   "🧾 Рахунки по платниках": "🧾 Faktury podle plátců",
   "🩺 Аудит фінансової архітектури": "🩺 Audit finanční architektury",
-  "🪑 Меблі": "🪑 Nábytek"
+  "🪑 Меблі": "🪑 Nábytek",
+  "Платіж додано!": "Platba přidána!",
+  "Гроші записано в касу, але не в рахунок гостя.": "Peníze jsou v pokladně, ale ne na účtu hosta.",
+  "✅ Позначка збережена": "✅ Značka uložena",
+  "✅ Позначка збережена. Реальна транзакція з'явиться через Teya / банк.": "✅ Značka uložena. Skutečná transakce se objeví přes Teya / banku."
 }

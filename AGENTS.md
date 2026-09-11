@@ -880,6 +880,14 @@ SQL це рядок, — тож запит із неіснуючою колон�
     GRANT USAGE, SELECT ON SEQUENCES TO alisio_app;
   SQL
 
+  # І ПОРЯДОК: стенд, піднятий ДО перегенерації `schema.sql`, міряє тип із
+  # МІГРАЦІЇ, а не з поставки. `CREATE TABLE IF NOT EXISTS` на наявній
+  # таблиці мовчить, тож на стенді «schema.sql + міграції» виграє schema.sql,
+  # а на стенді, піднятому раніше, — міграція. 10.09.2026 ці дві бази дали
+  # `boolean` і `bigint` на ту саму колонку, `check:pg` був зелений на першій,
+  # а CI — червоний на другій (Д65). Тому: **перегенерував `schema.sql` —
+  # перезбери стенд і прожени `check:pg` заново.**
+
   # застосунок — ЦІЄЮ роллю, не власником
   DB_DRIVER=postgres \
   DATABASE_URL="postgresql://alisio_app@/alisio_local?host=/tmp/pg&port=55432" \

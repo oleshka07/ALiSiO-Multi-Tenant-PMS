@@ -34,6 +34,17 @@ export interface CreatePaymentOperationInput {
   source: PaymentSource;
   sourceRef?: string;
   paidAt?: string;
+  /**
+   * Куди покласти гроші — ПЕРЕВАГА, не наказ.
+   *
+   * Рахунок береться, лише якщо він ще чинний (`is_active`) і в тій самій
+   * валюті, що операція; інакше добір іде звичайним шляхом, а не знайшовши
+   * нічого — відмовляє названою відмовою. Доти поле шанувалось беззастережно,
+   * і готівка лягала на ВИМКНЕНУ касу (виміряно 11.09.2026).
+   *
+   * Кліринговий рахунок каналу сюди не передають — його добирає
+   * `findClearingAccount` за каналом і валютою.
+   */
   accountId?: string;
   status?: 'completed' | 'pending';
   comment?: string;
@@ -184,18 +195,39 @@ export async function createPaymentOperation(input: CreatePaymentOperationInput)
   //      route to the matching clearing account ("Booking.com (CZK)" etc).
   //   3) Final fallback — first cash account in matching currency, BUT
   //      flag the operation needs_review=1 so the admin can triage.
-  let resolvedAccountId = accountId;
+  let resolvedAccountId: string | undefined;
   let needsReview = 0;
-  if (!resolvedAccountId && source === 'hostex') {
+  if (!accountId && source === 'hostex') {
     resolvedAccountId = await findClearingAccount(row.org_id, input.channelType, currency) || undefined;
   }
   if (!resolvedAccountId) {
+    // ── Названий рахунок — ПЕРЕВАГА, а не наказ ─────────────────────────
+    //
+    // Тут стояло `let resolvedAccountId = accountId`, тобто явно названий
+    // рахунок шанувався беззастережно і повз усі три умови нижче. Для синку
+    // каналу це правильно (кліринговий рахунок називають свідомо, і його
+    // добір вище вже звіряє і валюту, і чинність), але `accountId` сюди
+    // передає рівно ОДИН викликач — `app/api/payments`, — і він рахунок не
+    // називає, а ПАМʼЯТАЄ: `app_users.default_cash_account_id`. Памʼять
+    // застаріває.
+    //
+    // Виміряно живим прогоном 11.09.2026: після `is_active = FALSE` на
+    // єдиній касі готівка все одно лягла В НЕЇ — 999 CZK на вимкнений
+    // рахунок, 201 і жодного слова. «Закрити касу» не закривало касу. Друге
+    // те саме, тихіше: валюта не звірялась, тож каса в кронах була місцем
+    // для євро.
+    //
+    // `(id = ?) DESC` у порядку, а не окремим запитом: умови придатності вже
+    // написані ТУТ, одним рядком на всіх, і другий запит означав би другу їх
+    // копію — яка розійдеться. Не підійшов названий — мовчки беремо той, що
+    // підходить; не підійшов жоден — нижче названа відмова, яку портьє
+    // тепер бачить на екрані.
     const fallback = await sql.row<any>(`
       SELECT id FROM finance_accounts
       WHERE organization_id = ? AND currency = ?
         AND type IN ('cash', 'bank') AND is_active = TRUE
-      ORDER BY sort_order ASC, created_at ASC LIMIT 1
-    `, [row.org_id, currency]) as { id: string } | undefined;
+      ORDER BY (id = ?) DESC, sort_order ASC, created_at ASC LIMIT 1
+    `, [row.org_id, currency, accountId ?? '']) as { id: string } | undefined;
     resolvedAccountId = fallback?.id || undefined;
     if (source === 'hostex' || source === 'teia' || source === 'booking_widget') {
       needsReview = 1;

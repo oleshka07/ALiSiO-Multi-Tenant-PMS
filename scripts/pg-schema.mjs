@@ -126,6 +126,14 @@ const OVERRIDE = {
   // клієнта розійшлися б у ТИПІ колонки, і `check-schema-drift` сказав би про
   // це вже після того, як обидві існують.
   'properties.kiosk_auto_assign': 'BOOLEAN',
+  // Кіоск (0411): `at` — мить, а не назва. Шаблон дат знає `*_at`, `created_at`,
+  // `updated_at` — рівно `at` під нього не підпадає, і колонка мовчки лишалась
+  // TEXT у schema.sql, тоді як міграція оголошує TIMESTAMPTZ. Тобто база нового
+  // клієнта (з schema.sql) і мігрована база розходились у ТИПІ, і жоден
+  // `check-schema-drift` цього не бачить: обидві його бази будуються з
+  // schema.sql, а `CREATE TABLE IF NOT EXISTS` у міграції мовчить. Знайдено
+  // `check-schema-types` на злитті (Д66).
+  'kiosk_events.at': 'TIMESTAMPTZ',
   // Три стани: null = «вирішує правило каналу», і це не те саме, що false.
   // BOOLEAN у Postgres nullable, тож третій стан зберігається.
   'unit_types.breakfast_included': 'BOOLEAN',
@@ -207,6 +215,8 @@ function pgType(table, col, sqliteType, defaultValue) {
 }
 
 const typeCorrections = [];
+/** Колонки, чий BOOLEAN тримається лише на ВІЗЕРУНКУ ІМЕНІ (Д65). */
+const boolByName = [];
 
 function inferType(table, col, sqliteType) {
 
@@ -221,7 +231,26 @@ function inferType(table, col, sqliteType) {
   if (JSONISH.test(n)) return 'JSONB';
   if (DATE_ONLY.test(n) && n !== 'expires_at') return 'DATE';
   if (TIMESTAMP.test(n) || n === 'expires_at') return 'TIMESTAMPTZ';
-  if (BOOL.test(n) && (t === 'INTEGER' || t === '' || t === 'BOOLEAN')) return 'BOOLEAN';
+  // ── Здогад за ІМЕНЕМ, і він тепер ВИДИМИЙ ─────────────────────────────
+  //
+  // Оголошений `BOOLEAN` відповідає нижче в `switch` і сюди не доходить —
+  // тобто «оголоси тип» завжди сильніше за «вгадай за іменем». Сюди
+  // потрапляє лише те, чий тип у db.ts — `INTEGER` або порожній, і рішення
+  // за нього ухвалює візерунок імені.
+  //
+  // 10.09.2026 це коштувало двох червоних прогонів CI:
+  // `fin_payment_methods.settles_to_debtor` під візерунок не підпав, мовчки
+  // став `BIGINT`, а писач клав туди `true` — на SQLite `bindable()` робить
+  // із цього 1 без слова, на Postgres виходить
+  // `invalid input syntax for type bigint: "false"` (Д65).
+  //
+  // Візерунок не знято: він тримає 70 із 74 булевих колонок, і зняти його
+  // означало б переоголосити їх усі однією зміною. Але здогад більше не
+  // МОВЧИТЬ — генератор друкує їх числом наприкінці, і це число має
+  // спадати, а не рости: кожна нова булева колонка оголошується `BOOLEAN`
+  // у db.ts, а не сподівається на своє імʼя.
+  if (BOOL.test(n) && (t === 'INTEGER' || t === '')) { boolByName.push(`${table}.${col}`); return 'BOOLEAN'; }
+  if (t === 'BOOLEAN') return 'BOOLEAN';
   if (PERCENT.test(n)) return 'NUMERIC(5,2)';
   if (MONEY.test(n) || MONEY_SUFFIX.test(n)) return 'NUMERIC(14,2)';
 
@@ -931,6 +960,16 @@ if (typeCorrections.length) {
   console.error(`
 ${typeCorrections.length} type(s) corrected from the column default:`);
   for (const c of typeCorrections) console.error('  -', c);
+}
+// Здогад за іменем — числом, щоб він не мовчав (Д65). Це число має СПАДАТИ:
+// кожна нова булева колонка оголошується BOOLEAN у db.ts, а не сподівається
+// на своє імʼя. `settles_to_debtor` не сподобалось візерунку і мовчки стало
+// числом — два червоних прогони CI.
+if (boolByName.length) {
+  console.error(`
+${boolByName.length} boolean(s) inferred from the column NAME, not declared:`);
+  console.error('  оголосіть BOOLEAN у src/lib/db.ts — імʼя не тип (Д65)');
+  if (process.env.PG_SCHEMA_LIST_GUESSED) for (const c of boolByName) console.error('  -', c);
 }
 // Deduplicated: scopeOf runs once per table that references this one, so a
 // single finding was printed eight times and the list read like a disaster.
