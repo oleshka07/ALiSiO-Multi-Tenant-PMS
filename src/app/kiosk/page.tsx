@@ -33,8 +33,18 @@ import {
 } from '@/apps/kiosk/ui/translations';
 
 type Step =
-  | 'start' | 'pair' | 'find' | 'stay' | 'sign' | 'payment' | 'key'
+  | 'start' | 'pair' | 'lookup' | 'find' | 'stay' | 'sign' | 'payment' | 'key'
   | 'checkout' | 'done' | 'info' | 'walkin';
+
+/**
+ * Чим гість називає себе на кроці пошуку.
+ *
+ * Не косметика і не «три кнопки замість однієї»: пара чинників у кожного
+ * способу СВОЯ (`domain/search.ts`), і форма, яка показує всі поля одразу,
+ * читається як «заповніть усе» — а треба рівно два. Гість біля термінала
+ * тримає в руці лист із номером АБО памʼятає дату заїзду, не обидва.
+ */
+type FindBy = 'date' | 'confirmation';
 
 interface Session {
   property: { id: string; name: string };
@@ -82,6 +92,26 @@ const IconDepart = () => (
     <path d="M16 17l5-5-5-5" /><path d="M21 12H9" />
   </svg>
 );
+const IconCalendar = () => (
+  <svg {...ICON} className="kiosk-tile-icon">
+    <rect x="3" y="5" width="18" height="16" rx="2" />
+    <path d="M8 3v4M16 3v4M3 10h18" /><path d="M8 14h3v3H8z" />
+  </svg>
+);
+const IconTicket = () => (
+  <svg {...ICON} className="kiosk-tile-icon">
+    <rect x="3" y="6" width="18" height="13" rx="2" />
+    <path d="M7 10h6M7 14h4" /><path d="M17 10v4" />
+  </svg>
+);
+const IconQr = () => (
+  <svg {...ICON} className="kiosk-tile-icon">
+    <rect x="3" y="3" width="7" height="7" rx="1" />
+    <rect x="14" y="3" width="7" height="7" rx="1" />
+    <rect x="3" y="14" width="7" height="7" rx="1" />
+    <path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20h1" />
+  </svg>
+);
 const IconExtras = () => (
   <svg {...ICON} className="kiosk-card-icon">
     <path d="M4 4h16l-8 8z" /><path d="M12 12v8" /><path d="M8 20h8" />
@@ -103,6 +133,7 @@ export default function KioskPage() {
   const [fields, setFields] = useState<{ lastName: string; checkIn: string; confirmation: string }>(
     { lastName: '', checkIn: '', confirmation: '' });
   const [active, setActive] = useState<'lastName' | 'confirmation'>('lastName');
+  const [findBy, setFindBy] = useState<FindBy>('date');
   // Календар відкривають дотиком по полю дати; закривається він вибором дня.
   const [pickingDate, setPickingDate] = useState(false);
   // Сьогодні — за годинником САМОГО екрана, один раз на монтування: якщо
@@ -121,6 +152,7 @@ export default function KioskPage() {
     setMessage(null);
     setFields({ lastName: '', checkIn: '', confirmation: '' });
     setActive('lastName');
+    setFindBy('date');
     setPickingDate(false);
     setIdle(false);
   }, []);
@@ -175,10 +207,14 @@ export default function KioskPage() {
 
   async function doFind() {
     setMessage(null);
+    // Шлються рівно ті поля, які цей спосіб показував. Інакше залишок від
+    // попередньої спроби (гість почав із дати, передумав, пішов у номер
+    // броні) поїхав би третім чинником і звузив би пошук до нуля — а гість
+    // прочитав би «броні немає» про бронь, яка є.
     const answer = await call('find', {
       lastName: fields.lastName || undefined,
-      checkIn: fields.checkIn || undefined,
-      confirmation: fields.confirmation || undefined,
+      checkIn: findBy === 'date' ? (fields.checkIn || undefined) : undefined,
+      confirmation: findBy === 'confirmation' ? (fields.confirmation || undefined) : undefined,
     });
     if (answer?.status === 400) { setMessage(s.needFactors); return; }
     if (!answer?.ok) { setMessage(s.notFound); return; }
@@ -271,7 +307,21 @@ export default function KioskPage() {
             <h1 className="kiosk-hero">{s.welcome}</h1>
           </>
         ) : (
-          <h1 className="kiosk-title">{session?.property.name ?? ''}</h1>
+          <div className="kiosk-bar">
+            {/*
+              Вихід із кроку. До цього його не було ЗОВСІМ: гість, який зайшов
+              у пошук помилково, не мав як повернутись — лишалось чекати 60 с
+              таймера або кликати рецепцію. Хрестик у шапці, а не в робочій
+              смузі: смуга належить головній дії кроку.
+            */}
+            <button type="button" className="kiosk-close" onClick={wrap(forget)} aria-label={s.cancel}>
+              ✕
+            </button>
+            <h1 className="kiosk-title">
+              {step === 'lookup' || step === 'find' ? s.lookupTitle : session?.property.name ?? ''}
+            </h1>
+            <span className="kiosk-bar-tail" />
+          </div>
         )}
         {stay && step !== 'start' && (
           <p className="kiosk-subtitle">{stay.guest} · {stay.checkIn} → {stay.checkOut}</p>
@@ -305,7 +355,7 @@ export default function KioskPage() {
           // гість, і в одному ряду з «виселитись» вона читалась би як рівна.
           <>
             <div className="kiosk-cards">
-              <button type="button" className="kiosk-card" onClick={wrap(() => setStep('find'))}>
+              <button type="button" className="kiosk-card" onClick={wrap(() => setStep('lookup'))}>
                 <IconArrive />
                 <span className="kiosk-card-label">{s.checkIn}</span>
               </button>
@@ -313,7 +363,7 @@ export default function KioskPage() {
                 <IconExtras />
                 <span className="kiosk-card-label">{s.extras}</span>
               </button>
-              <button type="button" className="kiosk-card" onClick={wrap(() => { setStep('find'); setMessage(null); })}>
+              <button type="button" className="kiosk-card" onClick={wrap(() => { setStep('lookup'); setMessage(null); })}>
                 <IconDepart />
                 <span className="kiosk-card-label">{s.checkOut}</span>
               </button>
@@ -324,6 +374,41 @@ export default function KioskPage() {
               </button>
             )}
           </>
+        )}
+
+        {step === 'lookup' && (
+          // Спосіб обирають ДО того, як щось набирають. Один екран із трьома
+          // полями означав би «заповніть усе», а треба рівно два чинники — і
+          // саме те, що гість має при собі: лист із номером АБО спогад про
+          // дату заїзду.
+          <div className="kiosk-lookup">
+            <p className="kiosk-lead">{s.lookupLead}</p>
+            <div className="kiosk-tiles">
+              <button
+                type="button"
+                className="kiosk-tile"
+                onClick={wrap(() => { setFindBy('date'); setActive('lastName'); setStep('find'); })}
+              >
+                <IconCalendar />
+                <span className="kiosk-tile-title">{s.byDate}</span>
+                <span className="kiosk-tile-help">{s.byDateHelp}</span>
+              </button>
+              <button
+                type="button"
+                className="kiosk-tile"
+                onClick={wrap(() => { setFindBy('confirmation'); setActive('lastName'); setStep('find'); })}
+              >
+                <IconTicket />
+                <span className="kiosk-tile-title">{s.byConfirmation}</span>
+                <span className="kiosk-tile-help">{s.byConfirmationHelp}</span>
+              </button>
+              <button type="button" className="kiosk-tile" disabled>
+                <IconQr />
+                <span className="kiosk-tile-title">{s.byQr}</span>
+                <span className="kiosk-tile-help">{s.byQrHelp}</span>
+              </button>
+            </div>
+          </div>
         )}
 
         {step === 'find' && (
@@ -368,22 +453,41 @@ export default function KioskPage() {
                     {fields.lastName}
                   </div>
                 </div>
-                <div className="kiosk-field">
-                  <span className="kiosk-label">{s.arrivalDate}</span>
-                  {/*
-                    Поле ДАТИ не набирається: дотик відкриває календар. Порожнє
-                    поле каже про це словами, а не лишається мовчазним
-                    прямокутником, у який гість друкує навмання.
-                  */}
-                  <div className="kiosk-value" onClick={wrap(() => setPickingDate(true))}>
-                    {fields.checkIn
-                      ? formatDay(fields.checkIn, lang)
-                      : <span className="kiosk-placeholder">{s.pickDate}</span>}
+                {findBy === 'date' ? (
+                  <div className="kiosk-field">
+                    <span className="kiosk-label">{s.arrivalDate}</span>
+                    {/*
+                      Поле ДАТИ не набирається: дотик відкриває календар. Порожнє
+                      поле каже про це словами, а не лишається мовчазним
+                      прямокутником, у який гість друкує навмання.
+                    */}
+                    <div className="kiosk-value" onClick={wrap(() => setPickingDate(true))}>
+                      {fields.checkIn
+                        ? formatDay(fields.checkIn, lang)
+                        : <span className="kiosk-placeholder">{s.pickDate}</span>}
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="kiosk-field">
+                    <span className="kiosk-label">{s.confirmationNo}</span>
+                    <div
+                      className="kiosk-value"
+                      data-active={active === 'confirmation'}
+                      onClick={wrap(() => setActive('confirmation'))}
+                    >
+                      {fields.confirmation}
+                    </div>
+                  </div>
+                )}
                 {message && <p className="kiosk-note">{message}</p>}
+                {/*
+                  Розкладка йде за ПОЛЕМ, а не за кроком: прізвище — літери,
+                  номер броні — цифри. Номер у листі готелю числовий (свій id,
+                  номер онлайн-модуля, код каналу), і QWERTZ під ним означав би,
+                  що гість шукає цифри між літерами на 86-дюймовому екрані.
+                */}
                 <Keyboard
-                  mode="text"
+                  mode={active === 'confirmation' ? 'digits' : 'text'}
                   onKey={(ch) => { touch(); type(ch); }}
                   onBackspace={() => { touch(); backspace(); }}
                   onDone={() => { touch(); void doFind(); }}

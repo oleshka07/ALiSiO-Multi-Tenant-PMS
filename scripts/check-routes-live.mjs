@@ -850,6 +850,19 @@ async function main() {
         claim('кіоск', twoRes.status === 200 && typeof two?.found === 'boolean',
           `пошук із двома чинниками — 200 і поле found (${twoRes.status})`);
 
+        // Другий спосіб того самого кроку: номер броні + прізвище. Родина
+        // перевіряла лише пару «прізвище + дата», тож екран вибору способу міг
+        // би вести на маршрут, який на цю пару відповідає 400 або 500, і
+        // жоден гейт цього не сказав би.
+        const byNo = await asDevice('find', { lastName: 'Muster', confirmation: '123456' });
+        const no = await body(byNo);
+        claim('кіоск', byNo.status === 200 && typeof no?.found === 'boolean',
+          `пошук за номером броні + прізвищем — 200 і поле found (${byNo.status})`);
+        // І він теж вимагає ДВОХ чинників: сам номер підтвердження не шукає.
+        const noAlone = await asDevice('find', { confirmation: '123456' });
+        claim('кіоск', noAlone.status === 400,
+          `сам номер броні без прізвища — 400 (${noAlone.status})`);
+
         // Чужий токен — 401 із живого маршруту, а не 500 і не 200.
         const alienRes = await fetch(`${BASE}/api/apps/kiosk/session`, {
           headers: { authorization: `Bearer ${ORG}.${property.id}.kd_nope.${'a'.repeat(64)}` },

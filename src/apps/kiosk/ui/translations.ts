@@ -55,6 +55,15 @@ export interface KioskStrings {
   arrivalDate: string;
   pickDate: string;
   extras: string;
+
+  lookupTitle: string;
+  lookupLead: string;
+  byDate: string;
+  byDateHelp: string;
+  byConfirmation: string;
+  byConfirmationHelp: string;
+  byQr: string;
+  byQrHelp: string;
   confirmationNo: string;
   emailOrPhone: string;
   scanQr: string;
@@ -117,6 +126,15 @@ const de: KioskStrings = {
   arrivalDate: 'Anreisedatum',
   pickDate: 'Datum auswählen',
   extras: 'Extras',
+
+  lookupTitle: 'Buchung finden',
+  lookupLead: 'Wie möchten Sie Ihre Buchung finden?',
+  byDate: 'Anreisedatum',
+  byDateHelp: 'Suche mit Anreisedatum und Nachname.',
+  byConfirmation: 'Buchungsnummer',
+  byConfirmationHelp: 'Suche mit Buchungsnummer und Nachname.',
+  byQr: 'QR-Code',
+  byQrHelp: 'QR-Code scannen und am eigenen Handy fortfahren.',
   confirmationNo: 'Buchungsnummer',
   emailOrPhone: 'E-Mail oder Telefon',
   scanQr: 'QR-Code scannen',
@@ -179,6 +197,15 @@ const en: KioskStrings = {
   arrivalDate: 'Arrival date',
   pickDate: 'Choose a date',
   extras: 'Extras',
+
+  lookupTitle: 'Find your booking',
+  lookupLead: 'How would you like to find your booking?',
+  byDate: 'Arrival date',
+  byDateHelp: 'Search by arrival date and last name.',
+  byConfirmation: 'Booking number',
+  byConfirmationHelp: 'Search by booking number and last name.',
+  byQr: 'QR code',
+  byQrHelp: 'Scan the QR code and continue on your phone.',
   confirmationNo: 'Booking number',
   emailOrPhone: 'E-mail or phone',
   scanQr: 'Scan QR code',
