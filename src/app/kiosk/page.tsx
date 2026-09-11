@@ -25,7 +25,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Keyboard, type KeyboardMode } from '@/apps/kiosk/ui/Keyboard';
+import { Keyboard } from '@/apps/kiosk/ui/Keyboard';
+import { KioskCalendar, formatDay, localToday } from '@/apps/kiosk/ui/KioskCalendar';
 import { bandStyle, useDeviceToken, useIdleReset } from '@/apps/kiosk/ui/useKiosk';
 import {
   KIOSK_LANGS, KIOSK_LANG_LABELS, KIOSK_STRINGS, kioskLang, type KioskLang,
@@ -66,7 +67,13 @@ export default function KioskPage() {
   // Поля вводу і те, яке з них зараз під клавіатурою.
   const [fields, setFields] = useState<{ lastName: string; checkIn: string; confirmation: string }>(
     { lastName: '', checkIn: '', confirmation: '' });
-  const [active, setActive] = useState<'lastName' | 'checkIn' | 'confirmation'>('lastName');
+  const [active, setActive] = useState<'lastName' | 'confirmation'>('lastName');
+  // Календар відкривають дотиком по полю дати; закривається він вибором дня.
+  const [pickingDate, setPickingDate] = useState(false);
+  // Сьогодні — за годинником САМОГО екрана, один раз на монтування: якщо
+  // термінал простоїть через північ, календар не має перестрибувати під рукою
+  // гостя, який уже дивиться на місяць.
+  const [today] = useState(() => localToday());
   const [pairCode, setPairCode] = useState('');
 
   const s = KIOSK_STRINGS[lang];
@@ -79,6 +86,7 @@ export default function KioskPage() {
     setMessage(null);
     setFields({ lastName: '', checkIn: '', confirmation: '' });
     setActive('lastName');
+    setPickingDate(false);
     setIdle(false);
   }, []);
 
@@ -243,26 +251,69 @@ export default function KioskPage() {
 
         {step === 'find' && (
           <>
-            <div className="kiosk-field">
-              <span className="kiosk-label">{s.lastName}</span>
-              <div className="kiosk-value" data-active={active === 'lastName'} onClick={wrap(() => setActive('lastName'))}>
-                {fields.lastName}
-              </div>
-            </div>
-            <div className="kiosk-field">
-              <span className="kiosk-label">{s.arrivalDate}</span>
-              <div className="kiosk-value" data-active={active === 'checkIn'} onClick={wrap(() => setActive('checkIn'))}>
-                {fields.checkIn}
-              </div>
-            </div>
-            {message && <p className="kiosk-note">{message}</p>}
-            <Keyboard
-              mode={(active === 'lastName' ? 'text' : 'digits') as KeyboardMode}
-              onKey={(ch) => { touch(); type(ch); }}
-              onBackspace={() => { touch(); backspace(); }}
-              onDone={() => { touch(); void doFind(); }}
-              doneLabel={s.next}
-            />
+            {/*
+              Календар займає смугу ЦІЛКОМ, а не тулиться під поля.
+              Виміряно на 1080×1920: разом із двома полями і клавіатурою його
+              шість тижнів не вміщаються — останній ряд обрізало, а «Zurück»
+              виїжджав за низ смуги під кнопку рецепції. Той самий клас, що
+              смуга 55–88 % у рецензії Б: вміст, більший за смугу, на цьому
+              екрані ніхто не прокручує.
+
+              Тому вибір дня — окремий вигляд того самого кроку: заголовок
+              каже, що саме обирають, а поля повертаються разом із «Zurück».
+            */}
+            {pickingDate ? (
+              <>
+                <span className="kiosk-label">{s.arrivalDate}</span>
+                <KioskCalendar
+                  value={fields.checkIn || null}
+                  today={today}
+                  lang={lang}
+                  onPick={(date) => {
+                    touch();
+                    setFields((f) => ({ ...f, checkIn: date }));
+                    setPickingDate(false);
+                  }}
+                />
+                <button type="button" className="kiosk-slim" onClick={wrap(() => setPickingDate(false))}>
+                  {s.back}
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="kiosk-field">
+                  <span className="kiosk-label">{s.lastName}</span>
+                  <div
+                    className="kiosk-value"
+                    data-active={active === 'lastName'}
+                    onClick={wrap(() => setActive('lastName'))}
+                  >
+                    {fields.lastName}
+                  </div>
+                </div>
+                <div className="kiosk-field">
+                  <span className="kiosk-label">{s.arrivalDate}</span>
+                  {/*
+                    Поле ДАТИ не набирається: дотик відкриває календар. Порожнє
+                    поле каже про це словами, а не лишається мовчазним
+                    прямокутником, у який гість друкує навмання.
+                  */}
+                  <div className="kiosk-value" onClick={wrap(() => setPickingDate(true))}>
+                    {fields.checkIn
+                      ? formatDay(fields.checkIn, lang)
+                      : <span className="kiosk-placeholder">{s.pickDate}</span>}
+                  </div>
+                </div>
+                {message && <p className="kiosk-note">{message}</p>}
+                <Keyboard
+                  mode="text"
+                  onKey={(ch) => { touch(); type(ch); }}
+                  onBackspace={() => { touch(); backspace(); }}
+                  onDone={() => { touch(); void doFind(); }}
+                  doneLabel={s.next}
+                />
+              </>
+            )}
           </>
         )}
 

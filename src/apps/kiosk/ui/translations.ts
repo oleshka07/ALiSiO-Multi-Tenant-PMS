@@ -53,6 +53,7 @@ export interface KioskStrings {
   findTitle: string;
   lastName: string;
   arrivalDate: string;
+  pickDate: string;
   confirmationNo: string;
   emailOrPhone: string;
   scanQr: string;
@@ -113,6 +114,7 @@ const de: KioskStrings = {
   findTitle: 'Ihre Buchung finden',
   lastName: 'Nachname',
   arrivalDate: 'Anreisedatum',
+  pickDate: 'Datum auswählen',
   confirmationNo: 'Buchungsnummer',
   emailOrPhone: 'E-Mail oder Telefon',
   scanQr: 'QR-Code scannen',
@@ -173,6 +175,7 @@ const en: KioskStrings = {
   findTitle: 'Find your booking',
   lastName: 'Last name',
   arrivalDate: 'Arrival date',
+  pickDate: 'Choose a date',
   confirmationNo: 'Booking number',
   emailOrPhone: 'E-mail or phone',
   scanQr: 'Scan QR code',

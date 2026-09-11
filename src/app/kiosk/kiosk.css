@@ -102,6 +102,79 @@
 .kiosk-key-done { flex: 2; background: #1d4ed8; border-color: #1d4ed8; }
 .kiosk-keyboard[data-mode='digits'] .kiosk-key { min-height: 7vh; font-size: 3.4vh; }
 
+/* ── Календар: дату обирають, а не набирають ──────────────────────────────
+ *
+ * Клітинка дня — не менша за клавішу клавіатури поруч: палець на 86" не
+ * влучає в дрібне, і промах тут дорожчий за промах на літері — це мовчки
+ * інший день, а не видима одруківка.
+ */
+.kiosk-calendar { display: flex; flex-direction: column; gap: 1vh; }
+.kiosk-calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1vw;
+}
+.kiosk-calendar-title { font-size: 2.4vh; font-weight: 650; text-transform: capitalize; }
+.kiosk-calendar-nav {
+  min-width: 9vw;
+  min-height: 5vh;
+  font-size: 3vh;
+  border-radius: 1vh;
+  border: 0.2vh solid #1e293b;
+  background: #16233d;
+  color: inherit;
+  cursor: pointer;
+}
+.kiosk-calendar-nav:active { background: #24365c; }
+/* Місяць поза межами пошуку не сірий «зламаний», а просто недосяжний: гостю
+   не обіцяють грудня, якого термінал однаково не знайде. */
+.kiosk-calendar-nav:disabled { opacity: 0.25; cursor: default; }
+
+.kiosk-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.6vh 0.6vw;
+}
+.kiosk-calendar-weekday {
+  font-size: 1.7vh;
+  opacity: 0.6;
+  text-align: center;
+  padding-bottom: 0.3vh;
+}
+.kiosk-calendar-blank { visibility: hidden; }
+.kiosk-calendar-day {
+  min-height: 4.6vh;
+  font-size: 2.3vh;
+  border-radius: 1vh;
+  border: 0.2vh solid #1e293b;
+  background: #16233d;
+  color: inherit;
+  cursor: pointer;
+}
+.kiosk-calendar-day:active { background: #24365c; }
+/* Сьогодні — обведенням, обране — заливкою: два різні питання («де я» і «що я
+   вибрав»), і одним виглядом вони зливаються. */
+.kiosk-calendar-day[data-today='true'] { border-color: #64748b; }
+.kiosk-calendar-day[data-on='true'] { background: #1d4ed8; border-color: #1d4ed8; font-weight: 700; }
+
+/* Кнопка «назад» із календаря — тонша за `.kiosk-big`: та має 3vh поля згори
+   й знизу, і разом із шістьма тижнями вилазила за низ смуги. */
+.kiosk-slim {
+  font-size: 2.6vh;
+  font-weight: 600;
+  padding: 1.6vh 3vw;
+  border-radius: 1.4vh;
+  border: 0.3vh solid #1e293b;
+  background: #111c31;
+  color: inherit;
+  cursor: pointer;
+}
+.kiosk-slim:active { background: #16233d; }
+
+/* Порожнє поле дати каже словами, що тут вибирають, а не друкують. */
+.kiosk-placeholder { opacity: 0.5; }
+
 /* ── Підпис пальцем ─────────────────────────────────────────────────────── */
 .kiosk-signature {
   width: 100%;

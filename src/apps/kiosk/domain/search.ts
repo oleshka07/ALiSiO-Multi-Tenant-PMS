@@ -67,6 +67,44 @@ export function phoneDigits(value: unknown): string {
 }
 
 /**
+ * Дата пошуку — рівно `YYYY-MM-DD` і рівно СПРАВЖНІЙ день. Решта — `null`.
+ *
+ * ── Чому це домен, а не `new Date()` у запиті ───────────────────────────
+ *
+ * Перша редакція будувала добу просто з того, що прийшло:
+ *
+ *   new Date(`${raw.slice(0, 10)}T00:00:00Z`).getTime() + 86_400_000
+ *
+ * На `11.09.2026` це `Invalid Date`, а `.toISOString()` на ньому **кидає**
+ * `RangeError` — тобто маршрут пошуку відповідав 500. Екран розрізняє лише
+ * `ok`/`не ok` і малював «броні не знайдено»: гість читав відповідь ПРО
+ * БРОНЬ там, де насправді впав сервер, і йшов до рецепції з думкою, що його
+ * броні немає. Знайдено на живому терміналі, не гейтом (сцена 24).
+ *
+ * Форма дати на екрані в холі не вгадується — німець пише `11.09.2026`,
+ * американець `09/11/2026`, а клавіатура давала рівно ті символи, якими це
+ * роблять. Тому дату тепер ОБИРАЮТЬ календарем (`KioskCalendar`), а ця
+ * функція лишається межею: усе, що не день, сюди не проходить, навіть якщо
+ * прийшло повз екран.
+ *
+ * Звірка `toISOString() === v` — не педантизм: `Date.parse` приймає
+ * `2026-02-30` і мовчки робить з нього 2 березня. Пошук за датою, якої гість
+ * не називав, — це відповідь про чужу бронь.
+ */
+export function readSearchDate(raw: unknown): string | null {
+  const v = clean(raw).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const t = Date.parse(`${v}T00:00:00Z`);
+  if (!Number.isFinite(t)) return null;
+  return new Date(t).toISOString().slice(0, 10) === v ? v : null;
+}
+
+/** Наступний день — верхня межа півінтервалу доби. Дату вже перевірено вище. */
+export function dayAfter(date: string): string {
+  return new Date(new Date(`${date}T00:00:00Z`).getTime() + 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
  * Які чинники справді названі. Порожній рядок — не чинник.
  *
  * ── Телефон, коротший за номер, — теж не чинник ─────────────────────────
@@ -85,7 +123,11 @@ export function namedFactors(input: SearchInput): SearchFactor[] {
   const out: SearchFactor[] = [];
   if (clean(input.token)) out.push('token');
   if (clean(input.lastName)) out.push('lastName');
-  if (clean(input.checkIn)) out.push('checkIn');
+  // Рядок, який не є днем, — НЕ чинник, тією самою логікою, що телефон,
+  // коротший за номер: інакше пара «прізвище + 11.09.2026» виглядала б як два
+  // чинники, лишаючись одним, і гість діставав би відповідь про бронь замість
+  // відповіді про власний ввід.
+  if (readSearchDate(input.checkIn)) out.push('checkIn');
   if (clean(input.confirmation)) out.push('confirmation');
   if (phoneDigits(input.phone).length >= PHONE_MIN_DIGITS) out.push('phone');
   if (clean(input.email)) out.push('email');

@@ -7,7 +7,7 @@
  * бути в запиті, а не покладатись на контекст (AGENTS §7).
  */
 import { getSql } from '@core/db/async';
-import { inWindow, phoneDigits, PHONE_MIN_DIGITS, type SearchInput } from '../domain/search';
+import { dayAfter, inWindow, phoneDigits, PHONE_MIN_DIGITS, readSearchDate, type SearchInput } from '../domain/search';
 
 export interface StayRow {
   id: string;
@@ -66,23 +66,20 @@ export async function findStays(input: {
 
   if (clean(s.token)) { where.push('r.guest_page_token = ?'); params.push(clean(s.token)); }
   if (clean(s.lastName)) { where.push('LOWER(g.last_name) = LOWER(?)'); params.push(clean(s.lastName)); }
-  if (clean(s.checkIn)) {
-    // Доба ПІВІНТЕРВАЛОМ, не `SUBSTR(check_in, 1, 10) = ?`.
-    //
-    // Перша редакція різала рядок: на SQLite `check_in` це TEXT, і працювало.
-    // На Postgres це DATE, і `substr(date, integer, integer)` не існує — маршрут
-    // пошуку відповідав 500 на КОЖЕН запит гостя. Спіймано першим же прогоном
-    // гейта роллю `alisio_app` на справжньому рушії (AGENTS §7: «SQL — це
-    // рядок, і `tsc` його не бачить»).
-    //
-    // Півінтервал розуміють обидва: на Postgres параметр приводиться до дати,
-    // на SQLite порівнюються рядки — і `'2026-09-11 14:00'` теж потрапляє в
-    // `['2026-09-11', '2026-09-12')`, чого рівність із обрізаним рядком
-    // досягала лише випадково.
-    const from = clean(s.checkIn).slice(0, 10);
-    const to = new Date(new Date(`${from}T00:00:00Z`).getTime() + 86_400_000).toISOString().slice(0, 10);
+  // Дату читає ДОМЕН (`readSearchDate`), і сюди не-день не доходить: хендлер
+  // відмовляє 400 раніше, бо такий рядок не рахується чинником. Тут лишається
+  // те, що вже є днем, — і тому `dayAfter` не може кинути.
+  //
+  // Доба ПІВІНТЕРВАЛОМ, не `SUBSTR(check_in, 1, 10) = ?`. Перша редакція різала
+  // рядок: на SQLite `check_in` це TEXT, і працювало. На Postgres це DATE, і
+  // `substr(date, integer, integer)` не існує — маршрут пошуку відповідав 500
+  // на КОЖЕН запит гостя. Півінтервал розуміють обидва рушії, і `'2026-09-11
+  // 14:00'` теж потрапляє в `['2026-09-11', '2026-09-12')`, чого рівність із
+  // обрізаним рядком досягала лише випадково.
+  const checkInDay = readSearchDate(s.checkIn);
+  if (checkInDay) {
     where.push('r.check_in >= ? AND r.check_in < ?');
-    params.push(from, to);
+    params.push(checkInDay, dayAfter(checkInDay));
   }
   if (clean(s.email)) { where.push('LOWER(g.email) = LOWER(?)'); params.push(clean(s.email)); }
   // Телефон звіряється за ХВОСТОМ, і в базі теж без розділювачів: гість
