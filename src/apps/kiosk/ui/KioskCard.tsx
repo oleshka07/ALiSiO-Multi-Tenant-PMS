@@ -32,6 +32,10 @@ interface Device {
   pairedAt: string | null;
   lastSeenAt: string | null;
   revokedAt: string | null;
+  /** Вигляд ЦЬОГО дисплея: у холі сусіднього корпусу може стояти інший. */
+  touchBand: { top: number; bottom: number };
+  logoUrl: string | null;
+  backgroundUrl: string | null;
 }
 
 interface Policies {
@@ -58,6 +62,11 @@ export function KioskCard() {
   const [code, setCode] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
+  // Який термінал зараз правлять: вигляд належить ПРИСТРОЮ, тож форма
+  // розкривається під тим рядком, а не стоїть одна на всі.
+  const [lookOf, setLookOf] = useState<string | null>(null);
+  const [look, setLook] = useState<{ logoUrl: string; backgroundUrl: string; top: string; bottom: string } | null>(null);
+  const [lookError, setLookError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -87,6 +96,56 @@ export function KioskCard() {
       setName('');
       await load();
     } finally { setBusy(false); }
+  }
+
+  function openLook(d: Device) {
+    setLookError(null);
+    setLookOf(d.id);
+    setLook({
+      logoUrl: d.logoUrl ?? '',
+      backgroundUrl: d.backgroundUrl ?? '',
+      top: String(d.touchBand.top),
+      bottom: String(d.touchBand.bottom),
+    });
+  }
+
+  /**
+   * Зберегти вигляд одного термінала.
+   *
+   * Усі три поля йдуть РАЗОМ, бо лежать в одному `config_json`: надіслати саме
+   * лого означало б стерти смугу, яку ніхто не чіпав. Тому форма показує те,
+   * що вже стоїть, і повертає його ж незміненим.
+   */
+  async function saveLook(id: string) {
+    if (!look) return;
+    setBusy(true);
+    setLookError(null);
+    try {
+      const res = await fetch(`/api/settings/apps/kiosk/devices/${encodeURIComponent(id)}/config`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          logoUrl: look.logoUrl,
+          backgroundUrl: look.backgroundUrl,
+          touchBand: { top: Number(look.top), bottom: Number(look.bottom) },
+        }),
+      });
+      // Відповідь ЧИТАЄТЬСЯ: writer, який не дивиться на статус, однаково
+      // каже «збережено» на 400 (`check-unread-write-response`).
+      if (!res.ok) {
+        const why = (await res.json().catch(() => ({}))) as { error?: string };
+        setLookError(why.error === 'bad_touch_band'
+          ? t('Смуга має бути двома числами 0–100, верх вище низу')
+          : (why.error === 'bad_logo_url' || why.error === 'bad_background_url')
+            ? t('Адреса має починатись на https://, http:// або «/»')
+            : t('Не вдалося зберегти вигляд'));
+        return;
+      }
+      setLookOf(null);
+      await load();
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function revoke(id: string) {
@@ -154,14 +213,74 @@ export function KioskCard() {
                   <td style={{ color: 'var(--text-secondary)' }}>
                     {t('останній звʼязок')}: {fmt(d.lastSeenAt)}
                   </td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                     {d.revokedAt
                       ? <span className="badge badge-secondary">{t('відкликано')}</span>
                       : (
-                        <button className="btn btn-secondary" style={{ fontSize: 12 }} disabled={busy} onClick={() => revoke(d.id)}>
-                          {t('Відкликати')}
-                        </button>
+                        <>
+                          <button
+                            className="btn btn-secondary"
+                            style={{ fontSize: 12, marginRight: 6 }}
+                            onClick={() => (lookOf === d.id ? setLookOf(null) : openLook(d))}
+                          >
+                            {t('Вигляд')}
+                          </button>
+                          <button className="btn btn-secondary" style={{ fontSize: 12 }} disabled={busy} onClick={() => revoke(d.id)}>
+                            {t('Відкликати')}
+                          </button>
+                        </>
                       )}
+                  </td>
+                </tr>
+              ))}
+              {devices.filter((d) => d.id === lookOf).map((d) => (
+                <tr key={`${d.id}_look`} data-testid="kiosk-look">
+                  <td colSpan={3} style={{ padding: '8px 0', borderTop: line }}>
+                    <div style={{ color: 'var(--text-secondary)', marginBottom: 6 }}>
+                      {t('Вигляд термінала')}: {d.name}. {t('Лого й фон — адреси картинок цього готелю; порожньо = без них.')}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                      <label style={{ display: 'block' }}>
+                        <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{t('Лого')}</div>
+                        <input
+                          value={look?.logoUrl ?? ''}
+                          placeholder="https://…"
+                          onChange={(e) => setLook((v) => (v ? { ...v, logoUrl: e.target.value } : v))}
+                          style={{ width: 260, padding: '6px 8px', fontSize: 12, borderRadius: 6, border: line, background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+                        />
+                      </label>
+                      <label style={{ display: 'block' }}>
+                        <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{t('Фон')}</div>
+                        <input
+                          value={look?.backgroundUrl ?? ''}
+                          placeholder="https://…"
+                          onChange={(e) => setLook((v) => (v ? { ...v, backgroundUrl: e.target.value } : v))}
+                          style={{ width: 260, padding: '6px 8px', fontSize: 12, borderRadius: 6, border: line, background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+                        />
+                      </label>
+                      <label style={{ display: 'block' }}>
+                        <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{t('Смуга, % згори')}</div>
+                        <input
+                          value={look?.top ?? ''}
+                          inputMode="numeric"
+                          onChange={(e) => setLook((v) => (v ? { ...v, top: e.target.value } : v))}
+                          style={{ width: 70, padding: '6px 8px', fontSize: 12, borderRadius: 6, border: line, background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+                        />
+                      </label>
+                      <label style={{ display: 'block' }}>
+                        <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{t('Смуга, % знизу')}</div>
+                        <input
+                          value={look?.bottom ?? ''}
+                          inputMode="numeric"
+                          onChange={(e) => setLook((v) => (v ? { ...v, bottom: e.target.value } : v))}
+                          style={{ width: 70, padding: '6px 8px', fontSize: 12, borderRadius: 6, border: line, background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+                        />
+                      </label>
+                      <button className="btn btn-primary" style={{ fontSize: 12 }} disabled={busy} onClick={() => saveLook(d.id)}>
+                        {t('Зберегти')}
+                      </button>
+                    </div>
+                    {lookError && <div style={{ color: 'var(--danger)', marginTop: 6 }}>{lookError}</div>}
                   </td>
                 </tr>
               ))}

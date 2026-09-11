@@ -25,9 +25,22 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
-  themeColor: '#0b1120',
+  themeColor: '#f6f2ec',
 };
 
+/**
+ * Обгортки тут НЕМАЄ навмисно.
+ *
+ * Раніше layout малював власний `<div className="kiosk-root">`, а сторінка —
+ * ще один усередині нього. Обидва `position: fixed; inset: 0`, тобто другий
+ * повністю накривав перший: видимої різниці не було, а в дереві лежали два
+ * однакові корені. Перше, що це зламало, — пошук елемента за `data-step`:
+ * зовнішній кореневий div цього атрибута не має, і будь-яка перевірка, яка
+ * питає «на якому кроці екран», читала порожнечу при цілком робочому екрані.
+ *
+ * Корінь малює СТОРІНКА — вона ж і знає крок. Тут лишається те, заради чого
+ * layout існує: стилі, заголовок вкладки і масштаб.
+ */
 export default function KioskLayout({ children }: { children: React.ReactNode }) {
-  return <div className="kiosk-root">{children}</div>;
+  return <>{children}</>;
 }

@@ -63,6 +63,10 @@ export interface FixtureProperty {
   stayTotal: number;
   /** Броні ЦЬОГО обʼєкта: 2 в А, 3 в Б. */
   reservationIds: string[];
+  /** День заїзду кожної броні, `YYYY-MM-DD`, у порядку `reservationIds`. */
+  checkIns: string[];
+  /** День виїзду кожної броні, у тому ж порядку. */
+  checkOuts: string[];
 }
 
 export interface TwoProperties {
@@ -84,9 +88,52 @@ export interface TwoProperties {
    * розійтися. Воно й розійшлося, щойно дати поїхали.
    */
   month: string;
+  /**
+   * Місяць, у якому фікстура НЕ має жодної броні — наступний після `month`.
+   *
+   * Для сцен, яким потрібне ЦІЛЕ вікно зі своїми числами: наявність, календар
+   * сайту, аркуші доби. Вони сіють власні броні на кілька тижнів і рахують
+   * зайняті дати точно, тож будь-який рядок фікстури в тому ж вікні робить
+   * їхнє число іншим.
+   *
+   * Такі сцени писали місяць руками з приміткою «навмисно не перетинається з
+   * бронями фікстури». Примітка була правдою рівно доти, доки обидва місяці
+   * були літералами: щойно фікстура поїхала на відносні дати, вона дійшла до
+   * того самого листопада, і «навмисно немає» стало трьома червоними
+   * твердженнями. Тепер непересічність ОБЧИСЛЕНА і стверджена самою
+   * фікстурою (`assertQuietMonthIsQuiet`), а не обіцяна коментарем.
+   */
+  quietMonth: string;
+  /** Перший день `quietMonth`. */
+  quietFrom: string;
+  /** Останній день `quietMonth`. */
+  quietTo: string;
+  /**
+   * Доба тихого місяця з запасом по дві з кожного боку — для сцен, які
+   * будують ВЛАСНИЙ день («у домі двоє, заїжджає один»).
+   */
+  freeDay: string;
 }
 
 const ORG = '__two_props__org';
+
+/** Перше число наступного місяця відносно `today` (`YYYY-MM-DD`). */
+export function fixtureAnchor(today: string): string {
+  return `${shiftMonths(`${today.slice(0, 7)}-01`, 1).slice(0, 7)}-01`;
+}
+
+/**
+ * Дата заїзду броні `i` обʼєкта `key`, якби фікстуру сіяли в день `today`.
+ *
+ * Функція ЧИСТА і бере день параметром — саме тому властивість «дати завжди
+ * попереду дня засіву» перевіряється на сотні днів уперед, не чіпаючи
+ * годинника (`two-properties.check.ts`). Засів кличе її ж: другий примірник
+ * цієї арифметики розійшовся б із першим, і перевірка стверджувала б про
+ * копію, а не про фікстуру.
+ */
+export function fixtureCheckIn(today: string, key: 'a' | 'b', i: number): string {
+  return shiftDays(fixtureAnchor(today), i + (key === 'b' ? 5 : 0));
+}
 
 /**
  * Форма одного обʼєкта до засіву — числа зібрані в одному місці, щоб їх було видно.
@@ -232,7 +279,9 @@ async function seedInsideTenant(
   //
   // З якорем на 1-ше число всі пʼять броней лежать у межах 1–9 числа одного
   // місяця ЗАВЖДИ, хай коли б його запустили.
-  const firstOfNextMonth = `${shiftMonths(`${todayIn('UTC').slice(0, 7)}-01`, 1).slice(0, 7)}-01`;
+  const firstOfNextMonth = fixtureAnchor(todayIn('UTC'));
+  // Тихий місяць — наступний за місяцем фікстури, тією ж арифметикою.
+  const quietMonth = shiftMonths(firstOfNextMonth, 1).slice(0, 7);
 
   for (const plan of PLAN) {
     await sql.run(
@@ -273,6 +322,8 @@ async function seedInsideTenant(
     }
 
     const reservationIds: string[] = [];
+    const checkIns: string[] = [];
+    const checkOuts: string[] = [];
     for (let i = 0; i < plan.reservations; i++) {
       const id = `${plan.id}_res_${i + 1}`;
       reservationIds.push(id);
@@ -296,7 +347,7 @@ async function seedInsideTenant(
       // «сьогодні / вчора / цього тижня»: фікстура несе вісь ОБʼЄКТА, і
       // домішувати їй ще й вісь часу означає, що кожен гейт, який питає про
       // сьогодні, мовчки успадковує чужі рядки. Рознесення A/B збережено.
-      const checkIn = shiftDays(firstOfNextMonth, i + (plan.key === 'b' ? 5 : 0));
+      const checkIn = fixtureCheckIn(todayIn('UTC'), plan.key, i);
       await sql.run(
         `INSERT INTO reservations (id, organization_id, property_id, unit_id, unit_type_id, guest_id,
                                    check_in, check_out, nights, adults, total_price, currency)
@@ -304,6 +355,8 @@ async function seedInsideTenant(
         [id, ORG, plan.id, unitIds[i], unitTypeIds[0], '__two_props__guest',
           checkIn, shiftDays(checkIn, 1), 1, 2, plan.stayTotal, ORG],
       );
+      checkIns.push(checkIn);
+      checkOuts.push(shiftDays(checkIn, 1));
     }
 
     seeded[plan.key] = {
@@ -316,6 +369,8 @@ async function seedInsideTenant(
       cityTaxPerNight: plan.cityTaxPerNight,
       stayTotal: plan.stayTotal,
       reservationIds,
+      checkIns,
+      checkOuts,
     };
   }
 
@@ -326,14 +381,67 @@ async function seedInsideTenant(
     totalUnits: seeded.a.unitIds.length + seeded.b.unitIds.length,
     totalReservations: seeded.a.reservationIds.length + seeded.b.reservationIds.length,
     month: firstOfNextMonth.slice(0, 7),
+    quietMonth,
+    quietFrom: `${quietMonth}-01`,
+    quietTo: lastDayOf(quietMonth),
+    freeDay: `${quietMonth}-10`,
   };
 
   assertNotDegenerate(fixture);
+  assertStaysAreFuture(fixture, todayIn('UTC'));
+  assertQuietMonthIsQuiet(fixture);
   // Рядки сцени сіються ТУТ — усередині того самого контексту. Інакше сцена
   // мусила б памʼятати про `runWithOrganization` сама, а те, що доводиться
   // памʼятати, рано чи пізно забувають.
   if (alsoSeed) await alsoSeed(fixture);
   return fixture;
+}
+
+/** Останній день місяця `YYYY-MM`. */
+function lastDayOf(month: string): string {
+  const [year, m] = month.split('-').map(Number);
+  return new Date(Date.UTC(year, m, 0)).toISOString().slice(0, 10);
+}
+
+/**
+ * Жодна бронь фікстури не в минулому — відмова на місці засіву.
+ *
+ * Не «дати зараз у майбутньому»: це істинно й для літерала наступного року,
+ * тобто для тієї самої бомби з довшим ґнотом. Властивість перевіряє
+ * `two-properties.check.ts` на сотні днів уперед; тут — друга лінія, яка не
+ * дає зіпсованій фікстурі мовчки засіятись у чужій сцені.
+ */
+export function assertStaysAreFuture(fx: TwoProperties, today: string): void {
+  const past = [...fx.a.checkIns, ...fx.b.checkIns].filter((d) => d <= today);
+  if (past.length > 0) {
+    throw new Error(
+      `two-properties: ${past.length} броней фікстури заїжджають не пізніше за сьогодні `
+      + `(${past.join(', ')}; сьогодні ${today}). Підтверджена бронь із минулою датою заїзду — `
+      + 'це прострочений заїзд, і кожне твердження про тривоги, добу готелю і наявність '
+      + 'починає рахувати її теж.',
+    );
+  }
+}
+
+/**
+ * Тихий місяць справді тихий.
+ *
+ * Перевіряється ПЕРЕКРИТТЯ відрізків, а не різниця назв місяців: бронь, що
+ * перелізла через межу місяця, пройшла б повз порівняння назв.
+ */
+export function assertQuietMonthIsQuiet(fx: TwoProperties): void {
+  const stays = [
+    ...fx.a.checkIns.map((from, i) => [from, fx.a.checkOuts[i]] as const),
+    ...fx.b.checkIns.map((from, i) => [from, fx.b.checkOuts[i]] as const),
+  ];
+  const overlapping = stays.filter(([from, to]) => from <= fx.quietTo && to >= fx.quietFrom);
+  if (overlapping.length > 0) {
+    throw new Error(
+      `two-properties: ${overlapping.length} броней фікстури заходять у тихий місяць `
+      + `${fx.quietMonth} (${overlapping.map(([f, t]) => `${f}…${t}`).join(', ')}). `
+      + 'Сцена, яка рахує зайняті дати у своєму вікні, дістане зайві.',
+    );
+  }
 }
 
 /**

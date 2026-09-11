@@ -1770,6 +1770,7 @@ CREATE TABLE "properties" (
   "kiosk_signature" TEXT DEFAULT 'foreigners' NOT NULL,
   "kiosk_earliest_checkin" TEXT,
   "kiosk_latest_checkout" TEXT,
+  "guest_app_key" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("organization_id", "slug"),
   CHECK (checkout_balance_policy IN ('none', 'warning', 'blocking')),
@@ -3191,6 +3192,7 @@ CREATE UNIQUE INDEX "idx_price_occupancy_row" ON "price_occupancy" (organization
 CREATE INDEX "idx_price_rules_org" ON "price_rules" ("organization_id");
 CREATE UNIQUE INDEX "idx_price_rules_promo_code" ON "price_rules" (organization_id, lower(code)) WHERE code IS NOT NULL;
 CREATE INDEX "idx_price_rules_property" ON "price_rules" ("property_id", "priority");
+CREATE UNIQUE INDEX "idx_properties_guest_app_key" ON "properties" ("guest_app_key") WHERE guest_app_key IS NOT NULL;
 CREATE INDEX "idx_property_amenities_org" ON "property_amenities" ("organization_id");
 CREATE INDEX "idx_property_amenities_property" ON "property_amenities" ("property_id");
 CREATE INDEX "idx_reservation_files_org" ON "reservation_files" ("organization_id");
@@ -4091,7 +4093,7 @@ CREATE POLICY "price_rules_tenant" ON "price_rules"
 ALTER TABLE "properties" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "properties" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "properties_tenant" ON "properties"
-  USING ("organization_id" = current_setting('app.organization_id'))
+  USING ("organization_id" = current_setting('app.organization_id') OR "guest_app_key" = NULLIF(current_setting('app.public_token', true), ''))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
 ALTER TABLE "property_amenities" ENABLE ROW LEVEL SECURITY;

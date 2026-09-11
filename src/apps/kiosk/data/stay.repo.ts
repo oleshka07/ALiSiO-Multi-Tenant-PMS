@@ -7,7 +7,7 @@
  * бути в запиті, а не покладатись на контекст (AGENTS §7).
  */
 import { getSql } from '@core/db/async';
-import { inWindow, phoneDigits, PHONE_MIN_DIGITS, type SearchInput } from '../domain/search';
+import { dayAfter, inWindow, phoneDigits, PHONE_MIN_DIGITS, readSearchDate, type SearchInput } from '../domain/search';
 
 export interface StayRow {
   id: string;
@@ -66,23 +66,20 @@ export async function findStays(input: {
 
   if (clean(s.token)) { where.push('r.guest_page_token = ?'); params.push(clean(s.token)); }
   if (clean(s.lastName)) { where.push('LOWER(g.last_name) = LOWER(?)'); params.push(clean(s.lastName)); }
-  if (clean(s.checkIn)) {
-    // Доба ПІВІНТЕРВАЛОМ, не `SUBSTR(check_in, 1, 10) = ?`.
-    //
-    // Перша редакція різала рядок: на SQLite `check_in` це TEXT, і працювало.
-    // На Postgres це DATE, і `substr(date, integer, integer)` не існує — маршрут
-    // пошуку відповідав 500 на КОЖЕН запит гостя. Спіймано першим же прогоном
-    // гейта роллю `alisio_app` на справжньому рушії (AGENTS §7: «SQL — це
-    // рядок, і `tsc` його не бачить»).
-    //
-    // Півінтервал розуміють обидва: на Postgres параметр приводиться до дати,
-    // на SQLite порівнюються рядки — і `'2026-09-11 14:00'` теж потрапляє в
-    // `['2026-09-11', '2026-09-12')`, чого рівність із обрізаним рядком
-    // досягала лише випадково.
-    const from = clean(s.checkIn).slice(0, 10);
-    const to = new Date(new Date(`${from}T00:00:00Z`).getTime() + 86_400_000).toISOString().slice(0, 10);
+  // Дату читає ДОМЕН (`readSearchDate`), і сюди не-день не доходить: хендлер
+  // відмовляє 400 раніше, бо такий рядок не рахується чинником. Тут лишається
+  // те, що вже є днем, — і тому `dayAfter` не може кинути.
+  //
+  // Доба ПІВІНТЕРВАЛОМ, не `SUBSTR(check_in, 1, 10) = ?`. Перша редакція різала
+  // рядок: на SQLite `check_in` це TEXT, і працювало. На Postgres це DATE, і
+  // `substr(date, integer, integer)` не існує — маршрут пошуку відповідав 500
+  // на КОЖЕН запит гостя. Півінтервал розуміють обидва рушії, і `'2026-09-11
+  // 14:00'` теж потрапляє в `['2026-09-11', '2026-09-12')`, чого рівність із
+  // обрізаним рядком досягала лише випадково.
+  const checkInDay = readSearchDate(s.checkIn);
+  if (checkInDay) {
     where.push('r.check_in >= ? AND r.check_in < ?');
-    params.push(from, to);
+    params.push(checkInDay, dayAfter(checkInDay));
   }
   if (clean(s.email)) { where.push('LOWER(g.email) = LOWER(?)'); params.push(clean(s.email)); }
   // Телефон звіряється за ХВОСТОМ, і в базі теж без розділювачів: гість
@@ -101,11 +98,32 @@ export async function findStays(input: {
     params.push(`%${digits.slice(-PHONE_MIN_DIGITS)}`);
   }
   if (clean(s.confirmation)) {
-    // Номер підтвердження — наш id АБО ключ походження з чужої системи
-    // (`winhotel-ob:<номер>`): для гостя це одне й те саме число з листа.
-    where.push('(r.id = ? OR r.external_ref = ? OR r.external_uid = ?)');
+    // «Номер броні» — одне слово для гостя і ТРИ різні поля в базі, бо
+    // залежить, звідки бронь приїхала:
+    //
+    //   наш `id`                    — бронь завели ми;
+    //   `external_uid`              — код каналу (Booking.com і решта);
+    //   `external_ref` з префіксом  — номер онлайн-модуля готелю.
+    //
+    // Гість цього не знає й не має знати: він друкує те число, що бачить у
+    // листі.
+    //
+    // ── Груповий заїзд, і чому без нього код не знаходився ────────────────
+    //
+    // Одне бронювання Booking.com на три кімнати стає в нас трьома бронями, і
+    // писач каналу кладе в `external_uid` не код, а `<код>#<ключ кімнати>` —
+    // інакше рядки не були б унікальні (`inbound-bookings.repo`). Тобто гість
+    // друкував рівно те, що в листі, а рівність не збігалася ЖОДНОГО разу:
+    // в базі `4451234567#a`, на екрані «броні не знайдено».
+    //
+    // Тому друга умова — префікс до `#`. Підстановні знаки в коді
+    // ЕКРАНУЮТЬСЯ: без цього `%` у полі перетворив би пошук за номером на
+    // пошук за зразком, тобто на підбір чужих броней.
     const c = clean(s.confirmation);
-    params.push(c, `winhotel-ob:${c}`, c);
+    const likePrefix = `${c.replace(/[\\%_]/g, (ch) => `\\${ch}`)}#%`;
+    where.push(
+      "(r.id = ? OR r.external_ref = ? OR r.external_uid = ? OR r.external_uid LIKE ? ESCAPE '\\')");
+    params.push(c, `winhotel-ob:${c}`, c, likePrefix);
   }
 
   const rows = (await sql.rows<StayRow>(`${SELECT} WHERE ${where.join(' AND ')} LIMIT 20`, params)) as StayRow[];
@@ -121,12 +139,36 @@ export async function stayById(input: {
     [input.reservationId, input.organizationId, input.propertyId]);
 }
 
-/** Гості перебування — те, що показує картка реєстрації. */
+/**
+ * Гості перебування — ПОВНИЙ рядок реєстрації, не лише те, що видно в картці.
+ *
+ * Колонок тут більше, ніж показує екран, і навмисно. `saveRegistrations`
+ * замінює список броні цілком (`DELETE` і заново), тож кіоск, дописуючи
+ * другого гостя, мусить повернути писачеві першого ТАКИМ, ЯКИМ ТОЙ БУВ, —
+ * разом з адресою, документом і метою перебування, яких у картці немає за
+ * побудовою. Вузький `SELECT` тут означав би не «менше даних на екрані», а
+ * мовчазне стирання адреси гостя, який реєструвався через портал, у той
+ * момент, коли його супутник підходить до термінала.
+ *
+ * Що НЕ повертається: `fee_*` — їх писач рахує сам із ночей і ставки, і
+ * збережена копія розійшлася б із таблицею ставок; і `guest_id`, який він
+ * знаходить за іменем.
+ *
+ * Маскує ЕКРАН (`stayCard`), а не цей запит: репозиторій — серверний бік,
+ * і вирішувати, що з нього показати, — справа хендлера.
+ */
 export async function stayGuests(input: {
   organizationId: string; propertyId: string; reservationId: string;
-}): Promise<{ first_name: string; last_name: string; nationality: string | null; document_type: string | null; date_of_birth: string | null }[]> {
+}): Promise<{
+  first_name: string; last_name: string; nationality: string | null;
+  document_type: string | null; document_number: string | null;
+  date_of_birth: string | null; address: string | null;
+  purpose_of_stay: string | null; visa_number: string | null;
+}[]> {
   return (await getSql().rows(`
-    SELECT rg.first_name, rg.last_name, rg.nationality, rg.document_type, rg.date_of_birth
+    SELECT rg.first_name, rg.last_name, rg.nationality, rg.document_type,
+           rg.document_number, rg.date_of_birth, rg.address,
+           rg.purpose_of_stay, rg.visa_number
       FROM reservation_guests rg
       JOIN reservations r ON r.id = rg.reservation_id
      WHERE rg.reservation_id = ? AND r.organization_id = ? AND r.property_id = ?

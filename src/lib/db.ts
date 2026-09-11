@@ -200,6 +200,17 @@ function buildSchema(database: any) {
         CHECK (kiosk_signature IN ('foreigners', 'always', 'never')),
       kiosk_earliest_checkin TEXT,
       kiosk_latest_checkout TEXT,
+      -- 0414: ключ ГОСТЬОВОГО застосунку — адреса, куди веде QR на склі.
+      --
+      -- Сторінка публічна, сесії там немає за визначенням, тож орендаря
+      -- мусить називати сама адреса (інваріант 8). Ключ належить ОБʼЄКТУ:
+      -- наліпка висить на дверях конкретного корпусу, і гість, який її
+      -- сканував, стоїть саме там.
+      --
+      -- Порожньо = застосунок ще не ввімкнено. Ключ не вставляють, а
+      -- видають — той самий взірець, що код парування кіоска.
+      -- І тут, і в ALTER нижче (AGENTS §4).
+      guest_app_key TEXT,
       UNIQUE(organization_id, slug)
     );
 
@@ -617,6 +628,18 @@ function buildSchema(database: any) {
     );
 
     -- Indexes
+    -- 0414: ключ гостьового застосунку унікальний СЕРЕД ЗАПОВНЕНИХ.
+    --
+    -- Частковий (WHERE ... IS NOT NULL), бо порожньо = «застосунок ще не
+    -- ввімкнено», і таких обʼєктів буде більшість. Індекс тут ОБМЕЖЕННЯ, не
+    -- пришвидшення: без нього два обʼєкти могли б дістати один ключ, і QR на
+    -- склі одного готелю відчиняв би сторінку другого.
+    --
+    -- Свідомо і в CREATE, і в ALTER: індекс, дописаний лише в міграцію, є в
+    -- мігрованій базі й відсутній у нового клієнта, а check-fresh-schema
+    -- цього не бачить за побудовою — він звіряє SQLite із SQLite (AGENTS §4).
+    CREATE UNIQUE INDEX idx_properties_guest_app_key
+      ON properties(guest_app_key) WHERE guest_app_key IS NOT NULL;
     CREATE INDEX idx_units_property ON units(property_id);
     CREATE INDEX idx_units_category ON units(category_id);
     CREATE INDEX idx_units_unit_type ON units(unit_type_id);
@@ -7400,6 +7423,13 @@ function runMigrations(database: any) {
     if (!propCols.includes('kiosk_latest_checkout')) {
       database.exec('ALTER TABLE properties ADD COLUMN kiosk_latest_checkout TEXT');
       console.log('[DB] 0413: properties.kiosk_latest_checkout');
+    }
+    // 0414 — ключ гостьового застосунку.
+    if (!propCols.includes('guest_app_key')) {
+      database.exec('ALTER TABLE properties ADD COLUMN guest_app_key TEXT');
+      database.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_properties_guest_app_key '
+        + 'ON properties(guest_app_key) WHERE guest_app_key IS NOT NULL');
+      console.log('[DB] 0414: properties.guest_app_key');
     }
   } catch (e: any) {
     console.error('[DB] properties checkout_balance_policy:', e.message);

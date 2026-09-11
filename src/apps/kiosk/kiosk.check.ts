@@ -58,6 +58,7 @@ const { oneProperty, ALL_PROPERTIES } = await import('@core/property-scope.ts');
 const { documentLanguage } = await import('@core/i18n/resolve.ts');
 const walkin = await import('./api/walkin.handlers.ts');
 const search = await import('./domain/search.ts');
+const words = await import('./ui/translations.ts');
 
 const sql = getSql();
 const A = '__kiosk_check__a';
@@ -722,6 +723,413 @@ try {
     session.readTouchBand(JSON.stringify({ touch_band: { top: 25, bottom: 75 } })),
     { top: 25, bottom: 75 }, 'правильна смуга не дійшла до екрана');
   console.log('  ok  23. смуга поза [0,100], перевернута й нечислова — дефолт; правильна проходить');
+
+  // ── 24. Дата, набрана не в тій формі, — НАЗВАНА відмова, а не 500 ───────
+  //
+  // Знайдено на живому екрані, не гейтом: власник набрав прізвище і дату, і
+  // отримав «Keine Buchung gefunden» — тобто відповідь ПРО БРОНЬ на те, що
+  // було помилкою ВВОДУ. Під сподом було гірше за неточне слово:
+  //
+  //   new Date('11.09.2026T00:00:00Z')  →  Invalid Date
+  //   .toISOString()                     →  RangeError: Invalid time value
+  //
+  // Тобто маршрут пошуку віддавав 500, а екран малював «не знайдено», бо він
+  // розрізняє лише `ok`/`не ok`. Гість читав відповідь про чужу бронь там, де
+  // насправді впав сервер.
+  //
+  // Клавіатура при цьому давала рівно ті символи, якими цю помилку роблять:
+  // цифри, «.» і «-». Формат дати на екрані в холі не вгадується — тому дату
+  // тепер ОБИРАЮТЬ календарем, а рядок, який не є днем, не рахується чинником
+  // (як телефон, коротший за номер, у сцені 13).
+  // Свій термінал: попередній уже відкликано сценою 22, і сцена, яка цього не
+  // помітила б, читала б 401 замість відповіді про дату.
+  const dated = await runWithOrganization(A, () => devices.createPairing({ organizationId: A, propertyId: P1, name: 'Date' }));
+  const datedDev = (await (await pair(dated.code)).json()) as { token: string; deviceId: string };
+  const datedTok = datedDev.token;
+  for (const bad of ['11.09.2026', '11092026', '09/11/2026', '11-09-2026', '2026-13-01', '2026-02-30', '.']) {
+    found = await stay.findStay(post('find', { lastName: 'Fenster', checkIn: bad }, datedTok));
+    assert.strictEqual(found.status, 400,
+      `дата «${bad}»: очікували 400 (не чинник), отримали ${found.status}`);
+  }
+  // Друга вісь тієї самої межі: справжній день чинником Є — інакше сцена
+  // доводила б лише те, що дата не працює ніколи. Близнюка сцени 15 тут прибрано
+  // з-під того самого прізвища: інакше пара віддала б `need_more`, і твердження
+  // «дата — чинник» сховалося б за «збігів двоє».
+  await runWithOrganization(A, () => sql.run(
+    "UPDATE guests SET last_name = 'Zwilling' WHERE id = ?", ['kc_twin_g']));
+  // І повертається в живі: сцена 17 виселила цю бронь, а `checked_out` термінал
+  // не бачить за побудовою — сцена мовчки перевіряла б статус замість дати.
+  await runWithOrganization(A, () => sql.run(
+    "UPDATE reservations SET check_in = ?, check_out = ?, status = 'confirmed' WHERE id = ?",
+    [day(0), day(1), 'kc_find']));
+  found = await stay.findStay(post('find', { lastName: 'Fenster', checkIn: day(0) }, datedTok));
+  assert.strictEqual(((await found.json()) as any).found, true,
+    'справжня дата перестала бути чинником');
+  // І третя: високосний день існує, коли він існує.
+  assert.strictEqual(search.readSearchDate('2024-02-29'), '2024-02-29', '29 лютого 2024 — справжній день');
+  assert.strictEqual(search.readSearchDate('2026-02-29'), null, '29 лютого 2026 не існує, а прийнято');
+  console.log('  ok  24. дата не в тій формі — 400 «введіть ще одне поле», не 500 і не «не знайдено»');
+
+  // ── 25. Вигляд: лого й фон доходять до екрана, і тільки безпечною адресою ─
+  //
+  // Картка застосунку зберігає `logo_url` і `background_url` у `config_json`
+  // пристрою з частини В — а сесія їх НЕ віддавала. Тобто оператор заповнював
+  // два поля, тиснув «Зберегти», бачив підтвердження, і на терміналі не
+  // мінялось нічого: запис, якого ніхто не читає (клас `audit-dead-data`).
+  //
+  // Друга половина сцени важливіша за першу. Адресу набирає ЛЮДИНА в полі
+  // форми, а екран підставляє її в `src` картинки — тобто `javascript:` там
+  // це виконаний код на терміналі, до якого підходить будь-хто. Тому
+  // дозволені рівно три форми: `https://`, `http://` і свій шлях від кореня.
+  const look = (cfg: unknown) => session.readAppearance(JSON.stringify(cfg));
+  assert.deepStrictEqual(
+    look({ logo_url: 'https://cdn.example.test/l.png', background_url: '/uploads/b.jpg' }),
+    { logoUrl: 'https://cdn.example.test/l.png', backgroundUrl: '/uploads/b.jpg' },
+    'звичайні адреси не дійшли до екрана');
+  for (const bad of [
+    'javascript:alert(1)', 'JaVaScRiPt:alert(1)', ' javascript:alert(1)',
+    'data:text/html,<script>x</script>', 'vbscript:x', '//evil.test/l.png',
+    'file:///etc/passwd', 42, null, {}, [],
+  ]) {
+    assert.deepStrictEqual(look({ logo_url: bad, background_url: bad }),
+      { logoUrl: null, backgroundUrl: null },
+      `адреса ${JSON.stringify(bad)} мала бути відкинута`);
+  }
+  // І сесія віддає їх ПОРУЧ зі смугою — інакше сцена доводила б лише те, що
+  // чиста функція чиста, а екран і далі не мав би чого показати.
+  await runWithOrganization(A, () => sql.run(
+    'UPDATE kiosk_devices SET config_json = ? WHERE id = ? AND organization_id = ?',
+    [JSON.stringify({ touch_band: { top: 30, bottom: 90 }, logo_url: '/uploads/logo.svg' }),
+      datedDev.deviceId, A]));
+  const seen = await (await session.deviceSession(new Request('http://alisio.test/api/apps/kiosk/session', {
+    headers: { authorization: `Bearer ${datedTok}` },
+  }))).json() as { logoUrl?: string | null; backgroundUrl?: string | null };
+  assert.strictEqual(seen.logoUrl, '/uploads/logo.svg', `лого не приїхало в сесію: ${JSON.stringify(seen)}`);
+  assert.strictEqual(seen.backgroundUrl, null, 'незаданий фон мав приїхати як null, а не зникнути');
+  console.log('  ok  25. лого й фон доходять до екрана; javascript:, data: і «//» — відкинуті');
+
+  // ── 26. Код броні: їх у однієї броні КІЛЬКА, і гість знає будь-який ─────
+  //
+  // Гість читає в листі один номер, і чий він — залежить від того, звідки
+  // бронь приїхала: наш `id`, номер Booking.com, номер онлайн-модуля готелю.
+  // Усі три — «номер броні» для людини біля термінала.
+  //
+  // Дірка, знайдена читанням писача каналів: груповий заїзд (кілька кімнат
+  // одним бронюванням Booking.com) кладе в `external_uid` не код, а
+  // `<код>#<ключ кімнати>` — інакше рядки не були б унікальні. Тобто гість
+  // друкує рівно те, що бачить у листі, і не знаходить нічого, бо в базі
+  // лежить `1234567890#a`, а не `1234567890`.
+  await runWithOrganization(A, () => seedStay(A, P1, 'kc_code', { unitId: null, paymentStatus: 'paid', from: 7, to: 8 }));
+  await runWithOrganization(A, () => sql.run(
+    "UPDATE reservations SET check_in = ?, check_out = ?, status = 'confirmed' WHERE id = ?",
+    [day(0), day(1), 'kc_code']));
+  await runWithOrganization(A, () => sql.run(
+    "UPDATE guests SET last_name = 'Kodow' WHERE id = ?", ['kc_code_g']));
+
+  const byCode = async (code: string) => {
+    const r = await stay.findStay(post('find', { lastName: 'Kodow', confirmation: code }, datedTok));
+    return await r.json() as { found: boolean; stay?: { reservationId: string } };
+  };
+
+  // Одномісна бронь із каналу: код лежить у `external_uid` як є.
+  await runWithOrganization(A, () => sql.run(
+    'UPDATE reservations SET external_uid = ? WHERE id = ?', ['4451234567', 'kc_code']));
+  assert.strictEqual((await byCode('4451234567')).stay?.reservationId, 'kc_code',
+    'код Booking.com одномісної броні не знайшовся');
+
+  // ГРУПОВА: той самий код із ключем кімнати. Гість друкує код без ключа.
+  await runWithOrganization(A, () => sql.run(
+    'UPDATE reservations SET external_uid = ? WHERE id = ?', ['4451234567#a', 'kc_code']));
+  assert.strictEqual((await byCode('4451234567')).stay?.reservationId, 'kc_code',
+    'груповий заїзд Booking.com: гість друкує код із листа, а в базі «код#кімната»');
+  // І ключ кімнати НЕ стає чужим кодом: `445123` не має знаходити `4451234567`.
+  assert.strictEqual((await byCode('445123')).found, false,
+    'частина коду знайшла бронь — пошук став підбором');
+
+  // Номер онлайн-модуля готелю (`winhotel-ob:<номер>`) — третій вигляд того
+  // самого питання, і він уже працював; сцена тримає його від регресії.
+  await runWithOrganization(A, () => sql.run(
+    'UPDATE reservations SET external_uid = NULL, external_ref = ? WHERE id = ?',
+    ['winhotel-ob:88120', 'kc_code']));
+  assert.strictEqual((await byCode('88120')).stay?.reservationId, 'kc_code',
+    'номер онлайн-модуля перестав знаходитись');
+  console.log('  ok  26. номер броні: код каналу, «код#кімната» групового заїзду і номер онлайн-модуля');
+
+  // ── 27. Кожен маршрут кіоска має звідки бути викликаним з ЕКРАНА ────────
+  //
+  // Статична сцена, і вона стверджує ВЛАСТИВІСТЬ, а не візерунок: маршрут,
+  // якого екран не кличе, — це або мертвий код, або діра в екрані, і
+  // розрізнити їх можна лише очима. Жоден інший гейт цього не бачить за
+  // побудовою: `check-route-guards` питає, чи є варта, `check:routes` — чи
+  // маршрут відповідає, і обидва зелені на маршруті, до якого ніхто не йде.
+  //
+  // Знайдено цим: чотири з десяти. `register` і `sign` — це Meldeschein і
+  // підпис, тобто ЗАКОН (КІ3), а не зручність: екран пропускав крок, і
+  // заселення будь-якої незареєстрованої броні впиралось у `not_registered`
+  // з написом «зверніться на рецепцію» — тобто термінал був марний рівно для
+  // тих, заради кого стоїть. `stay` — картка, з якої екран мав би дізнатись,
+  // чи потрібен підпис. `walkin` — попередня бронь К8: кнопка «Ich habe
+  // gerade gebucht» просто перемикала крок і не створювала нічого.
+  const screenSrc = fs.readFileSync(
+    path.join(process.cwd(), 'src/app/kiosk/page.tsx'), 'utf8')
+    // Коментарі — геть: інакше сцена рахує власні пояснення (AGENTS §4).
+    .replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ');
+  const routes = fs.readdirSync(path.join(process.cwd(), 'src/app/api/apps/kiosk'))
+    .filter((d) => fs.existsSync(path.join(process.cwd(), 'src/app/api/apps/kiosk', d, 'route.ts')));
+  assert.ok(routes.length >= 8, `маршрутів кіоска знайдено ${routes.length} — перевірка дивиться не туди`);
+  const unreachable = routes.filter((r) => !(
+    screenSrc.includes(`call('${r}'`) || screenSrc.includes(`api/apps/kiosk/${r}`)));
+  assert.deepStrictEqual(unreachable, [],
+    `маршрути, яких екран не кличе: ${unreachable.join(', ')} — мертвий код або діра в екрані`);
+  console.log(`  ok  27. усі ${routes.length} маршрутів кіоска викликаються з екрана`);
+
+  // ── 27б. Крок, який ПИШЕ, показує і відповідь ───────────────────────────
+  //
+  // Друга половина сцени 30, і вона потрібна саме тому, що перша її не
+  // покриває: словник може мати речення на кожен код, а крок — не мати місця,
+  // де це речення видно. Рівно так і було: `doCheckIn` чесно ставив
+  // `setMessage`, а блок кроку `stay` не рендерив `message` взагалі —
+  // відмова доїжджала до екрана і зупинялась у стані.
+  //
+  // Сцена статична і, на відміну від 27 і 30, стереже ВІЗЕРУНОК, а не
+  // властивість: «у блоці кроку згадується message». Вона не доводить, що
+  // рядок видно оком — це доводить живий прохід. Названо прямо, щоб зелень
+  // тут не читалась як доказ (§3.2.1).
+  const stepBlock = (name: string) => {
+    const at = screenSrc.indexOf(`step === '${name}' &&`);
+    assert.ok(at > 0, `кроку «${name}» немає на екрані — сцена дивиться не туди`);
+    const rest = screenSrc.slice(at + 10);
+    const end = rest.indexOf('{step === ');
+    return end < 0 ? rest : rest.slice(0, end);
+  };
+  // Кроки, з яких екран ПИШЕ: кожен з них може дістати названу відмову.
+  const mute = ['stay', 'register', 'find', 'claim'].filter((n) => !stepBlock(n).includes('message'));
+  assert.deepStrictEqual(mute, [],
+    `кроки, які пишуть і не показують відповіді: ${mute.join(', ')} — гість тисне кнопку і не бачить нічого`);
+  console.log('  ok  27б. кожен крок, який пише, має де показати відмову');
+
+  // ── 28. Реєстрація: склад ПОВНИЙ, або заселення не буде ────────────────
+  //
+  // Моя ж помилка, знайдена живим прогоном, а не гейтом. `saveRegistrations`
+  // ЗАМІНЮЄ список броні цілком (`DELETE` і заново) і ставить `registered`
+  // лише коли вписані всі дорослі. Перша редакція екрана слала гостей ПО
+  // ОДНОМУ — кожен наступний стирав попереднього, бронь на двох не ставала
+  // зареєстрованою ніколи, а заселення відмовляло `not_registered` при
+  // цілком зеленій відповіді реєстрації. Найгірший рід: обидві половини
+  // «працюють», не працює тільки разом.
+  //
+  // Фікстура з ДВОМА дорослими навмисно: на броні з одним обидві поведінки —
+  // «по одному» і «всі разом» — дають те саме, і сцена була б зелена на
+  // зламаному коді (інваріант 26).
+  await runWithOrganization(A, () => seedStay(A, P1, 'kc_meld', { unitId: `${P1}_u2`, paymentStatus: 'paid', from: 9, to: 10 }));
+  await runWithOrganization(A, () => sql.run(
+    "UPDATE reservations SET check_in = ?, check_out = ?, status = 'confirmed', adults = 2, registration_status = 'not_registered' WHERE id = ?",
+    [day(0), day(1), 'kc_meld']));
+  await runWithOrganization(A, () => policy(P1, 'allow_pay_later'));
+  await runWithOrganization(A, () => clean(`${P1}_u2`, 'clean'));
+
+  const reg = (guests: unknown[]) => stay.registerStay(post('register', { reservationId: 'kc_meld', guests }, datedTok));
+  const tryIn = () => stay.checkInStay(post('checkin', { reservationId: 'kc_meld' }, datedTok));
+
+  assert.strictEqual((await tryIn()).status, 422, 'незареєстрована бронь мала б не заселятись');
+  // Половина складу — ще не склад.
+  assert.strictEqual((await reg([{ firstName: 'Anna', lastName: 'Muster' }])).status, 200,
+    'реєстрація одного гостя мала пройти');
+  assert.strictEqual((await tryIn()).status, 422,
+    'бронь на двох заселилась з одним вписаним — склад не перевіряється');
+  // Обидва разом — і лише тоді.
+  assert.strictEqual((await reg([
+    { firstName: 'Anna', lastName: 'Muster' }, { firstName: 'Max', lastName: 'Muster' },
+  ])).status, 200, 'реєстрація повного складу мала пройти');
+  const inRes = await tryIn();
+  assert.strictEqual(inRes.status, 200,
+    `повний склад не пустив на заселення: ${inRes.status}`);
+  console.log('  ok  28. один із двох — ще не склад; обидва разом — заселення');
+
+  // ── 29. Другий гість ДОДАЄТЬСЯ до першого, а не стирає його ─────────────
+  //
+  // Сцена 28 замкнула склад, але лишила його памʼять на ЕКРАНІ: та редакція
+  // працювала лише тому, що браузер тримав список у React-стані і слав його
+  // цілком щоразу. Це трималось на тому, що гість не відходить від
+  // термінала: скидання за бездіяльністю (60 с, `useIdleReset`) чистить
+  // стан — і сімʼя, яка вписала батька, сходила по валізу й повернулась
+  // вписати матір, стирала батька другим натиском. Бронь не ставала
+  // зареєстрованою НІКОЛИ, а обидві відповіді були `ok`.
+  //
+  // Тому твердження не про екран, а про МАРШРУТ: два окремі виклики з одним
+  // гостем кожен дають ДВОХ. Памʼять — у базі, бо лише вона переживає те,
+  // що гість відійшов.
+  //
+  // Фікстура не вироджена по обох осях, про які твердження стверджує
+  // (інваріант 26): дорослих ДВОЄ (на одному «додати» і «замінити» дають те
+  // саме), і прізвища РІЗНІ — інакше «двоє Мустерів» не відрізнити від
+  // одного, записаного двічі. Число 2 несумісне з прочитанням «замінює»:
+  // те дає рівно 1.
+  // Номер НЕ називається: його підбере саме заселення (auto-assign увімкнено
+  // дефолтом). Це не спрощення, а вимога СПРАВЖНЬОГО Postgres: там стоїть
+  // `no_double_booking` (EXCLUDE USING gist, 0133), і дві фікстури, що ділять
+  // один номер на ті самі ночі, відхиляються базою. На SQLite і на PGlite
+  // обмеження немає, тож сцена була зелена в обох — і впала лише на стенді
+  // AGENTS §7. Рівно те, від чого застерігає §7: PGlite доводить діалект, не
+  // обмеження.
+  // Дати засіву — ДАЛЕКІ, і лише потім бронь переносять на потрібну добу.
+  // Причина не в охайності: `seedStay` за замовчуванням кладе на завтра, а
+  // завтра ці номери вже зайняті ранішими фікстурами. На SQLite і PGlite це
+  // проходить (обмеження немає), а справжній Postgres відхиляє сам ІНСЕРТ —
+  // ще до того, як `UPDATE` перенесе бронь туди, де вільно. Кінцевий розклад
+  // при цьому чистий, тож вада видна лише на живому рушії (AGENTS §7).
+  await runWithOrganization(A, () => seedStay(A, P1, 'kc_pair', {
+    unitId: `${P1}_u3`, unitTypeId: `${P1}_ut2`, paymentStatus: 'paid', from: 20, to: 21,
+  }));
+  await runWithOrganization(A, () => sql.run(
+    "UPDATE reservations SET check_in = ?, check_out = ?, status = 'confirmed', adults = 2, registration_status = 'not_registered' WHERE id = ?",
+    [day(1), day(2), 'kc_pair']));
+  await runWithOrganization(A, () => clean(`${P1}_u3`, 'clean'));
+
+  const regOne = (guest: unknown) =>
+    stay.registerStay(post('register', { reservationId: 'kc_pair', guests: [guest] }, datedTok));
+
+  assert.strictEqual((await regOne({ firstName: 'Anna', lastName: 'Beispiel' })).status, 200,
+    'перший гість мав вписатись');
+  assert.strictEqual((await regOne({ firstName: 'Max', lastName: 'Muster' })).status, 200,
+    'другий гість мав вписатись');
+
+  const both = await (await stay.stayCard(post('stay', { reservationId: 'kc_pair' }, datedTok))).json();
+  assert.strictEqual(both.guests.length, 2,
+    `другий виклик стер першого: у картці ${both.guests.length} гість замість двох`);
+  // Маска лишає перші літери — саме за ними видно, що це ДВОЄ РІЗНИХ, а не
+  // один, записаний двічі.
+  const initials = both.guests.map((g: { name: string }) => g.name).sort().join(' | ');
+  assert.ok(/A/.test(initials) && /M/.test(initials),
+    `у картці не обидва гості: ${initials}`);
+  assert.strictEqual(
+    (await stay.checkInStay(post('checkin', { reservationId: 'kc_pair' }, datedTok))).status, 200,
+    'склад із двох окремих викликів не пустив на заселення');
+  // Той самий гість удруге — це ВИПРАВЛЕННЯ, не третій постоялець. Інакше
+  // гість, який помітив друкарську помилку і вписався ще раз, роздував би
+  // склад — і бронь на двох ніколи не сходилась би з трьома рядками.
+  assert.strictEqual((await regOne({ firstName: 'anna', lastName: '  Beispiel ' })).status, 200,
+    'повторний запис того самого гостя мав пройти');
+  const reRead = await (await stay.stayCard(post('stay', { reservationId: 'kc_pair' }, datedTok))).json();
+  assert.strictEqual(reRead.guests.length, 2,
+    `той самий гість іншим регістром став третім: ${reRead.guests.length}`);
+
+  // І друга вісь тієї самої зміни: злиття НЕ СТИРАЄ того, чого на терміналі
+  // не питають. Паспорт і адресу гість називає на порталі; якщо злиття губить
+  // їх, вада мовчазна — Meldeschein друкується без документа, і це видно лише
+  // рецепції наступного ранку.
+  //
+  // Перевіряються ОБИДВА шляхи, якими збережений рядок проходить крізь
+  // злиття, бо це різний код і ламається він окремо. Перша редакція цієї
+  // сцени била лише по одному з них: злом гілки «той самий гість удруге»
+  // лишав її ЗЕЛЕНОЮ, бо Beispiel тоді йшов гілкою «просто перенести»
+  // (§3.2.1 — та сама помилка іншою формою).
+  await runWithOrganization(A, () => sql.run(
+    "UPDATE reservation_guests SET document_number = ?, address = ? WHERE reservation_id = ? AND LOWER(last_name) = 'beispiel'",
+    ['PASS-77', 'Musterweg 1', 'kc_pair']));
+
+  // Шлях 1 — ТОЙ САМИЙ гість удруге: гість помітив друкарську помилку і
+  // вписався ще раз. Термінал шле лише імена; паспорт має лишитись.
+  assert.strictEqual((await regOne({ firstName: 'Anna', lastName: 'Beispiel' })).status, 200,
+    'повторний запис того самого гостя мав пройти');
+  const afterSelf = await runWithOrganization(A, () => sql.row<{ document_number: string | null; address: string | null }>(
+    "SELECT document_number, address FROM reservation_guests WHERE reservation_id = ? AND LOWER(last_name) = 'beispiel'",
+    ['kc_pair']));
+  assert.strictEqual(afterSelf?.document_number, 'PASS-77',
+    `повторний запис гостя стер його ж документ: ${afterSelf?.document_number}`);
+  assert.strictEqual(afterSelf?.address, 'Musterweg 1',
+    `повторний запис гостя стер його ж адресу: ${afterSelf?.address}`);
+
+  // Шлях 2 — ЧУЖИЙ запис: третій гість не чіпає паспорта першого.
+  assert.strictEqual((await regOne({ firstName: 'Eva', lastName: 'Neu' })).status, 200,
+    'третій гість мав вписатись');
+  const keptRow = await runWithOrganization(A, () => sql.row<{ document_number: string | null; address: string | null }>(
+    "SELECT document_number, address FROM reservation_guests WHERE reservation_id = ? AND LOWER(last_name) = 'beispiel'",
+    ['kc_pair']));
+  assert.strictEqual(keptRow?.document_number, 'PASS-77',
+    `дописування гостя стерло документ попереднього: ${keptRow?.document_number}`);
+  assert.strictEqual(keptRow?.address, 'Musterweg 1',
+    `дописування гостя стерло адресу попереднього: ${keptRow?.address}`);
+
+  console.log('  ok  29. другий виклик реєстрації додає гостя, а не стирає попереднього');
+
+  // ── 30. Кожна відмова заселення має РЕЧЕННЯ, і не одне на всіх ─────────
+  //
+  // Знайдено живим проходом, не гейтом: готель, який роздає номери руками,
+  // отримує від фасаду `no_unit` 409-ю — а картка перебування повідомлень
+  // не показувала взагалі. Гість тиснув «Check-in» і бачив, що НІЧОГО НЕ
+  // ВІДБУВАЄТЬСЯ. У холі немає кому пояснити, а сам код (`no_unit`) на
+  // екран не їде ніколи — це той самий рід, що `e.message` (інваріант 6).
+  //
+  // Твердження про ВЛАСТИВІСТЬ, не про візерунок (§3.2.1): кожна відмова
+  // ганяється через ЖИВИЙ хендлер, і речення вимагається на ТОЙ код, який
+  // хендлер справді віддав. Загальне «зверніться на рецепцію» тут — це
+  // червоне: воно означає, що коду немає у словнику. Новий код фасаду
+  // завалить сцену в той день, коли зʼявиться, а не в день скарги гостя.
+  //
+  // Фікстура не вироджена по осі «рід відмови» (інваріант 26): відмов
+  // ЧОТИРИ, різного походження — політика реєстрації, політика оплати,
+  // година готелю і розподіл номерів, — і кожна перевіряється на СВОЄМУ
+  // коді, а не на тому, що «щось відмовило».
+  const refused = async (label: string, reservationId: string) => {
+    const res = await stay.checkInStay(post('checkin', { reservationId }, datedTok));
+    assert.ok(res.status >= 400 && res.status < 500,
+      `${label}: очікували названу відмову 4xx, отримали ${res.status}`);
+    const payload = await res.json() as { error?: string; earliestCheckIn?: string };
+    for (const lang of words.KIOSK_LANGS) {
+      const text = words.refusalText(lang, payload.error, payload.earliestCheckIn);
+      assert.notStrictEqual(text, words.KIOSK_STRINGS[lang].notFoundHelp,
+        `${label} (${lang}): код «${payload.error}» не має свого речення — гість читає загальне «зверніться на рецепцію»`);
+      assert.ok(!text.includes('{'),
+        `${label} (${lang}): у реченні лишилась незаповнена підстановка: ${text}`);
+      assert.ok(!text.includes(String(payload.error)),
+        `${label} (${lang}): код фасаду поїхав на екран як є: ${text}`);
+    }
+    return payload.error;
+  };
+
+  // а) не зареєстрований — політика реєстрації
+  await runWithOrganization(A, () => seedStay(A, P1, 'kc_no_reg', { unitId: `${P1}_u1`, paymentStatus: 'paid', from: 22, to: 23 }));
+  await runWithOrganization(A, () => sql.run(
+    "UPDATE reservations SET check_in = ?, check_out = ?, registration_status = 'not_registered' WHERE id = ?",
+    [day(0), day(1), 'kc_no_reg']));
+  await runWithOrganization(A, () => policy(P1, 'allow_pay_later'));
+  await runWithOrganization(A, () => clean(`${P1}_u2`, 'clean'));
+  assert.strictEqual(await runWithOrganization(A, () => refused('без реєстрації', 'kc_no_reg')),
+    'not_registered', 'очікували саме not_registered');
+
+  // б) не оплачено — політика оплати ГОТЕЛЮ, а не терміналу
+  await runWithOrganization(A, () => seedStay(A, P1, 'kc_unpaid', { unitId: `${P1}_u4`, unitTypeId: `${P1}_ut2`, paymentStatus: 'unpaid', from: 24, to: 25 }));
+  await runWithOrganization(A, () => sql.run(
+    "UPDATE reservations SET check_in = ?, check_out = ? WHERE id = ?", [day(1), day(2), 'kc_unpaid']));
+  await runWithOrganization(A, () => policy(P1, 'prepaid'));
+  assert.strictEqual(await runWithOrganization(A, () => refused('не оплачено', 'kc_unpaid')),
+    'payment_required', 'очікували саме payment_required');
+
+  // в) зарано — і речення мусить назвати ГОДИНУ, інакше воно гірше за загальне
+  await runWithOrganization(A, () => policy(P1, 'allow_pay_later'));
+  await runWithOrganization(A, () => sql.run(
+    "UPDATE properties SET kiosk_earliest_checkin = '23:59' WHERE id = ?", [P1]));
+  const early = await runWithOrganization(A, () => refused('зарано', 'kc_no_reg'));
+  assert.strictEqual(early, 'too_early', 'очікували саме too_early');
+  assert.ok(words.refusalText('de', 'too_early', '23:59').includes('23:59'),
+    'речення «зарано» не називає години, хоч сервер її передав');
+  // І навпаки: години немає — загальне речення, а не «ab {time}».
+  assert.strictEqual(words.refusalText('de', 'too_early', null),
+    words.KIOSK_STRINGS.de.notFoundHelp,
+    'без години «зарано» показало б зламаний текст із дужками');
+  await runWithOrganization(A, () => sql.run(
+    "UPDATE properties SET kiosk_earliest_checkin = NULL WHERE id = ?", [P1]));
+
+  // г) номер роздає рецепція — саме той випадок, який мовчав на живому екрані
+  await runWithOrganization(A, () => seedStay(A, P1, 'kc_no_unit', { unitId: null, paymentStatus: 'paid', from: 26, to: 27 }));
+  await runWithOrganization(A, () => sql.run(
+    "UPDATE reservations SET check_in = ?, check_out = ? WHERE id = ?", [day(0), day(1), 'kc_no_unit']));
+  await runWithOrganization(A, () => sql.run(
+    'UPDATE properties SET kiosk_auto_assign = FALSE WHERE id = ?', [P1]));
+  assert.strictEqual(await runWithOrganization(A, () => refused('номер від рецепції', 'kc_no_unit')),
+    'no_unit', 'очікували саме no_unit');
+  console.log('  ok  30. кожна відмова заселення доходить до гостя своїм реченням');
 
   console.log('  ok  kiosk: термінал робить лише своє — свій рахунок, свій корпус, свою бронь');
 } finally {

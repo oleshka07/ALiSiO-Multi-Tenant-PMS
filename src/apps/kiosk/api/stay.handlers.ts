@@ -38,6 +38,7 @@ import { todayIn } from '@core/hotel-day';
 import { requireDevice } from './session.handlers';
 import { noteEvent } from '../data/devices.repo';
 import { findStays, propertyGuestConfig, stayById, stayGuests } from '../data/stay.repo';
+import { mergeParty } from '../domain/party';
 import {
   decideSearch, enoughFactors, maskName, namedFactors, readAutoAssign, readSignatureMode,
   readTime, signatureNeeded, stayWindow, tooEarly, type SearchInput,
@@ -248,14 +249,25 @@ export async function registerStay(request: Request): Promise<Response> {
 
     return await runWithOrganization(device.organizationId, async () => {
       await requireStay(device, reservationId);
-      // Двері `@guests` — ті самі, якими пише портал і рецепція. Свого
-      // писача в `reservation_guests` кіоск не має.
-      await saveRegistrations(reservationId, device.organizationId, guests as any);
+      // Склад ДОПИСУЄТЬСЯ, а не замінюється.
+      //
+      // `saveRegistrations` замінює список броні цілком — так треба порталу,
+      // де одна форма на всю сімʼю. Біля термінала стоїть по одній людині, і
+      // виклик із одним гостем означає «цей ще один», а не «тільки цей».
+      // Доки склад накопичував ЕКРАН, його стирало скидання за
+      // бездіяльністю: гість відійшов по валізу, повернувся вписати
+      // супутника — і стер себе. Памʼять тепер у базі (`mergeParty`, сцена 29).
+      const saved = await stayGuests({
+        organizationId: device.organizationId, propertyId: device.propertyId, reservationId,
+      });
+      const party = mergeParty(saved, guests);
+      if (party.length === 0) refuse('Назвіть імʼя і прізвище гостя', 400);
+      await saveRegistrations(reservationId, device.organizationId, party);
       await noteEvent({
         organizationId: device.organizationId, deviceId: device.id,
-        reservationId, kind: 'register', result: 'ok', detail: String(guests.length),
+        reservationId, kind: 'register', result: 'ok', detail: String(party.length),
       });
-      return NextResponse.json({ ok: true, count: guests.length });
+      return NextResponse.json({ ok: true, count: party.length });
     });
   } catch (error) {
     return handleError('apps/kiosk registerStay', error, 'Не вдалося зберегти реєстрацію');

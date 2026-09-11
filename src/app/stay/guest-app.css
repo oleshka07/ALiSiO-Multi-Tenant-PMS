@@ -1,0 +1,79 @@
+/* Телефон, не термінал: одна колонка, великі дотики, нічого зайвого. */
+.guest-root {
+  min-height: 100dvh;
+  margin: 0;
+  padding: 7vh 6vw 6vh;
+  display: flex;
+  flex-direction: column;
+  gap: 4vh;
+  background: #f6f2ec;
+  color: #2b2622;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+.guest-top { display: flex; flex-direction: column; gap: 0.6rem; }
+.guest-house { margin: 0; font-size: 0.95rem; letter-spacing: 0.08em; text-transform: uppercase; color: #8a7f72; }
+.guest-welcome { margin: 0; font-size: 2.2rem; font-weight: 600; font-family: Georgia, 'Times New Roman', serif; }
+.guest-lead { margin: 0; font-size: 1.05rem; color: #6b6157; }
+
+.guest-langs { display: flex; gap: 0.5rem; margin-top: 0.4rem; }
+.guest-lang {
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  border: 1px solid #e0d7c9;
+  background: #fffdf9;
+  color: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+.guest-lang[data-on='true'] { background: #9a7b42; border-color: #9a7b42; color: #fff; }
+
+.guest-cards { display: flex; flex-direction: column; gap: 1rem; }
+.guest-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1.4rem 1.2rem;
+  border-radius: 1rem;
+  border: 1px solid #e0d7c9;
+  background: #fffdf9;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.guest-card[data-primary='true'] { background: #9a7b42; border-color: #9a7b42; color: #fff; }
+/* Неактивна картка ВИГЛЯДАЄ неактивною: кнопка, яка мовчки нічого не робить,
+   читається як зламаний готель, а не як недороблена функція. */
+.guest-card:disabled { opacity: 0.5; cursor: default; }
+.guest-card-title { font-size: 1.25rem; font-weight: 600; }
+.guest-card-help { font-size: 0.95rem; opacity: 0.85; }
+
+.guest-note { margin: 0; font-size: 0.95rem; color: #6b6157; text-align: center; }
+
+/* ── Крок пошуку ─────────────────────────────────────────────────────────
+ *
+ * Поля тут СПРАВЖНІ `<input>`, а не свої прямокутники з екранною клавіатурою,
+ * як у кіоску: у телефона клавіатура вже є, вона знає мову власника, його
+ * автозаповнення і його спосіб набирати номер. Своя тут була б гіршою в
+ * усьому.
+ */
+.guest-form { display: flex; flex-direction: column; gap: 1rem; }
+.guest-field { display: flex; flex-direction: column; gap: 0.35rem; }
+.guest-label { font-size: 0.95rem; color: #6b6157; }
+.guest-input {
+  padding: 0.9rem 1rem;
+  border-radius: 0.8rem;
+  border: 1px solid #e0d7c9;
+  background: #fffdf9;
+  color: inherit;
+  font-size: 1.1rem;
+  /* 16px і більше — інакше iOS Safari підсовує сторінку при фокусі. */
+}
+.guest-input:focus { outline: 2px solid #9a7b42; outline-offset: 1px; }
+.guest-quiet {
+  padding: 0.8rem;
+  border: 0;
+  background: none;
+  color: #6b6157;
+  font-size: 1rem;
+  cursor: pointer;
+}

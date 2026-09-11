@@ -43,6 +43,16 @@ const PUBLIC_PREFIXES = [
   // же під сегментом `admin/` із заперечним поглядом уперед у гейті; частина
   // В прибрала і те, і те: одна картка — одна домівка, і жодного винятку.
   '/api/apps/kiosk/',
+  // Гостьовий застосунок: пошук своєї броні з телефона. Сесії немає за
+  // визначенням — орендаря називає ключ у тілі запиту, той самий, що в
+  // адресі сторінки. Чотири властивості, які роблять публічний пошук у
+  // персональних даних прийнятним, — у domain/lookup.ts застосунку.
+  '/api/apps/guest/',
+  // Гостьовий застосунок: пошук своєї броні з телефона. Сесії немає за
+  // визначенням — орендаря називає ключ у тілі запиту, той самий, що в
+  // адресі сторінки. Чотири властивості, які роблять це прийнятним, —
+  // у .
+  '/api/apps/guest/',
   '/api/widget', // widget-* endpoints (public embed)
   // '/api/file-upload' is deliberately absent. It was public for the retired
   // /book wizard; every caller is now a dashboard screen, and an open upload
@@ -65,6 +75,11 @@ const PUBLIC_PREFIXES = [
   // показує, приходить із маршрутів за токеном пристрою.
   '/kiosk',
   '/guest/', // guest portal page
+  // Гостьовий застосунок: те, що відкривається з QR на склі при вході. Гість
+  // ще не гість — сесії немає й бути не може. Орендаря називає ключ у самій
+  // адресі (`properties.guest_app_key`, 0414), а не мовчазний дефолт
+  // (інваріант 8); невідомий ключ дає 404, як і чужий (інваріант 5).
+  '/stay/',
   '/report/', // published partner report — the 64-hex token in the URL is the credential
   '/privacy', // the privacy policy — a legal page guests must reach without a login
   '/w/', // booking widget
