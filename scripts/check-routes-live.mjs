@@ -560,6 +560,129 @@ async function main() {
       claim('броні', alienRes.status === 404,
         `чужий гість — 404, не 500 (${alienRes.status})`);
 
+      // ── Фірма-платник, названа ПРИ СТВОРЕННІ ────────────────
+      //
+      // Доти фірму можна було поставити лише наступним кліком із картки.
+      // Твердження — про ФОРМУ відповіді картки, а не про статус
+      // створення: 201 без реквізитів у рядку виглядав би так само успішно,
+      // а на фактурі стояла б фізособа.
+      const coRes = await call(cookie, '/api/companies', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: 'Пробна фірма', business_id: '99887766', vat_id: 'CZ99887766',
+          address_street: 'Вулиця Пробна 5', address_zip: '60200', address_city: 'Пробне',
+          address_country: 'CZ', email: 'firm@probe.test',
+        }),
+      });
+      const company = await body(coRes);
+      if (claim('броні', coRes.status === 201 && company?.id, `фірму-платника заведено (${coRes.status})`)) {
+        const payerRes = await call(cookie, '/api/bookings', {
+          method: 'POST',
+          body: JSON.stringify({
+            firstName: 'Платник', lastName: 'Фірмовий', companyId: company.id,
+            unitId: unit.id, checkIn: day(49), checkOut: day(51), nights: 2,
+            adults: 1, status: 'confirmed', source: 'direct', totalPrice: 120,
+          }),
+        });
+        const payerBooking = await body(payerRes);
+        if (claim('броні', payerRes.status === 201 && payerBooking?.id,
+          `бронь із фірмою створена (${payerRes.status})`)) {
+          // Читається НАЗАД маршрутом картки, а не з відповіді писача
+          // (інваріант 27): саме так видно, чи лягли колонки знімка.
+          const cardRes = await call(cookie, `/api/bookings/${payerBooking.id}`);
+          const card = await body(cardRes);
+          const row = card?.booking ?? card;
+          claim('броні', String(row?.company_id ?? '') === company.id,
+            `фірма стоїть на броні (${row?.company_id ?? 'порожньо}'})`);
+          claim('броні', String(row?.invoice_company_ico ?? '') === '99887766',
+            `реквізити скопійовані в бронь, а не лише id (${row?.invoice_company_ico ?? 'порожньо'})`);
+          claim('броні', String(row?.invoice_company_city ?? '') === '60200 Пробне',
+            `індекс і місто одним рядком (${row?.invoice_company_city ?? 'порожньо'})`);
+
+          // І та сама фірма з боку ДОВІДНИКА: хто за неї їздив.
+          // Власник назвав це прямо: «не знайшов, як у компанії шукати гостей».
+          const coCardRes = await call(cookie, `/api/companies/${company.id}`);
+          const coCard = await body(coCardRes);
+          claim('броні', coCardRes.status === 200 && Array.isArray(coCard?.guestList),
+            `картка фірми віддає СПИСОК гостей, не лише число (${coCardRes.status}, ${Array.isArray(coCard?.guestList) ? 'масив' : typeof coCard?.guestList})`);
+          claim('броні', (coCard?.guestList ?? []).length === Number(coCard?.guests),
+            `число і список сходяться: ${coCard?.guests} проти ${(coCard?.guestList ?? []).length}`);
+          claim('броні', (coCard?.guestList ?? []).some((g) => g.last_name === 'Фірмовий'),
+            'у списку фірми саме той, хто їхав за її рахунок');
+        }
+
+        // Архівна фірма — 409, а не тихе 201 без платника.
+        await call(cookie, `/api/companies/${company.id}`, {
+          method: 'PATCH', body: JSON.stringify({ archived: true }),
+        });
+        const archRes = await call(cookie, '/api/bookings', {
+          method: 'POST',
+          body: JSON.stringify({
+            firstName: 'Платник', lastName: 'Архівний', companyId: company.id,
+            unitId: unit.id, checkIn: day(53), checkOut: day(55), nights: 2,
+            adults: 1, status: 'confirmed', source: 'direct', totalPrice: 120,
+          }),
+        });
+        claim('броні', archRes.status === 409,
+          `архівна фірма — 409, не тихе створення без платника (${archRes.status})`);
+        await call(cookie, `/api/companies/${company.id}`, {
+          method: 'PATCH', body: JSON.stringify({ archived: false }),
+        });
+      }
+
+      // Фірма СУСІДА — 404 (інваріант 5), і саме 404, а не 500.
+      const alienCoRes = await call(cookie, '/api/bookings', {
+        method: 'POST',
+        body: JSON.stringify({
+          firstName: 'Платник', lastName: 'Чужий', companyId: 'c_definitely_not_ours',
+          unitId: unit.id, checkIn: day(57), checkOut: day(59), nights: 2,
+          adults: 1, status: 'confirmed', source: 'direct', totalPrice: 120,
+        }),
+      });
+      claim('броні', alienCoRes.status === 404,
+        `чужа фірма — 404, не 500 (${alienCoRes.status})`);
+
+      // ── Заявник на броні ПЕРЕЇЖДЖАЄ ─────────────────────
+      //
+      // Зірка вирішує, чиє прізвище стане на Meldeschein. Двоє на броні —
+      // мінімум, при якому твердження про ПЕРЕЇЗД має зміст.
+      const regOne = await call(cookie, `/api/bookings/${booking.id}/registrations`, {
+        method: 'POST',
+        body: JSON.stringify({
+          firstName: 'Ганна', lastName: 'Пробна', documentNumber: 'AA111111',
+          documentType: 'ID_CARD', isPrimary: true,
+        }),
+      });
+      const regTwo = await call(cookie, `/api/bookings/${booking.id}/registrations`, {
+        method: 'POST',
+        body: JSON.stringify({
+          firstName: 'Петро', lastName: 'Супутник', documentNumber: 'BB222222',
+          documentType: 'ID_CARD', isPrimary: false,
+        }),
+      });
+      const second = await body(regTwo);
+      if (claim('броні', regOne.status === 201 && regTwo.status === 201 && second?.id,
+        `двоє зареєстрованих (${regOne.status}/${regTwo.status})`)) {
+        const moveRes = await call(cookie, `/api/bookings/${booking.id}/registrations`, {
+          method: 'PATCH', body: JSON.stringify({ reg_id: second.id }),
+        });
+        claim('броні', moveRes.status === 200, `зміна заявника прийнята (${moveRes.status})`);
+
+        // Про КІЛЬКІСТЬ, не про першого знайденого (AGENTS §7):
+        // двоє заявників — документ, чий підписант залежить від рушія бази.
+        const listRegs = await body(await call(cookie, `/api/bookings/${booking.id}/registrations`));
+        const stars = (listRegs ?? []).filter((r) => r.is_primary === true || Number(r.is_primary) === 1);
+        claim('броні', stars.length === 1, `заявник РІВНО один, отримали ${stars.length}`);
+        claim('броні', stars[0]?.reg_id === second.id,
+          `і це той, кого назвали (${stars[0]?.last_name ?? 'ніхто'})`);
+
+        const noSuchRes = await call(cookie, `/api/bookings/${booking.id}/registrations`, {
+          method: 'PATCH', body: JSON.stringify({ reg_id: 'gr_definitely_not_ours' }),
+        });
+        claim('броні', noSuchRes.status === 404,
+          `рядок, якого немає — 404 (${noSuchRes.status})`);
+      }
+
       // ── Гостьовий портал ───────────────────────────────────────────────
       //
       // Рівно та сторінка, яка не відкривалась півтора місяця. Токен береться

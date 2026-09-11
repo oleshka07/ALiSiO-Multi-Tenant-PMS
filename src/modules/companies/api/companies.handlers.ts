@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
-import { companyStays } from '@bookings/kernel';
+import { companyStays, companyGuests } from '@bookings/kernel';
 import * as repo from '../data/companies.repo';
 import { normalizeCompany, InvalidCompany } from '../domain/company';
 
@@ -65,7 +65,13 @@ export const getCompany = withActor(async (_request: NextRequest, { params }: Id
     const c = await repo.getCompany(actor.organizationId, id);
     if (!c) return NOT_FOUND();
     const stays = (await companyStays(actor.organizationId)).get(id) ?? { reservations: 0, guests: 0, last_check_in: null };
-    return NextResponse.json({ ...c, ...stays });
+    // Не лише ЧИСЛО, а й люди: доти картка казала «12 гостей» і не давала
+    // жодного способу дізнатись, хто вони, — власник назвав це прямо
+    // («не знайшов, як у компанії шукати гостей»). Один запит на картку:
+    // гостей фірми десятки, не тисячі, і окремий похід за ними означав би
+    // другий стан, який розходиться з лічильником.
+    const guestList = await companyGuests(actor.organizationId, id);
+    return NextResponse.json({ ...c, ...stays, guestList });
   } catch (e) {
     return serverError('modules/companies/api getCompany', e, 'Failed to load company');
   }

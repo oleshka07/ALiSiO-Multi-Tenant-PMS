@@ -7,7 +7,7 @@
  */
 import { getCompany, createCompany, listCompanies } from '../data/companies.repo';
 export { adoptDebtorNo, type AdoptDebtorNoResult } from '../data/companies.repo';
-import { normalizeCompany, payerSnapshot, payerAddressLine, type PayerSnapshot } from '../domain/company';
+import { normalizeCompany, payerSnapshot, payerAddressLine, EMPTY_PAYER, type PayerSnapshot } from '../domain/company';
 
 export type { PayerSnapshot } from '../domain/company';
 
@@ -78,4 +78,53 @@ export async function companyPayer(organizationId: string, id: string): Promise<
     // `invoice_company_ico` знімка, своїм іменем.
     payer_debtor_no: c.debtor_no === null || c.debtor_no === undefined ? null : String(c.debtor_no),
   };
+}
+
+/**
+ * Що саме лягає в бронь, коли платником названо фірму — і коли не названо.
+ *
+ * ── Навіщо одні двері на два шляхи ──────────────────────────────────────
+ *
+ * Платника ставили лише ПІСЛЯ створення броні, з картки (`PATCH company_id`),
+ * і всі 25 рядків знімка жили просто в тому обробнику. Щойно фірму стало
+ * видно й у формі створення, у коді з'явилося б ДВА місця, які пишуть ті
+ * самі сім колонок, — і розійтися вони можуть мовчки: бронь, заведена з
+ * фірмою, отримала б інший набір реквізитів, ніж та сама бронь, якій фірму
+ * поставили наступним кліком. Помітили б це на фактурі, тобто пізно.
+ *
+ * ── Чому результат, а не `refuse()` ─────────────────────────────────────
+ *
+ * `refuse()` розбирає лише `handleError`; `catch` обох цих обробників —
+ * `serverError`, тож кинута відмова доїхала б 500-ю замість 404/409, які
+ * читає екран. Роди відмови тут названі значенням, і кожен обробник віддає
+ * свій статус сам — рівно той, що й досі.
+ */
+export type BookingPayerFields =
+  | { ok: true; fields: { company_id: string | null } & Record<keyof PayerSnapshot, string | null> }
+  | { ok: false; reason: 'not_found' | 'archived' };
+
+export async function bookingPayerFields(
+  organizationId: string,
+  companyId: string | null | undefined,
+): Promise<BookingPayerFields> {
+  const wanted = typeof companyId === 'string' ? companyId.trim() : '';
+  // Порожньо — платник-фізособа: знімок ЧИСТИТЬСЯ, а не лишається від
+  // попередньої фірми. Інакше документ друкував би реквізити, які бронь уже
+  // не має.
+  if (!wanted) return { ok: true, fields: { company_id: null, ...EMPTY_PAYER } };
+
+  // Чужа або неіснуюча — однаково «немає» (інваріант 5): бронь готелю А не
+  // виставляється на фірму готелю Б, і відповідь не каже, чи така фірма є.
+  const payer = await companyPayer(organizationId, wanted);
+  if (!payer) return { ok: false, reason: 'not_found' };
+  // Архівна читається там, де вона вже стоїть, але новою не ставиться.
+  if (payer.archived) return { ok: false, reason: 'archived' };
+
+  // Ключі беруться зі ЗНІМКА, не рештою від `payer`: `CompanyPayer` несе й те,
+  // чого в броні немає (`payer_debtor_no` додали пізніше заради фоліо), і
+  // rest-деструктуризація пропустила б наступне таке поле в список колонок
+  // броні мовчки.
+  const fields = { company_id: payer.id } as { company_id: string | null } & Record<keyof PayerSnapshot, string | null>;
+  for (const key of Object.keys(EMPTY_PAYER) as (keyof PayerSnapshot)[]) fields[key] = payer[key];
+  return { ok: true, fields };
 }

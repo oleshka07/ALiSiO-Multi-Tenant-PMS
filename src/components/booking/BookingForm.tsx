@@ -8,6 +8,7 @@ import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import { shouldAskQuote, readQuote, type QuoteResponse } from './quote-prefill';
 import { percentOf } from '@core/money';
 import GuestPicker, { type PickedGuest } from './GuestPicker';
+import CompanyPicker, { type PickedCompany } from './CompanyPicker';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -174,6 +175,7 @@ export default function BookingForm({
   // по-старому. Тримається ОКРЕМО від `form`, бо це не поле форми, а
   // рішення «це та сама людина», яке форма лише передає далі.
   const [pickedGuest, setPickedGuest] = useState<PickedGuest | null>(null);
+  const [pickedCompany, setPickedCompany] = useState<PickedCompany | null>(null);
   const [form, setForm] = useState<BookingFormValues>(() => {
     const base = emptyValues();
     if (!initial) return base;
@@ -480,6 +482,9 @@ export default function BookingForm({
             // Названий гість — сервер бере його як названий і не звіряє з
             // ланцюжком дедупу (`resolveBookingGuest`).
             guestId: pickedGuest?.id ?? null,
+            // Фірма-платник — відразу, а не наступним кліком із картки. Сервер
+            // звіряє її з довідником СВОГО готелю й пише знімок реквізитів.
+            companyId: pickedCompany?.id ?? null,
             unitId,
             checkIn: form.checkIn,
             checkOut: form.checkOut,
@@ -713,6 +718,15 @@ export default function BookingForm({
             <label className="form-label">{t('Телефон')}</label>
             <input className="form-input" type="tel" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} placeholder="+…" />
           </div>
+        </div>
+
+        {/*
+          Хто ПЛАТИТЬ — поруч із тим, хто ЖИВЕ, бо це одне рішення портьє
+          і одна розмова з гостем. Порожньо — платить гість, як і було.
+        */}
+        <div className="form-group" style={{ marginTop: 4 }}>
+          <label className="form-label">{t('Платник — фірма')}</label>
+          <CompanyPicker picked={pickedCompany} onPick={setPickedCompany} />
         </div>
       </div>
 

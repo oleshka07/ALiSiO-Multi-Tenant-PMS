@@ -407,6 +407,30 @@ export default function BookingViewModal({
     finally { setSavingReg(false); }
   };
 
+  /**
+   * Пересунути зірку заявника.
+   *
+   * Заявник — той, чиїм прізвищем підписаний Meldeschein за все
+   * перебування. Доти його обирав порядок реєстрації (`isPrimary:
+   * registrations.length === 0`), і виправити помилку можна було лише,
+   * знявши й завівши наново всіх.
+   *
+   * ВІДПОВІДЬ ЧИТАЄТЬСЯ: писач відмовляє 404-ю на чужій броні й на
+   * рядку, якого на ній немає, і «Заявника змінено!» на відмову — це рівно
+   * той звір, що ловить `check-unread-write-response`.
+   */
+  const makePrimary = async (regId: string) => {
+    try {
+      const res = await fetch(`/api/bookings/${b.id}/registrations`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reg_id: regId }),
+      });
+      if (!res.ok) { showToast(tUi('Не вдалося змінити заявника')); return; }
+      onFetchRegistrations(b.id);
+      showToast(tUi('Заявника змінено'));
+    } catch { showToast(tUi('Не вдалося змінити заявника')); }
+  };
+
   const deleteRegistration = async (regId: string) => {
     if (!confirm(tUi('Видалити реєстрацію гостя?'))) return;
     await fetch(`/api/bookings/${b.id}/registrations?reg_id=${regId}`, { method: 'DELETE' });
@@ -1247,9 +1271,22 @@ export default function BookingViewModal({
                   <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 8, fontWeight: 700 }}>{tUi('Зареєстровані')}</div>
                   {registrations.map((r: any) => (
                     <div key={r.reg_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', marginBottom: 6 }}>
-                      <span style={{ fontSize: 20 }}>👤</span>
+                      {/*
+                        Зірка — КНОПКА, а не позначка: це вибір заявника, тобто
+                        того, чиє прізвище стане на Meldeschein за все перебування.
+                      */}
+                      <button type="button" onClick={() => { if (!r.is_primary) makePrimary(r.reg_id); }}
+                        disabled={!!r.is_primary}
+                        title={r.is_primary ? tUi('Заявник — підписує за всіх') : tUi('Зробити заявником')}
+                        style={{
+                          fontSize: 18, lineHeight: 1, padding: 2, border: 0, background: 'transparent',
+                          cursor: r.is_primary ? 'default' : 'pointer',
+                          opacity: r.is_primary ? 1 : 0.35,
+                        }}>
+                        {r.is_primary ? '⭐' : '☆'}
+                      </button>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: 14 }}>{r.last_name} {r.first_name} {r.is_primary ? '⭐' : ''}</div>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{r.last_name} {r.first_name}</div>
                         <div style={{ fontSize: 11, color: 'var(--text-tertiary)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                           <span>🪪 {r.document_type}: {r.document_number}</span>
                           {r.nationality && <span>🌐 {r.nationality}</span>}

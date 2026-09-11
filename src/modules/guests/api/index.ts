@@ -121,5 +121,9 @@ export type { RetentionRunResult } from '../data/registration.repo';
 
 // Реєстрація з картки броні — той самий писач обох книг гостей, що й портал
 // (Д16): картка в @bookings не пише таблиці гостей сама.
-export { addReceptionRegistration, removeReceptionRegistration } from '../data/registration.repo';
+export { addReceptionRegistration, removeReceptionRegistration,
+  // Заявник — той, чиїм прізвищем підписаний Meldeschein за все
+  // перебування, тож його зміна — писач цього модуля, а не `UPDATE`
+  // з картки броні (Д16, гейт `primary-registration.check`).
+  setPrimaryRegistration } from '../data/registration.repo';
 export type { ReceptionGuestSnapshot } from '../data/registration.repo';

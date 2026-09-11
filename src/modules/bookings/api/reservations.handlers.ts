@@ -3,6 +3,7 @@ import { noteStay } from '../data/stay-notes';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
 import { resolveBookingGuest } from '@guests';
+import { bookingPayerFields } from '@companies/kernel';
 import { writeBookingAudit, getBookingActor } from './audit-log.handlers';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
 import { ownedUnit } from '../data/owned.repo';
@@ -53,7 +54,14 @@ export const listReservations = withActor(async (request: NextRequest, _ctx, act
 // the accountant role has no manage_bookings and does need to see bookings
 // behind the finance screens. Narrowing that is a product decision, not a
 // mechanical one.
-export const createReservation = withPermission('manage_bookings', async (request: NextRequest, _ctx, actor: Actor) => {
+/**
+ * Розгорнутий обробник — щоб сцена могла викликати його з готовою особою
+ * (той самий розподіл, що в `@invoicing`). Це не зручність: `INSERT` тут —
+ * РЯДОК, і `tsc` не бачить у ньому ні неіснуючої колонки, ні розʼїханого
+ * числа знаків питання — тобто 500 на КОЖНІЙ броні при зеленій збірці.
+ * Загорнутий `createReservation` нижче — те, що виставлене маршрутом.
+ */
+export async function createReservationHandler(request: NextRequest, _ctx: unknown, actor: Actor) {
   try {
     const sql = getSql();
     const body = await request.json();
@@ -62,6 +70,8 @@ export const createReservation = withPermission('manage_bookings', async (reques
       firstName, lastName, email, phone,
       // Гість, якого рецепція ОБРАЛА зі списку. Порожньо — як було, вгадування.
       guestId,
+      // Фірма-платник, названа відразу. Порожньо — платить гість, як і досі.
+      companyId,
       unitId, checkIn, checkOut, nights,
       adults, children, status, source, totalPrice,
       commissionAmount: commissionOverride,
@@ -121,6 +131,17 @@ export const createReservation = withPermission('manage_bookings', async (reques
     });
     const resolvedGuestId = dedup.id;
 
+    // Платник-юрособа тепер називається ВІДРАЗУ, а не наступним кліком із
+    // картки. Ті самі двері, що й у PATCH — інакше два писачі тих самих семи
+    // колонок розійшлися б мовчки, а помітили б це на фактурі.
+    const payer = await bookingPayerFields(actor.organizationId, companyId);
+    if (!payer.ok) {
+      return payer.reason === 'archived'
+        ? NextResponse.json({ error: 'company_archived' }, { status: 409 })
+        : NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+    const p = payer.fields;
+
     const resId = `r_${Date.now()}`;
     let commissionAmount = 0;
     if (commissionOverride !== undefined && commissionOverride !== null) {
@@ -176,9 +197,9 @@ export const createReservation = withPermission('manage_bookings', async (reques
     // (дедуплікація гостя, комісія, валюта). У це вікно проходили ОБИДВІ броні.
     try {
       await insertingStay(() => sql.run(`
-        INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, check_in, check_out, nights, adults, children, status, payment_status, source, total_price, currency, commission_amount, guest_page_token, city_tax_amount, city_tax_included, city_tax_paid, internal_notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [resId, actor.organizationId, unit.property_id, unitId, resolvedGuestId, checkIn, checkOut, nights || 1, adults || 1, children || 0, bookingStatus, body.paymentStatus || 'unpaid', source || 'direct', priceGiven, currency, commissionAmount, guestPageToken, finalCityTaxAmount, finalCityTaxIncluded, finalCityTaxPaid, internalNotes || null]),
+        INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, check_in, check_out, nights, adults, children, status, payment_status, source, total_price, currency, commission_amount, guest_page_token, city_tax_amount, city_tax_included, city_tax_paid, internal_notes, company_id, invoice_company_name, invoice_company_ico, invoice_company_dic, invoice_company_address, invoice_company_city, invoice_company_country, invoice_company_email)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [resId, actor.organizationId, unit.property_id, unitId, resolvedGuestId, checkIn, checkOut, nights || 1, adults || 1, children || 0, bookingStatus, body.paymentStatus || 'unpaid', source || 'direct', priceGiven, currency, commissionAmount, guestPageToken, finalCityTaxAmount, finalCityTaxIncluded, finalCityTaxPaid, internalNotes || null, p.company_id, p.invoice_company_name, p.invoice_company_ico, p.invoice_company_dic, p.invoice_company_address, p.invoice_company_city, p.invoice_company_country, p.invoice_company_email]),
       { unitId, checkIn, checkOut, reservationId: resId });
     } catch (e) {
       if (e instanceof UnitOverlap) {
@@ -208,4 +229,6 @@ export const createReservation = withPermission('manage_bookings', async (reques
     // повертає 500 загальним реченням.
     return handleError('POST /api/bookings', error, 'Failed to create booking');
   }
-});
+}
+
+export const createReservation = withPermission('manage_bookings', createReservationHandler);

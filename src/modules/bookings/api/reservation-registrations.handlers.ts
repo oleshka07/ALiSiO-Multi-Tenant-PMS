@@ -6,7 +6,7 @@ import { requireOrganizationId } from '@core/auth/tenant-context';
 import { withActor, type Actor } from '@core/auth/session';
 import { ownedReservation } from '../data/owned.repo';
 import { serverError } from '@core/http/errors';
-import { addReceptionRegistration, removeReceptionRegistration } from '@guests';
+import { addReceptionRegistration, removeReceptionRegistration, setPrimaryRegistration } from '@guests';
 
 export const listRegistrations = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
@@ -109,6 +109,36 @@ export const removeRegistration = withActor(async (request: NextRequest, { param
     return NextResponse.json({ success: true });
   } catch (e: any) {
     return serverError('modules/bookings/api/reservation-registrations removeRegistration', e);
+  }
+});
+
+/**
+ * Хто заявник — це рішення портьє, а не порядок, у якому він взяв паспорти.
+ *
+ * Зірка визначає, чиє прізвище стане на Meldeschein (`meldeschein.repo`,
+ * `signature.repo` — обидва беруть першого за `is_primary DESC`), тож
+ * «не той заявник» — це документ для влади з чужим прізвищем.
+ *
+ * Чужа бронь і рядок, якого на ній немає, — однаково 404 (інваріант 5):
+ * різні відповіді сказали б, які рядки існують у когось іншого.
+ */
+export const setPrimaryGuest = withActor(async (request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
+  try {
+    const { id } = await params;
+    if (!await ownedReservation(actor.organizationId, id)) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+    const body = await request.json().catch(() => ({})) as { reg_id?: unknown };
+    const regId = typeof body.reg_id === 'string' ? body.reg_id.trim() : '';
+    if (!regId) return NextResponse.json({ error: 'reg_id required' }, { status: 400 });
+
+    const moved = await setPrimaryRegistration({
+      organizationId: actor.organizationId, reservationId: id, registrationId: regId,
+    });
+    if (!moved) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    return NextResponse.json({ id: regId, is_primary: true });
+  } catch (e: any) {
+    return serverError('modules/bookings/api/reservation-registrations setPrimaryGuest', e);
   }
 });
 

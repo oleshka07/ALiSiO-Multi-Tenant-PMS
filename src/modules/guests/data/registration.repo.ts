@@ -88,6 +88,60 @@ export async function addReceptionRegistration(input: {
   });
 }
 
+/**
+ * Змінити ЗАЯВНИКА на броні. `false` — такого рядка в нас немає.
+ *
+ * ── Що саме вирішує зірка ─────────────────────────────────────────────
+ *
+ * `meldeschein.repo` і `signature.repo` сортують `ORDER BY gr.is_primary DESC`
+ * і беруть першого: заявник — той, хто ПІДПИСУЄ Meldeschein за все
+ * перебування. Доти його обирала єдина умова в екрані — «хто перший,
+ * той і заявник», — і змінити це можна було лише, знявши й завівши наново
+ * всіх. Документ при цьому виглядав нормально — просто з чужим прізвищем.
+ *
+ * ── Чому в ОДНІЙ транзакції і двома `UPDATE` ──────────────────────
+ *
+ * Зірка мусить ПЕРЕЇХАТИ, а не додатись: двоє заявників на одній броні —
+ * це документ, чий підписант залежить від порядку рядків у вибірці, тобто
+ * від рушія бази (AGENTS §7, INC-027). Скидання й призначення розірвані
+ * помилкою залишили б бронь БЕЗ заявника взагалі.
+ *
+ * ── Орендар — у SQL, а не лише в політиці ──────────────────────────
+ *
+ * `guest_registrations` не має `organization_id`: на Postgres політика виводить
+ * орендаря через `guests`. На SQLite політик немає взагалі (AGENTS §7), і без
+ * цього приєднання пара «чужа бронь + її ж рядок» зійшлась б між собою й
+ * пройшла.
+ *
+ * Приєднання саме до `reservations`, а не до `guests`, хоч політика робить
+ * друге — і це свідомо дорожче. Рядок, чий `guest_id` — НАШ гість, а бронь —
+ * СУСІДА, за версією `guests` був би «наш», і зірка переїхала б на ЧУЖІЙ
+ * броні. Ціна вибору названа: `check-property-scope` рахує це читанням
+ * `reservations` без осі обʼєкта (стеля файла 7 → 8). Воно справді таке й є:
+ * пошук ЗА ID в межах уже доведеного орендаря — той самий клас, що й сім
+ * решта в цьому файлі; вибір слабшого приєднання заради меншого числа був
+ * би правкою коду під гейт, а не правкою коду (AGENTS §3.2.1, сьомий випадок).
+ */
+export async function setPrimaryRegistration(input: {
+  organizationId: string;
+  reservationId: string;
+  registrationId: string;
+}): Promise<boolean> {
+  const sql = getSql();
+  return await sql.tx(async (t) => {
+    const row = await t.row<{ id: string }>(
+      `SELECT gr.id FROM guest_registrations gr
+         JOIN reservations r ON r.id = gr.reservation_id
+        WHERE gr.id = ? AND gr.reservation_id = ? AND r.organization_id = ?`,
+      [input.registrationId, input.reservationId, input.organizationId]);
+    // Не знайшли — ВІДМОВЛЯЄМО (інваріант 13), а не «отже, обмежень немає».
+    if (!row) return false;
+    await t.run('UPDATE guest_registrations SET is_primary = FALSE WHERE reservation_id = ?', [input.reservationId]);
+    await t.run('UPDATE guest_registrations SET is_primary = TRUE WHERE id = ?', [input.registrationId]);
+    return true;
+  });
+}
+
 /** Зняти реєстрацію з картки — з обох книг. `false` — такого рядка на цій броні немає. */
 export async function removeReceptionRegistration(input: { reservationId: string; registrationId: string }): Promise<boolean> {
   const sql = getSql();

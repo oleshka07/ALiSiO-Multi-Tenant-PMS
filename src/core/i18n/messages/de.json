@@ -3694,5 +3694,19 @@
   "Нікого не обрали — заведемо нового": "Niemand ausgewählt — ein neuer Gast wird angelegt",
   "гість із бази": "Gast aus der Datenbank",
   "без контактів": "ohne Kontaktdaten",
-  "Відвʼязати і завести нового": "Trennen und neuen Gast anlegen"
+  "Відвʼязати і завести нового": "Trennen und neuen Gast anlegen",
+  "документ піде на фірму": "Beleg geht an die Firma",
+  "Платить гість": "Gast zahlt",
+  "Назва фірми або ID — порожньо, якщо платить гість": "Firmenname oder ID — leer lassen, wenn der Gast zahlt",
+  "без реквізитів": "ohne Angaben",
+  "Платник — фірма": "Zahler — Firma",
+  "Не вдалося завантажити гостей": "Gäste konnten nicht geladen werden",
+  "Показати гостей фірми": "Gäste der Firma anzeigen",
+  "Звузити: прізвище, пошта, телефон": "Eingrenzen: Name, E-Mail, Telefon",
+  "Нікого не знайшлося": "Niemand gefunden",
+  "Не вдалося змінити заявника": "Hauptgast konnte nicht geändert werden",
+  "Заявника змінено": "Hauptgast geändert",
+  "Meldeschein": "Meldeschein",
+  "Заявник — підписує за всіх": "Hauptgast — unterschreibt für alle",
+  "Зробити заявником": "Als Hauptgast festlegen"
 }
