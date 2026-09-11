@@ -65,8 +65,7 @@ export interface KioskStrings {
   byQr: string;
   byQrHelp: string;
   qrTitle: string;
-  qrHelp: string;
-  qrExpires: string;
+  qrSoon: string;
   confirmationNo: string;
   emailOrPhone: string;
   scanQr: string;
@@ -139,8 +138,7 @@ const de: KioskStrings = {
   byQr: 'QR-Code',
   byQrHelp: 'QR-Code scannen und am eigenen Handy fortfahren.',
   qrTitle: 'Am Handy fortfahren',
-  qrHelp: 'Scannen Sie den Code mit der Kamera Ihres Handys. Der Check-in geht dort weiter.',
-  qrExpires: 'Der Code gilt 30 Minuten.',
+  qrSoon: 'Dieser Weg wird gerade eingerichtet. Bitte wählen Sie vorerst Anreisedatum oder Buchungsnummer.',
   confirmationNo: 'Buchungsnummer',
   emailOrPhone: 'E-Mail oder Telefon',
   scanQr: 'QR-Code scannen',
@@ -213,8 +211,7 @@ const en: KioskStrings = {
   byQr: 'QR code',
   byQrHelp: 'Scan the QR code and continue on your phone.',
   qrTitle: 'Continue on your phone',
-  qrHelp: 'Scan the code with your phone camera. Check-in continues there.',
-  qrExpires: 'The code is valid for 30 minutes.',
+  qrSoon: 'This way is being set up. For now, please choose arrival date or booking number.',
   confirmationNo: 'Booking number',
   emailOrPhone: 'E-mail or phone',
   scanQr: 'Scan QR code',

@@ -294,69 +294,27 @@
 .kiosk-key-done { flex: 2; background: var(--k-gold); border-color: var(--k-gold); color: #fff; }
 .kiosk-keyboard[data-mode='digits'] .kiosk-key { min-height: 7vh; font-size: 3.4vh; }
 
-/* ── QR передачі на телефон ───────────────────────────────────────────────
+/* ── Місце під QR: поки заглушка ──────────────────────────────────────────
  *
- * Розмір — часткою ВИСОТИ, як усе інше: камера телефона впевнено бере код
- * завширшки з долоню з відстані витягнутої руки, а «200 px» на 4K-дисплеї це
- * позначка завбільшки з сірникову коробку.
+ * Пунктир, а не намальований код: сканувати тут нічого, і рамка каже це
+ * виглядом раніше, ніж гість дістане телефон. Коли адреса буде названа,
+ * сюди стає картинка того ж розміру.
  */
-.kiosk-qr {
+/* 20vh, не 26: разом із поясненням у три рядки й кнопкою «назад» вищий
+   квадрат не вміщався в смугу — виміряно, «Zurück» різало низом. */
+.kiosk-qr-slot {
   align-self: center;
-  width: 30vh;
-  height: 30vh;
-  border-radius: 1.2vh;
-  background: #fff;
-  padding: 1.2vh;
-}
-
-/* ── Та сама сторінка на ТЕЛЕФОНІ гостя ───────────────────────────────────
- *
- * Тут `vh` не годиться: екран заввишки 700 px, і 5vh — це 35, тобто напис,
- * якого не прочитати. Телефонна сторінка міряється пікселями й має звичайну
- * прокрутку: гість тримає її в руці, а не тягнеться до неї через хол.
- */
-.kiosk-root[data-phone='true'] { position: static; overflow: auto; min-height: 100vh; }
-.kiosk-root[data-phone='true'] .kiosk-top { padding: 20px 16px 0; }
-.kiosk-root[data-phone='true'] .kiosk-title { font-size: 26px; }
-.kiosk-root[data-phone='true'] .kiosk-lang { font-size: 14px; padding: 8px 16px; border-radius: 999px; }
-.kiosk-root[data-phone='true'] .kiosk-langs { gap: 8px; padding-top: 14px; }
-.kiosk-phone {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 20px 16px 40px;
-  max-width: 520px;
-  margin: 0 auto;
-}
-.kiosk-phone .kiosk-lead { font-size: 16px; }
-.kiosk-phone .kiosk-tiles { grid-template-columns: 1fr; gap: 12px; }
-.kiosk-phone .kiosk-tile { min-height: 0; padding: 16px; gap: 4px; }
-.kiosk-phone .kiosk-tile-title { font-size: 17px; }
-.kiosk-phone .kiosk-tile-help { font-size: 14px; }
-.kiosk-phone .kiosk-label { font-size: 13px; }
-.kiosk-phone .kiosk-value { min-height: 48px; font-size: 17px; padding: 10px 14px; text-align: left; }
-.kiosk-phone .kiosk-note { font-size: 15px; }
-.kiosk-phone .kiosk-big { font-size: 17px; padding: 14px 18px; border-radius: 12px; }
-.kiosk-phone .kiosk-big:disabled { opacity: 0.5; }
-.kiosk-phone .kiosk-slim { font-size: 15px; padding: 10px 16px; border-radius: 10px; }
-.kiosk-phone .kiosk-calendar-day { min-height: 42px; font-size: 15px; }
-.kiosk-phone .kiosk-calendar-nav { min-width: 44px; min-height: 40px; font-size: 20px; }
-.kiosk-phone .kiosk-calendar-title { font-size: 17px; }
-.kiosk-phone .kiosk-calendar-weekday { font-size: 12px; }
-/* Поле на телефоні — справжній `<input>`: у гостя є власна клавіатура, і своя
-   екранна була б гіршою копією тієї, яку він знає. */
-.kiosk-input {
-  min-height: 48px;
-  font: inherit;
-  font-size: 17px;
-  padding: 10px 14px;
-  border-radius: 12px;
-  border: 0.5px solid var(--k-line);
-  border-width: 2px;
+  width: 20vh;
+  height: 20vh;
+  border-radius: 1.6vh;
+  border: 0.3vh dashed var(--k-line);
   background: var(--k-card);
-  color: var(--k-ink);
+  color: var(--k-line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.kiosk-input:focus { outline: none; border-color: var(--k-gold); }
+.kiosk-qr-slot svg { width: 8vh; height: 8vh; }
 
 /* ── Календар: дату обирають, а не набирають ──────────────────────────────
  *
