@@ -45,6 +45,7 @@ import { noteAvailabilityChanged, lastNight } from '@channels/outbox';
 import { insertingStay, UnitOverlap } from '@bookings/overlap';
 import { activeConsentTexts, recordConsent } from '@guests/kernel';
 import { GUEST_APP_CONSENTS, missingConsents, blocks } from '../domain/consents';
+import { priceServices, type ServicePick } from './services.repo';
 import { ALL_PROPERTIES, propertyScopeFilter } from '@core/property-scope';
 import { holdUntil } from '../domain/hold';
 
@@ -74,6 +75,8 @@ export interface HoldRequest {
    * того, як готель оновив умови.
    */
   consents: readonly { kind: string; version: string }[];
+  /** Що гість додав до номера. Ціни тут немає — її бере довідник. */
+  services: readonly ServicePick[];
 }
 
 export interface HeldStay {
@@ -81,7 +84,16 @@ export interface HeldStay {
   /** Токен гостьової сторінки — далі гість ходить лише за ним. */
   token: string;
   unitName: string;
+  /** Сума за ПРОЖИВАННЯ — те, що поїде в `reservations.total_price`. */
   total: number;
+  /**
+   * Сума послуг — ОКРЕМО, і це не косметика відповіді.
+   *
+   * Послуги живуть рядками `service_orders` і потрапляють у фоліо власним
+   * шляхом. Долити їх у `total_price` броні означало б порахувати їх двічі:
+   * раз у сумі броні, раз у рахунку. Гість бачить обидва числа й підсумок.
+   */
+  servicesTotal: number;
   currency: string;
   nights: number;
   holdExpiresAt: string;
@@ -168,6 +180,17 @@ export async function holdStay(req: HoldRequest): Promise<HeldStay> {
   const missing = missingConsents(texts, req.consents);
   if (missing.length > 0) refuse('Щоб забронювати, потрібно прийняти умови готелю', 400);
 
+  // Послуги оцінює ДОВІДНИК, і робить це до запису: гість має дізнатись про
+  // відмову замість того, щоб дістати бронь без половини замовленого.
+  //
+  // Розбіжність у кількості — названа відмова, а не тиха втрата: послуга,
+  // яку готель щойно зняв із продажу, зникла б із рахунку мовчки, і гість
+  // побачив би це аж на виїзді.
+  const priced = await priceServices(req.organizationId, req.propertyId, req.services);
+  if (priced.lines.length !== req.services.length) {
+    refuse('Одна з обраних послуг більше не продається. Оновіть сторінку', 409);
+  }
+
   const reservationId = id('r');
   let guestRowId = '';
   const token = newToken();
@@ -206,6 +229,19 @@ export async function holdStay(req: HoldRequest): Promise<HeldStay> {
         });
 
         guestRowId = guestId;
+
+        // Послуги — тією ж транзакцією, що й бронь: рядок замовлення, який
+        // ліг окремим кроком, лишається сиротою при першому ж падінні між
+        // ними, і рецепція побачить послугу без броні.
+        //
+        // `confirmed` за станом і `none` за оплатою: гість справді це
+        // замовив (це не «заявка на розгляд»), а платить на рецепції — КІ1.
+        for (const line of priced.lines) {
+          await t.run(
+            `INSERT INTO service_orders (id, reservation_id, service_id, quantity, total_price, status, payment_status)
+             VALUES (?, ?, ?, ?, ?, 'confirmed', 'none')`,
+            [id('so'), reservationId, line.serviceId, line.quantity, line.total]);
+        }
       });
     }, { unitId: unit.id, checkIn: req.from, checkOut: req.to, reservationId });
   } catch (e) {
@@ -256,6 +292,7 @@ export async function holdStay(req: HoldRequest): Promise<HeldStay> {
     token,
     unitName: unit.name,
     total: quote.total,
+    servicesTotal: priced.total,
     currency: quote.currency,
     nights: quote.nights,
     holdExpiresAt: expires,

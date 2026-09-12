@@ -778,18 +778,23 @@ async function applyStructure(organizationId, plan) {
     // stringify того, що у файлі: порівняння рядок-у-рядок і є ідемпотентність.
     const rawSplit = both(s, 'vatSplit');
     const split = rawSplit == null ? null : JSON.stringify(rawSplit);
+    // Чи гість може купити це САМ (0417). Порожньо — ні: довідник послуг це
+    // повний список нарахувань, і поруч зі сніданком у ньому стоять штраф за
+    // скасування, втрачений ключ і знижка. Онлайн продається лише назване.
+    const online = both(s, 'bookableOnline') === true ? 1 : 0;
     const has = await sql.row(
-      'SELECT id, price, vat_code, is_active, vat_split FROM additional_services WHERE property_id = ? AND name = ?',
+      'SELECT id, price, vat_code, is_active, vat_split, bookable_online FROM additional_services WHERE property_id = ? AND name = ?',
       [property.id, name]);
     const asBool = (v) => (v === true || v === 1 || v === 't' || v === '1');
     if (has && Number(has.price) === price && has.vat_code === vat
         && asBool(has.is_active) === !!active
+        && asBool(has.bookable_online) === !!online
         && String(has.vat_split ?? '') === String(split ?? '')) { say.same(`послуга ${name}`); continue; }
     if (DRY) { say[has ? 'changed' : 'made'](`[суха] послуга ${name}`); continue; }
     if (has) {
-      await sql.run('UPDATE additional_services SET price = ?, vat_code = ?, is_active = ?, vat_split = ? WHERE id = ? AND property_id = ?',
-        [price, vat, active, split, has.id, property.id]);
-      say.changed(`послуга ${name}${active ? '' : ' (вимкнено)'}${split ? ' (поділ ПДВ)' : ''}`);
+      await sql.run('UPDATE additional_services SET price = ?, vat_code = ?, is_active = ?, vat_split = ?, bookable_online = ? WHERE id = ? AND property_id = ?',
+        [price, vat, active, split, online, has.id, property.id]);
+      say.changed(`послуга ${name}${active ? '' : ' (вимкнено)'}${online ? ' (продається онлайн)' : ''}${split ? ' (поділ ПДВ)' : ''}`);
     } else if (!active) {
       // Вимкнену і не заведену — не заводити: стан «її немає» вже досягнуто.
       say.same(`послуга ${name} (вимкнена, не заведена)`);
@@ -798,11 +803,11 @@ async function applyStructure(organizationId, plan) {
       // CHECK: food / wellness / sport / entertainment / other. Порожнє —
       // 'other', бо NOT NULL, а не тому що ми знаємо, що це «інше».
       await sql.run(
-        `INSERT INTO additional_services (id, property_id, name, price, currency, vat_code, service_type, category, is_active, vat_split)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?)`,
+        `INSERT INTO additional_services (id, property_id, name, price, currency, vat_code, service_type, category, is_active, vat_split, bookable_online)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?)`,
         [crypto.randomUUID(), property.id, name, price, both(s, 'currency') || 'EUR', vat,
-          both(s, 'serviceType') || 'simple', both(s, 'category') || 'other', split]);
-      say.made(`послуга ${name}`);
+          both(s, 'serviceType') || 'simple', both(s, 'category') || 'other', split, online]);
+      say.made(`послуга ${name}${online ? ' (продається онлайн)' : ''}`);
     }
   }
 

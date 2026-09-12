@@ -1210,6 +1210,12 @@ function runMigrations(database: any) {
         category TEXT NOT NULL DEFAULT 'other' CHECK (category IN ('food', 'wellness', 'sport', 'entertainment', 'other')),
         available_for TEXT NOT NULL DEFAULT 'all',
         is_active INTEGER NOT NULL DEFAULT 1,
+        -- 0417: чи може гість купити це САМ, на публічній поверхні.
+        -- Порожньо за замовчуванням: довідник послуг це повний список
+        -- нарахувань, і поруч зі сніданком у ньому стоять штраф за
+        -- скасування, втрачений ключ і знижка. Те саме слово, що в номерів
+        -- (unit_types.bookable_online), бо правило одне.
+        bookable_online INTEGER NOT NULL DEFAULT 0,
         sort_order INTEGER NOT NULL DEFAULT 0,
         vat_split TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -7797,6 +7803,25 @@ function runMigrations(database: any) {
     try { database.exec('ROLLBACK'); } catch { /* поза транзакцією */ }
     database.exec('PRAGMA foreign_keys = ON');
     console.error('[DB] payment_status partial migration:', e.message);
+  }
+
+  // ── 0417: яку послугу гість може купити САМ ─────────────────────────────
+  //
+  // І в `CREATE TABLE additional_services` вище, і тут (AGENTS §4).
+  // Дефолт порожній: жодна наявна послуга не стає продажною від міграції —
+  // у довіднику живого готелю поруч зі сніданком лежать штраф за скасування,
+  // втрачений ключ і знижка, і всі активні.
+  try {
+    const svcCols = (database.prepare('PRAGMA table_info(additional_services)').all() as { name: string }[])
+      .map((c) => c.name);
+    if (!svcCols.includes('bookable_online')) {
+      database.exec('ALTER TABLE additional_services ADD COLUMN bookable_online INTEGER NOT NULL DEFAULT 0');
+      console.log('[DB] 0417: additional_services.bookable_online');
+    }
+    database.exec('CREATE INDEX IF NOT EXISTS idx_services_bookable_online '
+      + 'ON additional_services(property_id) WHERE bookable_online');
+  } catch (e) {
+    console.error('[DB] 0417 bookable_online:', (e as Error).message);
   }
 
   // ── 0415: строк, доки невідтверджена бронь тримає номер ─────────────────

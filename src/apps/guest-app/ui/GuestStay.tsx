@@ -29,7 +29,7 @@ import { HOLD_MINUTES } from '../domain/hold';
 import type { StayOffer } from '../domain/port';
 import { GUEST_STRINGS, type GuestLang } from './translations';
 
-type Stage = 'dates' | 'rooms' | 'details' | 'confirm' | 'claim';
+type Stage = 'dates' | 'rooms' | 'extras' | 'details' | 'confirm' | 'claim';
 
 /** Текст згоди, який ЦЕЙ готель справді написав (ніяких літералів у коді). */
 interface ConsentOffer {
@@ -41,10 +41,22 @@ interface ConsentOffer {
   required: boolean;
 }
 
+/** Послуга, яку готель дозволив продавати онлайн (`bookable_online`, 0417). */
+interface ServiceOffer {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  currency: string;
+  unitLabel: string;
+  category: string;
+}
+
 interface Held {
   token: string;
   unitName: string;
   total: number;
+  servicesTotal: number;
   currency: string;
   nights: number;
 }
@@ -75,6 +87,9 @@ export function GuestStay({ appKey, lang, onBack }: {
   const [offers, setOffers] = useState<StayOffer[]>([]);
   const [handoff, setHandoff] = useState<string | null>(null);
   const [consents, setConsents] = useState<ConsentOffer[]>([]);
+  const [services, setServices] = useState<ServiceOffer[]>([]);
+  /** Скільки чого гість узяв. Немає ключа — не взяв; нуль тут не зберігається. */
+  const [extras, setExtras] = useState<Record<string, number>>({});
   const [ticked, setTicked] = useState<Record<string, boolean>>({});
   const [picked, setPicked] = useState<StayOffer | null>(null);
   const [firstName, setFirstName] = useState('');
@@ -99,6 +114,15 @@ export function GuestStay({ appKey, lang, onBack }: {
     ? new Intl.NumberFormat(lang, { style: 'currency', currency }).format(value)
     : new Intl.NumberFormat(lang, { minimumFractionDigits: 2 }).format(value));
   const nightsWord = (n: number) => (n === 1 ? s.nightsOne : s.nightsMany);
+  /**
+   * Сума послуг на екрані.
+   *
+   * Це ПОКАЗ, а не джерело: у тілі бронювання їде лише «що і скільки», а
+   * суму рахує писач із довідника. Якщо ці два числа колись розійдуться,
+   * правим буде довідник — і саме тому гість бачить суму ще до кнопки.
+   */
+  const extrasTotal = services.reduce((sum, x) => sum + x.price * (extras[x.id] ?? 0), 0);
+
   /** Кнопку тримають лише обовʼязкові роди — і рахує це екран, і звіряє сервер. */
   const allRequiredTicked = consents.every((c) => !c.required || ticked[c.kind]);
 
@@ -141,6 +165,7 @@ export function GuestStay({ appKey, lang, onBack }: {
       setOffers(list);
       setHandoff(away);
       setConsents((json.consents ?? []) as ConsentOffer[]);
+      setServices((json.services ?? []) as ServiceOffer[]);
       // Порожньо — це стан, а не помилка: гість має бачити речення, а не
       // порожній екран, з якого не зрозуміло, чи воно шукало взагалі.
       if (list.length === 0 && !away) { setMessage(s.nothingFree); return; }
@@ -162,6 +187,9 @@ export function GuestStay({ appKey, lang, onBack }: {
         unitTypeId: picked.unitTypeId,
         ratePlanId: picked.ratePlanId,
         firstName, lastName, phone, email: email || null, lang,
+        services: Object.entries(extras)
+          .filter(([, n]) => n > 0)
+          .map(([serviceId, quantity]) => ({ serviceId, quantity })),
         // Їде ПАРА «рід + версія», не «так/ні»: галочка під старою редакцією
         // не є згодою на нову, і сервер має змогу це побачити.
         consents: consents
@@ -171,8 +199,8 @@ export function GuestStay({ appKey, lang, onBack }: {
       if (!ok) { setMessage(refusalText(status)); return; }
       setHeld({
         token: String(json.token), unitName: String(json.unitName ?? ''),
-        total: Number(json.total), currency: String(json.currency ?? ''),
-        nights: Number(json.nights),
+        total: Number(json.total), servicesTotal: Number(json.servicesTotal ?? 0),
+        currency: String(json.currency ?? ''), nights: Number(json.nights),
       });
       setStage('confirm');
     } catch {
@@ -303,7 +331,14 @@ export function GuestStay({ appKey, lang, onBack }: {
               key={`${o.unitTypeId}:${o.ratePlanId ?? 'base'}`}
               type="button"
               className="guest-card"
-              onClick={() => { setPicked(o); setStage('details'); setMessage(null); }}
+              onClick={() => {
+                setPicked(o);
+                setMessage(null);
+                // Готель, який нічого не продає онлайн, кроку послуг не має:
+                // порожній екран «оберіть щось» — це крок, якого гість не
+                // просив і на якому нема чого обрати.
+                setStage(services.length > 0 ? 'extras' : 'details');
+              }}
             >
               <span className="guest-card-title">{o.name}</span>
               {o.ratePlanName && <span className="guest-rate">{o.ratePlanName}</span>}
@@ -324,6 +359,51 @@ export function GuestStay({ appKey, lang, onBack }: {
         </div>
       )}
 
+      {stage === 'extras' && picked && (
+        <div className="guest-offers">
+          <p className="guest-lead">{s.extrasTitle}</p>
+          <p className="guest-note">{s.extrasLead}</p>
+          {/*
+            Кожна позиція — ціна за ОДИНИЦЮ і текст одиниці той, що написав
+            готель («за особу/добу»). Свій переказ тут означав би, що гість
+            рахує за одним правилом, а рахунок виставлять за іншим.
+          */}
+          {services.map((x) => {
+            const n = extras[x.id] ?? 0;
+            return (
+              <div key={x.id} className="guest-card" data-static="true">
+                <span className="guest-card-title">{x.name}</span>
+                {x.description && <span className="guest-card-help">{x.description}</span>}
+                <span className="guest-rate">
+                  {price(x.price, x.currency)} {x.unitLabel}
+                </span>
+                <span className="guest-qty">
+                  <button type="button" className="guest-qty-btn" aria-label={s.remove}
+                    disabled={n === 0}
+                    onClick={() => setExtras((was) => ({ ...was, [x.id]: Math.max(0, n - 1) }))}>−</button>
+                  <span className="guest-qty-n">{n}</span>
+                  <button type="button" className="guest-qty-btn" aria-label={s.add}
+                    disabled={n >= 20}
+                    onClick={() => setExtras((was) => ({ ...was, [x.id]: n + 1 }))}>+</button>
+                </span>
+              </div>
+            );
+          })}
+          <p className="guest-note">
+            {s.roomLabel}: {price(picked.total, picked.currency)}
+            {extrasTotal > 0 && <> · {s.extrasLabel}: {price(extrasTotal, picked.currency)}</>}
+          </p>
+          <p className="guest-total">
+            {s.grandTotal}: {price(picked.total + extrasTotal, picked.currency)}
+          </p>
+          <button type="button" className="guest-card" data-primary="true"
+            onClick={() => { setStage('details'); setMessage(null); }}>
+            <span className="guest-card-title">{extrasTotal > 0 ? s.extrasNext : s.extrasSkip}</span>
+          </button>
+          <button type="button" className="guest-quiet" onClick={() => setStage('rooms')}>{s.back}</button>
+        </div>
+      )}
+
       {stage === 'details' && picked && (
         <form className="guest-form" onSubmit={(e) => { e.preventDefault(); void book(); }}>
           <p className="guest-lead">{s.yourDetails}</p>
@@ -341,6 +421,12 @@ export function GuestStay({ appKey, lang, onBack }: {
           </p>
           {picked.mealPlan && <p className="guest-note">{s.breakfast}</p>}
           {picked.cancellationPolicy && <p className="guest-note">{picked.cancellationPolicy}</p>}
+          {extrasTotal > 0 && (
+            <p className="guest-note">
+              {s.extrasLabel}: {price(extrasTotal, picked.currency)} ·{' '}
+              {s.grandTotal}: {price(picked.total + extrasTotal, picked.currency)}
+            </p>
+          )}
           <label className="guest-field">
             <span className="guest-label">{s.firstName}</span>
             <input className="guest-input" type="text" autoComplete="given-name"
@@ -385,7 +471,8 @@ export function GuestStay({ appKey, lang, onBack }: {
             disabled={busy || !allRequiredTicked}>
             <span className="guest-card-title">{busy ? s.booking : s.bookNow}</span>
           </button>
-          <button type="button" className="guest-quiet" onClick={() => setStage('rooms')}>{s.back}</button>
+          <button type="button" className="guest-quiet"
+            onClick={() => setStage(services.length > 0 ? 'extras' : 'rooms')}>{s.back}</button>
         </form>
       )}
 
@@ -427,8 +514,20 @@ export function GuestStay({ appKey, lang, onBack }: {
           <p className="guest-lead">{s.confirmTitle}</p>
           <p className="guest-note">
             {held.unitName} · {held.nights} {nightsWord(held.nights)} ·{' '}
-            {s.totalLabel}: {price(held.total, held.currency)}
+            {s.roomLabel}: {price(held.total, held.currency)}
           </p>
+          {/*
+            Сума послуг ОКРЕМИМ числом, бо в базі вона теж окрема: послуги
+            живуть рядками замовлень і потрапляють у рахунок власним шляхом.
+            Одне злите число на екрані обіцяло б гостю рівно те, чого в
+            рахунку не буде.
+          */}
+          {held.servicesTotal > 0 && (
+            <p className="guest-note">
+              {s.extrasLabel}: {price(held.servicesTotal, held.currency)} ·{' '}
+              {s.grandTotal}: {price(held.total + held.servicesTotal, held.currency)}
+            </p>
+          )}
           <p className="guest-note">{s.confirmLead}</p>
           {/* Число береться з коду, а не з тексту: строк і речення про строк
               не мають розходитись. */}

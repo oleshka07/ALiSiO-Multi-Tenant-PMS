@@ -47,7 +47,12 @@ const keyB = generateGuestAppKey();
 for (const [org, prop, name, key] of [
   [A, PA, 'Haus Alpha', keyA], [B, PB, 'Haus Beta', keyB],
 ] as const) {
-  await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [org, org, org]);
+  // Валюта рахунку названа, а не лишена на дефолт колонки: котирування бере
+  // її з організації, і послуги показуються лише в ТІЙ САМІЙ валюті. З
+  // дефолтною крони проти євро в послугах сцена червоніла б з чужої причини
+  // — і саме так вона й почервоніла першого разу.
+  await sql.run('INSERT INTO organizations (id, name, slug, default_currency) VALUES (?, ?, ?, ?)',
+    [org, org, org, 'EUR']);
   await runWithOrganization(org, () => sql.run(
     `INSERT INTO properties (id, organization_id, name, slug, country, guest_app_key)
      VALUES (?, ?, ?, ?, 'DE', ?)`,
@@ -696,8 +701,11 @@ try {
   // Ціна на дати цієї сцени — інакше писач відмовляє за інваріантом 17, і
   // твердження «бронь без галочки не пройшла» було б зелене з чужої причини
   // (перша редакція сцени саме так і помилилась: 409 замість 400).
+  // Ціни на всі дати, якими користуються сцени 14 і 17. Кожна сцена бере свій
+  // відрізок, щоб не тримати одну бронь на двох — інакше «зайнято» з однієї
+  // сцени відмовляло б у другій, і та червоніла б із чужої причини.
   await runWithOrganization(A, () => upsertPrices('ga_t1',
-    [day(6), day(7)].map((date) => ({ date, base_price: 100 }))));
+    [6, 7, 8, 9, 10, 11].map((n) => ({ date: day(n), base_price: 100 }))));
   const consentBody = (kind: string, version: string) => `${kind} ${version} — текст готелю`;
   await runWithOrganization(A, async () => {
     for (const [kind, version, active] of [
@@ -880,6 +888,93 @@ try {
   // Повертаємо обʼєкт у нашу фазу — інакше наступні сцени (їх поки немає, але
   // будуть) міряли б готель, який не продає.
   await external(false);
+
+  // ── 17. Послуги: продається лише НАЗВАНЕ, і ціну бере довідник ──────────
+  //
+  // Довідник послуг обʼєкта це повний список НАРАХУВАНЬ, а не вітрина. У
+  // живого готелю там поруч зі сніданком лежать «втрачений ключ», «штраф за
+  // скасування» і «знижка 10 %» — усі активні, бо рецепція ними нараховує.
+  // Показати цей список гостю означало б запропонувати купити штраф за
+  // власний неприїзд.
+  //
+  // Осі, і кожна обома боками:
+  //
+  //   НАЗВАНІСТЬ — активна послуга БЕЗ `bookable_online` не показується.
+  //     Фікстура не вироджена: у готелю є і продажна, і непродажна, і обидві
+  //     активні. З однією «усі активні продаються» було б зелене;
+  //   ЦІНА — сума рахується з довідника, а не з тіла запиту. Кількість 2 при
+  //     ціні 15 дає 30 — число, несумісне ні з ціною, ні з кількістю;
+  //   ОКРЕМІСТЬ — сума послуг НЕ входить у `reservations.total_price`:
+  //     послуги йдуть рядками замовлень і потрапляють у рахунок власним
+  //     шляхом, тож долити їх у суму броні означало б порахувати двічі;
+  //   ЧУЖЕ — послуга сусіднього готелю не купується навіть своїм ключем.
+  await runWithOrganization(A, async () => {
+    for (const [id, name, price, online] of [
+      ['ga_svc_bf', 'Frühstück', 15, true],
+      ['ga_svc_park', 'Tiefgarage', 10, true],
+      // Активна, але НЕ продажна: рівно той рядок, який гість не має бачити.
+      ['ga_svc_fine', 'Schlüsselverlust', 30, false],
+    ] as const) {
+      await sql.run(
+        `INSERT INTO additional_services (id, property_id, name, price, currency, category, is_active, bookable_online)
+         VALUES (?, ?, ?, ?, 'EUR', 'other', TRUE, ?)`,
+        [id, PA, name, price, online]);
+    }
+  });
+  // І послуга ЧУЖОГО готелю — з тим самим виглядом, теж продажна.
+  await runWithOrganization(B, () => sql.run(
+    `INSERT INTO additional_services (id, property_id, name, price, currency, category, is_active, bookable_online)
+     VALUES ('gb_svc', ?, 'Frühstück', 15, 'EUR', 'other', TRUE, TRUE)`, [PB]));
+
+  const shownSvc = await gate(booking.listOffers, 'offers',
+    { key: keyA, from: day(6), to: day(7), adults: 2 });
+  assert.deepStrictEqual(
+    (shownSvc.body.services as any[]).map((x) => x.name).sort(),
+    ['Frühstück', 'Tiefgarage'],
+    `гостю показали не ті послуги: ${JSON.stringify((shownSvc.body.services as any[]).map((x) => x.name))} — `
+    + 'активне нарахування без ознаки продажу це не товар');
+
+  const withExtras = await gate(booking.holdOffer, 'hold', {
+    key: keyA, from: day(8), to: day(9), adults: 2, unitTypeId: 'ga_t1', ratePlanId: null,
+    firstName: 'Erna', lastName: 'Extra', phone: '+49 170 5550003', lang: 'de',
+    consents: [{ kind: 'terms', version: 'v2' }, { kind: 'data_processing', version: 'v2' }],
+    services: [{ serviceId: 'ga_svc_bf', quantity: 2 }],
+  });
+  assert.strictEqual(withExtras.status, 201, `бронь із послугою не створилась: ${JSON.stringify(withExtras.body)}`);
+  assert.strictEqual(withExtras.body.servicesTotal, 30,
+    `сума послуг ${withExtras.body.servicesTotal} — два сніданки по 15 це 30, і рахує їх ДОВІДНИК`);
+
+  const stayRow = await runWithOrganization(A, () => sql.row<any>(
+    'SELECT id, total_price FROM reservations WHERE guest_page_token = ?', [withExtras.body.token]));
+  assert.strictEqual(Number(stayRow.total_price), 100,
+    `у броні сума ${stayRow.total_price} — послуги долиті в суму проживання, тобто в рахунку вони будуть двічі`);
+  const orders = await runWithOrganization(A, () => sql.rows<any>(
+    'SELECT service_id, quantity, total_price, status, payment_status FROM service_orders WHERE reservation_id = ?',
+    [stayRow.id]));
+  assert.strictEqual(orders.length, 1, `рядків замовлення ${orders.length}, а мав бути один`);
+  assert.strictEqual(Number(orders[0].total_price), 30, 'у замовленні не та сума');
+  assert.strictEqual(orders[0].payment_status, 'none', 'замовлення позначено оплаченим — платять на рецепції (КІ1)');
+
+  // Непродажну купити не можна — навіть назвавши її id прямо.
+  const buysFine = await gate(booking.holdOffer, 'hold', {
+    key: keyA, from: day(10), to: day(11), adults: 2, unitTypeId: 'ga_t1', ratePlanId: null,
+    firstName: 'Erna', lastName: 'Extra', phone: '+49 170 5550004', lang: 'de',
+    consents: [{ kind: 'terms', version: 'v2' }, { kind: 'data_processing', version: 'v2' }],
+    services: [{ serviceId: 'ga_svc_fine', quantity: 1 }],
+  });
+  assert.strictEqual(buysFine.status, 409,
+    `гість купив послугу, яку готель не продає онлайн (${buysFine.status})`);
+
+  // І послугу сусіднього готелю — теж ні.
+  const buysNeighbour = await gate(booking.holdOffer, 'hold', {
+    key: keyA, from: day(10), to: day(11), adults: 2, unitTypeId: 'ga_t1', ratePlanId: null,
+    firstName: 'Erna', lastName: 'Extra', phone: '+49 170 5550005', lang: 'de',
+    consents: [{ kind: 'terms', version: 'v2' }, { kind: 'data_processing', version: 'v2' }],
+    services: [{ serviceId: 'gb_svc', quantity: 1 }],
+  });
+  assert.strictEqual(buysNeighbour.status, 409,
+    `гість купив послугу СУСІДНЬОГО готелю (${buysNeighbour.status}) — довідник читається без осі обʼєкта`);
+  console.log('  ok  17. продається лише назване; ціну бере довідник; послуги окремо від суми проживання');
 
   console.log('guest-app: ключ називає один будинок — свій, і сторінка говорить мовою телефона');
 } finally {

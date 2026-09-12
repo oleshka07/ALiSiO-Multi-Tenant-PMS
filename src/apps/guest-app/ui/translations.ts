@@ -142,6 +142,18 @@ export interface GuestStrings {
   needCheckIn: string;
   /** Дата заїзду поза вікном: ця сторінка про сьогодні-завтра, не про липень. */
   checkInOutOfWindow: string;
+
+  // ── Крок послуг ────────────────────────────────────────────────────────
+  extrasTitle: string;
+  extrasLead: string;
+  /** Нічого не додавати — крок пропускається, і це нормальний вибір. */
+  extrasSkip: string;
+  extrasNext: string;
+  roomLabel: string;
+  extrasLabel: string;
+  grandTotal: string;
+  add: string;
+  remove: string;
 }
 
 const de: GuestStrings = {
@@ -208,6 +220,16 @@ const de: GuestStrings = {
   needLastName: 'Bitte geben Sie Ihren Nachnamen ein.',
   needCheckIn: 'Bitte geben Sie das Anreisedatum ein.',
   checkInOutOfWindow: 'Diese Seite ist für die Anreise heute oder morgen. Bitte wenden Sie sich an die Rezeption.',
+
+  extrasTitle: 'Noch etwas dazu?',
+  extrasLead: 'Alles optional — Sie können auch direkt weiter.',
+  extrasSkip: 'Ohne Extras weiter',
+  extrasNext: 'Weiter',
+  roomLabel: 'Zimmer',
+  extrasLabel: 'Extras',
+  grandTotal: 'Gesamt',
+  add: 'Hinzufügen',
+  remove: 'Entfernen',
 };
 
 const en: GuestStrings = {
@@ -274,6 +296,16 @@ const en: GuestStrings = {
   needLastName: 'Please enter your surname.',
   needCheckIn: 'Please enter the arrival date.',
   checkInOutOfWindow: 'This page is for arrivals today or tomorrow. Please contact the reception.',
+
+  extrasTitle: 'Anything else?',
+  extrasLead: 'All optional — you can go straight on.',
+  extrasSkip: 'Continue without extras',
+  extrasNext: 'Continue',
+  roomLabel: 'Room',
+  extrasLabel: 'Extras',
+  grandTotal: 'Total',
+  add: 'Add',
+  remove: 'Remove',
 };
 
 export const GUEST_STRINGS: Record<GuestLang, GuestStrings> = { de, en };

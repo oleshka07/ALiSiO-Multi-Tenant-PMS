@@ -106,3 +106,19 @@
 }
 .guest-consent input { margin-top: 0.25rem; width: 1.15rem; height: 1.15rem; flex: none; }
 .guest-consent-text { color: #6b6157; }
+
+/* Лічильник кількості на кроці послуг. Кнопки великі — палець, не миша. */
+.guest-qty { display: flex; align-items: center; gap: 1rem; margin-top: 0.5rem; }
+.guest-qty-btn {
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 0.8rem;
+  border: 1px solid #e0d7c9;
+  background: #fffdf9;
+  color: inherit;
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.guest-qty-btn:disabled { opacity: 0.4; cursor: default; }
+.guest-qty-n { min-width: 1.5rem; text-align: center; font-size: 1.1rem; font-weight: 600; }

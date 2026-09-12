@@ -27,6 +27,7 @@ import { coreSource } from '../source/core.source';
 import { handoffSource } from '../source/handoff.source';
 import { sourceFor } from '../domain/port';
 import { GUEST_APP_CONSENTS, blocks } from '../domain/consents';
+import { bookableServices } from '../data/services.repo';
 import { holdStay, confirmStay } from '../data/booking.repo';
 import { claimStay } from '../data/claim.repo';
 import { readClaim } from '../domain/claim';
@@ -40,6 +41,24 @@ function clientKey(request: Request, action: string): string {
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Обрані послуги з тіла — у формі, якій можна вірити.
+ *
+ * Ціни тут немає й не буде: кількість приходить від гостя, ціну бере писач
+ * із довідника. Кількість обрізається зверху — «сніданків 9999» це не
+ * замовлення, а спроба покласти в рахунок число, якого ніхто не назве вголос.
+ */
+function readServices(raw: unknown): { serviceId: string; quantity: number }[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === 'object')
+    .map((x) => ({
+      serviceId: String(x.serviceId ?? x.id ?? ''),
+      quantity: Math.floor(Number(x.quantity) || 0),
+    }))
+    .filter((x) => x.serviceId && x.quantity >= 1 && x.quantity <= 20);
+}
 
 /**
  * Галочки з тіла — у формі, якій можна вірити.
@@ -110,7 +129,17 @@ export async function listOffers(request: Request): Promise<Response> {
           required: blocks(t.consentKind),
         })),
     }));
-    return NextResponse.json({ offers, consents, handoff: away });
+
+    // Послуги — тією ж відповіддю, і у ВАЛЮТІ КОТИРУВАННЯ: крок вибору
+    // послуг іде одразу за вибором номера, і сума на ньому одна. Валюту
+    // бере перша пропозиція; немає пропозицій — немає й кроку послуг, бо
+    // додавати сніданок нема до чого.
+    const services = offers.length > 0
+      ? await runWithOrganization(home.organizationId,
+        () => bookableServices(home.organizationId, home.propertyId, offers[0].currency))
+      : [];
+
+    return NextResponse.json({ offers, consents, services, handoff: away });
   } catch (error) {
     return handleError('apps/guest listOffers', error, 'Не вдалося показати вільні номери');
   }
@@ -145,6 +174,7 @@ export async function holdOffer(request: Request): Promise<Response> {
       email: body.email ? String(body.email) : null,
       lang: String(body.lang ?? 'de'),
       consents: readConsents(body.consents),
+      services: readServices(body.services),
     }));
 
     // Ідентифікатор броні назовні не їде: далі гість ходить лише за токеном,
@@ -153,6 +183,7 @@ export async function holdOffer(request: Request): Promise<Response> {
       token: held.token,
       unitName: held.unitName,
       total: held.total,
+      servicesTotal: held.servicesTotal,
       currency: held.currency,
       nights: held.nights,
       holdExpiresAt: held.holdExpiresAt,
