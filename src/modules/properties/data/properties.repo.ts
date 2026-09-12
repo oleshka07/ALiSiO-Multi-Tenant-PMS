@@ -5,6 +5,8 @@ import { getSql } from '@core/db/async';
 // (`channels/channex/property-type.ts`).
 import { isLodgingKind } from '@core/lodging-kinds';
 import { refuse } from '@core/http/refusal';
+import { BRAND_PALETTES, readBrandLogoUrl } from '@core/brand-palettes';
+import { CHECKIN_PAYMENT_POLICIES } from '@bookings/checkin-policy';
 import { unitColumnsSql } from './units.repo';
 
 /**
@@ -194,7 +196,7 @@ export async function updateProperty(organizationId: string, id: string, fields:
   const sql = getSql();
   if (!await owns(organizationId, id)) return null;
 
-  const allowed = ['name', 'slug', 'address', 'city', 'country', 'phone', 'email', 'check_in_time', 'check_out_time', 'city_tax_per_night', 'is_active', 'checkout_balance_policy', 'property_type'];
+  const allowed = ['name', 'slug', 'address', 'city', 'country', 'phone', 'email', 'check_in_time', 'check_out_time', 'city_tax_per_night', 'is_active', 'checkout_balance_policy', 'property_type', 'checkin_payment_policy', 'brand_palette', 'brand_logo_url'];
   // Рід житла: назване значення звіряється, порожнє ЗНІМАЄТЬСЯ з патча.
   //
   // Саме зняття, а не запис `null`: форма обʼєкта шле `{...propForm}` цілком,
@@ -216,6 +218,41 @@ export async function updateProperty(organizationId: string, id: string, fields:
   if (fields.checkout_balance_policy !== undefined
       && !['none', 'warning', 'blocking'].includes(String(fields.checkout_balance_policy))) {
     throw new Error('checkout_balance_policy must be one of none, warning, blocking');
+  }
+  // Оплата при заселенні (0410) — одне з двох слів, і звіряє його ТОЙ САМИЙ
+  // нормалізатор, що кіоск і платіжний шлагбаум гостьової сторінки. Другий
+  // список тут розійшовся б із першим так само, як розходяться два списки
+  // статусів, і розійшовся б у той бік, який видно лише гостю.
+  if (fields.checkin_payment_policy !== undefined) {
+    const want = String(fields.checkin_payment_policy);
+    if (!CHECKIN_PAYMENT_POLICIES.includes(want as never)) {
+      refuse(`Оплата при заселенні — «${want}» нам невідоме. Оберіть: `
+        + CHECKIN_PAYMENT_POLICIES.join(', ') + '.');
+    }
+  }
+  // Палітра (0419): порожнє значення ЗНІМАЄТЬСЯ з патча, як `property_type`.
+  //
+  // Та сама причина, що в роду житла (В1): форма обʼєкта шле весь свій стан
+  // цілком, тож `brand_palette: ''` приїжджає в кожному PATCH — і запис
+  // порожнечі стирав би вибір готелю щоразу, коли хтось збереже сусіднє поле.
+  if (fields.brand_palette !== undefined) {
+    const want = String(fields.brand_palette ?? '');
+    fields = { ...fields };
+    if (!want) delete fields.brand_palette;
+    else if (!BRAND_PALETTES.some((pal) => pal.key === want)) {
+      refuse(`Палітру «${want}» ми не знаємо — оберіть зі списку у формі обʼєкта.`);
+    }
+  }
+  // Лого: або адреса, придатна для показу, або порожньо. Пів-адреса в колонці
+  // дає гостю порожній прямокутник замість назви готелю — мовчки.
+  if (fields.brand_logo_url !== undefined) {
+    const raw = String(fields.brand_logo_url ?? '').trim();
+    fields = { ...fields };
+    if (!raw) fields.brand_logo_url = null;
+    else if (readBrandLogoUrl(raw) === null) {
+      refuse('Адреса лого має починатись на https:// або бути шляхом у нашому сховищі (/…). '
+        + 'http:// браузер гостя заблокує мовчки, і на сторінці буде порожньо.');
+    }
   }
   const updates: string[] = [];
   const values: unknown[] = [];

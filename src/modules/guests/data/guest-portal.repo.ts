@@ -79,6 +79,15 @@ export async function getReservationByToken(token: string) {
       p.name as property_name, p.address as property_address, p.city as property_city,
       p.country as property_country, p.phone as property_phone, p.email as property_email,
       p.check_in_time, p.check_out_time,
+      -- Слово обʼєкта про оплату при заселенні (0410). Сторінка сама його не
+      -- тлумачить: рішення ухвалює domain/payment-gate.ts через
+      -- readCheckinPolicy — той самий нормалізатор, що в кіоска й рецепції.
+      -- (Зворотних лапок тут бути не може: це тіло шаблонного рядка.)
+      p.checkin_payment_policy,
+      -- Кольори й лого обʼєкта (0419). Сирими: приводить їх до відомого
+      -- readBrandPalette / readBrandLogoUrl у хендлері, одним місцем на
+      -- обидві гостьові поверхні.
+      p.brand_palette, p.brand_logo_url,
       p.organization_id,
       o.language as organization_language
     FROM reservations r

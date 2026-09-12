@@ -22,7 +22,9 @@
     "phone": "+49 3661 622123",
     "email": "info@schlossberghotel-greiz.de",
     "checkInTime": "15:00",
-    "checkOutTime": "11:00"
+    "checkOutTime": "11:00",
+    "checkinPaymentPolicy": "allow_pay_later",
+    "brandPalette": "teal_warm_grey"
   },
   "taxRates": [
     {

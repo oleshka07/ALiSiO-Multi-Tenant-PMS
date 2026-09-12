@@ -22,6 +22,72 @@
   --gp-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 
+/* ─── Палітра готелю ───────────────────────────────────────────────────
+ *
+ * Та сама стрічка `data-palette`, що в гостьовому застосунку
+ * (`properties.brand_palette`, реєстр — `src/core/brand-palettes.ts`). Дві
+ * поверхні, один вибір: гість, який відсканував наліпку і дійшов сюди, не має
+ * помітити, що перейшов у інший продукт.
+ *
+ * Перевизначаються ЛИШЕ фірмові токени. `--gp-blue`, `--gp-green`,
+ * `--gp-orange`, `--gp-red` лишаються як є навмисно: це не бренд, а
+ * СИГНАЛИ — успіх, попередження, відмова. Готель, чий бренд червоний,
+ * отримав би червону галочку «зареєстровано», і гість читав би її як помилку.
+ *
+ * Готель, який НІЧОГО не обрав, стрічки не має взагалі — і малюється `:root`
+ * вище, тобто рівно тим виглядом, що був до появи вибору. Це не дрібниця:
+ * історичний вигляд двох поверхонь різний (застосунок — пісок і латунь, ця
+ * сторінка — лісова зелень), тож будь-яке спільне «значення за замовчуванням»
+ * перефарбувало б одну з них кожному наявному клієнту.
+ */
+.gp-root[data-palette='teal_warm_grey'] {
+  --gp-bg: #F0F0F0;
+  --gp-text: #4A403D;
+  --gp-sub: #8A8078;
+  --gp-sep: #DCD8D4;
+  --gp-tint: #4FACB8;
+  --gp-tint-dark: #3A8B96;
+  --gp-forest-light: #E4F2F4;
+  --gp-sand: #F4F2F0;
+}
+
+.gp-root[data-palette='ink_amber'] {
+  --gp-bg: #F5F4F2;
+  --gp-text: #1F2430;
+  --gp-sub: #858B99;
+  --gp-sep: #DCDEE3;
+  --gp-tint: #C88A00;
+  --gp-tint-dark: #9A6A00;
+  --gp-forest-light: #FBF1DC;
+  --gp-sand: #F6F3EC;
+}
+
+.gp-root[data-palette='sand_brass'] {
+  --gp-bg: #F6F2EC;
+  --gp-text: #2B2622;
+  --gp-sub: #8A7F72;
+  --gp-sep: #E0D7C9;
+  --gp-tint: #9A7B42;
+  --gp-tint-dark: #7A6034;
+  --gp-forest-light: #F2E9D8;
+  --gp-sand: #F5F0E8;
+}
+
+/* forest_stone повторює `:root` — вигляд цієї сторінки з дня її появи. Блок
+   потрібен, щоб вибір із чотирьох був вибором із чотирьох: готель, який
+   свідомо обрав зелень, має рядок у колонці, а не порожнечу, яку наступна
+   сесія прочитає як «не питали». */
+.gp-root[data-palette='forest_stone'] {
+  --gp-bg: #F2F2F7;
+  --gp-text: #000000;
+  --gp-sub: #8E8E93;
+  --gp-sep: #E5E5EA;
+  --gp-tint: #2E6B4F;
+  --gp-tint-dark: #1E4A36;
+  --gp-forest-light: #E8F5EE;
+  --gp-sand: #F5F0E8;
+}
+
 /* ─── Reset & Base ─── */
 .gp-root {
   font-family: var(--gp-font);
@@ -94,6 +160,10 @@
 }
 .gp-wallet-content { position: relative; }
 .gp-wallet-top { display: flex; justify-content: space-between; align-items: flex-start; }
+/* Лого готелю в картці-гаманці. Висота обмежена, ширина вільна: логотипи
+   бувають і квадратні, і довгі стрічки. `contain` не дає обрізати те, що
+   вирізали не ми. */
+.gp-wallet-logo { max-height: 34px; max-width: 60%; width: auto; object-fit: contain; display: block; margin-bottom: 6px; }
 .gp-wallet-brand { font-size: 11px; font-weight: 600; opacity: 0.6; letter-spacing: 0.1em; text-transform: uppercase; }
 .gp-wallet-title { font-size: 22px; font-weight: 700; margin-top: 2px; }
 

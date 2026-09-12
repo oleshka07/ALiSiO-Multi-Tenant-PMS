@@ -2,6 +2,7 @@
 'use client';
 
 import { useT } from '@core/i18n/client';
+import { BRAND_PALETTES } from '@/core/brand-palettes';
 import { useState, useEffect, useCallback } from 'react';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import PropertyRequired from '@/components/layout/PropertyRequired';
@@ -73,6 +74,22 @@ function SectionHeader({ id, title, icon, openSections, toggle }: { id: string; 
   );
 }
 
+/**
+ * Підписи палітр — мовою оператора, через `t()`.
+ *
+ * Названо КОЛЬОРОМ, як і самі ключі (інваріант 20): адміністратор має обирати
+ * «бірюза і тепло-сірий», а не назву чужого готелю. Реєстр ключів —
+ * `@core/brand-palettes`; що кожен ключ звідти має тут рядок, стереже
+ * `brand-palettes.check` — палітра без підпису показалася б оператору сирим
+ * `teal_warm_grey`.
+ */
+const PALETTE_NAMES: Record<string, string> = {
+  sand_brass: 'Пісок і латунь',
+  teal_warm_grey: 'Бірюза і тепло-сірий',
+  forest_stone: 'Лісова зелень і камінь',
+  ink_amber: 'Графіт і бурштин',
+};
+
 // ═════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═════════════════════════════════════════════════
@@ -133,6 +150,16 @@ export default function GuestPageSettingsPage() {
     setOpenCards(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
   const [previewToken, setPreviewToken] = useState<string | null>(null);
   const [previewNonce, setPreviewNonce] = useState(0);
+
+  // ─── Вигляд обʼєкта (0419) ───────────────────────────────────────────
+  //
+  // Кольори й лого належать ОБʼЄКТУ, тому пишуться туди ж, куди решта його
+  // полів — `PATCH /api/properties/<id>`. Окремого маршруту «тема» немає
+  // навмисно: другий писач у ту саму таблицю означав би два місця, де
+  // перевіряють те саме значення.
+  const [brandPalette, setBrandPalette] = useState('');
+  const [brandLogo, setBrandLogo] = useState('');
+  const [brandBusy, setBrandBusy] = useState(false);
   const [sectionsBusy, setSectionsBusy] = useState(false);
 
   // stale?: дві зміни propertyId поспіль = два запити в польоті, і
@@ -188,6 +215,37 @@ export default function GuestPageSettingsPage() {
     pushSections(reordered.map((sec, i) => ({ section: sec.key, sort_order: (i + 1) * 10 })));
   };
 
+  // ─── Вигляд: писач ──────────────────────────────
+  //
+  // Відповідь ЧИТАЄТЬСЯ (`res.ok` + тіло). Писач обʼєкта відмовляє названими
+  // словами на невідому палітру і на адресу, яку браузер гостя заблокує, —
+  // і екран, що показує «Збережено» на 400, сховав би саме ці дві відмови
+  // (`check-unread-write-response`, П1).
+  async function saveBrand() {
+    if (!propertyId) return;
+    setBrandBusy(true);
+    try {
+      const res = await fetch(`/api/properties/${propertyId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brand_palette: brandPalette, brand_logo_url: brandLogo }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(String(data?.error || t('Не вдалося зберегти вигляд')));
+        return;
+      }
+      showToast(t('Вигляд збережено'));
+      // Превʼю — це справжня сторінка в рамці, тож єдиний чесний спосіб
+      // показати нові кольори це перезавантажити її.
+      setPreviewNonce((n) => n + 1);
+    } catch {
+      showToast(t('Не вдалося зберегти вигляд'));
+    } finally {
+      setBrandBusy(false);
+    }
+  }
+
   // ─── Fetch ─────────────────────────────────────
   const fetchAll = useCallback(async () => {
     if (!propertyId) { setLoading(false); return; }
@@ -199,6 +257,15 @@ export default function GuestPageSettingsPage() {
       const own = Array.isArray(pgcData) ? pgcData.find((c: any) => c.property_id === propertyId) : null;
       setPropConfig(own ?? null);
       loadPropertyConfig(own ?? {});
+
+      // Вигляд обʼєкта — з самого обʼєкта, не з конфігу гостьової сторінки:
+      // палітру носить і застосунок на наліпці, а він про цей конфіг не знає.
+      const propRes = await fetch(`/api/properties/${propertyId}`);
+      if (propRes.ok) {
+        const prop = await propRes.json().catch(() => ({}));
+        setBrandPalette(String(prop?.brand_palette ?? ''));
+        setBrandLogo(String(prop?.brand_logo_url ?? ''));
+      }
 
       // Fetch unit type configs
       const utRes = await fetch('/api/guest-page-config');
@@ -566,6 +633,68 @@ export default function GuestPageSettingsPage() {
             {/* ═══════════════════════════════════════════ */}
             {activeTab === 'sections' && (
               <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                {/* ═══ Вигляд: кольори і лого обʼєкта (0419) ═══ */}
+                <div className="card" style={{ padding: 20, flex: '1 1 100%' }}>
+                  <div style={{ marginBottom: 4, fontWeight: 700, fontSize: 15 }}>
+                    {t('Вигляд')}
+                  </div>
+                  <div style={{ marginBottom: 16, fontSize: 12, color: 'var(--text-tertiary)' }}>
+                    {t('Кольори й лого бачить гість — і на цій сторінці, і в застосунку з наліпки на дверях. Превʼю праворуч показує справжню сторінку, тож після збереження вона перемалюється.')}
+                  </div>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                    {BRAND_PALETTES.map((pal) => (
+                      <button key={pal.key} type="button" disabled={brandBusy}
+                        className={`btn btn-sm ${brandPalette === pal.key ? 'btn-primary' : 'btn-ghost'}`}
+                        onClick={() => setBrandPalette(pal.key)}>
+                        {t(PALETTE_NAMES[pal.key] ?? pal.key)}
+                      </button>
+                    ))}
+                  </div>
+
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+                    {t('Адреса лого')}
+                  </label>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <input className="input" value={brandLogo} placeholder="https://…"
+                      onChange={(e) => setBrandLogo(e.target.value)}
+                      style={{ flex: '1 1 320px', maxWidth: 520 }} />
+                    {/*
+                      Завантаження поруч із полем, а не замість: лого готелю
+                      частіше вже лежить на його сайті, і змушувати шукати файл
+                      заради адреси, яка вже є, — зайвий крок. А от коли файлу
+                      в мережі немає, поле «вставте адресу» це глухий кут.
+                    */}
+                    <label className="btn btn-sm btn-ghost" style={{ cursor: 'pointer' }}>
+                      {t('Завантажити файл')}
+                      <input type="file" accept="image/*" style={{ display: 'none' }}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          setBrandBusy(true);
+                          const url = await uploadImage(file, 'brand');
+                          setBrandBusy(false);
+                          // Відповідь читається: `uploadImage` віддає `null` і
+                          // на 500, і на відмову сховища, а поле, яке після
+                          // вибору файла лишилось порожнім без жодного слова,
+                          // читається як «воно не працює».
+                          if (url) setBrandLogo(url);
+                          else showToast(t('Файл не завантажився — спробуйте ще раз або вставте адресу'));
+                        }} />
+                    </label>
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-tertiary)' }}>
+                    {t('Порожньо — гість побачить назву готелю текстом. Тільки https:// — адресу на http:// браузер гостя заблокує мовчки.')}
+                  </div>
+
+                  <div style={{ marginTop: 14 }}>
+                    <button className="btn btn-primary btn-sm" disabled={brandBusy}
+                      onClick={() => { void saveBrand(); }}>
+                      {brandBusy ? t('Збереження…') : t('Зберегти вигляд')}
+                    </button>
+                  </div>
+                </div>
+
                 {/* Список секцій */}
                 <div className="card" style={{ padding: 20, flex: '1 1 420px', minWidth: 340 }}>
                   <div style={{ marginBottom: 4, fontWeight: 700, fontSize: 15 }}>

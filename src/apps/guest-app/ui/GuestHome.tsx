@@ -22,12 +22,26 @@ const LANG_KEY = 'alisio.guest.lang';
 
 type Step = 'home' | 'find' | 'stay';
 
-export function GuestHome({ propertyName, appKey, initialLang }: {
+export function GuestHome({ propertyName, appKey, initialLang, palette, logoUrl }: {
   propertyName: string;
   /** Ключ із адреси — його ж маршрут пошуку чекає в тілі (інваріант 8). */
   appKey: string;
   /** Мова з `Accept-Language`, вирішена на СЕРВЕРІ — щоб перший екран не блимав. */
   initialLang: GuestLang;
+  /**
+   * Кольори готелю (0419) — уже приведені в `property.repo`, тож сюди
+   * приходить імʼя, яке напевно має блок у таблиці стилів, або `null`.
+   *
+   * Стрічка ставиться на КОРІНЬ: усі токени `--ga-*` живуть на ньому, і
+   * будь-який новий вкладений екран дістає їх без жодного рядка про це.
+   *
+   * `null` — готель не обирав, і атрибута немає ЗОВСІМ: базовий блок
+   * `.guest-root` називає повний набір сам, тож підставляти сюди «дефолт»
+   * нема потреби, а підставити чуже імʼя було б перефарбуванням без прохання.
+   */
+  palette: string | null;
+  /** Лого готелю або `null` — тоді шапка показує назву текстом. */
+  logoUrl: string | null;
 }) {
   const [lang, setLang] = useState<GuestLang>(initialLang);
   const [step, setStep] = useState<Step>('home');
@@ -90,8 +104,17 @@ export function GuestHome({ propertyName, appKey, initialLang }: {
   }
 
   return (
-    <main className="guest-root" data-step={step}>
+    <main className="guest-root" data-step={step} data-palette={palette ?? undefined}>
       <header className="guest-top">
+        {/*
+          Лого, якщо готель його назвав, — і НАЗВА поруч завжди, не замість.
+          `alt` тут не косметика: гість із вимкненими зображеннями або в
+          поганій мережі мусить бачити, до якого він готелю прийшов.
+        */}
+        {logoUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img className="guest-logo" src={logoUrl} alt={propertyName} />
+        )}
         <p className="guest-house">{propertyName}</p>
         <h1 className="guest-welcome">
           {step === 'find' ? s.findTitle : step === 'stay' ? s.stayTitle : s.welcome}

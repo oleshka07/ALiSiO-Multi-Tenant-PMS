@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { parseLanguage } from '@core/i18n/languages';
+import { readBrandPalette, readBrandLogoUrl } from '@core/brand-palettes';
 import * as portalRepo from '../data/guest-portal.repo';
 // TODO: replace with @shared/translate when shared module exists
 import { extractTexts, extractServiceTexts, getStoredTranslations } from '@core/i18n/translate';
@@ -92,6 +93,14 @@ export async function getGuestPortal(
         remaining: reservation.total_price - (payments?.total_paid || 0) + (payments?.total_refunded || 0),
       },
       photos: { unitType: unitTypePhotos, property: propertyPhotos },
+      // Вигляд готелю (0419), уже приведений: сторінка дістає імʼя палітри,
+      // яке напевно має блок у таблиці стилів, і адресу, яку напевно можна
+      // віддати в `img src`. Приведення тут, а не на екрані: екранів у цієї
+      // сторінки шість, і кожен привів би невідоме значення по-своєму.
+      brand: {
+        palette: readBrandPalette(reservation.brand_palette),
+        logoUrl: readBrandLogoUrl(reservation.brand_logo_url),
+      },
       sections,
       services,
       orderedServices,
