@@ -1343,8 +1343,6 @@ CREATE TABLE "guest_registrations" (
   "consent_given" BIGINT DEFAULT 0,
   "consent_at" TIMESTAMPTZ,
   "consent_ip" TEXT,
-  "purpose_of_stay" TEXT,
-  "visa_number" TEXT,
   PRIMARY KEY ("id")
 );
 
@@ -1362,6 +1360,13 @@ CREATE TABLE "guests" (
   "document_number" TEXT,
   "date_of_birth" TEXT,
   "notes" TEXT,
+  "salutation" TEXT,
+  "middle_name" TEXT,
+  "vehicle_plate" TEXT,
+  "is_vip" BOOLEAN DEFAULT false NOT NULL,
+  "blacklisted_at" TIMESTAMPTZ,
+  "blacklisted_by" TEXT,
+  "blacklist_reason" TEXT,
   "external_ref" TEXT,
   "merged_at" TIMESTAMPTZ,
   "merged_by" TEXT,
@@ -3154,6 +3159,7 @@ CREATE INDEX "idx_guest_consents_org" ON "guest_consents" ("organization_id");
 CREATE INDEX "idx_guest_not_duplicates_org" ON "guest_not_duplicates" ("organization_id");
 CREATE UNIQUE INDEX "idx_guest_not_duplicates_pair" ON "guest_not_duplicates" ("organization_id", "guest_low_id", "guest_high_id");
 CREATE UNIQUE INDEX "idx_guest_page_sections_row" ON "guest_page_sections" ("property_id", "section");
+CREATE INDEX "idx_guests_blacklisted" ON "guests" ("organization_id") WHERE blacklisted_at IS NOT NULL;
 CREATE UNIQUE INDEX "idx_guests_external_ref" ON "guests" ("organization_id", "external_ref") WHERE external_ref IS NOT NULL;
 CREATE INDEX "idx_guests_merged_into" ON "guests" ("organization_id") WHERE merged_into IS NULL;
 CREATE INDEX "idx_guests_name" ON "guests" ("last_name", "first_name");

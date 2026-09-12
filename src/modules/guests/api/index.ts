@@ -10,6 +10,9 @@ import { requestPayment as _requestPayment } from './payment-request.handlers';
 
 export { listGuests, createGuest, exportGuests } from './guests.handlers';
 export { getGuest, updateGuest, deleteGuest } from './guest.handlers';
+// VIP і чорний список — ОКРЕМИМ маршрутом: форма картки шле `{...form}`
+// цілком, і прапорець у ній переставлявся б на кожному збереженні адреси.
+export { setGuestFlags } from './guest-flags.handlers';
 
 /**
  * The guest portal's guard: resolve the link's token, then run as that hotel.
@@ -53,6 +56,14 @@ export type { GuestWithStats, CreateGuestInput, RegisteredGuest } from '../domai
 // to organization_id. Soft-merges new fields without overwriting existing ones.
 export { findOrCreateGuest } from '../data/guest-dedup.repo';
 export type { GuestDedupArgs, GuestDedupResult } from '../data/guest-dedup.repo';
+
+// А це — для тих, хто гостя НЕ вгадує, а дає людині обрати зі списку
+// (форма броні). Названий id береться як названий і не звіряється з
+// ланцюжком: остання ланка дедупу — збіг за самим іменем, тож двоє
+// однофамільців для нього одна людина. Чужий і злитий id — названі відмови,
+// не мовчазна підміна (`booking-guest.repo`, гейт `booking-guest.check`).
+export { resolveBookingGuest } from '../data/booking-guest.repo';
+export type { BookingGuestArgs, BookingGuestResult } from '../data/booking-guest.repo';
 
 // Згоди GDPR живуть на ОСОБІ й переживають бронь (INC-300, CORE-GAPS п. 6).
 // `guest_registrations.consent_*` лишається і значить інше — згоду на ЦЬОМУ
@@ -113,5 +124,9 @@ export type { RetentionRunResult } from '../data/registration.repo';
 
 // Реєстрація з картки броні — той самий писач обох книг гостей, що й портал
 // (Д16): картка в @bookings не пише таблиці гостей сама.
-export { addReceptionRegistration, removeReceptionRegistration } from '../data/registration.repo';
+export { addReceptionRegistration, removeReceptionRegistration,
+  // Заявник — той, чиїм прізвищем підписаний Meldeschein за все
+  // перебування, тож його зміна — писач цього модуля, а не `UPDATE`
+  // з картки броні (Д16, гейт `primary-registration.check`).
+  setPrimaryRegistration } from '../data/registration.repo';
 export type { ReceptionGuestSnapshot } from '../data/registration.repo';

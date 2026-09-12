@@ -86,10 +86,13 @@ async function seedStay(res: string, org: string, guest: string, checkIn: string
       [res, 'Reg', guest, '1980-04-05', 'Ulice 1', 'CZ', 'passport', `DOC-${res}`, guest, false, `VISA-${res}`]);
   }
   if (withConsentRow) {
+    // Мети приїзду й візи тут більше немає — вони живуть у книзі гостей
+    // (`reservation_guests`, міграція 0416). Це рядок ЗГОДИ, і зникає він
+    // цілком: колонок, які треба було б знеособити поіменно, у ньому немає.
     await sql.run(`INSERT INTO guest_registrations (id, reservation_id, guest_id, is_primary, reg_status,
-                   registered_at, consent_given, consent_at, purpose_of_stay, visa_number)
-                   VALUES (?,?,?,?, 'completed', CURRENT_TIMESTAMP, 1, CURRENT_TIMESTAMP, 'Tourism', ?)`,
-      [`gr_${res}`, res, guest, true, `VISA-${res}`]);
+                   registered_at, consent_given, consent_at)
+                   VALUES (?,?,?,?, 'completed', CURRENT_TIMESTAMP, 1, CURRENT_TIMESTAMP)`,
+      [`gr_${res}`, res, guest, true]);
   }
 }
 
@@ -149,8 +152,7 @@ assert.strictEqual(fresh.first_name, 'Reg', 'a recent registry row was anonymise
 assert.strictEqual(fresh.document_number, 'DOC-ret_r_mix_new', 'a recent registry row lost its document');
 console.log('  ok  registry rows: old stays anonymised in both hotels, recent stay intact');
 
-// The consent log of an old stay is gone (visa_number lived there too); the
-// recent stay's row remains.
+// The consent log of an old stay is gone; the recent stay's row remains.
 assert.strictEqual(await grCount('ret_r_old'), 0, 'consent-log row of an old stay survived');
 assert.strictEqual(await grCount('ret_r_mix_new'), 1, 'consent-log row of a recent stay was deleted');
 console.log('  ok  consent log: old rows deleted, recent row kept');

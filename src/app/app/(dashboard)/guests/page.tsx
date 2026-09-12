@@ -29,6 +29,14 @@ interface GuestRow {
   document_number: string | null;
   date_of_birth: string | null;
   notes: string | null;
+  /** Поля картки (С76). VIP — колонка, а не слово в примітках. */
+  salutation: string | null;
+  middle_name: string | null;
+  vehicle_plate: string | null;
+  is_vip: boolean | number | null;
+  blacklisted_at: string | null;
+  blacklisted_by: string | null;
+  blacklist_reason: string | null;
   created_at: string;
   updated_at: string;
   total_stays: number;
@@ -119,6 +127,10 @@ function emptyForm() {
     country: '', city: '', address: '',
     documentType: '', documentNumber: '', dateOfBirth: '',
     notes: '',
+    // Поля картки (С76). Ключ тут МУСИТЬ збігатись із ключем у мапі
+    // `updateGuest`: незнайомий ключ відкидається МОВЧКИ, і форма каже
+    // «збережено» над колонкою, яка не змінилась (`guest-flags.check`).
+    salutation: '', middleName: '', vehiclePlate: '',
   };
 }
 
@@ -244,6 +256,9 @@ function DesktopGuests({ initialSearch }: { initialSearch?: string }) {
       documentNumber: g.document_number || '',
       dateOfBirth: g.date_of_birth || '',
       notes: g.notes || '',
+      salutation: g.salutation || '',
+      middleName: g.middle_name || '',
+      vehiclePlate: g.vehicle_plate || '',
     });
     setEditGuest(g);
   };
@@ -356,6 +371,23 @@ function DesktopGuests({ initialSearch }: { initialSearch?: string }) {
         </div>
         <div className="form-row">
           <div className="form-group">
+            {/*
+              Звернення — вільним текстом, а не списком у коді: набір звертань
+              різний у кожній мові, і закритий список закодував би одну юрисдикцію
+              в ядро (інваріант 22). Підказка в `placeholder` — підказка, не словник.
+            */}
+            <label className="form-label">{t('Звернення')}</label>
+            <input className="form-input" placeholder={t('пан / пані / Dr.')} value={form.salutation}
+              onChange={(e) => setForm(p => ({ ...p, salutation: e.target.value }))} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">{t('По-батькові')}</label>
+            <input className="form-input" placeholder={t('По-батькові')} value={form.middleName}
+              onChange={(e) => setForm(p => ({ ...p, middleName: e.target.value }))} />
+          </div>
+        </div>
+        <div className="form-row">
+          <div className="form-group">
             <label className="form-label">Email</label>
             <input className="form-input" type="email" placeholder="email@example.com" value={form.email} onChange={(e) => setForm(p => ({ ...p, email: e.target.value }))} />
           </div>
@@ -363,6 +395,12 @@ function DesktopGuests({ initialSearch }: { initialSearch?: string }) {
             <label className="form-label">{t('Телефон')}</label>
             <input className="form-input" type="tel" placeholder="+…" value={form.phone} onChange={(e) => setForm(p => ({ ...p, phone: e.target.value }))} />
           </div>
+        </div>
+        <div className="form-group">
+          {/* На ОСОБІ, а не на броні: постійний гість приїздить тим самим авто. */}
+          <label className="form-label">{t('Номер авто')}</label>
+          <input className="form-input" placeholder={t('для паркінгу й шлагбаума')} value={form.vehiclePlate}
+            onChange={(e) => setForm(p => ({ ...p, vehiclePlate: e.target.value }))} />
         </div>
       </div>
 

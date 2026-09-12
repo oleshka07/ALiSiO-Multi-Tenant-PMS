@@ -15,7 +15,7 @@ import { decideCheckout } from '../data/checkout.repo';
 import { decideCheckIn } from '../data/checkin.repo';
 import type { CheckinRefusal } from '../domain/checkin-policy';
 import type { CheckoutDecision } from '../domain/checkout-balance';
-import { companyPayer } from '@companies/kernel';
+import { bookingPayerFields } from '@companies/kernel';
 import { findStayConflict } from '../data/conflicts.repo';
 import { insertingStay, UnitOverlap } from './overlap';
 import { legacyInvoiceWanted } from '../domain/folio-payment';
@@ -105,7 +105,13 @@ export const getReservation = withActor(async (_request: NextRequest, { params }
   }
 });
 
-export const updateReservation = withPermission('manage_bookings', async (request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
+/**
+ * Розгорнутий обробник — той самий розподіл, що в `createReservationHandler`.
+ * Сцена кличе його з готовою особою: варта читає кукі, яких поза запитом
+ * немає, а правило, яке тут треба стерегти (фірма й знімок — разом), живе
+ * саме в обробнику, а не в репозиторії (`payer-consistency.check`).
+ */
+export async function updateReservationHandler(request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) {
   try {
     const sql = getSql();
     const { id } = await params;
@@ -138,25 +144,34 @@ export const updateReservation = withPermission('manage_bookings', async (reques
     // довідника — документ читає знімок, а не живий рядок; NULL повертає
     // платника-фізособу і чистить знімок.
     if (body.company_id !== undefined) {
-      if (body.company_id === null || body.company_id === '') {
-        body.company_id = null;
-        Object.assign(body, {
-          invoice_company_name: null, invoice_company_ico: null, invoice_company_dic: null,
-          invoice_company_address: null, invoice_company_city: null, invoice_company_country: null,
-          invoice_company_email: null,
-        });
-      } else {
-        const payer = await companyPayer(actor.organizationId, String(body.company_id));
-        if (!payer) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-        if (payer.archived) return NextResponse.json({ error: 'company_archived' }, { status: 409 });
-        body.company_id = payer.id;
-        Object.assign(body, {
-          invoice_company_name: payer.invoice_company_name, invoice_company_ico: payer.invoice_company_ico,
-          invoice_company_dic: payer.invoice_company_dic, invoice_company_address: payer.invoice_company_address,
-          invoice_company_city: payer.invoice_company_city, invoice_company_country: payer.invoice_company_country,
-          invoice_company_email: payer.invoice_company_email,
-        });
+      // Знімок стояв тут розписаним на двадцять рядків — доки цей обробник
+      // був єдиним, хто ставить платника. Форма створення тепер теж його
+      // називає, і два власні знімки розійшлися б мовчки (`booking-payer.check`).
+      const payer = await bookingPayerFields(actor.organizationId, body.company_id as string | null);
+      if (!payer.ok) {
+        return payer.reason === 'archived'
+          ? NextResponse.json({ error: 'company_archived' }, { status: 409 })
+          : NextResponse.json({ error: 'Not found' }, { status: 404 });
       }
+      Object.assign(body, payer.fields);
+    }
+
+    // ЗНЯТИЙ ЗНІМОК ЗНІМАЄ Й ФІРМУ.
+    //
+    // Платника на картці правлять ДВА місця: `PayerPicker` шле `company_id`,
+    // а блок «🏢 На компанію» — самі `invoice_company_*`, і `company_id` не згадує
+    // жодного разу. Знята галочка лишала бронь у стані «фірма є, реквізитів
+    // немає»: картка фірми рахує цю бронь і показує її гостя (С74), а на документі
+    // фірми немає. Два екрани про одну бронь кажуть протилежне, і жоден не
+    // бреше — вони читають різні колонки.
+    //
+    // Стережеться саме НАЗВА, а не будь-яке поле знімка: правка адреси чи
+    // пошти поверх обраної фірми — законна разова зміна бланка, а не зміна
+    // платника, і фірму вона знімати не мусить (гейт `payer-consistency.check`).
+    if (body.company_id === undefined
+      && 'invoice_company_name' in body
+      && !String(body.invoice_company_name ?? '').trim()) {
+      body.company_id = null;
     }
 
     const allowed = [
@@ -456,7 +471,9 @@ export const updateReservation = withPermission('manage_bookings', async (reques
     console.error('PATCH /api/bookings/[id] error:', error?.message || error);
     return serverError('modules/bookings/api/reservation updateReservation', error, 'Failed to update booking');
   }
-});
+}
+
+export const updateReservation = withPermission('manage_bookings', updateReservationHandler);
 
 export const deleteReservation = withPermission('manage_bookings', async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, sessionActor: Actor) => {
   try {

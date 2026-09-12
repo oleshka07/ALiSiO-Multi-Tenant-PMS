@@ -29,10 +29,18 @@
  *
  * ── Скільки це покриває насправді (Р8.14) ────────────────────────────────
  *
- * ДЕСЯТЬ родин, **72 твердження** (68 місць виклику `claim(`; різниця — два
- * цикли: пʼять полів відповіді каналу і чотири види аркуша дня), і **ПʼЯТЬ
- * динамічних маршрутів зі 130**: `/api/bookings/[id]`,
- * `/api/bookings/[id]/invoice`, `/api/guest/[token]`,
+ * ПʼЯТНАДЦЯТЬ родин і дві передпольотні перевірки (ціль, збірка) — **141
+ * місце виклику `claim(`**, а виконаних тверджень більше: частина стоїть у
+ * циклах (пʼять полів відповіді каналу, чотири види аркуша дня, девʼять
+ * маршрутів осі обʼєкта × три). Числа тут МІРЯЮТЬСЯ, а не пам'ятаються:
+ * `grep -c "claim('"` і `grep -o "claim('[^']*'" | sort | uniq -c` — рядок,
+ * переписаний по пам'яті, застаріває на першому ж поповненні, і саме це з ним
+ * тричі й сталось.
+ *
+ * **ДЕСЯТЬ динамічних маршрутів зі 130**: `/api/bookings/[id]`,
+ * `/api/bookings/[id]/invoice`, `/api/bookings/[id]/registrations`,
+ * `/api/guest/[token]`, `/api/guests/[id]`, `/api/guests/[id]/flags`,
+ * `/api/companies/[id]`, `/api/guest-registry/[id]`,
  * `/api/channels/connections/[id]/frame`, `/api/day-sheets/[kind]`.
  *
  * Обидві історичні вади в цьому наборі є — ціль узято правильно, — але поруч
@@ -513,6 +521,385 @@ async function main() {
         `у картці та сама сума (${row?.total_price ?? row?.totalPrice})`);
       claim('броні', String(row?.last_name ?? row?.lastName ?? one?.guest?.last_name ?? '') === 'Пробна',
         'у картці той самий гість');
+
+      // ── Названий гість: вибір проти здогаду ──────────────────────────
+      //
+      // Сервер вгадує людину ланцюжком пошта → телефон → ТОЧНЕ ІМʼЯ. Остання
+      // ланка зводить двох однофамільців без контактів в одного, і поки
+      // вибору не було, це просто траплялось. Тепер форма дає обрати, і
+      // твердження тут про те, що вибір ШАНУЮТЬ.
+      //
+      // Фікстура невироджена по головній осі: другий гість заводиться з ТИМ
+      // САМИМ імʼям і прізвищем, тобто здогад дав би ПЕРШОГО. Якби імена
+      // різнились, твердження було б зелене і на коді, який вибір ігнорує.
+      const twinRes = await call(cookie, '/api/guests', {
+        method: 'POST',
+        body: JSON.stringify({ firstName: 'Ганна', lastName: 'Пробна', email: 'twin@probe.test' }),
+      });
+      const twin = await body(twinRes);
+      const twinId = twin?.id ?? twin?.guest?.id;
+      if (claim('броні', twinRes.status === 201 && !!twinId, `однофамільця заведено (${twinRes.status})`)) {
+        const pickedRes = await call(cookie, '/api/bookings', {
+          method: 'POST',
+          body: JSON.stringify({
+            firstName: 'Ганна', lastName: 'Пробна', guestId: twinId,
+            unitId: unit.id, checkIn: day(41), checkOut: day(43), nights: 2,
+            adults: 1, status: 'confirmed', source: 'direct', totalPrice: 120,
+          }),
+        });
+        const picked = await body(pickedRes);
+        claim('броні', pickedRes.status === 201 && picked?.guestId === twinId,
+          `названий гість узятий як названий (${picked?.guestId === twinId ? 'він' : picked?.guestId})`);
+        claim('броні', picked?.guestId !== booking.guestId,
+          'вибір і здогад дали РІЗНИХ гостей — інакше твердження вище порожнє');
+      }
+
+      // Чужий ідентифікатор — 404 із ТЕКСТОМ, а не 500 «Failed to create».
+      // Саме так воно й поводилось, поки `catch` ковтав названу відмову:
+      // портьє бачив поломку там, де було правило (інваріант 6).
+      const alienRes = await call(cookie, '/api/bookings', {
+        method: 'POST',
+        body: JSON.stringify({
+          firstName: 'Ганна', lastName: 'Пробна', guestId: 'g_definitely_not_ours',
+          unitId: unit.id, checkIn: day(45), checkOut: day(47), nights: 2,
+          adults: 1, status: 'confirmed', source: 'direct', totalPrice: 120,
+        }),
+      });
+      claim('броні', alienRes.status === 404,
+        `чужий гість — 404, не 500 (${alienRes.status})`);
+
+      // ── Фірма-платник, названа ПРИ СТВОРЕННІ ────────────────
+      //
+      // Доти фірму можна було поставити лише наступним кліком із картки.
+      // Твердження — про ФОРМУ відповіді картки, а не про статус
+      // створення: 201 без реквізитів у рядку виглядав би так само успішно,
+      // а на фактурі стояла б фізособа.
+      const coRes = await call(cookie, '/api/companies', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: 'Пробна фірма', business_id: '99887766', vat_id: 'CZ99887766',
+          address_street: 'Вулиця Пробна 5', address_zip: '60200', address_city: 'Пробне',
+          address_country: 'CZ', email: 'firm@probe.test',
+        }),
+      });
+      const company = await body(coRes);
+      if (claim('броні', coRes.status === 201 && company?.id, `фірму-платника заведено (${coRes.status})`)) {
+        const payerRes = await call(cookie, '/api/bookings', {
+          method: 'POST',
+          body: JSON.stringify({
+            firstName: 'Платник', lastName: 'Фірмовий', companyId: company.id,
+            unitId: unit.id, checkIn: day(49), checkOut: day(51), nights: 2,
+            adults: 1, status: 'confirmed', source: 'direct', totalPrice: 120,
+          }),
+        });
+        const payerBooking = await body(payerRes);
+        if (claim('броні', payerRes.status === 201 && payerBooking?.id,
+          `бронь із фірмою створена (${payerRes.status})`)) {
+          // Читається НАЗАД маршрутом картки, а не з відповіді писача
+          // (інваріант 27): саме так видно, чи лягли колонки знімка.
+          const cardRes = await call(cookie, `/api/bookings/${payerBooking.id}`);
+          const card = await body(cardRes);
+          const row = card?.booking ?? card;
+          claim('броні', String(row?.company_id ?? '') === company.id,
+            `фірма стоїть на броні (${row?.company_id ?? 'порожньо}'})`);
+          claim('броні', String(row?.invoice_company_ico ?? '') === '99887766',
+            `реквізити скопійовані в бронь, а не лише id (${row?.invoice_company_ico ?? 'порожньо'})`);
+          claim('броні', String(row?.invoice_company_city ?? '') === '60200 Пробне',
+            `індекс і місто одним рядком (${row?.invoice_company_city ?? 'порожньо'})`);
+
+          // І та сама фірма з боку ДОВІДНИКА: хто за неї їздив.
+          // Власник назвав це прямо: «не знайшов, як у компанії шукати гостей».
+          const coCardRes = await call(cookie, `/api/companies/${company.id}`);
+          const coCard = await body(coCardRes);
+          claim('броні', coCardRes.status === 200 && Array.isArray(coCard?.guestList),
+            `картка фірми віддає СПИСОК гостей, не лише число (${coCardRes.status}, ${Array.isArray(coCard?.guestList) ? 'масив' : typeof coCard?.guestList})`);
+          claim('броні', (coCard?.guestList ?? []).length === Number(coCard?.guests),
+            `число і список сходяться: ${coCard?.guests} проти ${(coCard?.guestList ?? []).length}`);
+          claim('броні', (coCard?.guestList ?? []).some((g) => g.last_name === 'Фірмовий'),
+            'у списку фірми саме той, хто їхав за її рахунок');
+        }
+
+        // Архівна фірма — 409, а не тихе 201 без платника.
+        await call(cookie, `/api/companies/${company.id}`, {
+          method: 'PATCH', body: JSON.stringify({ archived: true }),
+        });
+        const archRes = await call(cookie, '/api/bookings', {
+          method: 'POST',
+          body: JSON.stringify({
+            firstName: 'Платник', lastName: 'Архівний', companyId: company.id,
+            unitId: unit.id, checkIn: day(53), checkOut: day(55), nights: 2,
+            adults: 1, status: 'confirmed', source: 'direct', totalPrice: 120,
+          }),
+        });
+        claim('броні', archRes.status === 409,
+          `архівна фірма — 409, не тихе створення без платника (${archRes.status})`);
+        await call(cookie, `/api/companies/${company.id}`, {
+          method: 'PATCH', body: JSON.stringify({ archived: false }),
+        });
+      }
+
+      // Фірма СУСІДА — 404 (інваріант 5), і саме 404, а не 500.
+      const alienCoRes = await call(cookie, '/api/bookings', {
+        method: 'POST',
+        body: JSON.stringify({
+          firstName: 'Платник', lastName: 'Чужий', companyId: 'c_definitely_not_ours',
+          unitId: unit.id, checkIn: day(57), checkOut: day(59), nights: 2,
+          adults: 1, status: 'confirmed', source: 'direct', totalPrice: 120,
+        }),
+      });
+      claim('броні', alienCoRes.status === 404,
+        `чужа фірма — 404, не 500 (${alienCoRes.status})`);
+
+      // ── Прейскурант і цілісність платника ────────────────────────
+      //
+      // Два різні твердження, і обидва через HTTP: писач звіряє тариф
+      // (С78), і фірма зі знімком знімаються разом (С79).
+      const planRes = await call(cookie, '/api/pricing/rate-plans', {
+        method: 'POST',
+        body: JSON.stringify({ property_id: property.id, name: 'Пробний тариф', code: 'PROBE', currency: 'EUR' }),
+      });
+      const createdPlan = await body(planRes);
+      const planId = createdPlan?.id ?? createdPlan?.rate_plan?.id;
+      if (claim('тариф', planRes.status === 201 && !!planId, `тариф заведено (${planRes.status})`)) {
+        const withPlan = await call(cookie, '/api/bookings', {
+          method: 'POST',
+          body: JSON.stringify({
+            firstName: 'Тариф', lastName: 'Пробний', ratePlanId: planId,
+            unitId: unit.id, checkIn: day(61), checkOut: day(63), nights: 2,
+            adults: 1, status: 'confirmed', source: 'direct', totalPrice: 120,
+          }),
+        });
+        const planned = await body(withPlan);
+        if (claim('тариф', withPlan.status === 201 && planned?.id, `бронь із тарифом — 201 (${withPlan.status})`)) {
+          // Читається НАЗАД маршрутом картки (інваріант 27).
+          const card3 = await body(await call(cookie, `/api/bookings/${planned.id}`));
+          const row3 = card3?.booking ?? card3;
+          claim('тариф', String(row3?.rate_plan_id ?? '') === planId,
+            `тариф у рядку броні (${row3?.rate_plan_id ?? 'порожньо'})`);
+        }
+      }
+
+      // Неіснуючий тариф — 404 з НАЗВАНОЮ відмовою, не 500.
+      const badPlan = await call(cookie, '/api/bookings', {
+        method: 'POST',
+        body: JSON.stringify({
+          firstName: 'Тариф', lastName: 'Чужий', ratePlanId: 'rp_definitely_not_ours',
+          unitId: unit.id, checkIn: day(65), checkOut: day(67), nights: 2,
+          adults: 1, status: 'confirmed', source: 'direct', totalPrice: 120,
+        }),
+      });
+      claim('тариф', badPlan.status === 404, `чужий тариф — 404, не 500 (${badPlan.status})`);
+
+      // Фірма й знімок знімаються РАЗОМ — через той самий PATCH,
+      // який шле блок «🏢 На компанію».
+      if (company?.id) {
+        await call(cookie, `/api/bookings/${booking.id}`, {
+          method: 'PATCH', body: JSON.stringify({ company_id: company.id }),
+        });
+        const withCo = await body(await call(cookie, `/api/bookings/${booking.id}`));
+        const rowCo = withCo?.booking ?? withCo;
+        claim('тариф', String(rowCo?.company_id ?? '') === company.id
+          && !!rowCo?.invoice_company_name, 'фірма й знімок поставлені разом');
+
+        await call(cookie, `/api/bookings/${booking.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            invoice_company_name: null, invoice_company_ico: null, invoice_company_dic: null,
+            invoice_company_address: null, invoice_company_city: null,
+            invoice_company_country: null, invoice_company_email: null,
+          }),
+        });
+        const cleared = await body(await call(cookie, `/api/bookings/${booking.id}`));
+        const rowCl = cleared?.booking ?? cleared;
+        claim('тариф', !rowCl?.invoice_company_name && !rowCl?.company_id,
+          `знятий знімок зняв і фірму (${rowCl?.company_id ?? 'порожньо'})`);
+      }
+
+      // ── Картка гостя: поля й ознаки ──────────────────────────
+      //
+      // Три текстові поля й дві ознаки (С76, С77). Твердження про ФОРМУ
+      // відповіді картки: поле, що зникло між формою й базою, віддає 201 і 200
+      // так само бездоганно, як і збережене — саме це й сталось на першому
+      // прогоні `guest-flags.check` (мапа полів `updateGuest` їх не знала).
+      const cardRes2 = await call(cookie, '/api/guests', {
+        method: 'POST',
+        body: JSON.stringify({
+          firstName: 'Прапор', lastName: 'Карточний',
+          salutation: 'пан', middleName: 'Тестович', vehiclePlate: 'BB9999CC',
+        }),
+      });
+      const carded = await body(cardRes2);
+      const cardedId = carded?.id ?? carded?.guest?.id;
+      if (claim('гість', cardRes2.status === 201 && !!cardedId, `гостя з полями картки заведено (${cardRes2.status})`)) {
+        const one = await body(await call(cookie, `/api/guests/${cardedId}`));
+        claim('гість', one?.salutation === 'пан', `звернення доїхало (${one?.salutation ?? 'зникло'})`);
+        claim('гість', one?.middle_name === 'Тестович', `по-батькові доїхало (${one?.middle_name ?? 'зникло'})`);
+        claim('гість', one?.vehicle_plate === 'BB9999CC', `номер авто доїхав (${one?.vehicle_plate ?? 'зник'})`);
+
+        // Правка — окреме твердження: створення й правка — РІЗНІ писачі
+        // (`INSERT` і мапа полів), і зелене перше нічого не каже про друге.
+        await call(cookie, `/api/guests/${cardedId}`, {
+          method: 'PATCH', body: JSON.stringify({ vehiclePlate: 'CC1111DD' }),
+        });
+        const edited = await body(await call(cookie, `/api/guests/${cardedId}`));
+        claim('гість', edited?.vehicle_plate === 'CC1111DD',
+          `правка поля картки доїхала (${edited?.vehicle_plate ?? 'зник'})`);
+
+        // VIP — ОКРЕМИМ маршрутом, не полем картки.
+        const vipRes = await call(cookie, `/api/guests/${cardedId}/flags`, {
+          method: 'PATCH', body: JSON.stringify({ is_vip: true }),
+        });
+        const vipped = await body(await call(cookie, `/api/guests/${cardedId}`));
+        claim('гість', vipRes.status === 200
+          && (vipped?.is_vip === true || Number(vipped?.is_vip) === 1),
+          `корона в картці (${vipRes.status}, ${vipped?.is_vip})`);
+
+        // Блокування без причини — НАЗВАНА відмова СВОЇМ текстом, не 500.
+        const noReason = await call(cookie, `/api/guests/${cardedId}/flags`, {
+          method: 'PATCH', body: JSON.stringify({ blacklisted: true }),
+        });
+        const nrBody = await body(noReason);
+        claim('гість', noReason.status === 400, `блокування без причини — 400 (${noReason.status})`);
+        claim('гість', typeof nrBody?.error === 'string' && nrBody.error.includes('Причина'),
+          `і речення доїхало портьє, а не загальне 500 («${String(nrBody?.error ?? '').slice(0, 40)}…»)`);
+
+        const blRes = await call(cookie, `/api/guests/${cardedId}/flags`, {
+          method: 'PATCH', body: JSON.stringify({ blacklisted: true, blacklist_reason: 'Пошкодив номер' }),
+        });
+        const blocked2 = await body(await call(cookie, `/api/guests/${cardedId}`));
+        claim('гість', blRes.status === 200 && !!blocked2?.blacklisted_at
+          && blocked2?.blacklist_reason === 'Пошкодив номер' && !!blocked2?.blacklisted_by,
+          `три колонки в картці, автор від СЕРВЕРА (${blocked2?.blacklist_reason}, ${blocked2?.blacklisted_by ? 'автор є' : 'АВТОРА НЕМАЄ'})`);
+
+        const unRes = await call(cookie, `/api/guests/${cardedId}/flags`, {
+          method: 'PATCH', body: JSON.stringify({ blacklisted: false }),
+        });
+        const unblocked = await body(await call(cookie, `/api/guests/${cardedId}`));
+        claim('гість', unRes.status === 200 && !unblocked?.blacklisted_at && !unblocked?.blacklist_reason,
+          `зняття почистило ВСЕ (${unblocked?.blacklist_reason ?? 'порожньо'})`);
+
+        // Порожнє тіло — це не «успішно нічого».
+        const nothing = await call(cookie, `/api/guests/${cardedId}/flags`, {
+          method: 'PATCH', body: JSON.stringify({}),
+        });
+        claim('гість', nothing.status === 400, `порожнє тіло — 400, не тихе «збережено» (${nothing.status})`);
+      }
+
+      const alienFlag = await call(cookie, '/api/guests/g_definitely_not_ours/flags', {
+        method: 'PATCH', body: JSON.stringify({ is_vip: true }),
+      });
+      claim('гість', alienFlag.status === 404, `чужий гість — 404, не 500 (${alienFlag.status})`);
+
+      // ── Заявник на броні ПЕРЕЇЖДЖАЄ ─────────────────────
+      //
+      // Зірка вирішує, чиє прізвище стане на Meldeschein. Двоє на броні —
+      // мінімум, при якому твердження про ПЕРЕЇЗД має зміст.
+      const regOne = await call(cookie, `/api/bookings/${booking.id}/registrations`, {
+        method: 'POST',
+        body: JSON.stringify({
+          firstName: 'Ганна', lastName: 'Пробна', documentNumber: 'AA111111',
+          documentType: 'ID_CARD', isPrimary: true,
+        }),
+      });
+      const regTwo = await call(cookie, `/api/bookings/${booking.id}/registrations`, {
+        method: 'POST',
+        body: JSON.stringify({
+          firstName: 'Петро', lastName: 'Супутник', documentNumber: 'BB222222',
+          documentType: 'ID_CARD', isPrimary: false,
+        }),
+      });
+      const second = await body(regTwo);
+      if (claim('броні', regOne.status === 201 && regTwo.status === 201 && second?.id,
+        `двоє зареєстрованих (${regOne.status}/${regTwo.status})`)) {
+        const moveRes = await call(cookie, `/api/bookings/${booking.id}/registrations`, {
+          method: 'PATCH', body: JSON.stringify({ reg_id: second.id }),
+        });
+        claim('броні', moveRes.status === 200, `зміна заявника прийнята (${moveRes.status})`);
+
+        // Про КІЛЬКІСТЬ, не про першого знайденого (AGENTS §7):
+        // двоє заявників — документ, чий підписант залежить від рушія бази.
+        const listRegs = await body(await call(cookie, `/api/bookings/${booking.id}/registrations`));
+        const stars = (listRegs ?? []).filter((r) => r.is_primary === true || Number(r.is_primary) === 1);
+        claim('броні', stars.length === 1, `заявник РІВНО один, отримали ${stars.length}`);
+        claim('броні', stars[0]?.reg_id === second.id,
+          `і це той, кого назвали (${stars[0]?.last_name ?? 'ніхто'})`);
+
+        const noSuchRes = await call(cookie, `/api/bookings/${booking.id}/registrations`, {
+          method: 'PATCH', body: JSON.stringify({ reg_id: 'gr_definitely_not_ours' }),
+        });
+        claim('броні', noSuchRes.status === 404,
+          `рядок, якого немає — 404 (${noSuchRes.status})`);
+      }
+
+      // ── Мета приїзду від ФОРМИ до КНИГИ і назад ──────────
+      //
+      // Гейт `purpose-of-stay.check` стверджує про шар даних; тут — шов,
+      // якого він не бачить: ІМʼЯ ПОЛЯ в тілі запиту. Форма шле
+      // `purposeOfStay`, хендлер його деструктурує — і якби одне з двох імен
+      // було іншим, маршрут віддав би ті самі 201 і 200, а мета зникала б мовчки
+      // — той самий клас, що поля картки гостя вище.
+      //
+      // Двоє гостей навмисно: один назвав мету, другий ні. З одним
+      // твердження зелене й над літералом, який ця зміна й прибирає.
+      const purposeBooking = await body(await call(cookie, '/api/bookings', {
+        method: 'POST',
+        body: JSON.stringify({
+          firstName: 'Мета', lastName: 'Приїзду',
+          unitId: unit.id, checkIn: day(70), checkOut: day(72), nights: 2,
+          adults: 2, status: 'confirmed', source: 'direct', totalPrice: 240,
+        }),
+      }));
+      if (claim('мета приїзду', !!purposeBooking?.id, 'бронь для мети приїзду створено')) {
+        const named = await call(cookie, `/api/bookings/${purposeBooking.id}/registrations`, {
+          method: 'POST',
+          body: JSON.stringify({
+            firstName: 'Відряджений', lastName: 'Названий', documentNumber: 'CC333333',
+            documentType: 'ID_CARD', nationality: 'DE', isPrimary: true,
+            purposeOfStay: 'Business', visaNumber: 'V-2026',
+          }),
+        });
+        const silent = await call(cookie, `/api/bookings/${purposeBooking.id}/registrations`, {
+          method: 'POST',
+          body: JSON.stringify({
+            firstName: 'Мовчазний', lastName: 'НеНазваний', documentNumber: 'DD444444',
+            documentType: 'ID_CARD', nationality: 'DE', isPrimary: false,
+          }),
+        });
+        claim('мета приїзду', named.status === 201 && silent.status === 201,
+          `двоє зареєстрованих (${named.status}/${silent.status})`);
+
+        // Читаємо НАЗАД тим самим екраном, який бачить портьє й з якого
+        // йде CSV для поліції (інваріант 27: прохід читає результат назад).
+        const month = day(70).slice(0, 7);
+        const reg = await body(await call(cookie, `/api/guest-registry?month=${month}&property_id=all`));
+        const rows = (reg?.entries ?? []).filter((e) => e.reservation_id === purposeBooking.id);
+        claim('мета приїзду', rows.length === 2, `у книзі два рядки цієї броні, отримали ${rows.length}`);
+        const namedRow = rows.find((e) => e.last_name === 'Названий');
+        const silentRow = rows.find((e) => e.last_name === 'НеНазваний');
+        claim('мета приїзду', namedRow?.purpose_of_stay === 'Business' && namedRow?.visa_number === 'V-2026',
+          `назване доїхало від форми до книги (${namedRow?.purpose_of_stay ?? 'зникло'} / ${namedRow?.visa_number ?? 'зникло'})`);
+        claim('мета приїзду', !silentRow?.purpose_of_stay,
+          `не назвали — у книзі ПОРОЖНЬО, а не вигадане (${JSON.stringify(silentRow?.purpose_of_stay)})`);
+
+        // І виправно: доти помилку в меті приїзду не міняв ніхто.
+        if (silentRow?.id) {
+          const fix = await call(cookie, `/api/guest-registry/${silentRow.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ action: 'update_purpose', purposeOfStay: 'Medical', visaNumber: '' }),
+          });
+          const after = await body(await call(cookie, `/api/guest-registry?month=${month}&property_id=all`));
+          const fixed = (after?.entries ?? []).find((e) => e.id === silentRow.id);
+          claim('мета приїзду', fix.status === 200 && fixed?.purpose_of_stay === 'Medical',
+            `правка з реєстру лягла (${fix.status}, ${fixed?.purpose_of_stay ?? 'порожньо'})`);
+        }
+
+        const alienFix = await call(cookie, '/api/guest-registry/rg_definitely_not_ours', {
+          method: 'PATCH',
+          body: JSON.stringify({ action: 'update_purpose', purposeOfStay: 'Hack', visaNumber: '' }),
+        });
+        claim('мета приїзду', alienFix.status === 404,
+          `чужий рядок книги — 404, не 500 (${alienFix.status})`);
+      }
 
       // ── Гостьовий портал ───────────────────────────────────────────────
       //

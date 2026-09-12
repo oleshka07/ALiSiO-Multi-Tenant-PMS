@@ -109,7 +109,13 @@ export async function getRegistryEntries(organizationId: string, filters: Regist
       rg.document_number,
       rg.address,
       rg.visa_number,
-      COALESCE(rg.purpose_of_stay, 'Tourism') as purpose_of_stay,
+      -- Порожня мета приїзду лишається ПОРОЖНЬОЮ. Тут стояв COALESCE із
+      -- літералом, і він домальовував відповідь за гостя вже на читанні:
+      -- писач міг чесно покласти NULL, а книга, яку читає поліція, все одно
+      -- казала «туризм» — про кожного, кого ніхто не питав. Порожнє поле
+      -- видно в реєстрі й його доповнюють (дія update_purpose); вигадане
+      -- виглядає як відповідь гостя.
+      rg.purpose_of_stay,
       -- Alpha-2 AND alpha-3, because both reach this column: the MRZ on a
       -- passport is alpha-3 (ISO 9303) and the registration form's own
       -- placeholder suggests alpha-3, while this comparison was alpha-2 only.
@@ -212,6 +218,32 @@ async function owns(organizationId: string, id: string): Promise<boolean> {
     JOIN reservations r ON r.id = rg.reservation_id
     WHERE rg.id = ? AND ${ORG_SCOPE}
   `, [id, organizationId]);
+}
+
+/**
+ * Змінити мету приїзду й номер візи в книзі гостей.
+ *
+ * Доти реєстр умів лише поліцію й суму збору, тож помилку в меті приїзду
+ * виправити було НІЧИМ — а саме цю книгу подають у поліцію. Порожнє
+ * значення тут законне: «ще не спитали» — чесна відповідь, на відміну від
+ * вигаданого «Tourism».
+ *
+ * Чужий рядок — `false` (404 у викликача), а не тиха згода (інваріант 13).
+ */
+export async function updatePurposeOfStay(
+  organizationId: string, id: string,
+  data: { purposeOfStay: string | null; visaNumber: string | null },
+): Promise<boolean> {
+  const sql = getSql();
+  if (!await owns(organizationId, id)) return false;
+  await sql.run(`
+    UPDATE reservation_guests
+       SET purpose_of_stay = ?,
+           visa_number = ?,
+           updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?
+  `, [data.purposeOfStay?.trim() || null, data.visaNumber?.trim() || null, id]);
+  return true;
 }
 
 export async function markPoliceReported(organizationId: string, id: string, ref?: string): Promise<boolean> {

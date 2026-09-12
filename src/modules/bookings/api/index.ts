@@ -2,7 +2,7 @@
 export { listReservations, createReservation } from './reservations.handlers';
 export { getReservation, updateReservation, deleteReservation } from './reservation.handlers';
 export { listActivity, createActivity } from './reservation-activity.handlers';
-export { listRegistrations, registerGuest, removeRegistration } from './reservation-registrations.handlers';
+export { listRegistrations, registerGuest, removeRegistration, setPrimaryGuest } from './reservation-registrations.handlers';
 // Sub-bookings: одна бронь, кілька номерів. Тут стояли ще шість експортів
 // групових броней із приміткою «legacy, буде видалено» — видалено 2026-08-27
 // разом із таблицею `reservation_groups` (міграція 0039).

@@ -29,5 +29,9 @@
  */
 
 export { listRatePlans } from '../data/rate-plans.repo';
+// Чи може ЦЕЙ платник купити ЦЕЙ тариф (INC-205). Сюди — бо писач броні
+// мусить ставити те саме питання, що й котирування, і саме ЦИМ запитом:
+// два власні прочитання одного правила розійдуться, і розійдуться тихо.
+export { assertRatePlanForPayer } from '../data/company-rate-plans.repo';
 export { propertyRatePlans } from '../data/property-rate-plans';
 export { pricedDaysAhead } from '../data/price-calendar.repo';

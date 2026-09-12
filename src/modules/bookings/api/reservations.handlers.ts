@@ -2,7 +2,9 @@
 import { noteStay } from '../data/stay-notes';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
-import { findOrCreateGuest } from '@guests';
+import { resolveBookingGuest } from '@guests';
+import { bookingPayerFields } from '@companies/kernel';
+import { assertRatePlanForPayer } from '@pricing/plans';
 import { writeBookingAudit, getBookingActor } from './audit-log.handlers';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
 import { ownedUnit } from '../data/owned.repo';
@@ -53,13 +55,26 @@ export const listReservations = withActor(async (request: NextRequest, _ctx, act
 // the accountant role has no manage_bookings and does need to see bookings
 // behind the finance screens. Narrowing that is a product decision, not a
 // mechanical one.
-export const createReservation = withPermission('manage_bookings', async (request: NextRequest, _ctx, actor: Actor) => {
+/**
+ * Розгорнутий обробник — щоб сцена могла викликати його з готовою особою
+ * (той самий розподіл, що в `@invoicing`). Це не зручність: `INSERT` тут —
+ * РЯДОК, і `tsc` не бачить у ньому ні неіснуючої колонки, ні розʼїханого
+ * числа знаків питання — тобто 500 на КОЖНІЙ броні при зеленій збірці.
+ * Загорнутий `createReservation` нижче — те, що виставлене маршрутом.
+ */
+export async function createReservationHandler(request: NextRequest, _ctx: unknown, actor: Actor) {
   try {
     const sql = getSql();
     const body = await request.json();
 
     const {
       firstName, lastName, email, phone,
+      // Гість, якого рецепція ОБРАЛА зі списку. Порожньо — як було, вгадування.
+      guestId,
+      // Фірма-платник, названа відразу. Порожньо — платить гість, як і досі.
+      companyId,
+      // Тариф (прейскурант). Порожньо — базова ціна, як і досі.
+      ratePlanId,
       unitId, checkIn, checkOut, nights,
       adults, children, status, source, totalPrice,
       commissionAmount: commissionOverride,
@@ -104,14 +119,45 @@ export const createReservation = withPermission('manage_bookings', async (reques
 
     const org = { id: actor.organizationId };
 
-    const dedup = await findOrCreateGuest({
+    // Названий гість береться як названий; не названий — вгадується, як було.
+    // Різниця не косметична: остання ланка дедупу — збіг за САМИМ ІМЕНЕМ, тож
+    // двоє однофамільців без пошти й телефону для нього одна людина. Поки
+    // вибору не було, це просто траплялось; із вибором мовчазна підміна
+    // означала б «показали одного, записали іншого» (`booking-guest.repo`).
+    const dedup = await resolveBookingGuest({
       organizationId: org.id,
+      guestId: guestId || null,
       firstName,
       lastName,
       email: email || null,
       phone: phone || null,
     });
-    const guestId = dedup.id;
+    const resolvedGuestId = dedup.id;
+
+    // Платник-юрособа тепер називається ВІДРАЗУ, а не наступним кліком із
+    // картки. Ті самі двері, що й у PATCH — інакше два писачі тих самих семи
+    // колонок розійшлися б мовчки, а помітили б це на фактурі.
+    const payer = await bookingPayerFields(actor.organizationId, companyId);
+    if (!payer.ok) {
+      return payer.reason === 'archived'
+        ? NextResponse.json({ error: 'company_archived' }, { status: 409 })
+        : NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+    const p = payer.fields;
+
+    // Тариф звіряється ТИМИ САМИМИ дверима, що й у котируванні (INC-205).
+    //
+    // Доти його перевіряв лише `/api/pricing/quote`, а саму бронь створює інший
+    // маршрут — і він тарифу не бачив узагалі. Щойно форма дає його обрати,
+    // «звузити список на екрані» перестає бути захистом: `ratePlanId` приходить із
+    // ТІЛА запиту, і хто знає ідентифікатор фірмового тарифу — називає його сам.
+    // П'ятий випадок того самого класу (INC-201…203, 205: читач полагоджений,
+    // писач відчинений), гейт `booking-rate-plan.check`.
+    //
+    // Відмова названа і летить винятком — її підхоплює `handleError` нижче й
+    // віддає своїм статусом (404) і своїм текстом.
+    const chosenPlan = typeof ratePlanId === 'string' && ratePlanId.trim() ? ratePlanId.trim() : null;
+    await assertRatePlanForPayer(chosenPlan, actor.organizationId, p.company_id);
 
     const resId = `r_${Date.now()}`;
     let commissionAmount = 0;
@@ -168,9 +214,9 @@ export const createReservation = withPermission('manage_bookings', async (reques
     // (дедуплікація гостя, комісія, валюта). У це вікно проходили ОБИДВІ броні.
     try {
       await insertingStay(() => sql.run(`
-        INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, check_in, check_out, nights, adults, children, status, payment_status, source, total_price, currency, commission_amount, guest_page_token, city_tax_amount, city_tax_included, city_tax_paid, internal_notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [resId, actor.organizationId, unit.property_id, unitId, guestId, checkIn, checkOut, nights || 1, adults || 1, children || 0, bookingStatus, body.paymentStatus || 'unpaid', source || 'direct', priceGiven, currency, commissionAmount, guestPageToken, finalCityTaxAmount, finalCityTaxIncluded, finalCityTaxPaid, internalNotes || null]),
+        INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, check_in, check_out, nights, adults, children, status, payment_status, source, total_price, currency, commission_amount, guest_page_token, city_tax_amount, city_tax_included, city_tax_paid, internal_notes, rate_plan_id, company_id, invoice_company_name, invoice_company_ico, invoice_company_dic, invoice_company_address, invoice_company_city, invoice_company_country, invoice_company_email)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [resId, actor.organizationId, unit.property_id, unitId, resolvedGuestId, checkIn, checkOut, nights || 1, adults || 1, children || 0, bookingStatus, body.paymentStatus || 'unpaid', source || 'direct', priceGiven, currency, commissionAmount, guestPageToken, finalCityTaxAmount, finalCityTaxIncluded, finalCityTaxPaid, internalNotes || null, chosenPlan, p.company_id, p.invoice_company_name, p.invoice_company_ico, p.invoice_company_dic, p.invoice_company_address, p.invoice_company_city, p.invoice_company_country, p.invoice_company_email]),
       { unitId, checkIn, checkOut, reservationId: resId });
     } catch (e) {
       if (e instanceof UnitOverlap) {
@@ -190,9 +236,16 @@ export const createReservation = withPermission('manage_bookings', async (reques
       await writeBookingAudit(resId, 'created', `Створено: ${firstName} ${lastName} · ${source || 'direct'}`, actor, null, afterRow);
     } catch { /* non-critical */ }
 
-    return NextResponse.json({ id: resId, guestId, guestPageToken }, { status: 201 });
+    return NextResponse.json({ id: resId, guestId: resolvedGuestId, guestPageToken }, { status: 201 });
   } catch (error) {
-    console.error('POST /api/bookings error:', error);
-    return NextResponse.json({ error: 'Failed to create booking' }, { status: 500 });
+    // `handleError`, не голий 500: відмови, названі на місці кидання
+    // (`resolveBookingGuest` — чужий гість, злитий рядок), мусять дійти до
+    // портьє СВОЇМ текстом і своїм статусом. Доти цей `catch` згортав їх у
+    // «Failed to create booking», і екран показував поломку там, де було
+    // правило — рівно те, від чого інваріант 6. Решта й далі йде в лог і
+    // повертає 500 загальним реченням.
+    return handleError('POST /api/bookings', error, 'Failed to create booking');
   }
-});
+}
+
+export const createReservation = withPermission('manage_bookings', createReservationHandler);

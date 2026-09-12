@@ -356,6 +356,25 @@ function buildSchema(database: any) {
       document_number TEXT,
       date_of_birth TEXT,
       notes TEXT,
+      -- Звернення й по-батькові — вільним текстом, не словником: набір
+      -- звертань різний у кожній мові (Herr/Frau, Pan/Paní, пан/пані), і
+      -- закритий CHECK тут закодував би одну юрисдикцію в ядро (інваріант 22).
+      salutation TEXT,
+      middle_name TEXT,
+      -- Номер авто: паркінг і шлагбаум. На ОСОБІ, а не на броні: постійний
+      -- гість приїздить тим самим авто, і перепитувати його щоразу — це й є те,
+      -- чого позбуваються карткою гостя.
+      vehicle_plate TEXT,
+      -- VIP — ПРАПОРЕЦЬ, а не слово в примітках. Екран гостей виводив його з
+      -- з підрядка в примітках, тож гість із приміткою «VIP-паркінг НЕ
+      -- входить» отримував корону, а справжній VIP без цього слова — ні.
+      is_vip BOOLEAN NOT NULL DEFAULT 0,
+      -- Чорний список — ТРИ колонки, і вони їздять разом. Прапорець без
+      -- причини й автора — це відмова гостеві, яку наступна зміна не може ні
+      -- пояснити, ні оскаржити. Наявність blacklisted_at і є ознакою.
+      blacklisted_at TEXT,
+      blacklisted_by TEXT,
+      blacklist_reason TEXT,
       -- Звідки цей рядок прийшов: система, таблиця, ідентифікатор у ній
       -- (INC-301, міграція 0301). Порожньо — завели в нас. Тримає повторний
       -- прогін імпорту від подвоєння, і тримає це UNIQUE-індекс, а не цикл.
@@ -5364,8 +5383,60 @@ function runMigrations(database: any) {
   try { database.exec("ALTER TABLE guest_registrations ADD COLUMN consent_given INTEGER DEFAULT 0"); } catch { /* already exists */ }
   try { database.exec("ALTER TABLE guest_registrations ADD COLUMN consent_at TEXT"); } catch { /* already exists */ }
   try { database.exec("ALTER TABLE guest_registrations ADD COLUMN consent_ip TEXT"); } catch { /* already exists */ }
-  try { database.exec("ALTER TABLE guest_registrations ADD COLUMN purpose_of_stay TEXT"); } catch { /* already exists */ }
-  try { database.exec("ALTER TABLE guest_registrations ADD COLUMN visa_number TEXT"); } catch { /* already exists */ }
+  // Мета приїзду й номер візи тут БУЛИ і більше не заводяться (Д80,
+  // міграція 0416). Це факт ПЕРЕБУВАННЯ, і він живе в книзі гостей
+  // (`reservation_guests`), звідки його читають реєстр і кіоск. Дві копії
+  // розходились за ШЛЯХОМ реєстрації (виміряно дослідом), і друга виходила
+  // назовні GDPR-експортом.
+  //
+  // На базі, де вони вже є, значення ПЕРЕНОСИТЬСЯ в книгу там, де вона
+  // порожня, і лише потім колонки зникають: видалити спершу означало б
+  // втратити те, чого в книзі могло не бути.
+  try {
+    const grDup = database.prepare('PRAGMA table_info(guest_registrations)').all() as { name: string }[];
+    if (grDup.some((c) => c.name === 'purpose_of_stay')) {
+      // Правило переїзду те саме, що в 0416, і воно НЕ переносить 'Tourism':
+      // цей літерал у журналі писала програма, а не людина, і розносити його
+      // в книгу означало б розносити вигадану відповідь.
+      const moved = database.prepare(`
+        UPDATE reservation_guests SET
+          purpose_of_stay = COALESCE(purpose_of_stay, (
+            SELECT NULLIF(gr.purpose_of_stay, 'Tourism') FROM guest_registrations gr
+             WHERE gr.reservation_id = reservation_guests.reservation_id
+               AND gr.guest_id = reservation_guests.guest_id)),
+          visa_number = COALESCE(visa_number, (
+            SELECT NULLIF(gr.visa_number, '') FROM guest_registrations gr
+             WHERE gr.reservation_id = reservation_guests.reservation_id
+               AND gr.guest_id = reservation_guests.guest_id))
+        WHERE guest_id IS NOT NULL
+          AND (purpose_of_stay IS NULL OR visa_number IS NULL)
+          AND EXISTS (SELECT 1 FROM guest_registrations gr
+                       WHERE gr.reservation_id = reservation_guests.reservation_id
+                         AND gr.guest_id = reservation_guests.guest_id
+                         AND (NULLIF(gr.purpose_of_stay, 'Tourism') IS NOT NULL
+                           OR NULLIF(gr.visa_number, '') IS NOT NULL))
+      `).run().changes;
+      // Значення, якому нікуди переїхати. На Postgres це зупиняє деплой
+      // (0416); тут — гучний рядок у лозі, бо SQLite стоїть на машині
+      // розробника, і застосунок, який не піднімається, гірший за напис.
+      const homeless = (database.prepare(`
+        SELECT COUNT(*) AS n FROM guest_registrations gr
+         WHERE (NULLIF(gr.purpose_of_stay, 'Tourism') IS NOT NULL
+             OR NULLIF(gr.visa_number, '') IS NOT NULL)
+           AND NOT EXISTS (SELECT 1 FROM reservation_guests rg
+                            WHERE rg.reservation_id = gr.reservation_id
+                              AND rg.guest_id = gr.guest_id)
+      `).get() as { n: number }).n;
+      if (homeless > 0) {
+        console.error(`[DB] УВАГА: ${homeless} рядків guest_registrations мають мету приїзду або візу без парного рядка книги — вони зникнуть разом із колонками. На Postgres це зупинило б деплой (0416).`);
+      }
+      database.exec('ALTER TABLE guest_registrations DROP COLUMN purpose_of_stay');
+      database.exec('ALTER TABLE guest_registrations DROP COLUMN visa_number');
+      console.log(`[DB] guest_registrations: мета приїзду й віза переїхали в книгу гостей, рядків: ${moved} (0416)`);
+    }
+  } catch (e: any) {
+    console.log('[DB] purpose_of_stay dedup note:', e.message);
+  }
   // 0410 — підпис пальцем (К3, кіоск §3.1). `data:image/png;base64,…` як його
   // віддає полотно; ≤ 200 КБ стереже писач (`guests/data/signature.repo.ts`),
   // а не обмеження бази: завеликий підпис — звичайний палець на великому
@@ -8162,6 +8233,34 @@ function runMigrations(database: any) {
     }
   } catch (e: any) {
     console.log('[DB] not-duplicates migration note:', e.message);
+  }
+
+  // --- Migration: поля картки гостя (С76) ---
+  //
+  // Додається І в `CREATE TABLE` вище, І тут: міграції написані як
+  // «оновити з попереднього стану», і колонка, дописана лише сюди, є в
+  // мігрованій базі й відсутня в нового клієнта (AGENTS §4).
+  try {
+    const cols = database.prepare('PRAGMA table_info(guests)').all() as { name: string }[];
+    const add = (col: string, decl: string) => {
+      if (cols.length > 0 && !cols.some((c) => c.name === col)) {
+        database.exec(`ALTER TABLE guests ADD COLUMN ${col} ${decl}`);
+        console.log(`[DB] guests: ${col} (С76)`);
+      }
+    };
+    add('salutation', 'TEXT');
+    add('middle_name', 'TEXT');
+    add('vehicle_plate', 'TEXT');
+    add('is_vip', 'BOOLEAN NOT NULL DEFAULT 0');
+    add('blacklisted_at', 'TEXT');
+    add('blacklisted_by', 'TEXT');
+    add('blacklist_reason', 'TEXT');
+    // Списки гостей фільтрують за обома ознаками, і обидві — меншість
+    // рядків, тож частковий індекс дешевший за тотальний.
+    database.exec(`CREATE INDEX IF NOT EXISTS idx_guests_blacklisted
+      ON guests (organization_id) WHERE blacklisted_at IS NOT NULL`);
+  } catch (e: any) {
+    console.log('[DB] guest card fields note:', e.message);
   }
 
   // --- Migration: ключ походження імпорту (INC-301) ---

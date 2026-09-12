@@ -13,6 +13,7 @@ import { useT } from '@core/i18n/client';
 import { EmptyState, LoadingState, ErrorState } from '@/components/ui/State';
 import {
   Plus, Search, Building2, Landmark, Phone, Mail, MapPin, Flag, Users, Archive, ArchiveRestore, Trash2, X, Save, Loader2, Copy, FileText,
+  ChevronDown, ChevronUp, ExternalLink, UserRound,
 } from 'lucide-react';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -40,6 +41,17 @@ interface CompanyRow {
   last_check_in: string | null;
 }
 
+/** Гість фірми — те, що віддає картка компанії разом із лічильником. */
+interface CompanyGuestRow {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  phone: string | null;
+  stays: number;
+  last_check_in: string | null;
+}
+
 type Form = Omit<CompanyRow, 'id' | 'archived_at' | 'created_at' | 'reservations' | 'guests' | 'last_check_in'>;
 
 const EMPTY: Form = {
@@ -52,6 +64,12 @@ const FORM_KEYS = Object.keys(EMPTY) as (keyof Form)[];
 
 export default function CompaniesPage() {
   const t = useT();
+  // Який рядок розкрито і хто в ньому. Один за раз: список гостей фірми —
+  // довідка «хто це такі», а не другий екран, і два відкриті одночасно
+  // роблять сторінку нечитною.
+  const [openGuests, setOpenGuests] = useState<{ id: string; rows: CompanyGuestRow[] } | null>(null);
+  const [guestsLoading, setGuestsLoading] = useState<string | null>(null);
+  const [guestFilter, setGuestFilter] = useState('');
   const [rows, setRows] = useState<CompanyRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -135,6 +153,39 @@ export default function CompaniesPage() {
   };
 
   const copy = (text: string) => { navigator.clipboard?.writeText(text).then(() => say(`📋 ${t('Скопійовано')}`)).catch(() => {}); };
+
+  /**
+   * Хто саме стоїть за числом «N гостей».
+   *
+   * Картка доти казала число і не давала жодного способу дізнатись, хто це —
+   * власник назвав це прямо («не знайшов, як у компанії шукати гостей»).
+   *
+   * Список тягнеться НА ВИМОГУ, бо це довідка, а не зміст екрана: тридцять
+   * карток на сторінці означали б тридцять запитів на кожне відкриття.
+   *
+   * Читається ВІДПОВІДЬ, а не код: `guestList` приходить із тієї ж картки
+   * (`GET /api/companies/:id`), що й лічильник, тож число і список не можуть
+   * розійтися — вони з одного запиту.
+   */
+  const toggleGuests = async (c: CompanyRow) => {
+    setGuestFilter('');
+    if (openGuests?.id === c.id) { setOpenGuests(null); return; }
+    setGuestsLoading(c.id);
+    try {
+      const res = await fetch(`/api/companies/${c.id}`);
+      if (!res.ok) { say(`❌ ${t('Не вдалося завантажити гостей')}`); return; }
+      const data = await res.json().catch(() => ({}));
+      setOpenGuests({ id: c.id, rows: Array.isArray(data?.guestList) ? data.guestList : [] });
+    } catch { say(`❌ ${t('Не вдалося завантажити гостей')}`); }
+    finally { setGuestsLoading(null); }
+  };
+
+  // Окремої сторінки гостя тут немає — рядок відкриває список гостей,
+  // звужений за поштою (вона одна на людину) або за іменем. Пошта точна;
+  // імʼя може дати однофамільців, і тоді людина бачить СПИСОК і обирає сама,
+  // а не дістає мовчки не того.
+  const guestHref = (g: CompanyGuestRow) =>
+    `/app/guests?q=${encodeURIComponent(g.email || `${g.last_name} ${g.first_name}`.trim())}`;
 
   const list = rows ?? [];
   const activeFilters = useMemo(() => Object.values(filters).filter(Boolean).length, [filters]);
@@ -227,9 +278,64 @@ export default function CompaniesPage() {
                   {(c.bank_name || c.iban) && <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Landmark size={13} /> {c.bank_name || ''} {c.iban ? <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{c.iban}</span> : null}</div>}
                 </div>
                 <div style={{ borderTop: '1px solid var(--border-primary)', marginTop: 4, paddingTop: 8, display: 'flex', alignItems: 'center', gap: 10, fontSize: 11.5, color: 'var(--text-tertiary)' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Users size={12} /> {c.guests} {t('гостей')} · {c.reservations} {t('броней')}</span>
+                  {/* Лічильник — кнопка: це єдиний шлях від числа до людей. */}
+                  <button type="button"
+                    disabled={c.guests === 0}
+                    onClick={(e) => { e.stopPropagation(); toggleGuests(c); }}
+                    title={c.guests > 0 ? t('Показати гостей фірми') : undefined}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      padding: 0, border: 0, background: 'transparent', font: 'inherit',
+                      color: c.guests > 0 ? 'var(--accent-primary)' : 'var(--text-tertiary)',
+                      cursor: c.guests > 0 ? 'pointer' : 'default',
+                    }}>
+                    <Users size={12} /> {c.guests} {t('гостей')} · {c.reservations} {t('броней')}
+                    {c.guests > 0 && (guestsLoading === c.id
+                      ? <Loader2 size={11} className="animate-spin" />
+                      : openGuests?.id === c.id ? <ChevronUp size={11} /> : <ChevronDown size={11} />)}
+                  </button>
                   <span style={{ marginLeft: 'auto' }}>{c.last_check_in || String(c.created_at).slice(0, 10)}</span>
                 </div>
+
+                {openGuests?.id === c.id && (() => {
+                  const q = guestFilter.trim().toLowerCase();
+                  const shown = q
+                    ? openGuests.rows.filter((g) => `${g.last_name} ${g.first_name} ${g.email ?? ''} ${g.phone ?? ''}`.toLowerCase().includes(q))
+                    : openGuests.rows;
+                  return (
+                    <div onClick={(e) => e.stopPropagation()}
+                      style={{ borderTop: '1px solid var(--border-primary)', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {/* Фільтр — лише там, де список уже не охоплюється оком. */}
+                      {openGuests.rows.length > 6 && (
+                        <input className="form-input" style={{ fontSize: 12, padding: '5px 8px' }}
+                          placeholder={t('Звузити: прізвище, пошта, телефон')}
+                          value={guestFilter} onChange={(e) => setGuestFilter(e.target.value)} />
+                      )}
+                      {shown.length === 0 ? (
+                        <div style={{ fontSize: 11.5, color: 'var(--text-tertiary)', padding: '4px 0' }}>
+                          {t('Нікого не знайшлося')}
+                        </div>
+                      ) : shown.map((g) => (
+                        <a key={g.id} href={guestHref(g)}
+                          style={{
+                            display: 'flex', alignItems: 'baseline', gap: 8,
+                            padding: '4px 6px', borderRadius: 'var(--radius-sm)',
+                            textDecoration: 'none', color: 'inherit',
+                          }}>
+                          <UserRound size={12} style={{ color: 'var(--text-tertiary)', alignSelf: 'center' }} />
+                          <span style={{ fontSize: 12.5, fontWeight: 600 }}>{g.last_name} {g.first_name}</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                            {[g.email, g.phone].filter(Boolean).join(' · ') || t('без контактів')}
+                          </span>
+                          <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                            {/* Скільки разів за неї платила САМЕ ЦЯ фірма, не всього перебувань. */}
+                            {g.stays} {t('броней')} · {g.last_check_in || ''} <ExternalLink size={10} />
+                          </span>
+                        </a>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             ))}
           </div>

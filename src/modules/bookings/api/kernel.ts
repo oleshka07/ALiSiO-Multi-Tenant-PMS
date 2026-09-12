@@ -6,6 +6,11 @@
  */
 export { companyStays } from '../data/company-stays.repo';
 export type { CompanyStayStats } from '../data/company-stays.repo';
+// ХТО саме за лічильником. Довідник компаній не ходить у `reservations` сам —
+// питає модуль, і модуль відповідає своєю формою (той самий довід, що для
+// лічильника вище).
+export { companyGuests } from '../data/company-stays.repo';
+export type { CompanyGuest } from '../data/company-stays.repo';
 
 // В3: статус оплати броні виводиться з фоліо — один перерахунок на всіх, хто
 // приймає гроші (каса, оплата з фоліо, маркер). Саме в KERNEL, а не у важкому

@@ -7,6 +7,9 @@ import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import { shouldAskQuote, readQuote, type QuoteResponse } from './quote-prefill';
 import { percentOf } from '@core/money';
+import GuestPicker, { type PickedGuest } from './GuestPicker';
+import CompanyPicker, { type PickedCompany } from './CompanyPicker';
+import RatePlanPicker from './RatePlanPicker';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -169,6 +172,12 @@ export default function BookingForm({
   onCancel,
 }: BookingFormProps) {
   const t = useT();
+  // Гість, обраний зі списку. `null` — не обирали, і тоді сервер вгадує
+  // по-старому. Тримається ОКРЕМО від `form`, бо це не поле форми, а
+  // рішення «це та сама людина», яке форма лише передає далі.
+  const [pickedGuest, setPickedGuest] = useState<PickedGuest | null>(null);
+  const [pickedCompany, setPickedCompany] = useState<PickedCompany | null>(null);
+  const [ratePlanId, setRatePlanId] = useState('');
   const [form, setForm] = useState<BookingFormValues>(() => {
     const base = emptyValues();
     if (!initial) return base;
@@ -350,6 +359,12 @@ export default function BookingForm({
             checkOut: form.checkOut,
             adults: form.adults,
             children: form.children,
+            // Тариф і фірма — в ОДНОМУ запиті з ціною, і обидва в залежностях
+            // ефекту нижче. Інакше портьє перемикає прейскурант, а в полі лишається
+            // ціна попереднього — тобто бронь за ціною, якої готель для цього
+            // тарифу ніколи не називав (інваріанти 16 і 17).
+            ratePlanId: ratePlanId || undefined,
+            companyId: pickedCompany?.id ?? undefined,
           }),
         });
         res = { ok: r.ok, body: r.ok ? await r.json() : null };
@@ -381,7 +396,8 @@ export default function BookingForm({
           : {}),
       }));
     })();
-  }, [mode, form.unitTypeId, form.checkIn, form.checkOut, form.adults, form.children, recalcCommission]);
+  }, [mode, form.unitTypeId, form.checkIn, form.checkOut, form.adults, form.children,
+    ratePlanId, pickedCompany?.id, recalcCommission]);
 
   const validate = (): string => {
     if (!form.firstName.trim()) return "Ім'я обовʼязкове";
@@ -472,6 +488,15 @@ export default function BookingForm({
             lastName: form.lastName.trim(),
             email: form.email.trim() || null,
             phone: form.phone.trim() || null,
+            // Названий гість — сервер бере його як названий і не звіряє з
+            // ланцюжком дедупу (`resolveBookingGuest`).
+            guestId: pickedGuest?.id ?? null,
+            // Фірма-платник — відразу, а не наступним кліком із картки. Сервер
+            // звіряє її з довідником СВОГО готелю й пише знімок реквізитів.
+            companyId: pickedCompany?.id ?? null,
+            // Той самий тариф, з яким порахована ціна вище. Писач звіряє його
+            // з платником сам — звужений список не є захистом.
+            ratePlanId: ratePlanId || null,
             unitId,
             checkIn: form.checkIn,
             checkOut: form.checkOut,
@@ -666,9 +691,36 @@ export default function BookingForm({
           </div>
           <div className="form-group">
             <label className="form-label">{t('Прізвище *')}</label>
-            <input className="form-input" value={form.lastName} onChange={e => setForm(p => ({ ...p, lastName: e.target.value }))} placeholder={t('Іваненко')} />
+            <input className="form-input" value={form.lastName}
+              onChange={e => {
+                // Правка прізвища відвʼязує обраного: інакше на екрані стояло
+                // б одне прізвище, а на сервер їхав би id іншої людини — рівно
+                // та неправда, проти якої весь цей вибір і зроблено.
+                if (pickedGuest) setPickedGuest(null);
+                setForm(p => ({ ...p, lastName: e.target.value }));
+              }}
+              placeholder={t('Іваненко')} />
           </div>
         </div>
+        {/* Пошук іде за прізвищем — так шукає людина за стійкою. */}
+        <GuestPicker
+          term={form.lastName}
+          picked={pickedGuest}
+          onPick={(g) => {
+            setPickedGuest(g);
+            // Поля заповнюються з обраного, але лишаються редагованими:
+            // гість міг змінити телефон, і виправити його треба тут, а не
+            // окремим заходом у довідник.
+            setForm(p => ({
+              ...p,
+              firstName: g.first_name || p.firstName,
+              lastName: g.last_name || p.lastName,
+              email: g.email || p.email,
+              phone: g.phone || p.phone,
+            }));
+          }}
+          onClear={() => setPickedGuest(null)}
+        />
         <div className="form-row">
           <div className="form-group">
             <label className="form-label">Email</label>
@@ -679,6 +731,26 @@ export default function BookingForm({
             <input className="form-input" type="tel" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} placeholder="+…" />
           </div>
         </div>
+
+        {/*
+          Хто ПЛАТИТЬ — поруч із тим, хто ЖИВЕ, бо це одне рішення портьє
+          і одна розмова з гостем. Порожньо — платить гість, як і було.
+        */}
+        <div className="form-group" style={{ marginTop: 4 }}>
+          <label className="form-label">{t('Платник — фірма')}</label>
+          <CompanyPicker picked={pickedCompany} onPick={setPickedCompany} />
+        </div>
+
+        {/*
+          Прейскурант — ПІД фірмою, бо список тарифів від неї залежить:
+          фірмова ціна належить одній фірмі (INC-205).
+        */}
+        <RatePlanPicker
+          propertyId={scopedProperty?.id ?? null}
+          companyId={pickedCompany?.id ?? null}
+          value={ratePlanId}
+          onChange={setRatePlanId}
+        />
       </div>
 
       <div style={{ borderTop: '1px solid var(--border-primary)', marginTop: 16, paddingTop: 16 }}>

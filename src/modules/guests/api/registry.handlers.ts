@@ -66,6 +66,13 @@ export const updateRegistryEntry = withPermission('manage_guests', async (
       case 'unmark_police':
         done = await registryRepo.unmarkPoliceReported(org, id);
         break;
+      // Мета приїзду виправна: доти її не міняв ніхто, а вписував код.
+      case 'update_purpose':
+        done = await registryRepo.updatePurposeOfStay(org, id, {
+          purposeOfStay: typeof body.purposeOfStay === 'string' ? body.purposeOfStay : null,
+          visaNumber: typeof body.visaNumber === 'string' ? body.visaNumber : null,
+        });
+        break;
       case 'update_fee': {
         const { feeAmount, feeExempt, feeExemptReason } = body;
         done = await registryRepo.updateFee(org, id, { feeAmount, feeExempt, feeExemptReason });

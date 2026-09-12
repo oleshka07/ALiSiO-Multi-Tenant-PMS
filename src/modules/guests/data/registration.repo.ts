@@ -66,6 +66,16 @@ export async function addReceptionRegistration(input: {
   guestId: string;
   isPrimary: boolean;
   guest: ReceptionGuestSnapshot;
+  /**
+   * Мета приїзду й номер візи — від того, хто РЕЄСТРУЄ, а не з коду.
+   *
+   * Тут стояв літерал `'Tourism'`, і це була неправда про живу людину
+   * на документі для влади: гостя ніхто не питав, а виправити потім було
+   * нічим. Не названо — ПОРОЖНЬО: порожнє поле видно в реєстрі й його
+   * доповнюють, а вигадане виглядає як відповідь гостя (гейт `purpose-of-stay.check`).
+   */
+  purposeOfStay?: string | null;
+  visaNumber?: string | null;
 }): Promise<string | null> {
   const sql = getSql();
   return await sql.tx(async (t) => {
@@ -80,11 +90,66 @@ export async function addReceptionRegistration(input: {
     `, [regId, input.reservationId, input.guestId, input.isPrimary ? 1 : 0]);
     await t.run(`
       INSERT INTO reservation_guests (reservation_id, first_name, last_name, date_of_birth, address, nationality, document_type, document_number, guest_id, fee_amount, fee_exempt, fee_exempt_reason, purpose_of_stay, visa_number)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Tourism', NULL)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [input.reservationId, input.guest.firstName, input.guest.lastName, input.guest.dateOfBirth ?? null, input.guest.address ?? null,
       input.guest.nationality ?? null, input.guest.documentType ?? null, input.guest.documentNumber ?? null, input.guestId,
-      fee.amount, fee.exempt, fee.reason]);
+      fee.amount, fee.exempt, fee.reason,
+      input.purposeOfStay?.trim() || null, input.visaNumber?.trim() || null]);
     return regId;
+  });
+}
+
+/**
+ * Змінити ЗАЯВНИКА на броні. `false` — такого рядка в нас немає.
+ *
+ * ── Що саме вирішує зірка ─────────────────────────────────────────────
+ *
+ * `meldeschein.repo` і `signature.repo` сортують `ORDER BY gr.is_primary DESC`
+ * і беруть першого: заявник — той, хто ПІДПИСУЄ Meldeschein за все
+ * перебування. Доти його обирала єдина умова в екрані — «хто перший,
+ * той і заявник», — і змінити це можна було лише, знявши й завівши наново
+ * всіх. Документ при цьому виглядав нормально — просто з чужим прізвищем.
+ *
+ * ── Чому в ОДНІЙ транзакції і двома `UPDATE` ──────────────────────
+ *
+ * Зірка мусить ПЕРЕЇХАТИ, а не додатись: двоє заявників на одній броні —
+ * це документ, чий підписант залежить від порядку рядків у вибірці, тобто
+ * від рушія бази (AGENTS §7, INC-027). Скидання й призначення розірвані
+ * помилкою залишили б бронь БЕЗ заявника взагалі.
+ *
+ * ── Орендар — у SQL, а не лише в політиці ──────────────────────────
+ *
+ * `guest_registrations` не має `organization_id`: на Postgres політика виводить
+ * орендаря через `guests`. На SQLite політик немає взагалі (AGENTS §7), і без
+ * цього приєднання пара «чужа бронь + її ж рядок» зійшлась б між собою й
+ * пройшла.
+ *
+ * Приєднання саме до `reservations`, а не до `guests`, хоч політика робить
+ * друге — і це свідомо дорожче. Рядок, чий `guest_id` — НАШ гість, а бронь —
+ * СУСІДА, за версією `guests` був би «наш», і зірка переїхала б на ЧУЖІЙ
+ * броні. Ціна вибору названа: `check-property-scope` рахує це читанням
+ * `reservations` без осі обʼєкта (стеля файла 7 → 8). Воно справді таке й є:
+ * пошук ЗА ID в межах уже доведеного орендаря — той самий клас, що й сім
+ * решта в цьому файлі; вибір слабшого приєднання заради меншого числа був
+ * би правкою коду під гейт, а не правкою коду (AGENTS §3.2.1, сьомий випадок).
+ */
+export async function setPrimaryRegistration(input: {
+  organizationId: string;
+  reservationId: string;
+  registrationId: string;
+}): Promise<boolean> {
+  const sql = getSql();
+  return await sql.tx(async (t) => {
+    const row = await t.row<{ id: string }>(
+      `SELECT gr.id FROM guest_registrations gr
+         JOIN reservations r ON r.id = gr.reservation_id
+        WHERE gr.id = ? AND gr.reservation_id = ? AND r.organization_id = ?`,
+      [input.registrationId, input.reservationId, input.organizationId]);
+    // Не знайшли — ВІДМОВЛЯЄМО (інваріант 13), а не «отже, обмежень немає».
+    if (!row) return false;
+    await t.run('UPDATE guest_registrations SET is_primary = FALSE WHERE reservation_id = ?', [input.reservationId]);
+    await t.run('UPDATE guest_registrations SET is_primary = TRUE WHERE id = ?', [input.registrationId]);
+    return true;
   });
 }
 
@@ -134,13 +199,17 @@ export async function saveRegistrations(reservationId: string, organizationId: s
     // this form does not ask.
     insertGuest: `INSERT INTO guests (organization_id, first_name, last_name, date_of_birth, nationality, country, address, document_type, document_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     updateGuest: `UPDATE guests SET date_of_birth = COALESCE(?, date_of_birth), nationality = COALESCE(?, nationality), country = COALESCE(?, country), address = COALESCE(?, address), document_type = COALESCE(?, document_type), document_number = COALESCE(?, document_number), updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+    // Мети приїзду й номера візи тут більше НЕМАЄ: це факт ПЕРЕБУВАННЯ,
+    // і він живе в книзі гостей (`reservation_guests`), звідки його читають реєстр
+    // і кіоск. Друга копія тут розходилась із першою за шляхом реєстрації й
+    // виходила назовні GDPR-експортом (`SELECT gr.*`).
     insertGr: `
-      INSERT INTO guest_registrations (id, reservation_id, guest_id, is_primary, reg_status, registered_at, consent_given, consent_at, consent_ip, purpose_of_stay, visa_number)
-      VALUES (?, ?, ?, ?, 'completed', CURRENT_TIMESTAMP, 1, CURRENT_TIMESTAMP, ?, ?, ?)
+      INSERT INTO guest_registrations (id, reservation_id, guest_id, is_primary, reg_status, registered_at, consent_given, consent_at, consent_ip)
+      VALUES (?, ?, ?, ?, 'completed', CURRENT_TIMESTAMP, 1, CURRENT_TIMESTAMP, ?)
       ON CONFLICT(id) DO NOTHING`,
     updateGrCompleted: `
       UPDATE guest_registrations
-      SET guest_id = ?, reg_status = 'completed', consent_given = 1, consent_at = CURRENT_TIMESTAMP, consent_ip = ?, purpose_of_stay = ?, visa_number = ?, registered_at = CURRENT_TIMESTAMP
+      SET guest_id = ?, reg_status = 'completed', consent_given = 1, consent_at = CURRENT_TIMESTAMP, consent_ip = ?, registered_at = CURRENT_TIMESTAMP
       WHERE reservation_id = ? AND is_primary = ?`,
     findExistingGr: `SELECT id FROM guest_registrations WHERE reservation_id = ? AND is_primary = ?`,
   };
@@ -184,17 +253,21 @@ export async function saveRegistrations(reservationId: string, organizationId: s
       }
 
       // Write to reservation_guests (guest portal view)
-      await t.run(SQL.insertRg, [reservationId, guest.firstName, guest.lastName, guest.dateOfBirth ?? null, guest.address ?? null, guest.nationality ?? null, guest.documentType ?? null, guest.documentNumber ?? null, guestId, feeAmount, feeExempt, feeReason, guest.purposeOfStay || 'Tourism', guest.visaNumber ?? null]);
+      // `guest.purposeOfStay || 'Tourism'` — той самий літерал, що стояв у
+      // рецепції, тільки на другому шляху: гість, у якого форма не питає
+      // мети, приходив у книгу для поліції «туристом». Не назвали —
+      // ПОРОЖНЬО (гейт `purpose-of-stay.check`, вісь «названо/не названо»).
+      await t.run(SQL.insertRg, [reservationId, guest.firstName, guest.lastName, guest.dateOfBirth ?? null, guest.address ?? null, guest.nationality ?? null, guest.documentType ?? null, guest.documentNumber ?? null, guestId, feeAmount, feeExempt, feeReason, guest.purposeOfStay?.trim() || null, guest.visaNumber?.trim() || null]);
 
       // Write to guest_registrations (dashboard view) — syncs data to PMS
       if (guestId) {
         const existingGr = await t.row<any>(SQL.findExistingGr, [reservationId, isPrimary]);
         if (existingGr) {
           // Draft exists — upgrade to completed
-          await t.run(SQL.updateGrCompleted, [guestId, clientIp ?? null, guest.purposeOfStay ?? null, guest.visaNumber ?? null, reservationId, isPrimary]);
+          await t.run(SQL.updateGrCompleted, [guestId, clientIp ?? null, reservationId, isPrimary]);
         } else {
           const grId = crypto.randomUUID();
-          await t.run(SQL.insertGr, [grId, reservationId, guestId, isPrimary, clientIp ?? null, guest.purposeOfStay ?? null, guest.visaNumber ?? null]);
+          await t.run(SQL.insertGr, [grId, reservationId, guestId, isPrimary, clientIp ?? null]);
         }
         isPrimary = 0; // only first guest is primary
       }
@@ -239,7 +312,7 @@ export interface RetentionRunResult {
  *      tenant against an empty setting and every statement matched nothing.
  *   2. It UPDATEd `guest_registrations` SET first_name, email, phone —
  *      columns that table has never had on either engine (it is the consent
- *      log: reg_status, consent_*, purpose_of_stay, visa_number). Every
+ *      log: reg_status, consent_*, and nothing identifying since 0416). Every
  *      engine refused every statement, the per-organization catch swallowed
  *      the error, and the cron answered { success: true, anonymizedCount: 0 }
  *      for every run.
@@ -275,9 +348,10 @@ export async function anonymizeOldRegistrations(monthsToKeep = 72): Promise<Rete
         AND reservation_id IN (
           SELECT id FROM reservations WHERE check_out < ? AND organization_id = ?
         )`,
-    // The consent log for those stays goes entirely: it carries no names, but
-    // visa_number and purpose_of_stay are identification too, and consent for
-    // data that no longer exists proves nothing.
+    // The consent log for those stays goes entirely: consent for data that no
+    // longer exists proves nothing. Since 0416 it carries no identification of
+    // its own either — purpose of stay and visa number live once, on the
+    // registry row above, which the statement before this one clears.
     deleteConsentLog: `
       DELETE FROM guest_registrations
       WHERE reservation_id IN (
