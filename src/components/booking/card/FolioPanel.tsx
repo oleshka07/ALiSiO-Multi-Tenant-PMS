@@ -16,8 +16,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useT } from '@core/i18n/client';
 import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
-import { EmptyState, LoadingState, ErrorState } from '@/components/ui/State';
+import { EmptyState, LoadingState, ErrorState, DeniedState } from '@/components/ui/State';
 import { statusFromFolio } from '@/modules/bookings/ui/folio-payment';
+import { folioLoadOutcome, type FolioLoadOutcome } from '@/modules/bookings/ui/folio-load';
 import { Receipt, Plus, CreditCard, FileText, Loader2, ArrowRight } from 'lucide-react';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -77,7 +78,9 @@ export default function FolioPanel({ booking: b, compact, showToast, onBookingCh
 
   const [summary, setSummary] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
+  // Не-відмова сюди не кладеться: тип виключає `ok`, тож гілка малювання
+  // не мусить гадати, чи буває «помилка успіху».
+  const [failed, setFailed] = useState<Exclude<FolioLoadOutcome, { kind: 'ok' }> | null>(null);
   const [busy, setBusy] = useState(false);
   const [services, setServices] = useState<any[]>([]);
   const [open, setOpen] = useState<{ kind: 'service' | 'manual' | 'pay' | null; folioId: string | null }>({ kind: null, folioId: null });
@@ -86,6 +89,12 @@ export default function FolioPanel({ booking: b, compact, showToast, onBookingCh
   const [manForm, setManForm] = useState({ description: '', quantity: 1, price: '', vat: '0' });
   const [payForm, setPayForm] = useState({ amount: '', method: 'cash' as (typeof METHODS)[number] });
   const [newPayer, setNewPayer] = useState('');
+  /**
+   * Зареєстровані гості цієї броні — щоб «розбити на трьох» означало ВИБІР,
+   * а не три набрані рукою рядки, які нічого не знають про гостей.
+   */
+  const [stayGuests, setStayGuests] = useState<{ guest_id: string | null; first_name: string; last_name: string }[]>([]);
+  const [pickedGuest, setPickedGuest] = useState('');
 
   const currency = summary?.currency || b.currency || '';
   const fmt = (n: number) => `${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
@@ -94,14 +103,33 @@ export default function FolioPanel({ booking: b, compact, showToast, onBookingCh
     if (!b?.id) return;
     try {
       const res = await fetch(`/api/finance/folios?reservation_id=${b.id}&summary=1`);
-      if (!res.ok) { setFailed(true); return; }
+      if (!res.ok) {
+        // Відмова ЧИТАЄТЬСЯ, а не зводиться до «не вдалося»: вимкнений модуль,
+        // брак права й поломка ведуть до трьох різних дій людини (`folio-load`).
+        const body = await res.json().catch(() => null);
+        const outcome = folioLoadOutcome(res.status, body);
+        setFailed(outcome.kind === 'ok' ? null : outcome);
+        return;
+      }
       setSummary(await res.json());
-      setFailed(false);
-    } catch { setFailed(true); }
+      setFailed(null);
+    } catch {
+      // Мережа не відповіла взагалі — це саме той випадок, де «ще раз» доречне.
+      setFailed({ kind: 'error', status: 0 });
+    }
     finally { setLoading(false); }
   }, [b?.id]);
 
   useEffect(() => { setLoading(true); load(); }, [load]);
+  useEffect(() => {
+    if (!b?.id) return;
+    let alive = true;
+    fetch(`/api/bookings/${b.id}/registrations`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => { if (alive && Array.isArray(rows)) setStayGuests(rows.filter((g: any) => g.guest_id)); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [b?.id]);
   useEffect(() => {
     fetch('/api/additional-services').then((r) => (r.ok ? r.json() : []))
       .then((rows) => { if (Array.isArray(rows)) setServices(rows.filter((s: any) => s.is_active !== 0 && s.is_active !== false)); })
@@ -230,13 +258,31 @@ export default function FolioPanel({ booking: b, compact, showToast, onBookingCh
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ item_ids: [itemId] }),
   }), tUi('Не вдалося перенести позицію'));
 
+  /**
+   * Додати рахунок другого платника.
+   *
+   * Обраний гість броні їде `guest_id`-ом: без звʼязку неможливо сказати,
+   * чия частка лишилась несплаченою. Імʼя при цьому все одно заморожується
+   * в `payer_name` — документ називає того, кого назвали при виписці.
+   *
+   * Вільне імʼя лишається для того, кого в броні немає взагалі (батько платить
+   * за дитину, друг закриває бар) — така потреба справжня, і відбирати її не можна.
+   */
   const addPayer = () => {
-    const name = newPayer.trim();
+    const chosen = stayGuests.find((g) => g.guest_id === pickedGuest);
+    const name = chosen
+      ? `${chosen.last_name ?? ''} ${chosen.first_name ?? ''}`.trim()
+      : newPayer.trim();
     if (!name) return;
     call(() => fetch('/api/finance/folios', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reservation_id: b.id, payer_kind: 'guest', payer_name: name }),
-    }), tUi('Не вдалося додати платника')).then((r) => { if (r) setNewPayer(''); });
+      body: JSON.stringify({
+        reservation_id: b.id, payer_kind: 'guest', payer_name: name,
+        ...(chosen?.guest_id ? { guest_id: chosen.guest_id } : {}),
+      }),
+    }), tUi('Не вдалося додати платника')).then((r) => {
+      if (r) { setNewPayer(''); setPickedGuest(''); }
+    });
   };
 
   /** Окреме фоліо на компанію-платника броні — коли перше вже відкрите на гостя. */
@@ -249,7 +295,29 @@ export default function FolioPanel({ booking: b, compact, showToast, onBookingCh
   };
 
   if (loading) return <LoadingState compact />;
-  if (failed) return <ErrorState retry={() => { setLoading(true); load(); }} />;
+  if (failed) {
+    const again = () => { setLoading(true); load(); };
+    // Кнопка «ще раз» — ЛИШЕ де вона може допомогти. На 403 вона повторює
+    // те саме 403 стільки разів, скільки її натиснуть.
+    if (failed.kind === 'module_off') {
+      return <DeniedState
+        title={tUi('Фактурування вимкнене для цього готелю')}
+        hint={tUi('Рахунки гостей, оплати й фактури живуть у модулі «Фактурування і каса». Увімкніть його в Налаштуваннях → Модулі; повторне завантаження тут не допоможе.')} />;
+    }
+    if (failed.kind === 'denied') {
+      return <DeniedState
+        title={tUi('Немає права на рахунки гостей')}
+        hint={tUi('Рахунок, оплати й фактури бачать ролі з правом «Керування документами». Попросіть його у власника готелю.')} />;
+    }
+    if (failed.kind === 'signed_out') {
+      return <DeniedState
+        title={tUi('Сесія скінчилась')}
+        hint={tUi('Увійдіть знову — рахунок гостя відкриється на тому самому місці.')} />;
+    }
+    return <ErrorState
+      detail={failed.status ? `${tUi('Код відповіді')}: ${failed.status}` : tUi('Сервер не відповів')}
+      retry={again} />;
+  }
 
   const folios: any[] = summary?.folios ?? [];
   const totals = summary?.totals ?? { charged: 0, paid: 0, balance: 0 };
@@ -469,9 +537,21 @@ export default function FolioPanel({ booking: b, compact, showToast, onBookingCh
       ))}
 
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        <input className="form-input" placeholder={tUi('Другий платник (імʼя або назва)')} value={newPayer} style={{ flex: 1, fontSize: 12 }}
+        {stayGuests.length > 0 && (
+          <select className="form-input" value={pickedGuest} style={{ flex: 1, fontSize: 12 }}
+            onChange={(e) => { setPickedGuest(e.target.value); if (e.target.value) setNewPayer(''); }}>
+            <option value="">{tUi('Гість із броні…')}</option>
+            {stayGuests.map((g) => (
+              <option key={g.guest_id ?? ''} value={g.guest_id ?? ''}>
+                {`${g.last_name ?? ''} ${g.first_name ?? ''}`.trim()}
+              </option>
+            ))}
+          </select>
+        )}
+        <input className="form-input" placeholder={tUi('або інша особа — імʼя')} value={newPayer} style={{ flex: 1, fontSize: 12 }}
+          disabled={!!pickedGuest}
           onChange={(e) => setNewPayer(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addPayer(); }} />
-        <button className="btn btn-sm btn-ghost" disabled={busy || !newPayer.trim()} onClick={addPayer}>
+        <button className="btn btn-sm btn-ghost" disabled={busy || (!newPayer.trim() && !pickedGuest)} onClick={addPayer}>
           <ArrowRight size={12} /> {tUi('Додати платника')}
         </button>
       </div>

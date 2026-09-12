@@ -88,6 +88,21 @@ export async function createFolio(input: {
    * `moveCharges` звіряє, що платник той самий.
    */
   companyId?: string | null;
+  /**
+   * ГІСТЬ, на якого виписаний цей рахунок — друга половина розбиття
+   * рахунку між фізособами.
+   *
+   * Колонка `fin_folios.guest_id` існувала з самого початку й НЕ МАЛА
+   * ЖОДНОГО ПИСАЧА: «розбити на трьох» означало три набрані рукою
+   * рядки, які нічого не знають про зареєстрованих гостей броні. Звʼязок
+   * потрібен не заради чистоти: без нього неможливо сказати, чи розбито
+   * весь рахунок, і чия частка лишилась несплаченою.
+   *
+   * Знімок імені (`payerName`) при цьому ЛИШАЄТЬСЯ і виграє на документі:
+   * фактура називає того, кого назвали ПРИ ВИПИСЦІ, а не того, ким рядок
+   * гостя став потім (той самий принцип, що в інваріанті 18).
+   */
+  guestId?: string | null;
   payerKind?: 'guest' | 'company';
   payerName?: string | null;
   payerAddress?: string | null;
@@ -98,11 +113,26 @@ export async function createFolio(input: {
   const organizationId = await requireOrganizationId();
   const id = crypto.randomUUID();
   const currency = await resolveCurrency(organizationId, input.reservationId ?? null);
-  await getSql().run(
+  const sql = getSql();
+
+  // Гість мусить бути НАШ, і це перевіряється тут, а не лишається політиці:
+  // ідентифікатор приходить із тіла запиту, а перевірка, яка не знайшла рядка,
+  // відмовляє, а не дозволяє (інваріант 13). Чужий гість на рахунку — це його
+  // імʼя на чужій фактурі.
+  let guestId: string | null = null;
+  if (input.guestId) {
+    const own = await sql.row<{ id: string }>(
+      'SELECT id FROM guests WHERE id = ? AND organization_id = ?', [input.guestId, organizationId]);
+    if (!own) throw new Error('guest_not_found');
+    guestId = own.id;
+  }
+
+  await sql.run(
     `INSERT INTO fin_folios
-       (id, organization_id, reservation_id, property_id, company_id, payer_kind, payer_name, payer_address, payer_vat_no, payer_debtor_no, label, currency)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, organizationId, input.reservationId ?? null, input.propertyId ?? null, input.companyId ?? null, input.payerKind ?? 'guest',
+       (id, organization_id, reservation_id, property_id, company_id, guest_id, payer_kind, payer_name, payer_address, payer_vat_no, payer_debtor_no, label, currency)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, organizationId, input.reservationId ?? null, input.propertyId ?? null, input.companyId ?? null, guestId,
+     input.payerKind ?? 'guest',
      input.payerName ?? null, input.payerAddress ?? null, input.payerVatNo ?? null,
      input.payerDebtorNo ?? null, input.label ?? null, currency],
   );

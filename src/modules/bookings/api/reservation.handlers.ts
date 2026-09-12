@@ -9,6 +9,7 @@ import { generateInvoiceForReservation } from '@invoicing';
 import { cookies } from 'next/headers';
 import { getSessionUser } from '@core/auth';
 import { writeBookingAudit, getBookingActor, buildBookingLabel } from './audit-log.handlers';
+import { historyActionsFor } from '../domain/history-actions';
 import { getSql } from '@core/db/async';
 import { serverError } from '@core/http/errors';
 import { decideCheckout } from '../data/checkout.repo';
@@ -420,30 +421,27 @@ export async function updateReservationHandler(request: NextRequest, { params }:
     try {
       const actor = await getBookingActor();
       const afterRow = await sql.row<any>('SELECT * FROM reservations WHERE id = ?', [id]);
-      const logActions: { action: string; details: string }[] = [];
-      if (body.status) logActions.push({ action: 'status_change', details: `Статус → ${body.status}` });
-      if (body.payment_status) logActions.push({ action: 'payment_status_change', details: `Оплата → ${body.payment_status}` });
-      // Валюта — броні, не одного клієнта: «CZK» тут стояло літералом.
-      if (body.total_price !== undefined) logActions.push({ action: 'price_change', details: `Ціна → ${body.total_price} ${beforeSnapshot?.currency || ''}`.trim() });
-      if (body.adults !== undefined || body.children !== undefined) {
-        const was = `${beforeSnapshot?.adults ?? '—'}+${beforeSnapshot?.children ?? 0}`;
-        const now = `${body.adults ?? beforeSnapshot?.adults ?? '—'}+${body.children ?? beforeSnapshot?.children ?? 0}`;
-        logActions.push({ action: 'guests_change', details: `Гості: ${was} → ${now}` });
-      }
-      if (body.unit_id !== undefined) {
-        const nextRow = await sql.row<any>('SELECT name FROM units WHERE id = ?', [body.unit_id]) as { name?: string } | undefined;
-        const before = prevUnitLabel || '—';
-        const after  = nextRow?.name || body.unit_id;
-        logActions.push({ action: 'unit_change', details: `Юніт: ${before} → ${after}` });
-      }
-      if (body.check_in || body.check_out) logActions.push({ action: 'dates_change', details: `Дати: ${body.check_in || '—'} — ${body.check_out || '—'}` });
-      if (body.notes !== undefined) logActions.push({ action: 'notes_change', details: 'Нотатки змінено' });
-      if (body.internal_notes !== undefined) logActions.push({ action: 'internal_notes_change', details: 'Внутрішні нотатки змінено' });
-      if (body.registration_status) logActions.push({ action: 'registration_change', details: `Реєстрація → ${body.registration_status}` });
+      // Перелік подій — чистою функцією (`domain/history-actions`), бо це твердження
+      // про ПОВНОТУ, і його треба вміти перевірити. Стрічка `if`-ів, яка стояла
+      // тут, знала девʼять полів — ні платника, ні прейскуранта, ні знижки
+      // серед них не було, і власник бачив порожню «Історію змін».
+      const logActions = historyActionsFor(body, beforeSnapshot, afterRow);
       for (const log of logActions) {
-        await writeBookingAudit(id, log.action, log.details, actor, beforeSnapshot, afterRow);
+        // Назва номера потребує запиту в `units`, а функція нічого не читає —
+        // саме тому її можна перевірити. Підставляємо тут.
+        let details = log.details;
+        if (log.action === 'unit_change') {
+          const nextRow = await sql.row<any>('SELECT name FROM units WHERE id = ?', [body.unit_id]) as { name?: string } | undefined;
+          details = `Юніт: ${prevUnitLabel || '—'} → ${nextRow?.name || body.unit_id}`;
+        }
+        await writeBookingAudit(id, log.action, details, actor, beforeSnapshot, afterRow);
       }
-    } catch { /* non-critical */ }
+    } catch (e: any) {
+      // Журнал — не причина зірвати саму зміну, але й зникати мовчки він не має:
+      // тут було голе `catch { }`, і порожня історія виглядала б однаково й коли
+      // подій немає, й коли писач падає на кожному рядку.
+      console.error('[booking audit] запис історії не вдався (зміна збережена):', e?.message || e);
+    }
 
     // Auto-generate invoice when payment_status is manually set to 'paid'.
     // Cash marked by the operator counts as confirmed; any other manual "paid"

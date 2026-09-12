@@ -7,6 +7,9 @@ import { withActor, type Actor } from '@core/auth/session';
 import { ownedReservation } from '../data/owned.repo';
 import { serverError } from '@core/http/errors';
 import { addReceptionRegistration, removeReceptionRegistration, setPrimaryRegistration } from '@guests';
+// Реєстрація гостя — це запис у книгу для поліції. Коли й хто його зробив
+// чи зняв — питання, яке ставлять після факту, і відповідати на нього було нічим.
+import { recordBookingChange } from './history';
 
 export const listRegistrations = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
@@ -90,6 +93,13 @@ export const registerGuest = withActor(async (request: NextRequest, { params }: 
     // заселення одразу після останньої реєстрації отримувало 422.
     await updateRegistrationStatus(id);
 
+    await recordBookingChange(sql, {
+      reservationId: id,
+      action: 'registration_added',
+      details: `Зареєстровано: ${String(lastName || '').trim()} ${String(firstName || '').trim()}`.trim(),
+      actor: { id: actor.user.id, name: actor.user.full_name || actor.user.email || actor.user.id },
+    });
+
     return NextResponse.json({ id: regId, guestId }, { status: 201 });
   } catch (e: any) {
     return serverError('modules/bookings/api/reservation-registrations registerGuest', e);
@@ -107,9 +117,22 @@ export const removeRegistration = withActor(async (request: NextRequest, { param
     const regId = searchParams.get('reg_id');
     if (!regId) return NextResponse.json({ error: 'reg_id required' }, { status: 400 });
 
+    // Імʼя читається ДО видалення: після нього в журналі був би рядок
+    // «знято реєстрацію undefined».
+    const who = await sql.row<any>(
+      'SELECT g.first_name, g.last_name FROM guest_registrations gr LEFT JOIN guests g ON g.id = gr.guest_id WHERE gr.id = ?',
+      [regId]);
+
     // З обох книг гостей (Д16) — тим самим писачем, що й реєстрація.
     await removeReceptionRegistration({ reservationId: id, registrationId: regId });
     await updateRegistrationStatus(id);
+
+    await recordBookingChange(sql, {
+      reservationId: id,
+      action: 'registration_removed',
+      details: `Знято реєстрацію: ${`${who?.last_name ?? ''} ${who?.first_name ?? ''}`.trim() || regId}`,
+      actor: { id: actor.user.id, name: actor.user.full_name || actor.user.email || actor.user.id },
+    });
 
     return NextResponse.json({ success: true });
   } catch (e: any) {
