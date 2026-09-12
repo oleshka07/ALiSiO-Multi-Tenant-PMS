@@ -29,10 +29,18 @@
  *
  * ── Скільки це покриває насправді (Р8.14) ────────────────────────────────
  *
- * ДЕСЯТЬ родин, **72 твердження** (68 місць виклику `claim(`; різниця — два
- * цикли: пʼять полів відповіді каналу і чотири види аркуша дня), і **ПʼЯТЬ
- * динамічних маршрутів зі 130**: `/api/bookings/[id]`,
- * `/api/bookings/[id]/invoice`, `/api/guest/[token]`,
+ * ПʼЯТНАДЦЯТЬ родин і дві передпольотні перевірки (ціль, збірка) — **141
+ * місце виклику `claim(`**, а виконаних тверджень більше: частина стоїть у
+ * циклах (пʼять полів відповіді каналу, чотири види аркуша дня, девʼять
+ * маршрутів осі обʼєкта × три). Числа тут МІРЯЮТЬСЯ, а не пам'ятаються:
+ * `grep -c "claim('"` і `grep -o "claim('[^']*'" | sort | uniq -c` — рядок,
+ * переписаний по пам'яті, застаріває на першому ж поповненні, і саме це з ним
+ * тричі й сталось.
+ *
+ * **ДЕСЯТЬ динамічних маршрутів зі 130**: `/api/bookings/[id]`,
+ * `/api/bookings/[id]/invoice`, `/api/bookings/[id]/registrations`,
+ * `/api/guest/[token]`, `/api/guests/[id]`, `/api/guests/[id]/flags`,
+ * `/api/companies/[id]`, `/api/guest-registry/[id]`,
  * `/api/channels/connections/[id]/frame`, `/api/day-sheets/[kind]`.
  *
  * Обидві історичні вади в цьому наборі є — ціль узято правильно, — але поруч
@@ -821,6 +829,76 @@ async function main() {
         });
         claim('броні', noSuchRes.status === 404,
           `рядок, якого немає — 404 (${noSuchRes.status})`);
+      }
+
+      // ── Мета приїзду від ФОРМИ до КНИГИ і назад ──────────
+      //
+      // Гейт `purpose-of-stay.check` стверджує про шар даних; тут — шов,
+      // якого він не бачить: ІМʼЯ ПОЛЯ в тілі запиту. Форма шле
+      // `purposeOfStay`, хендлер його деструктурує — і якби одне з двох імен
+      // було іншим, маршрут віддав би ті самі 201 і 200, а мета зникала б мовчки
+      // — той самий клас, що поля картки гостя вище.
+      //
+      // Двоє гостей навмисно: один назвав мету, другий ні. З одним
+      // твердження зелене й над літералом, який ця зміна й прибирає.
+      const purposeBooking = await body(await call(cookie, '/api/bookings', {
+        method: 'POST',
+        body: JSON.stringify({
+          firstName: 'Мета', lastName: 'Приїзду',
+          unitId: unit.id, checkIn: day(70), checkOut: day(72), nights: 2,
+          adults: 2, status: 'confirmed', source: 'direct', totalPrice: 240,
+        }),
+      }));
+      if (claim('мета приїзду', !!purposeBooking?.id, 'бронь для мети приїзду створено')) {
+        const named = await call(cookie, `/api/bookings/${purposeBooking.id}/registrations`, {
+          method: 'POST',
+          body: JSON.stringify({
+            firstName: 'Відряджений', lastName: 'Названий', documentNumber: 'CC333333',
+            documentType: 'ID_CARD', nationality: 'DE', isPrimary: true,
+            purposeOfStay: 'Business', visaNumber: 'V-2026',
+          }),
+        });
+        const silent = await call(cookie, `/api/bookings/${purposeBooking.id}/registrations`, {
+          method: 'POST',
+          body: JSON.stringify({
+            firstName: 'Мовчазний', lastName: 'НеНазваний', documentNumber: 'DD444444',
+            documentType: 'ID_CARD', nationality: 'DE', isPrimary: false,
+          }),
+        });
+        claim('мета приїзду', named.status === 201 && silent.status === 201,
+          `двоє зареєстрованих (${named.status}/${silent.status})`);
+
+        // Читаємо НАЗАД тим самим екраном, який бачить портьє й з якого
+        // йде CSV для поліції (інваріант 27: прохід читає результат назад).
+        const month = day(70).slice(0, 7);
+        const reg = await body(await call(cookie, `/api/guest-registry?month=${month}&property_id=all`));
+        const rows = (reg?.entries ?? []).filter((e) => e.reservation_id === purposeBooking.id);
+        claim('мета приїзду', rows.length === 2, `у книзі два рядки цієї броні, отримали ${rows.length}`);
+        const namedRow = rows.find((e) => e.last_name === 'Названий');
+        const silentRow = rows.find((e) => e.last_name === 'НеНазваний');
+        claim('мета приїзду', namedRow?.purpose_of_stay === 'Business' && namedRow?.visa_number === 'V-2026',
+          `назване доїхало від форми до книги (${namedRow?.purpose_of_stay ?? 'зникло'} / ${namedRow?.visa_number ?? 'зникло'})`);
+        claim('мета приїзду', !silentRow?.purpose_of_stay,
+          `не назвали — у книзі ПОРОЖНЬО, а не вигадане (${JSON.stringify(silentRow?.purpose_of_stay)})`);
+
+        // І виправно: доти помилку в меті приїзду не міняв ніхто.
+        if (silentRow?.id) {
+          const fix = await call(cookie, `/api/guest-registry/${silentRow.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ action: 'update_purpose', purposeOfStay: 'Medical', visaNumber: '' }),
+          });
+          const after = await body(await call(cookie, `/api/guest-registry?month=${month}&property_id=all`));
+          const fixed = (after?.entries ?? []).find((e) => e.id === silentRow.id);
+          claim('мета приїзду', fix.status === 200 && fixed?.purpose_of_stay === 'Medical',
+            `правка з реєстру лягла (${fix.status}, ${fixed?.purpose_of_stay ?? 'порожньо'})`);
+        }
+
+        const alienFix = await call(cookie, '/api/guest-registry/rg_definitely_not_ours', {
+          method: 'PATCH',
+          body: JSON.stringify({ action: 'update_purpose', purposeOfStay: 'Hack', visaNumber: '' }),
+        });
+        claim('мета приїзду', alienFix.status === 404,
+          `чужий рядок книги — 404, не 500 (${alienFix.status})`);
       }
 
       // ── Гостьовий портал ───────────────────────────────────────────────
