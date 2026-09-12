@@ -51,13 +51,79 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const strict = process.argv.includes('--strict');
 
 /**
- * Той самий перелік префіксів, що пропускає `check-route-guards`, плюс `cron`.
+ * Що вважається «без сесії» — питається в `src/proxy.ts`, а не переписується.
  *
- * Крон — теж «без сесії»: його будить розклад, а не людина, і право він
- * доводить секретом із оточення. Той гейт його не бачить, бо він не під
- * вартою й не в списку публічних; тут він на місці.
+ * ── Четверта брехня цього гейта, і найдорожча ───────────────────────────
+ *
+ * Тут стояв РУКОПИСНИЙ перелік префіксів «той самий, що пропускає
+ * check-route-guards, плюс cron». Два рукописні списки в двох файлах — і
+ * обидва копії третього, справжнього, у `proxy.ts`.
+ *
+ * Розійшлися вони рівно так, як обіцяли. 12.09.2026 зʼявився гостьовий
+ * застосунок: пʼять публічних маршрутів під `/api/apps/guest/`, які приймають
+ * бронювання і шукають у персональних даних. `proxy.ts` про них знав — це він
+ * пускає їх без сесії. Цей гейт не знав НІЧОГО: префікса в списку немає, тож
+ * жоден із пʼяти навіть не потрапив на перевірку. Гейт при цьому був зелений
+ * і рапортував «усі названі» — про 42 маршрути з 47.
+ *
+ * Тому список більше не переписується. Він ЧИТАЄТЬСЯ з `proxy.ts`: там він
+ * один, і саме він вирішує, у кого сесії не буде. Новий публічний застосунок
+ * тепер потрапляє під цей гейт тим самим рядком, яким його відкривають, — і
+ * не потрапити не може.
+ *
+ * Крон дописується окремо, і це не виняток, а та сама властивість з іншого
+ * боку: `/api/cron/` у `proxy.ts` є, але його маршрути доводять право
+ * секретом із оточення, а не орендарем у запиті.
  */
-const PUBLIC_PREFIX = /^(widget|booking|guest|public|webhooks?|health|cron|apps\/winhotel-import\/snapshots|apps\/kiosk)(\/|$)/;
+function proxyList(proxy, name) {
+  // Масив читається до `];` НА ПОЧАТКУ РЯДКА, а не до першої дужки: перша
+  // редакція брала `[\s\S]*?\]` і спинялась на дужці всередині коментаря —
+  // з пʼятдесяти префіксів у неї потрапляло девʼять, і гейт мовчки перевіряв
+  // третину маршрутів. Той самий клас, що весь цей файл документує: список,
+  // здобутий візерунком, тихо коротший за справжній.
+  const start = proxy.indexOf(`const ${name}`);
+  if (start < 0) return null;
+  const end = proxy.indexOf('\n];', start);
+  if (end < 0) return null;
+  const body = stripComments(proxy.slice(start, end));
+  return [...body.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+}
+
+function publicPathsFromProxy() {
+  const proxy = fs.readFileSync(path.join(ROOT, 'src', 'proxy.ts'), 'utf8');
+  const prefixes = proxyList(proxy, 'PUBLIC_PREFIXES');
+  const exact = proxyList(proxy, 'PUBLIC_EXACT');
+  // Порожньо — це не «публічних немає», це «я не впізнав файл». Мовчазний
+  // нуль тут означав би гейт, який перевіряє нуль маршрутів і звітує чисто
+  // (інваріант 13).
+  if (!prefixes || !exact) {
+    console.error('✗ не знайдено PUBLIC_PREFIXES/PUBLIC_EXACT у src/proxy.ts — гейт не знає, що перевіряти');
+    process.exit(1);
+  }
+  const api = (list) => list
+    .filter((v) => v.startsWith('/api/'))
+    .map((v) => v.replace(/^\/api\//, '').replace(/\/$/, ''));
+  const out = { prefixes: api(prefixes), exact: api(exact) };
+  if (out.prefixes.length < 5) {
+    console.error(`✗ у PUBLIC_PREFIXES знайдено лише ${out.prefixes.length} шляхів /api/ — файл прочитано не до кінця`);
+    process.exit(1);
+  }
+  return out;
+}
+
+// Обчислюється НИЖЧЕ, поруч із використанням: `stripComments` оголошено
+// `const` далі за файлом, і виклик звідси падав на «Cannot access before
+// initialization». Порядок у модулі — не стиль, а те, що виконується.
+let PROXY_PUBLIC;
+
+/** Чи цей маршрут відкритий без сесії — за `proxy.ts`. */
+function isPublicRoute(name) {
+  // `auth/` пропускається: логін і вихід сесії ще не мають за побудовою, і
+  // орендаря вони не називають, бо саме його й встановлюють.
+  if (name.startsWith('auth/')) return false;
+  if (PROXY_PUBLIC.exact.includes(name)) return true;
+  return PROXY_PUBLIC.prefixes.some((p) => name === p || name.startsWith(`${p}/`));
+}
 
 /**
  * Двері, які доводять право ПЕРЕПУСТКОЮ в самому запиті.
@@ -94,6 +160,14 @@ const TOKEN_DOORS = [
   // (інваріант 14), а не в `WHERE`; функція названа тут, бо без неї рядок
   // парування не читається взагалі (src/apps/kiosk/data/devices.repo.ts).
   'pairingByCode',
+  // Ключ ГОСТЬОВОГО ЗАСТОСУНКУ в тілі запиту (0414): рядок, який гість
+  // приносить із наліпки на склі. `propertyByAppKey` читає обʼєкт під
+  // `runWithPublicToken`, тобто перепустка стоїть на ЗʼЄДНАННІ, а не в
+  // `WHERE` (інваріант 14) — і поки вона не названа, жоден рядок не
+  // читається. Названо саме цю функцію, а не `readGuestAppKey`: та лише
+  // перевіряє ФОРМУ рядка й нічого не гейтить, тож маршрут із нею одною
+  // виглядав би захищеним, не бувши ним (src/apps/guest-app/data/property.repo.ts).
+  'propertyByAppKey',
 ];
 
 /**
@@ -205,15 +279,40 @@ function handlerParts(routeFile) {
   const imported = new Set();
   for (const m of raw.matchAll(/import\s*\{([^}]*)\}\s*from/g)) {
     for (const part of m[1].split(',')) {
+      // `import { a as b }` — у файлі маршруту живе `b`, і саме його шукають
+      // нижче в тексті поруч з `export`.
       const name = part.trim().split(/\s+as\s+/).pop()?.trim();
       if (name) imported.add(name);
+    }
+  }
+
+  // ── І ДРУГИЙ спосіб написати той самий маршрут ─────────────────────────
+  //
+  //     export { findStay as POST } from '@/apps/guest-app/api/lookup.handlers';
+  //
+  // Рівноцінний до `import … ; export const POST = …`, і Next не розрізняє їх
+  // узагалі. Гейт розрізняв: він шукав `import {`, не знаходив нічого, робив
+  // висновок «хендлер написаний тут» і судив маршрут за текстом файла з
+  // одного рядка. Пʼять публічних маршрутів гостьового застосунку через це
+  // виходили «не доводять право НІЧИМ», хоч кожен читає обʼєкт під
+  // перепусткою — а решта, якби хтось написав так само, виходила б навпаки
+  // непоміченою.
+  //
+  // Це §3.2.1 дослівно: гейт стеріг ВІЗЕРУНОК написання, а не властивість
+  // «маршрут веде в цей модуль». Ім'я тут береться ДО `as` — саме його
+  // експортує модуль, тоді як в `import` значуще те, що після.
+  const reexported = new Set();
+  for (const m of raw.matchAll(/export\s*\{([^}]*)\}\s*from/g)) {
+    for (const part of m[1].split(',')) {
+      const name = part.trim().split(/\s+as\s+/)[0]?.trim();
+      if (name && name !== 'default') { imported.add(name); reexported.add(name); }
     }
   }
   // Що з імпортованого маршрут справді віддає як хендлер: або напряму
   // (`export const GET = getWidgetConfig`), або в обгортці
   // (`export const GET = async (…) => getGuestPortal(…)`).
-  const used = [...imported].filter((name) =>
-    new RegExp(String.raw`export[\s\S]{0,400}?\b${name}\b`).test(raw));
+  const used = [...imported].filter((name) => reexported.has(name)
+    || new RegExp(String.raw`export[\s\S]{0,400}?\b${name}\b`).test(raw));
   // Хендлер написаний у самому файлі маршруту — його текст і є весь текст,
   // і він же текст хендлера: розділяти нічого.
   if (used.length === 0) return { modules: out, bodies: out };
@@ -270,13 +369,15 @@ const stripComments = (src) => src
   .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
   .replace(/(^|[^:\\])\/\/[^\n]*/g, (m, p) => p + ' '.repeat(m.length - p.length));
 
+PROXY_PUBLIC = publicPathsFromProxy();
+
 const routes = [];
 const guarded = [];
 for (const file of walk(path.join(ROOT, 'src', 'app', 'api'))) {
   if (path.basename(file) !== 'route.ts') continue;
   const rel = path.relative(ROOT, file).split(path.sep).join('/');
   const name = rel.replace(/^src\/app\/api\//, '').replace(/\/route\.ts$/, '');
-  if (!PUBLIC_PREFIX.test(name)) continue;
+  if (!isPublicRoute(name)) continue;
 
   const parts = handlerParts(rel);
   const sources = parts.modules.map(stripComments).join('\n');

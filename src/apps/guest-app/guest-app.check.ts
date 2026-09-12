@@ -784,6 +784,103 @@ try {
     + `${JSON.stringify(otherHouse.body)}) — прийняти те, чого немає, не можна`);
   console.log('  ok  14. бронь без прийнятих умов не створюється; розсилка лишається добровільною');
 
+  // ── 15. Готель на СВОЇЙ системі: не продаємо, а передаємо ──────────────
+  //
+  // Фаза `external` означає, що наявність знає чужа система, а наше дзеркало
+  // відстає на дельту. Продати звідси номер — це продати кімнату, якої вже
+  // може не бути, за ціною, якої готель не називав. Обидві помилки мовчазні.
+  //
+  // Осі, і всі три обома боками:
+  //
+  //   ПРОДАЖ — той самий обʼєкт із тими самими кімнатами й цінами віддає
+  //     пропозиції у фазі `alisio` і НЕ віддає у фазі `external`. Один стан
+  //     нічого не доводив би: порожній список буває й від відсутності цін;
+  //   ЗАПИС — `hold` у фазі `external` відмовляє названо, а не пише порожню
+  //     бронь;
+  //   ПЕРЕДАЧА — замість списку їде адреса сторінки готелю, і саме та, яку
+  //     готель вписав.
+  const HOTEL_PAGE = 'https://buchung.example.invalid/onlinebuchung/';
+  const external = async (on: boolean) => runWithOrganization(A, () => sql.run(
+    'UPDATE properties SET system_of_record = ?, kiosk_walkin_url = ? WHERE id = ? AND organization_id = ?',
+    [on ? 'external' : 'alisio', on ? HOTEL_PAGE : null, PA, A]));
+
+  const offersCall = (body: Record<string, unknown>) =>
+    gate(booking.listOffers, 'offers', { key: keyA, from: day(6), to: day(7), adults: 2, ...body });
+
+  const selling = await offersCall({});
+  assert.ok((selling.body.offers as unknown[]).length > 0,
+    'у фазі `alisio` обʼєкт нічого не продає — сцена нижче міряла б не те');
+  assert.strictEqual(selling.body.handoff, null, 'наш готель віддає чужу адресу для бронювання');
+
+  await external(true);
+  const handedOff = await offersCall({});
+  assert.deepStrictEqual(handedOff.body.offers, [],
+    `готель на чужій системі продає з нашого списку: ${JSON.stringify(handedOff.body.offers)} — `
+    + 'ці кімнати могли бути продані там пʼять хвилин тому');
+  assert.strictEqual(handedOff.body.handoff, HOTEL_PAGE,
+    `адреса сторінки готелю не доїхала: ${handedOff.body.handoff}`);
+
+  const cannotHold = await gate(booking.holdOffer, 'hold', {
+    key: keyA, from: day(6), to: day(7), adults: 2, unitTypeId: 'ga_t1', ratePlanId: null,
+    firstName: 'Hans', lastName: 'Extern', phone: '+49 170 5550002', lang: 'de',
+    consents: [{ kind: 'terms', version: 'v2' }, { kind: 'data_processing', version: 'v2' }],
+  });
+  assert.strictEqual(cannotHold.status, 409,
+    `бронь у готелю на чужій системі пройшла (${cannotHold.status}) — вона розійшлася б із його базою`);
+  console.log('  ok  15. готель на чужій системі не продає з нашого списку, а передає на свою сторінку');
+
+  // ── 16. «Я щойно забронював»: одна бронь, свій дім, той самий ключ ──────
+  //
+  // Гість забронював у готелю і повернувся сказати про це. Заводиться
+  // попередня бронь із ключем походження — за ним її потім знайде звірка.
+  //
+  //   ПОВТОР — та сама заявка двічі дає ТУ САМУ бронь, не другу. Це тримає
+  //     UNIQUE на `external_ref`, і сцена стверджує саме наслідок;
+  //   ДІМ — той самий номер підтвердження в сусідньому готелі це інша бронь,
+  //     і чужу нам не віддають (інваріант 5);
+  //   КЛЮЧ — рівно той вигляд, що пише кіоск. Два різні вигляди означали б,
+  //     що звірка мусить знати про обидва, а забути про другий — найлегший
+  //     спосіб дістати дубль.
+  const { walkinRef } = await import('../kiosk/api/walkin.handlers.ts');
+  const { claimRef } = await import('./domain/claim.ts');
+  assert.strictEqual(claimRef('55123'), walkinRef('55123'),
+    'ворота і кіоск пишуть РІЗНІ ключі походження — звірка знайде лише один, і в базі буде дубль');
+
+  const claimBody = {
+    key: keyA, confirmation: 'OB-771', lastName: 'Ankunft', firstName: 'Ingo',
+    checkIn: today, adults: 2,
+  };
+  const first = await gate(booking.claimBooking, 'claim', claimBody);
+  assert.strictEqual(first.status, 201, `заявку не прийнято: ${JSON.stringify(first.body)}`);
+
+  const claimed = await runWithOrganization(A, () => sql.row<any>(
+    `SELECT organization_id, property_id, unit_id, status, source, external_ref, total_price
+       FROM reservations WHERE guest_page_token = ?`, [first.body.token]));
+  assert.strictEqual(claimed.organization_id, A, 'у заявки порожній орендар (інваріант 12)');
+  assert.strictEqual(claimed.status, 'tentative', `заявка створила бронь зі статусом «${claimed.status}»`);
+  assert.strictEqual(claimed.external_ref, 'winhotel-ob:OB-771',
+    `ключ походження не той: ${claimed.external_ref} — звірка шукає саме за ним`);
+  assert.strictEqual(claimed.unit_id, null,
+    'заявка призначила номер — яку кімнату продав готель, знає ГОТЕЛЬ, і ця могла піти іншому');
+  assert.strictEqual(Number(claimed.total_price), 0,
+    'заявка назвала свою суму — гість щойно бачив іншу в готелю (інваріант 17)');
+
+  const again = await gate(booking.claimBooking, 'claim', claimBody);
+  assert.strictEqual(again.status, 200, `повтор заявки дав ${again.status}, а мав віддати ту саму бронь`);
+  assert.strictEqual(again.body.token, first.body.token,
+    'повтор заявки видав ДРУГУ бронь — на одне перебування їх стало дві');
+  assert.strictEqual(again.body.created, false, 'повтор не позначено повтором');
+
+  const howMany = await runWithOrganization(A, () => sql.row<any>(
+    "SELECT COUNT(*) AS n FROM reservations WHERE organization_id = ? AND external_ref = 'winhotel-ob:OB-771'", [A]));
+  assert.strictEqual(Number(howMany.n), 1,
+    `на один номер підтвердження ${howMany.n} броней — дельта звірятиметься з двома`);
+  console.log('  ok  16. заявка «щойно забронював»: одна бронь, без номера, без ціни, ключ як у кіоска');
+
+  // Повертаємо обʼєкт у нашу фазу — інакше наступні сцени (їх поки немає, але
+  // будуть) міряли б готель, який не продає.
+  await external(false);
+
   console.log('guest-app: ключ називає один будинок — свій, і сторінка говорить мовою телефона');
 } finally {
   for (const org of [A, B]) {

@@ -29,7 +29,7 @@ import { HOLD_MINUTES } from '../domain/hold';
 import type { StayOffer } from '../domain/port';
 import { GUEST_STRINGS, type GuestLang } from './translations';
 
-type Stage = 'dates' | 'rooms' | 'details' | 'confirm';
+type Stage = 'dates' | 'rooms' | 'details' | 'confirm' | 'claim';
 
 /** Текст згоди, який ЦЕЙ готель справді написав (ніяких літералів у коді). */
 interface ConsentOffer {
@@ -82,6 +82,7 @@ export function GuestStay({ appKey, lang, onBack }: {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [held, setHeld] = useState<Held | null>(null);
+  const [confirmationNo, setConfirmationNo] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -181,6 +182,42 @@ export function GuestStay({ appKey, lang, onBack }: {
     }
   }
 
+  /**
+   * «Я щойно забронював на сторінці готелю» (КІ8).
+   *
+   * Готель у фазі `external` продає в себе, і його бронь прийде до нас
+   * дельтою за чверть години. Гість стоїть перед дверима зараз — тож ми
+   * заводимо ПОПЕРЕДНЮ бронь із номером підтвердження як ключем, і гість
+   * одразу йде заселятись. Дельта потім знайде її за тим самим ключем.
+   */
+  async function claim() {
+    setMessage(null);
+    setBusy(true);
+    try {
+      const { ok, status, json } = await post('claim', {
+        confirmation: confirmationNo, firstName, lastName,
+        checkIn: from, checkOut: to, adults,
+      });
+      if (!ok) {
+        // Рід відмови приїжджає СЛОВОМ, і речення до нього добирає екран:
+        // текст із сервера написаний мовою розробки (інваріант 19).
+        const reason = String(json.error ?? '');
+        setMessage(
+          reason === 'need_confirmation' ? s.needConfirmation
+            : reason === 'need_last_name' ? s.needLastName
+              : reason === 'need_check_in' ? s.needCheckIn
+                : reason === 'check_in_out_of_window' ? s.checkInOutOfWindow
+                  : refusalText(status));
+        return;
+      }
+      window.location.href = `/guest/${String(json.token)}`;
+    } catch {
+      setMessage(s.bookingFailed);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function confirm() {
     if (!held) return;
     setMessage(null);
@@ -244,6 +281,22 @@ export function GuestStay({ appKey, lang, onBack }: {
               */}
               <a className="guest-quiet" href={handoff} target="_blank" rel="noreferrer">{s.handoffOpen}</a>
             </div>
+          )}
+          {/*
+            Повернувшись із чужої сторінки, гість каже, що забронював, — і
+            заселяється. Кнопка стоїть ПОРУЧ із посиланням, а не після нього:
+            він повертається в цю ж вкладку і має побачити наступний крок, а
+            не шукати його.
+          */}
+          {handoff && (
+            <button
+              type="button"
+              className="guest-card"
+              data-primary="true"
+              onClick={() => { setStage('claim'); setMessage(null); }}
+            >
+              <span className="guest-card-title">{s.justBooked}</span>
+            </button>
           )}
           {offers.map((o) => (
             <button
@@ -331,6 +384,39 @@ export function GuestStay({ appKey, lang, onBack }: {
           <button type="submit" className="guest-card" data-primary="true"
             disabled={busy || !allRequiredTicked}>
             <span className="guest-card-title">{busy ? s.booking : s.bookNow}</span>
+          </button>
+          <button type="button" className="guest-quiet" onClick={() => setStage('rooms')}>{s.back}</button>
+        </form>
+      )}
+
+      {stage === 'claim' && (
+        <form className="guest-form" onSubmit={(e) => { e.preventDefault(); void claim(); }}>
+          <p className="guest-lead">{s.claimTitle}</p>
+          <p className="guest-note">{s.claimLead}</p>
+          <label className="guest-field">
+            <span className="guest-label">{s.firstName}</span>
+            <input className="guest-input" type="text" autoComplete="given-name"
+              value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+          </label>
+          <label className="guest-field">
+            <span className="guest-label">{s.lastName}</span>
+            <input className="guest-input" type="text" autoComplete="family-name"
+              value={lastName} onChange={(e) => setLastName(e.target.value)} />
+          </label>
+          <label className="guest-field">
+            <span className="guest-label">{s.confirmationNo}</span>
+            <input className="guest-input" type="text" inputMode="text"
+              value={confirmationNo} onChange={(e) => setConfirmationNo(e.target.value)} />
+            <span className="guest-card-help">{s.confirmationHelp}</span>
+          </label>
+          <label className="guest-field">
+            <span className="guest-label">{s.arrival}</span>
+            <input className="guest-input" type="date" value={from}
+              onChange={(e) => setFrom(e.target.value)} />
+          </label>
+          {message && <p className="guest-note" role="status">{message}</p>}
+          <button type="submit" className="guest-card" data-primary="true" disabled={busy}>
+            <span className="guest-card-title">{busy ? s.claiming : s.claimSubmit}</span>
           </button>
           <button type="button" className="guest-quiet" onClick={() => setStage('rooms')}>{s.back}</button>
         </form>

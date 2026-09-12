@@ -101,3 +101,22 @@ export interface StaySource {
   readonly kind: 'core' | 'handoff';
   offers(query: StayQuery): Promise<StayOffer[]>;
 }
+
+/**
+ * Хто обслуговує цей обʼєкт — за `properties.system_of_record`.
+ *
+ * Функція, а не `if` у хендлері, з тієї ж причини, що й сам порт: вибір
+ * джерела мусить бути ОДИН на весь застосунок. Два `if` в двох хендлерах
+ * розійдуться в тижні, коли зʼявиться третя фаза, і один екран
+ * продаватиме те, чого другий продавати не дає.
+ *
+ * Невідоме значення — `core`, і це свідомо: `alisio` це дефолт колонки, а
+ * готель, чия книга в нас, мусить продаватись навіть тоді, коли в полі
+ * зʼявилось слово, якого ми ще не знаємо. Протилежний дефолт зупинив би
+ * продаж мовчки.
+ */
+export function sourceFor(systemOfRecord: string, sources: {
+  core: StaySource; handoff: StaySource;
+}): StaySource {
+  return systemOfRecord === 'external' ? sources.handoff : sources.core;
+}

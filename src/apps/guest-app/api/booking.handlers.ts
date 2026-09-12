@@ -24,8 +24,13 @@ import { propertyByAppKey } from '../data/property.repo';
 import { readGuestAppKey } from '../domain/key';
 import { activeConsentTexts } from '@guests/kernel';
 import { coreSource } from '../source/core.source';
+import { handoffSource } from '../source/handoff.source';
+import { sourceFor } from '../domain/port';
 import { GUEST_APP_CONSENTS, blocks } from '../domain/consents';
 import { holdStay, confirmStay } from '../data/booking.repo';
+import { claimStay } from '../data/claim.repo';
+import { readClaim } from '../domain/claim';
+import { stayWindow } from '@/apps/kiosk/domain/search';
 
 /** Хто стукає — для ліміту; той самий довід, що в пошуку. */
 function clientKey(request: Request, action: string): string {
@@ -79,17 +84,17 @@ export async function listOffers(request: Request): Promise<Response> {
     const home = await homeFrom(body);
     const { from, to, adults } = datesFrom(body);
 
-    // Джерело правди обирає сам обʼєкт: готель на своїй системі обліку знає
-    // наявність ТАМ, і питати її в нас означало б продавати чужі кімнати.
-    // Адаптер `handoff` — крок 5; доти такий готель чесно каже, що бронювати
-    // тут не можна, замість того щоб показати порожній список.
-    if (home.systemOfRecord === 'external') {
-      return NextResponse.json({ offers: [], handoff: home.walkinUrl ?? null });
-    }
+    // Джерело правди обирає сам обʼєкт, і обирає його ПОРТ, а не цей
+    // хендлер: готель на своїй системі обліку знає наявність ТАМ, і питати її
+    // в нас означало б продавати чужі кімнати. `handoff` віддає порожньо
+    // завжди — це відповідь «продавати звідси не можна», і екран на неї
+    // показує сторінку готелю.
+    const source = sourceFor(home.systemOfRecord, { core: coreSource, handoff: handoffSource });
+    const away = source.kind === 'handoff' ? (home.walkinUrl ?? null) : null;
 
     const lang = String(body.lang ?? 'de');
     const { offers, consents } = await runWithOrganization(home.organizationId, async () => ({
-      offers: await coreSource.offers({
+      offers: await source.offers({
         organizationId: home.organizationId, propertyId: home.propertyId, from, to, adults,
       }),
       // Умови їдуть ТІЄЮ Ж відповіддю, що й номери: екран показує галочки на
@@ -105,7 +110,7 @@ export async function listOffers(request: Request): Promise<Response> {
           required: blocks(t.consentKind),
         })),
     }));
-    return NextResponse.json({ offers, consents, handoff: null });
+    return NextResponse.json({ offers, consents, handoff: away });
   } catch (error) {
     return handleError('apps/guest listOffers', error, 'Не вдалося показати вільні номери');
   }
@@ -121,7 +126,11 @@ export async function holdOffer(request: Request): Promise<Response> {
 
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const home = await homeFrom(body);
-    if (home.systemOfRecord === 'external') refuse('Бронювання цього готелю — на його власній сторінці', 409);
+    // Писати бронь можна лише там, де книга наша. Готель у фазі `external`
+    // має свою сторінку, і бронь, заведена тут, розійшлася б із його базою.
+    if (sourceFor(home.systemOfRecord, { core: coreSource, handoff: handoffSource }).kind === 'handoff') {
+      refuse('Бронювання цього готелю — на його власній сторінці', 409);
+    }
     const { from, to, adults } = datesFrom(body);
 
     const held = await runWithOrganization(home.organizationId, () => holdStay({
@@ -168,5 +177,47 @@ export async function confirmHold(request: Request): Promise<Response> {
     return NextResponse.json({ confirmed: ok });
   } catch (error) {
     return handleError('apps/guest confirmHold', error, 'Не вдалося підтвердити бронювання');
+  }
+}
+
+/**
+ * `POST /api/apps/guest/claim` — «я щойно забронював на сторінці готелю».
+ *
+ * Готель у фазі `external` продає у себе, і його бронь прийде дельтою за
+ * чверть години. Гість стоїть перед дверима зараз — тому заводиться
+ * попередня бронь із ключем походження, і гість одразу йде заселятись.
+ *
+ * Ліміт той самий, що на утриманні номера: кожна успішна заявка це рядок у
+ * `reservations`, і без ліміту сторінка стає формою для засмічення бази.
+ */
+export async function claimBooking(request: Request): Promise<Response> {
+  try {
+    const limit = await checkRateLimit(clientKey(request, 'guest_hold'), 'guest_hold', 5, 15);
+    if (!limit.allowed) refuse('Забагато спроб. Спробуйте за чверть години', 429);
+
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const home = await homeFrom(body);
+
+    // Заявка має сенс ЛИШЕ там, де книгу веде чужа система. Готель, чия книга
+    // наша, має власний крок бронювання — і бронь, заведена цим шляхом, була б
+    // порожньою: без номера, без ціни, без ночей у продажу.
+    if (sourceFor(home.systemOfRecord, { core: coreSource, handoff: handoffSource }).kind !== 'handoff') {
+      refuse('Цей готель бронюється тут же, на цій сторінці', 409);
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const read = readClaim(body, stayWindow(today));
+    // Причина відмови названа родом, а не текстом: речення гостю добирає
+    // екран зі свого словника (інваріант 19 — тут говорять німецькою).
+    if (!read.ok) refuse(read.reason, 400);
+
+    const claimed = await runWithOrganization(home.organizationId,
+      () => claimStay(home.organizationId, home.propertyId, read.claim));
+
+    return NextResponse.json({
+      token: claimed.token, created: claimed.created,
+    }, { status: claimed.created ? 201 : 200 });
+  } catch (error) {
+    return handleError('apps/guest claimBooking', error, 'Не вдалося прийняти бронювання');
   }
 }

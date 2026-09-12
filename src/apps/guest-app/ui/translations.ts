@@ -126,6 +126,22 @@ export interface GuestStrings {
   checkDetails: string;
   payAtReception: string;
   bookingFailed: string;
+
+  // ── Готель, чию книгу веде своя система: передача і заявка (КІ8) ────────
+  /** «Я щойно забронював у вас на сторінці» — кнопка після повернення. */
+  justBooked: string;
+  claimTitle: string;
+  claimLead: string;
+  confirmationNo: string;
+  confirmationHelp: string;
+  claimSubmit: string;
+  claiming: string;
+  /** Номер підтвердження не названо — без нього бронь не звʼязати з готельною. */
+  needConfirmation: string;
+  needLastName: string;
+  needCheckIn: string;
+  /** Дата заїзду поза вікном: ця сторінка про сьогодні-завтра, не про липень. */
+  checkInOutOfWindow: string;
 }
 
 const de: GuestStrings = {
@@ -180,6 +196,18 @@ const de: GuestStrings = {
   checkDetails: 'Bitte prüfen Sie Ihre Angaben.',
   payAtReception: 'Bezahlt wird an der Rezeption — bei der Anreise oder bei der Abreise.',
   bookingFailed: 'Die Buchung hat nicht geklappt. Bitte erneut versuchen oder die Rezeption anrufen.',
+
+  justBooked: 'Ich habe gerade gebucht',
+  claimTitle: 'Ihre Buchung bestätigen',
+  claimLead: 'Bitte geben Sie Ihren Namen und die Buchungsnummer aus der Bestätigung ein.',
+  confirmationNo: 'Buchungsnummer',
+  confirmationHelp: 'Aus der Bestätigung des Hotels.',
+  claimSubmit: 'Weiter zum Check-in',
+  claiming: 'Wird geprüft…',
+  needConfirmation: 'Bitte geben Sie die Buchungsnummer ein.',
+  needLastName: 'Bitte geben Sie Ihren Nachnamen ein.',
+  needCheckIn: 'Bitte geben Sie das Anreisedatum ein.',
+  checkInOutOfWindow: 'Diese Seite ist für die Anreise heute oder morgen. Bitte wenden Sie sich an die Rezeption.',
 };
 
 const en: GuestStrings = {
@@ -234,6 +262,18 @@ const en: GuestStrings = {
   checkDetails: 'Please check your details.',
   payAtReception: 'Payment is at the reception — on arrival or on departure.',
   bookingFailed: 'The booking did not go through. Please try again or call the reception.',
+
+  justBooked: 'I have just booked',
+  claimTitle: 'Confirm your booking',
+  claimLead: 'Please enter your name and the booking number from the confirmation.',
+  confirmationNo: 'Booking number',
+  confirmationHelp: 'From the hotel’s confirmation.',
+  claimSubmit: 'Continue to check-in',
+  claiming: 'Checking…',
+  needConfirmation: 'Please enter the booking number.',
+  needLastName: 'Please enter your surname.',
+  needCheckIn: 'Please enter the arrival date.',
+  checkInOutOfWindow: 'This page is for arrivals today or tomorrow. Please contact the reception.',
 };
 
 export const GUEST_STRINGS: Record<GuestLang, GuestStrings> = { de, en };
