@@ -55,6 +55,7 @@ import { insertingStay, UnitOverlap } from '@bookings/overlap';
 import { recalcPaymentStatusFromFolio } from '@bookings/kernel';
 import { noteAvailabilityChanged } from '@channels/outbox';
 import { fingerprintOf, findRef, putRef, refsOf, stage, stagedLnrs, stagingCounts, countRefs } from '../data/refs.repo';
+import { adoptableBy, preBookingRef } from './adopt';
 import { readAggregates, readJsonl, snapshotDate } from './read';
 import {
   EXTERNAL_PREFIX, bookingStatus, channelOf, countryCode, gender, groupCodeOf, guestName, household, internalNotes, isCompany,
@@ -67,6 +68,15 @@ export interface EntityCount {
   winhotel: number;
   imported: number;
   updated: number;
+  /**
+   * Скільки попередніх броней воріт/кіоска цей прохід УСИНОВИВ замість того,
+   * щоб завести другий рядок на те саме перебування (`adopt.ts`).
+   *
+   * Окремо від `imported` навмисно: «усиновлено» і «заведено» — різні події,
+   * і якщо звірка колись перестане спрацьовувати, це буде видно як нуль тут
+   * при ненульовому там, а не розчиниться в одній сумі.
+   */
+  adopted?: number;
   staged: number;
   skipped: Record<string, number>;
 }
@@ -457,6 +467,50 @@ export async function runImport(opts: ImportOptions): Promise<ImportReport> {
         importedBookings.push({ lnr: b.lnr, id: known.our_id, propertyId, companyFolio: null });
         continue;
       }
+      // ── Попередня бронь воріт/кіоска: УСИНОВИТИ, а не подвоїти ─────────
+      //
+      // Гість, який забронював у власному онлайн-модулі готелю і назвався
+      // нам, лишив по собі `tentative` з ключем `winhotel-ob:<номер>`. Той
+      // самий номер приносить знімок у довіднику посилань — отже це ОДНЕ
+      // перебування, і другий рядок на нього був би дублем, якого не спіймає
+      // ніщо (попередня бронь без `unit_id` ні з чим не перетинається).
+      //
+      // Лише точний збіг ключа; усе інше — як було (див. `adopt.ts`).
+      const preRef = preBookingRef(channel);
+      const adopt = preRef ? await adoptableBy(sql, org, propertyId, preRef) : null;
+      if (adopt) {
+        // Оновлення, а не вставка: `id` лишається тим самим, бо гість уже
+        // пішов заселятись за токеном гостьової сторінки цієї броні, і
+        // реєстрацію з документом він міг уже заповнити. Новий рядок забрав
+        // би в нього і те, і те.
+        //
+        // `guest_page_token`, `registration_status` і `guest_id` у цьому
+        // UPDATE не згадуються взагалі — з тієї ж причини, що й у гілці
+        // оновлення вище: стан гостя належить гостю, а не знімку.
+        await sql.run(
+          `UPDATE reservations
+              SET unit_id = ?, unit_type_id = ?, check_in = ?, check_out = ?, nights = ?,
+                  adults = ?, children = ?, infants = ?, status = ?, source = ?,
+                  total_price = ?, internal_notes = ?, deposit_amount = ?, deposit_status = ?,
+                  company_id = ?, external_uid = ?, hostex_channel_type = ?, hostex_reservation_code = ?,
+                  updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND organization_id = ?`,
+          [fields.unit_id, fields.unit_type_id, fields.check_in, fields.check_out, fields.nights,
+            fields.adults, fields.children, fields.infants, fields.status, fields.source,
+            fields.total_price, fields.internal_notes, fields.deposit_amount, fields.deposit_status,
+            fields.company_id, `${EXTERNAL_PREFIX}${b.lnr}`, fields.channel_type, fields.channel_code,
+            adopt.id, org]);
+        await noteAvailabilityChanged(sql, { propertyId, unitTypeId: typeRow.id, from: fields.check_in, to: fields.check_out });
+        await putRef(org, 'reservation', b.lnr, adopt.id, fp, takenAtKey);
+        bookingRefs.set(b.lnr, { entity: 'reservation', winhotel_lnr: b.lnr, our_id: adopt.id, fingerprint: fp, source_taken_at: takenAtKey });
+        // Окремий лічильник, не `imported`: «усиновлено» і «заведено» — різні
+        // події, і перша мусить бути видна у звіті, інакше ніхто не помітить,
+        // що звірка перестала спрацьовувати.
+        bookings.adopted = (bookings.adopted ?? 0) + 1;
+        importedBookings.push({ lnr: b.lnr, id: adopt.id, propertyId, companyFolio: null });
+        continue;
+      }
+
       const id = crypto.randomUUID();
       await insertingStay(async () => {
         await sql.run(

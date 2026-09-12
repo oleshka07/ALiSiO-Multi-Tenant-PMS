@@ -686,6 +686,154 @@ try {
   assert.strictEqual(dres.status, 201, `друга дельта за добу: очікували 201, отримали ${dres.status}`);
   console.log('  ok  Б8. дельта: без вікна — відмова в імпорті й 400 на прийомі; оновлює лише бронь у вікні, не скасовує поза ним; старіший повний знімок її не відкочує; дельти не рахуються «один на добу»');
 
+  // ── Б11. Попередня бронь воріт/кіоска — УСИНОВЛЮЄТЬСЯ, а не дублюється ──
+  //
+  // Гість забронював у власному онлайн-модулі готелю, назвався кіоску або
+  // воротам і пішов заселятись. Через чверть години дельта приносить ту саму
+  // бронь. До цієї правки імпортер її не впізнавав — шукав лише у власному
+  // журналі — і заводив ДРУГИЙ рядок на те саме перебування. Дубль мовчазний:
+  // попередня бронь без `unit_id` ні з чим не перетинається, тож
+  // `no_double_booking` не спрацює, а рецепція побачить два рядки і не знатиме,
+  // який правда.
+  //
+  // Осі, і жодна не вироджена:
+  //
+  //   ЗБІГ — бронь із посиланням `Onlinebuchung` і номером 99001 усиновлює
+  //     нашу попередню з ключем `winhotel-ob:99001`;
+  //   КАНАЛ — та сама бронь із посиланням Booking.com і ТИМ САМИМ номером НЕ
+  //     усиновлює: номер каналу того ж вигляду це збіг, а не звірка;
+  //   ЖИТТЯ ГОСТЯ — токен гостьової сторінки переживає усиновлення. Гість уже
+  //     пішов за ним заселятись, і новий рядок забрав би в нього і токен, і
+  //     заповнену реєстрацію.
+  const preGuest = `${A}_pre_guest`;
+  await runWithOrganization(A, () => sql.run(
+    `INSERT INTO guests (id, organization_id, first_name, last_name) VALUES (?, ?, 'Ingo', 'Ankunft')`,
+    [preGuest, A]).catch(() => undefined));
+
+  // Кожен випадок — СВОЯ попередня бронь і свій номер підтвердження.
+  //
+  // Спільна на всіх була б виродженою по двох осях одразу, і це перевірено
+  // зломом: перший прохід кладе в `winhotel_refs` пару «108 → ця бронь», а
+  // `adoptableBy` навмисно не чіпає вже усиновлених. Тобто в другому випадку
+  // вона лишалась би неусиновлюваною ХОЧ ЯК — і зняття перевірки каналу
+  // сцену не червонило б.
+  const seedPre = async (id: string, ref: string, token: string, status = 'tentative') =>
+    runWithOrganization(A, async () => {
+      await sql.run('DELETE FROM reservations WHERE id = ?', [id]);
+      await sql.run(
+        `INSERT INTO reservations (id, organization_id, property_id, guest_id, check_in, check_out,
+                                   nights, adults, status, payment_status, source, external_ref,
+                                   total_price, currency, guest_page_token)
+         VALUES (?, ?, ?, ?, '2027-03-20', '2027-03-22', 2, 2, ?, 'unpaid',
+                 'kiosk_walkin', ?, 0, 'EUR', ?)`,
+        [id, A, PROP, preGuest, status, ref, token]);
+    });
+
+  const PRE = `${A}_pre_ob`;
+  const preToken = 'ob99001token';
+
+  /** Знімок із однією бронню 108 і посиланням, яке називає канал і номер. */
+  // `lnr` окремим аргументом: перший прохід лишає в журналі `winhotel_refs`
+  // пару «108 → наша бронь», і другий прохід із тим самим номером пішов би
+  // гілкою ОНОВЛЕННЯ замість усиновлення — зустрічна вісь міряла б не те.
+  // Саме так вона й збрехала першого разу.
+  const importWithRef = async (lnr: number, text1: string, number: string) => {
+    const ADOPT = repo.newSnapshotId(new Date(`2027-03-19T09:${String(lnr % 60).padStart(2, '0')}:00Z`));
+    await runWithOrganization(A, () => repo.insertSnapshot({
+      id: ADOPT, organizationId: A, takenAt: '2027-03-19 09:15:00', mode: 'delta',
+      sha256: crypto.createHash('sha256').update(`adopt-${lnr}-${text1}-${number}`).digest('hex'), sizeBytes: 1 }));
+    const pa = snapshotPaths(A, ADOPT);
+    fs.mkdirSync(pa.out, { recursive: true });
+    const copy = (entity: string, rows?: unknown[]) => {
+      const src = fs.readFileSync(path.join(FIX, `${entity}.jsonl`), 'utf8');
+      fs.writeFileSync(path.join(pa.out, `${entity}.jsonl`),
+        rows ? rows.map((r) => `${JSON.stringify(r)}\n`).join('') : src);
+    };
+    for (const dict of ['unit_types', 'units', 'services', 'service_groups', 'tax_codes', 'segments', 'payment_methods', 'addresses']) copy(dict);
+    for (const empty of ['folio_lines', 'payments', 'invoices', 'invoice_lines', 'invoice_ledger']) copy(empty, []);
+    // Бронь ліпиться з фікстурної 101: усі поля на місці, змінені лише ті,
+    // про які сцена. Своя «з нуля» розійшлася б зі схемою при першій же зміні.
+    const base = JSON.parse(fs.readFileSync(path.join(FIX, 'bookings.jsonl'), 'utf8').split('\n').filter(Boolean)[0]);
+    copy('bookings', [{ ...base, lnr, vonaufh: '2027-03-20', bisaufh: '2027-03-22', auftage: 2,
+      gastnr_1: base.gastnr_1, gastnr_2: 0, gastnr_3: 0, anzkinder: 0, begleitok: false, kind1ok: false }]);
+    copy('booking_refs', [{ lnr: lnr + 900, gk_lnr: lnr, ref_nr: number, inet_ref_nr: null,
+      ext_source: number, ext_refnr: number, ref_storno: null, precheckin_done: false,
+      erf_datumzeit: '2026-09-14 09:00:00', text1, text2: null, text3: null, text4: null, text5: null }]);
+    // Режим і вікно читаються з `aggregates.json`, а НЕ з рядка знімка: без
+    // цього файла прохід вважає себе повним, скасовує все, чого в ньому
+    // немає, і викидає мою бронь як «before_since». Сцена від цього червоніла
+    // б із чужої причини — і саме так вона й почервоніла першого разу.
+    fs.writeFileSync(path.join(pa.out, 'aggregates.json'), JSON.stringify({
+      snapshot: { mode: 'delta' }, mode: 'delta',
+      window: { from: '2027-03-18', to: '2027-03-24' },
+      entities: { bookings: 1, booking_refs: 1 },
+    }));
+    // Мітка «витягнуто» — інакше імпорт відмовляє «знімок у стані received»,
+    // і сцена червоніла б не з тієї причини, про яку вона.
+    fs.writeFileSync(pa.extracted, '{}');
+    await runWithOrganization(A, () => repo.syncMarkers(A));
+    return runWithOrganization(A, () => importSnapshotNow(A, ADOPT));
+  };
+
+  await seedPre(PRE, 'winhotel-ob:99001', preToken);
+  const adopted = await importWithRef(108, 'Onlinebuchung', '99001');
+  assert.strictEqual(adopted.entities.reservation.adopted ?? 0, 1,
+    `усиновлень ${adopted.entities.reservation.adopted ?? 0}, а мало бути одне: ${JSON.stringify(adopted.entities.reservation)}`);
+  const onOb = await runWithOrganization(A, () => sql.rows<any>(
+    "SELECT id, guest_page_token, unit_id, status FROM reservations WHERE organization_id = ? AND external_ref = 'winhotel-ob:99001'", [A]));
+  assert.strictEqual(onOb.length, 1,
+    `на один номер підтвердження ${onOb.length} броней — рецепція побачить два рядки на одне перебування`);
+  assert.strictEqual(onOb[0].id, PRE,
+    'усиновлення завело НОВИЙ рядок замість того, щоб узяти попередній — гість пішов заселятись за старим');
+  assert.strictEqual(onOb[0].guest_page_token, preToken,
+    'токен гостьової сторінки не пережив усиновлення — посилання, за яким пішов гість, перестало працювати');
+  assert.ok(onOb[0].unit_id, 'усиновлена бронь лишилась без номера — знімок його приніс, і він мав лягти');
+
+  // Зустрічна вісь 1: КАНАЛ інший, номер той самий вигляд — усиновлення немає.
+  // Своя бронь і свій номер, бо перша вже усиновлена й неусиновлювана назавжди.
+  const PRE2 = `${A}_pre_bk`;
+  await seedPre(PRE2, 'winhotel-ob:99002', 'ob99002token');
+  const notMine = await importWithRef(109, 'Booking.com', '99002');
+  assert.strictEqual(notMine.entities.reservation.adopted ?? 0, 0,
+    'бронь Booking.com усиновила нашу попередню за збігом номера — це збіг, а не звірка');
+  const stillPre = await runWithOrganization(A, () => sql.row<any>(
+    'SELECT status, unit_id FROM reservations WHERE id = ?', [PRE2]));
+  assert.strictEqual(stillPre.status, 'tentative', 'чужа бронь переписала нашу попередню');
+  assert.strictEqual(stillPre.unit_id, null, 'чужа бронь призначила номер нашій попередній');
+
+  // Зустрічна вісь 2: бронь уже ПІДТВЕРДЖЕНА — не усиновлюється.
+  // Підтверджена прожила своє життя: гість її підтвердив, рецепція побачила.
+  // Переписати її дельтою означало б скасувати чиєсь рішення — і саме тому
+  // умова статусу стоїть у запиті, а не «на всяк випадок».
+  const PRE3 = `${A}_pre_done`;
+  await seedPre(PRE3, 'winhotel-ob:99003', 'ob99003token', 'confirmed');
+  const notPre = await importWithRef(110, 'Onlinebuchung', '99003');
+  assert.strictEqual(notPre.entities.reservation.adopted ?? 0, 0,
+    'усиновлено ПІДТВЕРДЖЕНУ бронь — дельта переписала рішення, яке гість уже ухвалив');
+  const stillDone = await runWithOrganization(A, () => sql.row<any>(
+    'SELECT status, unit_id FROM reservations WHERE id = ?', [PRE3]));
+  assert.strictEqual(stillDone.status, 'confirmed', 'підтверджену бронь переписано дельтою');
+  assert.strictEqual(stillDone.unit_id, null, 'підтвердженій броні призначено номер зі знімка');
+  // Зустрічна вісь 3: ЧУЖИЙ ОБʼЄКТ — і вона стверджується прямо на функції,
+  // а не через прохід імпорту, бо через прохід її не побудувати.
+  //
+  // `UNIQUE (organization_id, external_ref)` не дає двом попереднім бронях
+  // одного рахунку носити той самий ключ, тож зіткнення «та сама наліпка в
+  // сусідньому корпусі» всередині одного готелю неможливе за побудовою — і
+  // зняття умови `property_id` із запиту лишає сцену зеленою (перевірено
+  // зломом). Замок, який справді тримає, — індекс; умова в запиті друга, і
+  // стверджується вона тут: та сама бронь, спитана від імені ІНШОГО обʼєкта,
+  // не усиновлюється.
+  const { adoptableBy } = await import('./import/adopt.ts');
+  await seedPre(`${A}_pre_axis`, 'winhotel-ob:99004', 'ob99004token');
+  const mine = await runWithOrganization(A, () => adoptableBy(sql, A, PROP, 'winhotel-ob:99004'));
+  assert.ok(mine, 'своя попередня бронь не знайшлась — вісь нижче міряла б не те');
+  const notOurs = await runWithOrganization(A,
+    () => adoptableBy(sql, A, `${A}_other_house`, 'winhotel-ob:99004'));
+  assert.strictEqual(notOurs, null,
+    'бронь сусіднього корпусу усиновлюється — та сама наліпка на іншому будинку це ІНША бронь');
+  console.log('  ok  Б11. попередня бронь воріт/кіоска усиновлюється за ключем Onlinebuchung, а не дублюється; чужий канал, підтверджена бронь і чужий корпус — ні');
+
   // ── Б9. Шаблони дельти агента = SQL мосту по колонках; живий isql зі стаба → пакет → jsonl ──
   const DELTA_SQL = path.join(ROOT, 'apps/winhotel-agent/sql-delta');
   const GS = Buffer.from([0x1d]);
