@@ -7,6 +7,7 @@
 
 import { getSql } from '@core/db/async';
 import { runWithPublicToken } from '@core/auth/tenant-context';
+import { hasFeature } from '@core/features';
 
 export interface GuestAppHome {
   organizationId: string;
@@ -47,6 +48,24 @@ export async function propertyByAppKey(key: string): Promise<GuestAppHome | unde
     [key],
   ));
   if (!row) return undefined;
+
+  // ── Варта застосунку, і вона ОДНА на все ────────────────────────────────
+  //
+  // Через цю функцію проходять і сторінка `/stay/<ключ>`, і всі пʼять
+  // публічних маршрутів воріт — іншого шляху до орендаря в них немає. Тому
+  // ключ реєстру фіч питається саме тут, а не в кожному хендлері: варта, яку
+  // треба не забути поставити в шостому місці, рано чи пізно не ставиться.
+  //
+  // Той самий взірець, що в кіоска (`requireDevice` → `hasFeature`), і той
+  // самий довід: біля телефона гостя немає людини з сесією, тож `withModule`
+  // сюди не підходить.
+  //
+  // Вимкнено — `undefined`, тобто 404 всюди: і на сторінці, і в маршрутах.
+  // Прапорець без варти це перемикач-обманка (П5), а за цим стоїть поверхня,
+  // з якої видно назву готелю, його вільні номери й ціни. Ключ, виписаний
+  // наперед, сам по собі нічого не відчиняє.
+  if (!(await hasFeature(String(row.organization_id), 'guest_app'))) return undefined;
+
   return {
     organizationId: row.organization_id,
     propertyId: row.id,

@@ -76,6 +76,7 @@ const EXPECTED_KIND: Record<Key, Kind> = {
   // але місце те саме, картка на «Застосунках». Розділу в меню немає: кіоск
   // не екран оператора, керується він карткою.
   kiosk: 'app',
+  guest_app: 'app',
 };
 
 for (const key of Object.keys(FEATURE_SPEC) as Key[]) {

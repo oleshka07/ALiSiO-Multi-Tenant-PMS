@@ -53,6 +53,17 @@ for (const [org, prop, name, key] of [
   // — і саме так вона й почервоніла першого разу.
   await sql.run('INSERT INTO organizations (id, name, slug, default_currency) VALUES (?, ?, ?, ?)',
     [org, org, org, 'EUR']);
+  // Застосунок увімкнено ЯВНО: ключ реєстру фіч стоїть OFF за замовчуванням,
+  // і без цього рядка кожна сцена нижче міряла б 404 від вимикача, а не те,
+  // про що вона.
+  //
+  // Вставка — ВСЕРЕДИНІ `runWithOrganization`: `organization_features` під
+  // політикою, і запис без орендаря на справжньому Postgres відхиляється
+  // («new row violates row-level security policy»). На SQLite політик немає,
+  // тож перша редакція була там зелена — рід INC-014.
+  await runWithOrganization(org, () => sql.run(
+    'INSERT INTO organization_features (organization_id, feature, enabled) VALUES (?, ?, TRUE)',
+    [org, 'guest_app']));
   await runWithOrganization(org, () => sql.run(
     `INSERT INTO properties (id, organization_id, name, slug, country, guest_app_key)
      VALUES (?, ?, ?, ?, 'DE', ?)`,
@@ -975,6 +986,46 @@ try {
   assert.strictEqual(buysNeighbour.status, 409,
     `гість купив послугу СУСІДНЬОГО готелю (${buysNeighbour.status}) — довідник читається без осі обʼєкта`);
   console.log('  ok  17. продається лише назване; ціну бере довідник; послуги окремо від суми проживання');
+
+  // ── 18. Вимикач застосунку: вимкнено — 404 всюди, і ключ не рятує ──────
+  //
+  // Прапорець без варти це перемикач-обманка (П5), а за цим стоїть ПУБЛІЧНА
+  // поверхня: з неї видно назву готелю, його вільні номери й ціни. Готель,
+  // який застосунку не купував, не має віддавати цього нікому — навіть якщо
+  // ключ у обʼєкта колись виписали.
+  //
+  // Осі обома боками: увімкнено — відчиняється (це доводять усі сцени вище),
+  // вимкнено — 404, і саме 404, а не порожній список: «сторінки немає» і
+  // «номерів немає» це різні відповіді.
+  //
+  // Вимикається ГОТЕЛЬ А, у якого ключ давно виписаний і працює: вимкнути
+  // той, що й так нічого не віддає, не довело б нічого.
+  // ВСЕРЕДИНІ `runWithOrganization`, і це не косметика: `organization_features`
+  // під політикою, тож `UPDATE` без орендаря на Postgres не чіпає ЖОДНОГО
+  // рядка — мовчки, без помилки. Вимикач не вимикався б, а сцена червоніла б
+  // «застосунок усе одно віддає обʼєкт», показуючи пальцем на код варти
+  // замість власного засіву. На SQLite політик немає, і перша редакція була
+  // там зелена — рід INC-014, тільки цього разу у фікстурі.
+  const feature = (on: boolean) => runWithOrganization(A, () => sql.run(
+    'UPDATE organization_features SET enabled = ? WHERE organization_id = ? AND feature = ?',
+    [on, A, 'guest_app']));
+
+  await feature(false);
+  const closedHome = await propertyByAppKey(keyA);
+  assert.strictEqual(closedHome, undefined,
+    'вимкнений застосунок усе одно віддає обʼєкт — сторінка відчиниться, і гість побачить чужі номери');
+  const closedFind = await find({ key: keyA, phone: '+49 170 5551234', name: 'Beispiel' }, '198.51.100.9');
+  assert.strictEqual(closedFind.status, 404,
+    `пошук на вимкненому застосунку відповів ${closedFind.status}, а мав 404`);
+  const closedOffers = await gate(booking.listOffers, 'offers',
+    { key: keyA, from: day(6), to: day(7), adults: 2 });
+  assert.strictEqual(closedOffers.status, 404,
+    `пропозиції на вимкненому застосунку відповіли ${closedOffers.status} — «немає сторінки» це не «немає номерів»`);
+
+  await feature(true);
+  const openedAgain = await propertyByAppKey(keyA);
+  assert.ok(openedAgain, 'увімкнений назад застосунок не відчинився — вимикач працює лише в один бік');
+  console.log('  ok  18. вимкнений застосунок — 404 всюди, і виписаний ключ його не відчиняє');
 
   console.log('guest-app: ключ називає один будинок — свій, і сторінка говорить мовою телефона');
 } finally {

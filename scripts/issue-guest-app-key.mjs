@@ -1,98 +1,39 @@
 /**
- * Видати обʼєкту ключ гостьового застосунку — адресу, куди веде QR на склі.
+ * Надрукувати НОВИЙ ключ гостьового застосунку. Бази не торкається.
  *
- *   node scripts/issue-guest-app-key.mjs --list
- *   node scripts/issue-guest-app-key.mjs --property <id|slug>
- *   node scripts/issue-guest-app-key.mjs --property <id|slug> --rotate
+ *   node scripts/issue-guest-app-key.mjs --new
  *
- * ── Навіщо скрипт, а не екран ───────────────────────────────────────────
+ * ── Чому цей скрипт більше нічого не робить ─────────────────────────────
  *
- * Екран буде, і він «звичайна акуратність» за інваріантом 29 — форма
- * налаштувань обʼєкта. Але ключ потрібен РАНІШЕ за форму: без нього сторінка
- * не існує за жодною адресою, тобто перевірити крок «немає бронювання» на
- * беті сьогодні неможливо взагалі.
+ * Він читав `properties` і писав ключ сам — і НЕ ПРАЦЮВАВ. У контейнері
+ * застосунок ходить у базу роллю `alisio_app`, а на Postgres читання
+ * тенантної таблиці без орендаря віддає НУЛЬ РЯДКІВ (виміряно: та сама
+ * таблиця під власником із `row_security = off` — 13 рядків, роллю
+ * застосунку з порожнім орендарем — 0). Оператор дістав порожній перелік і
+ * висновок «застосунків немає». Це AGENTS §7 дослівно, а коментар у старій
+ * редакції цього файла стверджував протилежне — мовляв, «інструмент
+ * оператора дивиться згори». Дивиться згори psql суперкористувача, а не
+ * `node` у контейнері.
  *
- * ── Чому видача окремою дією, а не при заведенні готелю ─────────────────
+ * Тому робота розділена по місцях, де вона чесна:
  *
- * Ключ — це публічна адреса, за якою будь-хто з інтернету бачить назву
- * готелю і його вільні номери. Видати його КОЖНОМУ готелю при заведенні
- * означало б відчинити цю сторінку тим, хто про неї не просив. Тому: готель
- * попросив — готель дістав.
- *
- * `--rotate` замінює наявний ключ. Це не «оновити», а ВІДКЛЮЧИТИ старі
- * наліпки: усі надруковані QR перестають вести куди-небудь тієї ж секунди.
- * Тому воно окремим прапорцем, а не мовчазним переписуванням.
+ *   ЕКРАН «Застосунки» — головний шлях. Орендар приходить із сесії, тобто
+ *     питання про той самий рахунок, у який адміністратор зайшов;
+ *   `deploy/guest-app-key.sh` — запасний, для оператора біля сервера. Читає
+ *     й пише psql суперкористувача з `row_security = off`, як усі інші
+ *     операторські скрипти (`list-tenants.sh`, `count-payer-folios.sh`);
+ *   цей файл — лише ВИГЛЯД ключа: алфавіт, довжина і криптографічне
+ *     джерело живуть в одному місці (`domain/key.ts`), і shell їх не
+ *     повторює.
  */
 import '../scripts/lib/module-aliases.mjs';
 
-const argv = process.argv.slice(2);
-const arg = (name) => {
-  const i = argv.indexOf(`--${name}`);
-  return i >= 0 ? argv[i + 1] : undefined;
-};
-const has = (name) => argv.includes(`--${name}`);
-
-await import('../src/lib/db.ts');
-const { getSql } = await import('../src/core/db/async.ts');
-const { runWithOrganization } = await import('../src/core/auth/tenant-context.ts');
 const { generateGuestAppKey } = await import('../src/apps/guest-app/domain/key.ts');
 
-const sql = getSql();
-const base = process.env.APP_BASE_URL || 'https://beta.alisio.rozum.one';
-
-// Читання йде повз орендаря навмисно: це інструмент оператора, який дивиться
-// на сервер згори, а не застосунок. На Postgres так ходить лише власник схеми
-// з `row_security = off` — у скриптах оператора це вже усталено
-// (deploy/list-tenants.sh).
-const properties = await sql.rows(
-  `SELECT p.id, p.slug, p.name, p.organization_id, p.guest_app_key, o.name AS org_name
-     FROM properties p JOIN organizations o ON o.id = p.organization_id
-    ORDER BY o.name, p.name`);
-
-if (has('list') || !arg('property')) {
-  console.log('Обʼєкти та їхні ключі гостьового застосунку:\n');
-  for (const p of properties) {
-    const where = p.guest_app_key ? `${base}/stay/${p.guest_app_key}` : '— ключа немає';
-    console.log(`  ${p.org_name} / ${p.name}`);
-    console.log(`    slug: ${p.slug}    id: ${p.id}`);
-    console.log(`    ${where}\n`);
-  }
-  if (!arg('property')) {
-    console.log('Видати ключ:  node scripts/issue-guest-app-key.mjs --property <id|slug>');
-  }
-  process.exit(0);
+if (!process.argv.includes('--new')) {
+  console.error('usage: node scripts/issue-guest-app-key.mjs --new');
+  console.error('  Перелік і видача — екран «Застосунки» або ./deploy/guest-app-key.sh');
+  process.exit(2);
 }
 
-const wanted = String(arg('property'));
-const target = properties.find((p) => p.id === wanted || p.slug === wanted);
-// Не знайшли — відмова, а не «візьму перший» (інваріант 13). Перший-ліпший
-// обʼєкт тут означав би наліпку на дверях чужого готелю.
-if (!target) {
-  console.error(`Обʼєкта «${wanted}» немає. Подивитись усі: --list`);
-  process.exit(1);
-}
-
-if (target.guest_app_key && !has('rotate')) {
-  console.log(`У обʼєкта «${target.name}» ключ уже є:`);
-  console.log(`  ${base}/stay/${target.guest_app_key}`);
-  console.log('\nЗамінити (і зробити всі надруковані QR непрацюючими): --rotate');
-  process.exit(0);
-}
-
-const key = generateGuestAppKey();
-await runWithOrganization(String(target.organization_id), () => sql.run(
-  'UPDATE properties SET guest_app_key = ? WHERE id = ? AND organization_id = ?',
-  [key, target.id, target.organization_id]));
-
-// Читаємо НАЗАД, окремим запитом: `UPDATE` без помилки не доводить, що рядок
-// змінився — політика могла відхилити його мовчки (рід И4).
-const back = await runWithOrganization(String(target.organization_id), () => sql.row(
-  'SELECT guest_app_key FROM properties WHERE id = ? AND organization_id = ?',
-  [target.id, target.organization_id]));
-if (!back || back.guest_app_key !== key) {
-  console.error('Ключ не записався — рядок лишився без змін. Перевірте, під якою роллю ви ходите в базу.');
-  process.exit(1);
-}
-
-console.log(`${target.org_name} / ${target.name}${has('rotate') ? ' — ключ замінено' : ''}`);
-console.log(`  ${base}/stay/${key}`);
+process.stdout.write(`${generateGuestAppKey()}\n`);

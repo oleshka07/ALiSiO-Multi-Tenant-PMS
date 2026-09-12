@@ -60,6 +60,7 @@ export type AppId =
   | 'smtp'
   | 'winhotel_import'
   | 'kiosk'
+  | 'guest_app'
   | 'dirs21'
   | 'pricelabs'
   | 'unzer';
@@ -228,6 +229,28 @@ export const APPS: readonly AppManifest[] = [
     feature: 'kiosk',
     fields: [],
     where: 'Код парування — кнопка «Додати термінал» на цій картці',
+    live: true,
+    pricing: 'paid',
+    scope: 'property',
+  },
+  // Третій застосунок рівня 3 (Блок «Гостьовий застосунок»,
+  // docs/tasks/2026-09-11-block-guest-app.md). Пристрій тут — ТЕЛЕФОН ГОСТЯ,
+  // а не наш екран, і саме тому рід той самий `device`: спільне в них те, що
+  // поверхня стоїть ПОЗА PMS і звʼязок із нею треба показувати окремо.
+  //
+  // `scope: 'property'` — ключ називає БУДИНОК (0414): наліпка висить на
+  // конкретних дверях, і «сторінка не відкривається» це питання про той
+  // корпус, а не про рахунок.
+  //
+  // Полів ключів немає з тієї самої причини, що в кіоска: ключ не вставляють,
+  // а ВИДАЮТЬ. Кнопка на картці — `POST /api/settings/apps/guest-app`.
+  {
+    id: 'guest_app',
+    kind: 'device',
+    label: 'Гостьовий застосунок',
+    feature: 'guest_app',
+    fields: [],
+    where: 'Адреса сторінки — кнопка «Видати ключ» на цій картці',
     live: true,
     pricing: 'paid',
     scope: 'property',

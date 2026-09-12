@@ -58,6 +58,10 @@ const EXPECTED_DEFAULT: Record<Key, boolean> = {
   // парування; OFF робить його 400-кою для всіх, крім тих, хто термінал
   // справді купив.
   kiosk: false,
+  // OFF (12.09.2026): за цим ключем стоїть ПУБЛІЧНА сторінка, з якої видно
+  // назву готелю, його вільні номери й ціни. Дефолт ON відчинив би її
+  // кожному готелю на сервері — включно з тими, хто про неї не просив.
+  guest_app: false,
   // OFF від 05.09.2026 (П15): платний модуль. Наявні готелі мають явний
   // рядок enabled = TRUE, поставлений міграцією 0065.
   tasks: false,
@@ -136,6 +140,10 @@ const INTEGRATIONS: Partial<Record<Key, string>> = {
   // місці на всі маршрути кіоска, а не в кожному. Парування питає той самий
   // ключ окремо (`pairing.handlers.ts`), бо туди приходять ще без токена.
   kiosk: 'src/apps/kiosk/api/session.handlers.ts',
+  // Гостьовий застосунок — те саме, і варта теж в ОДНОМУ місці: через
+  // `propertyByAppKey` проходять і сторінка, і всі пʼять публічних
+  // маршрутів, іншого шляху до орендаря в них немає.
+  guest_app: 'src/apps/guest-app/data/property.repo.ts',
 };
 for (const [key, file] of Object.entries(INTEGRATIONS)) {
   assert.ok(fs.existsSync(file!), `інтеграція «${key}»: файл варти ${file} зник`);
