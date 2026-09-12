@@ -30,6 +30,8 @@ const { propertyByAppKey } = await import('./data/property.repo.ts');
 const { generateGuestAppKey, readGuestAppKey } = await import('./domain/key.ts');
 const { languageFromHeader } = await import('./ui/translations.ts');
 const lookup = await import('./api/lookup.handlers.ts');
+const { coreSource } = await import('./source/core.source.ts');
+const { upsertPrices } = await import('@pricing/live.ts');
 
 const sql = getSql();
 
@@ -263,6 +265,100 @@ try {
   assert.strictEqual(fromElsewhere.body.found, true,
     'інша адреса теж відмовлена — ліміт стоїть не на адресі, і один перебірник закриває готель для всіх гостей');
   console.log('  ok  7. десять невдач — адреса відмовлена; сусідня адреса працює');
+
+  // ── 8. Пропозиції: лише те, що справді можна продати ────────────────────
+  //
+  // Крок «немає бронювання» показує гостю типи номерів із цінами. Двоє
+  // джерела помилки тут коштують по-різному, і обидва мовчазні:
+  //
+  //   тип БЕЗ вільної кімнати у списку — продали те, чого немає;
+  //   тип БЕЗ ціни у списку            — продали за ціною, якої не називали.
+  //
+  // Тому обидва боки кожної осі: показується те, що має, і НЕ показується те,
+  // що не має. Односторонні твердження зелені на джерелі, яке віддає порожньо.
+  const offersFor = (from: string, to: string, adults = 2) =>
+    runWithOrganization(A, () => coreSource.offers({
+      organizationId: A, propertyId: PA, from, to, adults,
+    }));
+
+  // Дві кімнати одного типу і одна другого: осі не вироджені (інваріант 26) —
+  // «усі типи» (2) не сплутати ні з «тип А» (1), ні з «тип Б» (1).
+  await runWithOrganization(A, async () => {
+    await sql.run("INSERT INTO categories (id, property_id, name, type) VALUES (?, ?, 'Zimmer', 'room')", ['ga_cat', PA]);
+    // Три типи, і кожен закриває СВОЮ вісь:
+    //   ga_t1 — вільний і з ціною: має показуватись;
+    //   ga_t2 — вільний, але БЕЗ ціни: інваріант 17;
+    //   ga_t3 — вільний і з ціною, але готель ЗАБОРОНИВ продавати онлайн.
+    // Без третього «bookable_online ігнорується» лишалось би зеленим: обидва
+    // інші типи дозволені, і зняття умови нічого б не змінило (§3.2.1).
+    for (const [id, name, code, online] of [
+      ['ga_t1', 'Doppelzimmer', 'DBL', true],
+      ['ga_t2', 'Einzelzimmer', 'SGL', true],
+      ['ga_t3', 'Suite', 'SUI', false],
+    ] as const) {
+      await sql.run(
+        `INSERT INTO unit_types (id, property_id, category_id, name, code, bookable_online, max_occupancy, max_adults)
+         VALUES (?, ?, 'ga_cat', ?, ?, ?, 4, 4)`, [id, PA, name, code, online]);
+    }
+    for (const [id, type, name] of [
+      ['ga_u1', 'ga_t1', '101'], ['ga_u2', 'ga_t1', '102'],
+      ['ga_u3', 'ga_t2', '201'], ['ga_u4', 'ga_t3', '301'],
+    ] as const) {
+      await sql.run(
+        `INSERT INTO units (id, property_id, unit_type_id, category_id, name, code)
+         VALUES (?, ?, ?, 'ga_cat', ?, ?)`, [id, PA, type, name, name]);
+    }
+    // Ціна — лише ПЕРШОМУ типу. Другий лишається без жодного джерела ціни, і
+    // саме на ньому перевіряється інваріант 17.
+    // Ціни ночей РІЗНІ (100 і 150), і це не косметика: на однакових сума
+    // «дві ночі по 100» збігається з «ночей × 100», тож підміна котирування
+    // власним множенням лишалась би зеленою (інваріант 26, друга половина).
+    // 250 не дорівнює ні 100, ні 150, ні 200, ні 300.
+    const nightly = [100, 150, 100, 150];
+    for (const type of ['ga_t1', 'ga_t3']) {
+      await upsertPrices(type, nightly.map((price, d) => ({ date: day(d), base_price: price })));
+    }
+  });
+
+  const listed = await offersFor(day(0), day(2));
+  assert.deepStrictEqual(listed.map((o) => o.unitTypeId), ['ga_t1'],
+    `у списку не те: ${JSON.stringify(listed.map((o) => o.unitTypeId))} — тип без ціни не має показуватись (інваріант 17)`);
+  assert.strictEqual(listed[0].free, 2, `вільних кімнат ${listed[0].free}, а їх дві`);
+  assert.strictEqual(listed[0].nights, 2, `ночей ${listed[0].nights}, а їх дві`);
+  assert.strictEqual(listed[0].total, 250,
+    `сума ${listed[0].total} — ночі 100 і 150 дають 250, і рахує їх НЕ застосунок, а calculateQuote`);
+  // І третій тип, який готель заборонив продавати онлайн, не зʼявляється —
+  // хоч кімната в нього вільна, і ціна на ці ночі є.
+  assert.ok(!listed.some((o) => o.unitTypeId === 'ga_t3'),
+    'тип із bookable_online = FALSE потрапив у список — рішення готелю обійдено');
+  console.log('  ok  8. у списку лише тип, у якого є і вільна кімната, і повна ціна');
+
+  // ── 9. Зайнято — зникає зі списку; звільнилось — вертається ─────────────
+  //
+  // Зустрічна вісь до попереднього: «показується» перевірено вище, тут
+  // «перестає показуватись». Без пари твердження було б зелене й на джерелі,
+  // яке ніколи нікого не прибирає.
+  await runWithOrganization(A, () => sql.run(
+    `INSERT INTO guests (id, organization_id, first_name, last_name) VALUES ('ga_bg', ?, 'Belegt', 'Gast')`, [A]));
+  const occupy = async (unitId: string, id: string) => runWithOrganization(A, () => sql.run(
+    `INSERT INTO reservations (id, organization_id, property_id, unit_id, unit_type_id, guest_id,
+                               check_in, check_out, nights, adults, status, currency)
+     VALUES (?, ?, ?, ?, 'ga_t1', 'ga_bg', ?, ?, 2, 2, 'confirmed', 'EUR')`,
+    [id, A, PA, unitId, day(0), day(2)]));
+
+  await occupy('ga_u1', 'ga_occ1');
+  const oneLeft = await offersFor(day(0), day(2));
+  assert.strictEqual(oneLeft[0]?.free, 1,
+    `одна кімната зайнята — мало лишитись 1, а лишилось ${oneLeft[0]?.free}`);
+
+  await occupy('ga_u2', 'ga_occ2');
+  const noneLeft = await offersFor(day(0), day(2));
+  assert.deepStrictEqual(noneLeft.map((o) => o.unitTypeId), [],
+    `обидві кімнати зайняті, а тип усе одно в списку: ${JSON.stringify(noneLeft)}`);
+  // І на ІНШІ дати він вільний — інакше «зник» могло б означати «зник назавжди».
+  const later = await offersFor(day(2), day(3));
+  assert.strictEqual(later.length, 1, 'на вільні дати тип не повернувся — прибирає не за датами');
+  console.log('  ok  9. зайняте зникає зі списку, а на інші дати лишається');
 
   console.log('guest-app: ключ називає один будинок — свій, і сторінка говорить мовою телефона');
 } finally {
