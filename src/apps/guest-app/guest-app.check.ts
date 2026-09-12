@@ -670,21 +670,149 @@ try {
     'бронь готелю А підтвердилась ключем готелю Б — орендар не тримає');
   console.log('  ok  13. підтвердження знімає строк, і лише своїм ключем');
 
+  // ── 14. Бронь без прийнятих умов не створюється ─────────────────────────
+  //
+  // На зразку власника останній екран несе дві галочки — умови готелю і
+  // захист даних, — і кнопка без них не працює. У нас бронь проходила без
+  // жодної: рядок у базі був, гість нічого не приймав, і показати наглядачеві
+  // не було чого.
+  //
+  // Осі не вироджені (інваріант 26), і їх тут ЧОТИРИ:
+  //
+  //   ОБОВʼЯЗКОВІСТЬ — `terms` тримає кнопку, `marketing` ні. З одним родом
+  //     «усі згоди обовʼязкові» і «обовʼязкові лише ці» були б нерозрізненні,
+  //     а різниця між ними — це штраф за згоду на розсилку під примусом;
+  //   ВЕРСІЯ — галочка під «v1» не є згодою на чинну «v2». Однакові версії
+  //     лишили б зеленим писача, який версію не звіряє взагалі;
+  //   ЗАПИС — прийняте лягає рядком у `guest_consents`, інакше «гість
+  //     погодився» знає лише браузер;
+  //   ГОТЕЛЬ БЕЗ ТЕКСТІВ — бронює вільно. Інакше ця правка спинила б продаж
+  //     у кожного, хто ще не дійшов до екрана умов.
+  //
+  // Четверта вісь тримається сама собою: готель Б текстів не має, і сцена 11
+  // вище вже бронювала в А до того, як тексти зʼявились. Але покластись на
+  // порядок сцен не можна — твердження про це стоїть окремо, нижче.
+  const { activeConsentTexts, consentState } = await import('@guests/kernel.ts');
+  // Ціна на дати цієї сцени — інакше писач відмовляє за інваріантом 17, і
+  // твердження «бронь без галочки не пройшла» було б зелене з чужої причини
+  // (перша редакція сцени саме так і помилилась: 409 замість 400).
+  await runWithOrganization(A, () => upsertPrices('ga_t1',
+    [day(6), day(7)].map((date) => ({ date, base_price: 100 }))));
+  const consentBody = (kind: string, version: string) => `${kind} ${version} — текст готелю`;
+  await runWithOrganization(A, async () => {
+    for (const [kind, version, active] of [
+      ['terms', 'v1', false],           // стара редакція: під нею згода вже не рахується
+      ['terms', 'v2', true],
+      ['data_processing', 'v2', true],
+      ['marketing', 'v2', true],
+    ] as const) {
+      await sql.run(
+        `INSERT INTO consent_texts (id, organization_id, consent_kind, version, locale, body, is_active)
+         VALUES (?, ?, ?, ?, 'de', ?, ?)`,
+        [`ga_ct_${kind}_${version}`, A, kind, version, consentBody(kind, version), active]);
+    }
+  });
+
+  const shown = await runWithOrganization(A,
+    () => activeConsentTexts(A, 'de', ['terms', 'data_processing', 'marketing']));
+  assert.deepStrictEqual(shown.map((t) => `${t.consentKind}:${t.version}`),
+    ['terms:v2', 'data_processing:v2', 'marketing:v2'],
+    `гостю показали не ті редакції: ${JSON.stringify(shown.map((t) => `${t.consentKind}:${t.version}`))} `
+    + '— знята з обігу редакція не пропонується, а порядок родів той, який назвали');
+
+  const stay = {
+    key: keyA, from: day(6), to: day(7), adults: 2, unitTypeId: 'ga_t1', ratePlanId: null,
+    firstName: 'Clara', lastName: 'Zustimmung', phone: '+49 170 5550001', lang: 'de',
+  };
+  const noTicks = await gate(booking.holdOffer, 'hold', { ...stay });
+  assert.strictEqual(noTicks.status, 400,
+    `бронь без жодної галочки пройшла (${noTicks.status}) — під нею ніхто нічого не прийняв`);
+
+  // Стара редакція — це НЕ згода на чинну.
+  const staleTick = await gate(booking.holdOffer, 'hold', {
+    ...stay, consents: [{ kind: 'terms', version: 'v1' }, { kind: 'data_processing', version: 'v2' }] });
+  assert.strictEqual(staleTick.status, 400,
+    `галочка під знятою редакцією «v1» зарахована як згода на чинну «v2» (${staleTick.status})`);
+
+  // Половина обовʼязкових — теж ні.
+  const halfTick = await gate(booking.holdOffer, 'hold', {
+    ...stay, consents: [{ kind: 'terms', version: 'v2' }] });
+  assert.strictEqual(halfTick.status, 400,
+    `бракує згоди на обробку даних, а бронь пройшла (${halfTick.status})`);
+
+  // Обидві обовʼязкові без розсилки — проходить. Це і є вісь обовʼязковості:
+  // якби кнопку тримали ВСІ роди, цей запит відмовив би.
+  const booked = await gate(booking.holdOffer, 'hold', {
+    ...stay, consents: [{ kind: 'terms', version: 'v2' }, { kind: 'data_processing', version: 'v2' }] });
+  assert.strictEqual(booked.status, 201,
+    `згода на розсилку зроблена обовʼязковою (${booked.status} ${JSON.stringify(booked.body)}) — `
+    + 'галочка, без якої не забронювати, добровільною не є');
+
+  // Журнал читається ДВЕРИМА модуля (`consentState`), а не своїм SELECT-ом:
+  // `guest_consents` належить гостям, і запит до чужої таблиці — це пробій
+  // межі, який `check-boundaries` правильно зупинив. Заразом сцена стверджує
+  // про те, чим цю згоду читатиме решта продукту, а не про рядки під нею.
+  const bookedGuest = await runWithOrganization(A, () => sql.row<any>(
+    'SELECT guest_id FROM reservations WHERE guest_page_token = ?', [booked.body.token]));
+  const written = await runWithOrganization(A,
+    () => consentState(A, String(bookedGuest.guest_id)));
+  assert.deepStrictEqual(
+    Object.entries(written).map(([kind, v]: [string, any]) => `${kind}:${v.version}`).sort(),
+    ['data_processing:v2', 'terms:v2'],
+    `у журналі згод не те: ${JSON.stringify(written)} — прийняте гостем мусить лишити рядок`);
+  assert.strictEqual(written.terms.source, 'guest_app', 'у згоди не названо, звідки вона прийшла');
+  assert.strictEqual(written.terms.revokedAt, null, 'згода записалась одразу відкликаною');
+
+  // Готель Б текстів не заводив — і бронює вільно, без жодної галочки.
+  // Без цього твердження правка спинила б продаж у кожного, хто ще не дійшов
+  // до екрана умов, і сцена цього б не помітила.
+  await runWithOrganization(B, async () => {
+    await sql.run("INSERT INTO categories (id, property_id, name, type) VALUES ('gb_cat', ?, 'Zimmer', 'room')", [PB]);
+    await sql.run(
+      `INSERT INTO unit_types (id, property_id, category_id, name, code, bookable_online, max_occupancy, max_adults)
+       VALUES ('gb_t1', ?, 'gb_cat', 'Doppelzimmer', 'DBL', TRUE, 4, 4)`, [PB]);
+    await sql.run(
+      `INSERT INTO units (id, property_id, unit_type_id, category_id, name, code)
+       VALUES ('gb_u1', ?, 'gb_t1', 'gb_cat', '101', '101')`, [PB]);
+    await upsertPrices('gb_t1', [day(6), day(7)].map((date) => ({ date, base_price: 100 })));
+  });
+  const otherHouse = await gate(booking.holdOffer, 'hold', {
+    ...stay, key: keyB, unitTypeId: 'gb_t1',
+  });
+  assert.strictEqual(otherHouse.status, 201,
+    `готель без заведених текстів згод більше не може продавати (${otherHouse.status} `
+    + `${JSON.stringify(otherHouse.body)}) — прийняти те, чого немає, не можна`);
+  console.log('  ok  14. бронь без прийнятих умов не створюється; розсилка лишається добровільною');
+
   console.log('guest-app: ключ називає один будинок — свій, і сторінка говорить мовою телефона');
 } finally {
   for (const org of [A, B]) {
     await runWithOrganization(org, async () => {
-      // Ціни — ПЕРШИМИ, і це не косметика прибирання. `price_calendar`
-      // посилається на `rate_plans` зовнішнім ключем, і на Postgres він
-      // СПРАЦЬОВУЄ: знесення обʼєкта каскадом бере тарифи, а рядки календаря
-      // тримають їх і відмовляють. На SQLite того ж ключа немає, тож сцена
-      // прибирала за собою чисто і мовчки — а на справжньому двигуні падала
-      // ПІСЛЯ всіх тверджень, тобто зелений прогін виглядав червоним прогоном.
-      // Той самий рід, що И14: різниця двигунів видно лише там, де вона є.
+      // ТИПИ НОМЕРІВ — першими, і це не косметика прибирання.
+      //
+      // У `price_calendar` два зовнішні ключі й різна поведінка: на тип —
+      // каскадний, на тариф — ні. Знесення обʼєкта каскадом бере і типи, і
+      // тарифи, і рядки календаря з тарифом встигають потримати його рівно
+      // стільки, щоб уся транзакція відкотилась. Знімаємо типи — каскад
+      // прибирає календар цілком, і обʼєкт зноситься вже без перешкод.
+      //
+      // Прямого `DELETE FROM price_calendar` тут немає навмисно: цінову
+      // таблицю поза `modules/pricing` не чіпають (інваріант 16), і
+      // `check-price-source` правильно завалив першу редакцію цього
+      // прибирання.
+      //
+      // Це прибирання, а не виправлення: сам дефект живий і записаний як
+      // INC-208 — кнопка «видалити обʼєкт» не працює в готелю, який ставив
+      // ціну на тариф. Сцена обходить його, бо лагодити чужу схему посеред
+      // задачі про ворота — це два рішення в одному коміті.
+      // Порядок: броні → типи → обʼєкти. Кожен крок знімає те, що тримає
+      // наступний, і жоден не спирається на каскад, якого може не бути.
+      // Броні посилаються на тип номера БЕЗ каскаду, тож «типи першими» падало
+      // на них; типи каскадом прибирають календар; обʼєкти — решту.
+      await sql.run('DELETE FROM reservations WHERE organization_id = ?', [org]);
       await sql.run(
-        `DELETE FROM price_calendar WHERE rate_plan_id IN (
-           SELECT rp.id FROM rate_plans rp JOIN properties p ON p.id = rp.property_id
-            WHERE p.organization_id = ?)`, [org]);
+        `DELETE FROM unit_types WHERE property_id IN
+           (SELECT id FROM properties WHERE organization_id = ?)`, [org]);
       await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]);
     });
     await sql.run('DELETE FROM organizations WHERE id = ?', [org]);

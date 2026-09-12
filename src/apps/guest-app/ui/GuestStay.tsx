@@ -31,6 +31,16 @@ import { GUEST_STRINGS, type GuestLang } from './translations';
 
 type Stage = 'dates' | 'rooms' | 'details' | 'confirm';
 
+/** Текст згоди, який ЦЕЙ готель справді написав (ніяких літералів у коді). */
+interface ConsentOffer {
+  kind: string;
+  version: string;
+  locale: string;
+  body: string;
+  /** Без неї кнопка не працює. Розсилка — ні: добровільна згода добровільна. */
+  required: boolean;
+}
+
 interface Held {
   token: string;
   unitName: string;
@@ -64,6 +74,8 @@ export function GuestStay({ appKey, lang, onBack }: {
   const [adults, setAdults] = useState(2);
   const [offers, setOffers] = useState<StayOffer[]>([]);
   const [handoff, setHandoff] = useState<string | null>(null);
+  const [consents, setConsents] = useState<ConsentOffer[]>([]);
+  const [ticked, setTicked] = useState<Record<string, boolean>>({});
   const [picked, setPicked] = useState<StayOffer | null>(null);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -86,6 +98,8 @@ export function GuestStay({ appKey, lang, onBack }: {
     ? new Intl.NumberFormat(lang, { style: 'currency', currency }).format(value)
     : new Intl.NumberFormat(lang, { minimumFractionDigits: 2 }).format(value));
   const nightsWord = (n: number) => (n === 1 ? s.nightsOne : s.nightsMany);
+  /** Кнопку тримають лише обовʼязкові роди — і рахує це екран, і звіряє сервер. */
+  const allRequiredTicked = consents.every((c) => !c.required || ticked[c.kind]);
 
   /**
    * Речення про невдачу — ЗАВЖДИ зі свого словника, ніколи з відповіді.
@@ -125,6 +139,7 @@ export function GuestStay({ appKey, lang, onBack }: {
       const away = (json.handoff ?? null) as string | null;
       setOffers(list);
       setHandoff(away);
+      setConsents((json.consents ?? []) as ConsentOffer[]);
       // Порожньо — це стан, а не помилка: гість має бачити речення, а не
       // порожній екран, з якого не зрозуміло, чи воно шукало взагалі.
       if (list.length === 0 && !away) { setMessage(s.nothingFree); return; }
@@ -146,6 +161,11 @@ export function GuestStay({ appKey, lang, onBack }: {
         unitTypeId: picked.unitTypeId,
         ratePlanId: picked.ratePlanId,
         firstName, lastName, phone, email: email || null, lang,
+        // Їде ПАРА «рід + версія», не «так/ні»: галочка під старою редакцією
+        // не є згодою на нову, і сервер має змогу це побачити.
+        consents: consents
+          .filter((c) => ticked[c.kind])
+          .map((c) => ({ kind: c.kind, version: c.version })),
       });
       if (!ok) { setMessage(refusalText(status)); return; }
       setHeld({
@@ -254,10 +274,20 @@ export function GuestStay({ appKey, lang, onBack }: {
       {stage === 'details' && picked && (
         <form className="guest-form" onSubmit={(e) => { e.preventDefault(); void book(); }}>
           <p className="guest-lead">{s.yourDetails}</p>
+          {/*
+            Умови скасування повторюються ПОРУЧ ІЗ СУМОЮ, а не лишаються на
+            картці, з якої гість уже пішов. Так само робить зразок власника:
+            на екрані, де натискають кнопку, ще раз стоїть, за що саме платять
+            і на яких умовах. Людина, яка дочитала до кнопки, не має гортати
+            назад, щоб згадати, чи можна це скасувати.
+          */}
           <p className="guest-note">
             {picked.name}{picked.ratePlanName ? ` · ${picked.ratePlanName}` : ''} ·{' '}
+            {picked.nights} {nightsWord(picked.nights)} ·{' '}
             {s.totalLabel}: {price(picked.total, picked.currency)}
           </p>
+          {picked.mealPlan && <p className="guest-note">{s.breakfast}</p>}
+          {picked.cancellationPolicy && <p className="guest-note">{picked.cancellationPolicy}</p>}
           <label className="guest-field">
             <span className="guest-label">{s.firstName}</span>
             <input className="guest-input" type="text" autoComplete="given-name"
@@ -280,8 +310,26 @@ export function GuestStay({ appKey, lang, onBack }: {
             <span className="guest-card-help">{s.emailHelp}</span>
           </label>
           <p className="guest-note">{s.payAtReception}</p>
+          {/*
+            Умови — те, що написав ГОТЕЛЬ, дослівно і своєю версією. Готель без
+            заведених текстів галочок не показує, і бронювання від цього не
+            спиняється: прийняти те, чого немає, не можна.
+          */}
+          {consents.map((c) => (
+            <label key={c.kind} className="guest-consent">
+              <input
+                type="checkbox"
+                checked={Boolean(ticked[c.kind])}
+                onChange={(e) => setTicked((was) => ({ ...was, [c.kind]: e.target.checked }))}
+              />
+              <span className="guest-consent-text" lang={c.locale}>
+                {c.body}{c.required ? ' *' : ''}
+              </span>
+            </label>
+          ))}
           {message && <p className="guest-note" role="status">{message}</p>}
-          <button type="submit" className="guest-card" data-primary="true" disabled={busy}>
+          <button type="submit" className="guest-card" data-primary="true"
+            disabled={busy || !allRequiredTicked}>
             <span className="guest-card-title">{busy ? s.booking : s.bookNow}</span>
           </button>
           <button type="button" className="guest-quiet" onClick={() => setStage('rooms')}>{s.back}</button>

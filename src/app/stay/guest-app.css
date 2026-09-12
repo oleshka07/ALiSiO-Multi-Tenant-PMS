@@ -93,3 +93,16 @@
 .guest-card[data-primary='true'] .guest-rate { color: #fff; }
 .guest-rate-line { font-size: 0.9rem; color: #6b6157; }
 .guest-total { font-size: 1.1rem; font-weight: 600; margin-top: 0.35rem; }
+
+/* Галочка під умовами готелю. Текст — той, що написав готель, тож він може
+   бути довгим: рядок не обрізається, а переноситься. */
+.guest-consent {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  cursor: pointer;
+}
+.guest-consent input { margin-top: 0.25rem; width: 1.15rem; height: 1.15rem; flex: none; }
+.guest-consent-text { color: #6b6157; }

@@ -22,7 +22,9 @@ import { handleError, refuse } from '@core/http/errors';
 import { checkRateLimit } from '@core/security/rate-limit';
 import { propertyByAppKey } from '../data/property.repo';
 import { readGuestAppKey } from '../domain/key';
+import { activeConsentTexts } from '@guests/kernel';
 import { coreSource } from '../source/core.source';
+import { GUEST_APP_CONSENTS, blocks } from '../domain/consents';
 import { holdStay, confirmStay } from '../data/booking.repo';
 
 /** Хто стукає — для ліміту; той самий довід, що в пошуку. */
@@ -33,6 +35,22 @@ function clientKey(request: Request, action: string): string {
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Галочки з тіла — у формі, якій можна вірити.
+ *
+ * Форма перевіряється ТУТ, а не в писачі: тіло приходить з інтернету, і
+ * `consents: "yes"` чи `[{kind: {}}]` мусять стати порожнім списком, а не
+ * дійти до порівняння з версіями. Порожній список — це «нічого не прийнято»,
+ * і писач на це відповідає відмовою, а не мовчазним дозволом (інваріант 13).
+ */
+function readConsents(raw: unknown): { kind: string; version: string }[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((c): c is Record<string, unknown> => Boolean(c) && typeof c === 'object')
+    .map((c) => ({ kind: String(c.kind ?? ''), version: String(c.version ?? '') }))
+    .filter((c) => c.kind && c.version);
+}
 
 /** Дім, який відчиняє ключ із тіла, — або названа відмова 404. */
 async function homeFrom(body: Record<string, unknown>) {
@@ -69,10 +87,25 @@ export async function listOffers(request: Request): Promise<Response> {
       return NextResponse.json({ offers: [], handoff: home.walkinUrl ?? null });
     }
 
-    const offers = await runWithOrganization(home.organizationId, () => coreSource.offers({
-      organizationId: home.organizationId, propertyId: home.propertyId, from, to, adults,
+    const lang = String(body.lang ?? 'de');
+    const { offers, consents } = await runWithOrganization(home.organizationId, async () => ({
+      offers: await coreSource.offers({
+        organizationId: home.organizationId, propertyId: home.propertyId, from, to, adults,
+      }),
+      // Умови їдуть ТІЄЮ Ж відповіддю, що й номери: екран показує галочки на
+      // кроці контактів, який іде одразу за вибором, і другий похід по мережі
+      // тут купував би лише зайву мить очікування.
+      //
+      // Готель без заведених текстів віддає порожній список — і галочок не
+      // буде. Вигадати їх тут означало б показати гостю «приймаю умови»
+      // готелю, який жодних умов не писав.
+      consents: (await activeConsentTexts(home.organizationId, lang, GUEST_APP_CONSENTS))
+        .map((t) => ({
+          kind: t.consentKind, version: t.version, locale: t.locale, body: t.body,
+          required: blocks(t.consentKind),
+        })),
     }));
-    return NextResponse.json({ offers, handoff: null });
+    return NextResponse.json({ offers, consents, handoff: null });
   } catch (error) {
     return handleError('apps/guest listOffers', error, 'Не вдалося показати вільні номери');
   }
@@ -102,6 +135,7 @@ export async function holdOffer(request: Request): Promise<Response> {
       phone: String(body.phone ?? ''),
       email: body.email ? String(body.email) : null,
       lang: String(body.lang ?? 'de'),
+      consents: readConsents(body.consents),
     }));
 
     // Ідентифікатор броні назовні не їде: далі гість ходить лише за токеном,

@@ -43,6 +43,8 @@ import { freeUnitsForRange } from '@properties/kernel';
 import { calculateQuote } from '@pricing/quote';
 import { noteAvailabilityChanged, lastNight } from '@channels/outbox';
 import { insertingStay, UnitOverlap } from '@bookings/overlap';
+import { activeConsentTexts, recordConsent } from '@guests/kernel';
+import { GUEST_APP_CONSENTS, missingConsents, blocks } from '../domain/consents';
 import { ALL_PROPERTIES, propertyScopeFilter } from '@core/property-scope';
 import { holdUntil } from '../domain/hold';
 
@@ -64,6 +66,14 @@ export interface HoldRequest {
   email: string | null;
   /** Мова, якою гість читає застосунок, — нею ж потім говоритиме лист. */
   lang: string;
+  /**
+   * Галочки, які гість поставив: пара «рід + версія».
+   *
+   * Версія тут не формальність — див. `missingConsents`: галочка під старою
+   * редакцією не є згодою на нову, а саме так виглядає вкладка, відкрита до
+   * того, як готель оновив умови.
+   */
+  consents: readonly { kind: string; version: string }[];
 }
 
 export interface HeldStay {
@@ -151,7 +161,15 @@ export async function holdStay(req: HoldRequest): Promise<HeldStay> {
     refuse('На ці дати ціну не названо — зателефонуйте, будь ласка, на рецепцію', 409);
   }
 
+  // Умови — ПЕРЕД записом. Бронь, під якою ніхто нічого не прийняв, це рядок,
+  // який нема чим накрити перед наглядачем; а відмовити після створення
+  // означало б лишити по собі напівбронь, що тримає номер.
+  const texts = await activeConsentTexts(req.organizationId, req.lang, GUEST_APP_CONSENTS);
+  const missing = missingConsents(texts, req.consents);
+  if (missing.length > 0) refuse('Щоб забронювати, потрібно прийняти умови готелю', 400);
+
   const reservationId = id('r');
+  let guestRowId = '';
   const token = newToken();
   const expires = holdUntil();
 
@@ -186,6 +204,8 @@ export async function holdStay(req: HoldRequest): Promise<HeldStay> {
           propertyId: req.propertyId, unitTypeId: type.id,
           from: req.from, to: lastNight(req.to),
         });
+
+        guestRowId = guestId;
       });
     }, { unitId: unit.id, checkIn: req.from, checkOut: req.to, reservationId });
   } catch (e) {
@@ -194,6 +214,41 @@ export async function holdStay(req: HoldRequest): Promise<HeldStay> {
     // бачити двох різних відмов на одну причину.
     if (e instanceof UnitOverlap) refuse('Цей номер щойно зайняли. Оберіть інший або інші дати', 409);
     throw e;
+  }
+
+  // Згоди — ПІСЛЯ броні й поза її транзакцією, і це не недбалість.
+  // `recordConsent` посилається на рядок гостя, тобто раніше писати нічого;
+  // а класти його всередину означало б, що збій запису згоди відкочує бронь,
+  // яка вже тримає номер. Прийняте гостем при цьому не губиться: рід, версія
+  // і джерело їдуть рядком у журнал, а не залежать від нашої транзакції.
+  //
+  // Пишуться ВСІ прийняті роди, не лише ті, що тримали кнопку: добровільна
+  // згода на розсилку — теж згода, і доводиться вона тим самим рядком.
+  for (const text of texts) {
+    const ticked = req.consents.some(
+      (c) => c.kind === text.consentKind && c.version === text.version);
+    if (!ticked) continue;
+    try {
+      await recordConsent({
+        organizationId: req.organizationId, guestId: guestRowId,
+        consentKind: text.consentKind, version: text.version, source: GUEST_APP_SOURCE,
+      });
+    } catch (e) {
+      console.error('[guest-app] згода не записалась', reservationId, text.consentKind, e);
+      // Рід, що тримав кнопку, не записався — отже лишилась би бронь, під
+      // якою НІЧОГО не прийнято, і саме її ми щойно заборонили створювати.
+      // Тому бронь знімається, номер повертається в продаж, а гість дістає
+      // відмову: напівстану, у якому кімната зайнята невідомо за що, не буває.
+      //
+      // Необовʼязковий рід (розсилка) так не робить: втрачена галочка «хочу
+      // листи» не варта скасованої броні. Вона лишається в лозі.
+      if (blocks(text.consentKind)) {
+        await sql.run(
+          `UPDATE reservations SET status = 'cancelled', hold_expires_at = NULL
+            WHERE id = ? AND organization_id = ?`, [reservationId, req.organizationId]);
+        refuse('Не вдалося зафіксувати згоду з умовами. Спробуйте ще раз', 409);
+      }
+    }
   }
 
   return {
