@@ -211,6 +211,11 @@ Charter описує, ЯК називати. Він не вимагає нега
     існує на жодному двигуні — його знімає міграція «remove CHECK constraint
     from reservations.source» ще на старті, і на Postgres його не було ніколи;
     перелік родів тримає писач, як `property_type` (О9)
+  - `reservations.source = 'guest_app'` (**гість забронював сам із QR на склі**,
+    КІ25): бронь із гостьового застосунку. Рід походження, як і `kiosk_walkin`,
+    а не канал продажу — рядок у `booking_sources` не заводиться, інакше кожен
+    готель мусив би завести його руками, перш ніж ворота запрацюють. Те саме
+    слово носить `guests.source`: гість, заведений воротами
   - `kiosk_events.kind` (**що робили на терміналі**): вільний рядок —
     `pair`, `search`, `search_miss`, `search_ambiguous`, `register`, `sign`,
     `checkin`, `checkout`, `invoice_elsewhere`, `walkin_claim`.

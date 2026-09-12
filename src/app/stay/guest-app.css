@@ -77,3 +77,19 @@
   font-size: 1rem;
   cursor: pointer;
 }
+
+/* ── Крок вибору номера ──────────────────────────────────────────────────
+ *
+ * Картка — це ПАРА «номер × тариф»: одна кімната й дві різні угоди дають дві
+ * картки, і гість має бачити, чим вони відрізняються, не розкриваючи нічого.
+ * Тому на картці одразу і ціна за ніч, і сума, і умови — як на сайті готелю,
+ * з якого власник показував зразок.
+ */
+.guest-stay { display: flex; flex-direction: column; gap: 1rem; }
+.guest-offers { display: flex; flex-direction: column; gap: 1rem; }
+/* Картка-повідомлення (передача на власну сторінку готелю) кнопкою не є. */
+.guest-card[data-static='true'] { cursor: default; }
+.guest-rate { font-size: 1rem; font-weight: 600; color: #9a7b42; }
+.guest-card[data-primary='true'] .guest-rate { color: #fff; }
+.guest-rate-line { font-size: 0.9rem; color: #6b6157; }
+.guest-total { font-size: 1.1rem; font-weight: 600; margin-top: 0.35rem; }

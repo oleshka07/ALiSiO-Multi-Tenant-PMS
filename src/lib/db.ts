@@ -523,6 +523,14 @@ function buildSchema(database: any) {
       -- й імпорт означало б, що «звідки ця бронь» відповідає той, хто
       -- записав останнім.
       external_ref TEXT,
+      -- 0415: доки цей строк не минув, бронь тримає номер НІ ЗА КИМ.
+      -- Ворота (гостьовий застосунок) заводять бронь попередньою (КІ23, бо
+      -- справжньою її робить підтвердження гостя), а попередня вже стоїть
+      -- у вікні no_double_booking. Гість, який обрав номер і пішов, забрав би
+      -- кімнату назавжди. Порожньо — ніхто не тримає: так у всіх інших.
+      -- Імен у зворотних лапках тут немає навмисно: лапка закрила б цей
+      -- шаблонний рядок, і файл перестав би компілюватись (те саме в 0414).
+      hold_expires_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -648,6 +656,10 @@ function buildSchema(database: any) {
     CREATE INDEX idx_reservations_guest ON reservations(guest_id);
     CREATE INDEX idx_reservations_dates ON reservations(check_in, check_out);
     CREATE INDEX idx_reservations_status ON reservations(status);
+    -- 0415: частковий — крон питає рівно «у кого строк минув», а рядків зі
+    -- строком у базі одиниці проти сотень тисяч без нього.
+    CREATE INDEX idx_reservations_hold_expires
+      ON reservations(hold_expires_at) WHERE hold_expires_at IS NOT NULL;
     CREATE INDEX idx_guests_org ON guests(organization_id);
     CREATE INDEX idx_guests_name ON guests(last_name, first_name);
   `);
@@ -7628,6 +7640,13 @@ function runMigrations(database: any) {
     'CREATE INDEX IF NOT EXISTS idx_reservations_company ON reservations(company_id)',
     'CREATE INDEX IF NOT EXISTS idx_reservations_unassigned ON reservations(property_id, check_in) WHERE unit_id IS NULL',
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_reservations_guest_token ON reservations(guest_page_token)',
+    // 0415. Список рукописний вимушено — у цій гілці оригінал уже знято, і
+    // читати індекси нема звідки. Наслідок передбачений коментарем сусідньої
+    // перебудови дослівно: «рукописний розійдеться з наступною міграцією, яка
+    // додасть індекс». 0415 і є та міграція, і розходження зловив
+    // db-boot.check (15 → 14) — тобто гейт спрацював як написано, ще до того,
+    // як хоч одна база це побачила.
+    'CREATE INDEX IF NOT EXISTS idx_reservations_hold_expires ON reservations(hold_expires_at) WHERE hold_expires_at IS NOT NULL',
   ];
   try {
     // Прибирання за обірваною перебудовою ПЕРШИМ, і воно розрізняє два стани.
@@ -7707,6 +7726,34 @@ function runMigrations(database: any) {
     try { database.exec('ROLLBACK'); } catch { /* поза транзакцією */ }
     database.exec('PRAGMA foreign_keys = ON');
     console.error('[DB] payment_status partial migration:', e.message);
+  }
+
+  // ── 0415: строк, доки невідтверджена бронь тримає номер ─────────────────
+  //
+  // І в `CREATE TABLE reservations` вище, і тут (AGENTS §4): колонка лише в
+  // міграції не дістається новому клієнту, колонка лише в CREATE — тому, хто
+  // вже мігрував.
+  //
+  // Блок ОКРЕМИЙ і стоїть саме тут — після всіх перебудов `reservations`, а
+  // не в сусідньому блоці налаштувань обʼєкта, де він був спершу. Дві
+  // причини, і обидві виявив прогін: у мить відновлення обірваної перебудови
+  // таблиці `reservations` ще НЕМАЄ, тож `PRAGMA table_info` кидає, а разом
+  // із нею гине решта чужого блоку; і повідомлення про цю смерть було б
+  // чужим («properties checkout_balance_policy»), тобто наступний читач лога
+  // шукав би зовсім не там.
+  try {
+    const resHoldCols = (database.prepare('PRAGMA table_info(reservations)').all() as { name: string }[])
+      .map((c) => c.name);
+    if (!resHoldCols.includes('hold_expires_at')) {
+      database.exec('ALTER TABLE reservations ADD COLUMN hold_expires_at TEXT');
+      console.log('[DB] 0415: reservations.hold_expires_at');
+    }
+    // Частковий: крон питає рівно «у кого строк минув». Він же — у списку
+    // RESERVATION_INDEXES вище, бо гілка відновлення читати індекси нізвідки.
+    database.exec('CREATE INDEX IF NOT EXISTS idx_reservations_hold_expires '
+      + 'ON reservations(hold_expires_at) WHERE hold_expires_at IS NOT NULL');
+  } catch (e) {
+    console.error('[DB] 0415 hold_expires_at:', (e as Error).message);
   }
 
   // ── Блок 5a, 0110: вид, мережа і пароль на НОМЕРІ ───────────────────────

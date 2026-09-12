@@ -31,6 +31,7 @@ const { generateGuestAppKey, readGuestAppKey } = await import('./domain/key.ts')
 const { languageFromHeader } = await import('./ui/translations.ts');
 const lookup = await import('./api/lookup.handlers.ts');
 const { coreSource } = await import('./source/core.source.ts');
+const { calculateQuote } = await import('@pricing/quote.ts');
 const { upsertPrices } = await import('@pricing/live.ts');
 
 const sql = getSql();
@@ -265,14 +266,14 @@ try {
   assert.strictEqual(fromElsewhere.body.found, true,
     'інша адреса теж відмовлена — ліміт стоїть не на адресі, і один перебірник закриває готель для всіх гостей');
   console.log('  ok  7. десять невдач — адреса відмовлена; сусідня адреса працює');
-
   // ── 8. Пропозиції: лише те, що справді можна продати ────────────────────
   //
-  // Крок «немає бронювання» показує гостю типи номерів із цінами. Двоє
-  // джерела помилки тут коштують по-різному, і обидва мовчазні:
+  // Крок «немає бронювання» показує гостю пари «тип номера × тариф» із
+  // цінами. Троє джерела помилки тут коштують по-різному, і всі мовчазні:
   //
   //   тип БЕЗ вільної кімнати у списку — продали те, чого немає;
-  //   тип БЕЗ ціни у списку            — продали за ціною, якої не називали.
+  //   пара БЕЗ ціни у списку           — продали за ціною, якої не називали;
+  //   тариф, знятий чи прихований,     — продали умову, якої готель не продає.
   //
   // Тому обидва боки кожної осі: показується те, що має, і НЕ показується те,
   // що не має. Односторонні твердження зелені на джерелі, яке віддає порожньо.
@@ -280,6 +281,9 @@ try {
     runWithOrganization(A, () => coreSource.offers({
       organizationId: A, propertyId: PA, from, to, adults,
     }));
+  /** Пара «тип × тариф» рядком — щоб твердження читалось очима. */
+  const pairs = (list: Awaited<ReturnType<typeof offersFor>>) =>
+    list.map((o) => `${o.unitTypeId}/${o.ratePlanId ?? 'base'}`).sort();
 
   // Дві кімнати одного типу і одна другого: осі не вироджені (інваріант 26) —
   // «усі типи» (2) не сплутати ні з «тип А» (1), ні з «тип Б» (1).
@@ -320,18 +324,97 @@ try {
     }
   });
 
-  const listed = await offersFor(day(0), day(2));
-  assert.deepStrictEqual(listed.map((o) => o.unitTypeId), ['ga_t1'],
-    `у списку не те: ${JSON.stringify(listed.map((o) => o.unitTypeId))} — тип без ціни не має показуватись (інваріант 17)`);
-  assert.strictEqual(listed[0].free, 2, `вільних кімнат ${listed[0].free}, а їх дві`);
-  assert.strictEqual(listed[0].nights, 2, `ночей ${listed[0].nights}, а їх дві`);
-  assert.strictEqual(listed[0].total, 250,
-    `сума ${listed[0].total} — ночі 100 і 150 дають 250, і рахує їх НЕ застосунок, а calculateQuote`);
+  // Поки в готелю немає жодного видимого тарифу, пара вироджується в тип із
+  // базовою ціною — найчастіший випадок малого готелю.
+  const baseOnly = await offersFor(day(0), day(2));
+  assert.deepStrictEqual(pairs(baseOnly), ['ga_t1/base'],
+    `у списку не те: ${JSON.stringify(pairs(baseOnly))} — тип без ціни не має показуватись (інваріант 17)`);
+  assert.strictEqual(baseOnly[0].free, 2, `вільних кімнат ${baseOnly[0].free}, а їх дві`);
+  assert.strictEqual(baseOnly[0].nights, 2, `ночей ${baseOnly[0].nights}, а їх дві`);
+  assert.strictEqual(baseOnly[0].total, 250,
+    `сума ${baseOnly[0].total} — ночі 100 і 150 дають 250, і рахує їх НЕ застосунок, а calculateQuote`);
+  assert.strictEqual(baseOnly[0].perNight, 125,
+    `за ніч ${baseOnly[0].perNight} — 250 за дві ночі це 125, і це ПОДАННЯ суми, а не друга ціна`);
   // І третій тип, який готель заборонив продавати онлайн, не зʼявляється —
   // хоч кімната в нього вільна, і ціна на ці ночі є.
-  assert.ok(!listed.some((o) => o.unitTypeId === 'ga_t3'),
+  assert.ok(!baseOnly.some((o) => o.unitTypeId === 'ga_t3'),
     'тип із bookable_online = FALSE потрапив у список — рішення готелю обійдено');
   console.log('  ok  8. у списку лише тип, у якого є і вільна кімната, і повна ціна');
+
+  // ── 8б. Вісь тарифу: одна кімната — кілька умов продажу ─────────────────
+  //
+  // Та сама кімната на ті самі дати продається за різними умовами, і різниця
+  // між ними — гроші й права гостя. Якщо застосунок цю вісь не має, він
+  // обирає тариф ЗА ГОСТЯ: або завжди базовий (готель не продасть сніданок),
+  // або завжди перший-ліпший (гість заплатить не за те, що бачив).
+  //
+  // Фікстура не вироджена по жодній з трьох осей, про які твердить сцена:
+  //
+  //   СУМА — `saver` має власні ціни 80/120 (200), `flex` власних не має і
+  //     успадковує базові 100/150 (250). Однакові суми лишили б зеленим
+  //     джерело, яке тариф читає, але в котирування не передає;
+  //   ВИДИМІСТЬ — `hidden` прихований, `retired` знятий із продажу: по
+  //     одному на кожну з двох різних причин не показувати. Тут є чесна
+  //     деталь, і без неї сцена брехала б: зняття фільтра `isActive` у
+  //     джерелі лишає сцену ЗЕЛЕНОЮ, і це перевірено зломом. Причина не в
+  //     виродженій осі, а в другому замку: `priceNights` віддає кожну ніч
+  //     знятого тарифу як `missing` (nightly-price.ts, `ratePlanRetired`),
+  //     тож інваріант 17 прибирає картку раніше за будь-який фільтр. Замок,
+  //     який СПРАВДІ тримає, і стверджується нижче — окремим рядком, щоб
+  //     сцена почервоніла, якщо колись перестане тримати саме він;
+  //   УМОВИ — у `saver` скасування немає, у `flex` є: картка, яка втратила
+  //     умови, помітна лише там, де умови у двох тарифів РІЗНІ.
+  await runWithOrganization(A, async () => {
+    for (const [id, code, name, meal, cancel, active, hidden] of [
+      ['ga_rp_flex', 'FLEX', 'Standardrate mit Frühstück', 'breakfast', 'Stornierbar bis 14:00 am Vortag', true, false],
+      ['ga_rp_saver', 'SAVER', 'Nicht-refundierbare Rate', null, null, true, false],
+      ['ga_rp_hidden', 'HID', 'Mitarbeiterrate', null, null, true, true],
+      ['ga_rp_retired', 'OLD', 'Messerate 2025', null, null, false, false],
+    ] as const) {
+      await sql.run(
+        `INSERT INTO rate_plans (id, property_id, name, code, currency, meal_plan, cancellation_policy, is_active, is_hidden)
+         VALUES (?, ?, ?, ?, 'EUR', ?, ?, ?, ?)`,
+        [id, PA, name, code, meal, cancel, active, hidden]);
+    }
+    // Власні ціни — лише в `saver`. `flex` лишається на базових, і саме тому
+    // дві картки дають РІЗНІ суми при тій самій кімнаті.
+    await upsertPrices('ga_t1', [80, 120, 80, 120].map((price, d) => ({ date: day(d), base_price: price })),
+      { ratePlanId: 'ga_rp_saver' });
+    // Прихований і знятий дістають ціну теж: інакше вони випали б за
+    // інваріантом 17, і твердження «їх не показують» було б зеленим з іншої
+    // причини, ніж перевіряється (§3.2.1).
+    for (const plan of ['ga_rp_hidden', 'ga_rp_retired']) {
+      await upsertPrices('ga_t1', [70, 70, 70, 70].map((price, d) => ({ date: day(d), base_price: price })),
+        { ratePlanId: plan });
+    }
+  });
+
+  const carded = await offersFor(day(0), day(2));
+  assert.deepStrictEqual(pairs(carded), ['ga_t1/ga_rp_flex', 'ga_t1/ga_rp_saver'],
+    `картки не ті: ${JSON.stringify(pairs(carded))} — видимі тарифи обидва, прихований і знятий жодного разу`);
+  const byPlan = new Map(carded.map((o) => [o.ratePlanId, o]));
+  assert.strictEqual(byPlan.get('ga_rp_saver')!.total, 200,
+    `невідмінний тариф дав ${byPlan.get('ga_rp_saver')!.total} — його власні ночі 80 і 120 це 200`);
+  assert.strictEqual(byPlan.get('ga_rp_flex')!.total, 250,
+    `тариф без власних цін дав ${byPlan.get('ga_rp_flex')!.total} — він успадковує базові 100 і 150, тобто 250`);
+  assert.strictEqual(byPlan.get('ga_rp_flex')!.cancellationPolicy, 'Stornierbar bis 14:00 am Vortag',
+    'умови скасування зникли з картки — гість не бачить, що саме купує');
+  assert.strictEqual(byPlan.get('ga_rp_saver')!.cancellationPolicy, null,
+    'тарифу без умов домальовано умови — обіцянка, якої готель не давав');
+  assert.strictEqual(byPlan.get('ga_rp_flex')!.mealPlan, 'breakfast', 'сніданок зник із картки');
+  // Обидві картки — про ту саму кімнату, і вільна вона одна на двох.
+  assert.strictEqual(byPlan.get('ga_rp_saver')!.free, 2,
+    'вільні кімнати рахуються окремо для кожного тарифу — їх дві на обидва');
+  // Замок, яким справді тримається знятий тариф: ціни в нього немає ні для
+  // кого, і саме тому картка не зʼявляється навіть без фільтра в джерелі.
+  // Фікстура тут не вироджена: у `ga_rp_retired` ціни в календарі ЛЕЖАТЬ
+  // (70 на кожну ніч), тож «немає рядків» це не пояснення.
+  const retired = await runWithOrganization(A,
+    () => calculateQuote('ga_t1', day(0), day(2), 2, 0, { ratePlanId: 'ga_rp_retired' }));
+  assert.strictEqual(retired.missingDays, 2,
+    `знятий із продажу тариф котирується (${retired.missingDays} ночей без ціни з двох) — `
+    + 'ціни в нього не існує ні для кого, інакше готель продає умову, яку зняв');
+  console.log('  ok  8б. дві умови продажу однієї кімнати, і суми в них різні');
 
   // ── 9. Зайнято — зникає зі списку; звільнилось — вертається ─────────────
   //
@@ -348,22 +431,262 @@ try {
 
   await occupy('ga_u1', 'ga_occ1');
   const oneLeft = await offersFor(day(0), day(2));
-  assert.strictEqual(oneLeft[0]?.free, 1,
-    `одна кімната зайнята — мало лишитись 1, а лишилось ${oneLeft[0]?.free}`);
+  assert.ok(oneLeft.length > 0 && oneLeft.every((o) => o.free === 1),
+    `одна кімната зайнята — мало лишитись 1 на кожній картці, а лишилось ${JSON.stringify(oneLeft.map((o) => o.free))}`);
 
   await occupy('ga_u2', 'ga_occ2');
   const noneLeft = await offersFor(day(0), day(2));
-  assert.deepStrictEqual(noneLeft.map((o) => o.unitTypeId), [],
-    `обидві кімнати зайняті, а тип усе одно в списку: ${JSON.stringify(noneLeft)}`);
+  assert.deepStrictEqual(pairs(noneLeft), [],
+    `обидві кімнати зайняті, а тип усе одно в списку: ${JSON.stringify(pairs(noneLeft))}`);
   // І на ІНШІ дати він вільний — інакше «зник» могло б означати «зник назавжди».
   const later = await offersFor(day(2), day(3));
-  assert.strictEqual(later.length, 1, 'на вільні дати тип не повернувся — прибирає не за датами');
+  assert.strictEqual(later.length, 2, 'на вільні дати тип не повернувся — прибирає не за датами');
   console.log('  ok  9. зайняте зникає зі списку, а на інші дати лишається');
+
+  // ── 10. Бронь із воріт: тримає номер, і ціну називає СЕРВЕР ─────────────
+  //
+  // Тут ламається найдорожче, і мовчки. Три осі, кожна обома боками:
+  //
+  //   ТРИМАЄ — після броні кімната зникає з пропозицій. Бронь, яка не тримає,
+  //     дає двох гостей в одному номері, і скаже це рецепція, а не код;
+  //   СУМА — у рядку лежить рівно те, що порахував той самий `calculateQuote`,
+  //     і вона РІЗНА за різними тарифами (200 проти 250). Однакові суми
+  //     лишили б зеленим писача, який тариф прийняв і не передав;
+  //   ОРЕНДАР — рядок має `organization_id`, інакше він невидимий для всіх
+  //     (інваріант 12), а на SQLite це стається БЕЗЗВУЧНО: 201 у відповідь,
+  //     порожній список на екрані, нічого в логах.
+  const booking = await import('./api/booking.handlers.ts');
+  const { holdStay, confirmStay } = await import('./data/booking.repo.ts');
+  const { releaseExpiredHolds } = await import('./data/release-holds.ts');
+  const { HOLD_MINUTES } = await import('./domain/hold.ts');
+
+  let call = 0;
+  const gate = async (
+    fn: (r: Request) => Promise<Response>, path: string, body: unknown, ip?: string,
+  ) => {
+    call += 1;
+    const res = await fn(new Request(`http://local/api/apps/guest/${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': ip ?? `10.1.0.${call}` },
+      body: JSON.stringify(body),
+    }));
+    return { status: res.status, body: await res.json() as Record<string, any> };
+  };
+
+  // Вільні дати, на яких ще нічого не стоїть: сцена 9 зайняла day(0)..day(2).
+  const IN = day(2);
+  const OUT = day(4);
+  const guestBody = {
+    key: keyA, from: IN, to: OUT, adults: 2,
+    firstName: 'Anna', lastName: 'Muster', phone: '+49 170 5559876', lang: 'de',
+  };
+
+  const beforeHold = await offersFor(IN, OUT);
+  assert.strictEqual(beforeHold.length, 2, 'до броні мали бути дві картки — сцена нижче міряла б не те');
+
+  // Зʼєднання з каналом і дзеркало на тип — щоб сцена могла спитати ЧЕТВЕРТУ
+  // вісь: чи канал дізнався. Без них `noteAvailabilityChanged` не пише нічого
+  // за побудовою (нема кому), і твердження про чергу було б зелене завжди —
+  // тобто виродженим рівно по тій осі, про яку воно (інваріант 26).
+  // Провайдер береться зі ШВА КОМПОЗИЦІЇ, а не пишеться рядком: імʼя вендора
+  // поза його адаптером — це протікання порту, і `check-vendor-isolation`
+  // ловить його навіть у фікстурі (і зловив). Тут потрібен не конкретний
+  // вендор, а «той, якого ця збірка вміє», і саме це `knownProviders()` і
+  // каже.
+  const { knownProviders } = await import('../../modules/channels/providers.ts');
+  const provider = knownProviders()[0]?.id;
+  assert.ok(provider, 'жодного провайдера каналів не заведено — сцену про чергу міряти нема на чому');
+
+  await runWithOrganization(A, async () => {
+    await sql.run(
+      `INSERT INTO cm_connections (id, organization_id, property_id, provider, environment,
+                                   webhook_token, webhook_secret, is_enabled, remote_property_id)
+       VALUES ('ga_conn', ?, ?, ?, 'staging', 'ga_tok', 'ga_sec', TRUE, 'ga_remote')`,
+      [A, PA, provider]);
+    await sql.run(
+      `INSERT INTO cm_mappings (id, organization_id, connection_id, entity_type, local_id, unit_type_id, occupancy, remote_id)
+       VALUES ('ga_map', ?, 'ga_conn', 'unit_type', 'ga_t1', '', 0, 'ga_remote_ut')`,
+      [A]);
+  });
+  const queued = () => runWithOrganization(A, () => sql.row<any>(
+    "SELECT COUNT(*) AS n FROM cm_outbox WHERE connection_id = 'ga_conn' AND kind = 'availability'"));
+  const queueBefore = Number((await queued()).n);
+
+  const saver = await gate(booking.holdOffer, 'hold',
+    { ...guestBody, unitTypeId: 'ga_t1', ratePlanId: 'ga_rp_saver' });
+  assert.strictEqual(saver.status, 201, `бронь не створилась: ${saver.status} ${JSON.stringify(saver.body)}`);
+  assert.strictEqual(saver.body.total, 200,
+    `у відповіді сума ${saver.body.total} — невідмінний тариф це 80 + 120, тобто 200`);
+
+  const row = await runWithOrganization(A, () => sql.row<any>(
+    `SELECT organization_id, property_id, unit_id, unit_type_id, rate_plan_id, status,
+            total_price, nights, hold_expires_at, source, guest_page_token
+       FROM reservations WHERE guest_page_token = ?`, [saver.body.token]));
+  assert.ok(row, 'броні немає в базі, хоч маршрут відповів 201');
+  assert.strictEqual(row.organization_id, A,
+    'у броні порожній орендар — такий рядок не бачить ЖОДЕН готель (інваріант 12)');
+  assert.strictEqual(row.status, 'tentative',
+    `бронь народилась зі статусом «${row.status}» — справжньою її робить підтвердження гостя (КІ23)`);
+  assert.strictEqual(Number(row.total_price), 200,
+    `у рядку сума ${row.total_price} — сервер мав порахувати 200 за тарифом, а не взяти число з екрана`);
+  assert.strictEqual(row.rate_plan_id, 'ga_rp_saver', 'бронь не памʼятає, за яким тарифом її продали');
+  assert.ok(row.unit_id, 'бронь без номера нічого не тримає — вона лягає у смугу «Без номера»');
+  assert.ok(row.hold_expires_at, 'бронь без строку тримає номер НАЗАВЖДИ: звільняти її нема кому');
+  assert.strictEqual(row.source, 'guest_app', 'рецепція не бачить, звідки прийшла бронь');
+
+  // Друга бронь — ІНШИМ тарифом, і сума інша. Це та сама вісь, що в 8б, але
+  // на писачі: тариф, прийнятий і не переданий, дав би тут 250.
+  const flex = await gate(booking.holdOffer, 'hold',
+    { ...guestBody, unitTypeId: 'ga_t1', ratePlanId: 'ga_rp_flex' });
+  assert.strictEqual(flex.status, 201, `друга бронь не створилась: ${JSON.stringify(flex.body)}`);
+  assert.strictEqual(flex.body.total, 250,
+    `другий тариф дав ${flex.body.total} — він успадковує базові 100 і 150, тобто 250`);
+  assert.notStrictEqual(saver.body.unitName, flex.body.unitName,
+    'дві броні на ті самі ночі дістали ОДИН номер — перша нічого не тримала');
+
+  // Обидві кімнати типу зайняті — тип зникає з пропозицій. Це той самий
+  // читач, яким гість обирає, тож він і доводить, що бронь тримає.
+  const afterHold = await offersFor(IN, OUT);
+  assert.deepStrictEqual(pairs(afterHold), [],
+    `після двох броней тип усе ще продається: ${JSON.stringify(pairs(afterHold))}`);
+
+  // Четверта вісь: канал дізнався про зайняті ночі. Без неї бронь із воріт
+  // видно в нас і НЕ видно в каналі — той продає ту саму кімнату далі, і
+  // помилки не лунає ніде (Ц16). `check-outbox-writers` стереже, що двері
+  // покликано, але не те, що з-під них щось вийшло.
+  assert.ok(Number((await queued()).n) > queueBefore,
+    'у черзі каналів нічого не зʼявилось — канал торгує кімнатою, яку вже продано');
+  console.log('  ok  10. бронь тримає номер, памʼятає тариф і має орендаря; суму називає сервер');
+
+  // ── 11. Третій гість на дві кімнати: названа відмова, не 500 ────────────
+  //
+  // Інваріант 13: перевірка, яка не знайшла вільного номера, ВІДМОВЛЯЄ. У
+  // зразку, з якого знято цей екран, у цьому місці селили в зайняте — «щоб
+  // бронь не загубилась».
+  //
+  // Замків тут ДВА, і сцена каже, який із них вона доводить. Заміна відмови
+  // на «візьму перший-ліпший номер» лишає сцену ЗЕЛЕНОЮ — перевірено зломом:
+  // запис відхиляє сама база (`no_double_booking` на Postgres, серіалізація з
+  // перевіркою на SQLite), `insertingStay` віддає `UnitOverlap`, і гість
+  // дістає ТУ САМУ відмову 409. Знявши обидва замки, сцена червоніє 500-кою —
+  // тобто доведено саме те, що замок є і він говорить по-людськи, а не те,
+  // що наша перевірка спрацювала раніше за нього. Перевірка перед записом
+  // лишається заради повідомлення й зекономленого котирування, а не заради
+  // безпеки: безпеку тримає база.
+  //
+  // Тому поруч стверджується сама ВЛАСТИВІСТЬ, а не шлях до неї: більше
+  // однієї броні на кімнату-ніч не існує.
+  const third = await gate(booking.holdOffer, 'hold',
+    { ...guestBody, unitTypeId: 'ga_t1', ratePlanId: 'ga_rp_saver' });
+  assert.strictEqual(third.status, 409,
+    `на зайнятий тип відповіли ${third.status} — має бути названа відмова 409, а не поломка`);
+  assert.ok(!String(third.body.error ?? '').toLowerCase().includes('constraint'),
+    `у відповідь поїхав текст бази: ${third.body.error} (інваріант 6)`);
+  const perUnit = await runWithOrganization(A, () => sql.rows<any>(
+    `SELECT unit_id, COUNT(*) AS n FROM reservations
+      WHERE property_id = ? AND unit_type_id = 'ga_t1' AND check_in = ? AND status != 'cancelled'
+      GROUP BY unit_id`, [PA, IN]));
+  assert.ok(perUnit.every((u) => Number(u.n) === 1),
+    `на кімнату-ніч припало більше однієї броні: ${JSON.stringify(perUnit)} — двоє гостей в одному номері`);
+  assert.strictEqual(perUnit.length, 2,
+    `броней на цю ніч ${perUnit.length}, а кімнат дві — сцена міряла б не те`);
+
+  // Чужий тип під СВОЇМ ключем — 404, а не 403: інакше відповідь підтверджує,
+  // що такий тип десь існує (інваріант 5). `ga_t3` існує, але він у цього ж
+  // готелю знятий з онлайн-продажу; чужого готелю тип — ще й інший орендар.
+  const notSold = await gate(booking.holdOffer, 'hold',
+    { ...guestBody, from: day(6), to: day(7), unitTypeId: 'ga_t3', ratePlanId: null });
+  assert.strictEqual(notSold.status, 404,
+    `тип, який готель не продає онлайн, відповів ${notSold.status}`);
+  const foreign = await gate(booking.holdOffer, 'hold',
+    { ...guestBody, key: keyB, from: day(6), to: day(7), unitTypeId: 'ga_t1', ratePlanId: null });
+  assert.strictEqual(foreign.status, 404,
+    `чужим ключем забронювали наш тип (${foreign.status}) — орендар береться не з ключа`);
+  console.log('  ok  11. зайнято, не продається і чуже — три названі відмови, жодного 500');
+
+  // ── 12. Строк: невідтверджена бронь звільняє номер, відтверджена — ні ────
+  //
+  // Обидва боки обовʼязкові. «Прострочену скасовано» зелене й на кроні, який
+  // скасовує ВСЕ; «свіжу не чіпають» зелене й на кроні, який не робить нічого.
+  // Разом вони означають рівно те, що написано.
+  assert.strictEqual(HOLD_MINUTES, 30, 'строк змінився — перевірте текст на екрані (КІ26)');
+
+  // Свіжу бронь відсуваємо в минуле рівно одну: друга лишається свіжою і є
+  // зустрічною віссю. Без неї крон, що скасовує все підряд, був би зеленим.
+  await runWithOrganization(A, () => sql.run(
+    "UPDATE reservations SET hold_expires_at = ? WHERE guest_page_token = ?",
+    [new Date(Date.now() - 60_000).toISOString(), saver.body.token]));
+
+  // Черга спорожнюється ПЕРЕД звільненням, і це не прибирання, а умова
+  // вимірності: `cm_outbox` ключується КООРДИНАТОЮ (зʼєднання × вид × тип ×
+  // тариф × дати), тож повторна звістка про ті самі ночі оновлює наявний
+  // рядок, а не додає новий. Лічильник рядків після броні на ті самі дати не
+  // зрушив би НІКОЛИ — і твердження про крон було б зелене на кроні, який
+  // мовчить. Перша редакція сцени саме так і помилилась.
+  await runWithOrganization(A, () => sql.run("DELETE FROM cm_outbox WHERE connection_id = 'ga_conn'"));
+  assert.strictEqual(Number((await queued()).n), 0, 'черга не спорожнилась — вимір нижче нічого не значить');
+  const released = await releaseExpiredHolds();
+  assert.strictEqual(released.released, 1,
+    `крон звільнив ${released.released} броней — мав рівно одну, прострочену`);
+  assert.strictEqual(released.failedOrganizations, 0, 'крон упав на якомусь готелі');
+
+  const gone = await runWithOrganization(A, () => sql.row<any>(
+    'SELECT status, hold_expires_at FROM reservations WHERE guest_page_token = ?', [saver.body.token]));
+  assert.strictEqual(gone.status, 'cancelled', `прострочена бронь лишилась «${gone.status}»`);
+  const stillHeld = await runWithOrganization(A, () => sql.row<any>(
+    'SELECT status FROM reservations WHERE guest_page_token = ?', [flex.body.token]));
+  assert.strictEqual(stillHeld.status, 'tentative',
+    `крон зачепив бронь, чий строк ще не минув («${stillHeld.status}») — гість втратив номер, поки набирав прізвище`);
+
+  // Канал теж має дізнатись, і це ДРУГА половина Ц16, не та сама. Бронь, що
+  // не доїхала в канал, продає кімнату двічі; звільнення, що не доїхало,
+  // тримає кімнату закритою — готель не втрачає гостя, він його не отримує, і
+  // це так само тихо.
+  assert.ok(Number((await queued()).n) > 0,
+    'звільнена ніч не поїхала в канал — кімната лишилась закритою на продаж');
+
+  // І кімната справді повернулась у продаж — тим самим читачем, яким гість обирає.
+  const backOnSale = await offersFor(IN, OUT);
+  assert.strictEqual(backOnSale.length, 2,
+    `звільнена кімната не повернулась у продаж: ${JSON.stringify(pairs(backOnSale))}`);
+  console.log('  ok  12. прострочена бронь звільняє номер, свіжа лишається');
+
+  // ── 13. Підтвердження знімає строк ──────────────────────────────────────
+  //
+  // Доки строк стоїть, крон забере кімнату — навіть у того, хто вже
+  // підтвердив. Тому підтвердження мусить зняти саме строк, а не лише
+  // перевести статус.
+  const ok = await gate(booking.confirmHold, 'confirm', { key: keyA, token: flex.body.token });
+  assert.strictEqual(ok.body.confirmed, true, `підтвердження не пройшло: ${JSON.stringify(ok.body)}`);
+  const confirmed = await runWithOrganization(A, () => sql.row<any>(
+    'SELECT status, hold_expires_at FROM reservations WHERE guest_page_token = ?', [flex.body.token]));
+  assert.strictEqual(confirmed.status, 'confirmed', `після підтвердження статус «${confirmed.status}»`);
+  assert.strictEqual(confirmed.hold_expires_at, null,
+    'строк лишився на підтвердженій броні — крон забере номер у гостя, який уже все зробив');
+
+  // Чужим ключем чужу бронь не підтвердити, хоч токен і вгадано.
+  const stranger = await gate(booking.confirmHold, 'confirm', { key: keyB, token: flex.body.token });
+  assert.strictEqual(stranger.body.confirmed, false,
+    'бронь готелю А підтвердилась ключем готелю Б — орендар не тримає');
+  console.log('  ok  13. підтвердження знімає строк, і лише своїм ключем');
 
   console.log('guest-app: ключ називає один будинок — свій, і сторінка говорить мовою телефона');
 } finally {
   for (const org of [A, B]) {
-    await runWithOrganization(org, () => sql.run('DELETE FROM properties WHERE organization_id = ?', [org]));
+    await runWithOrganization(org, async () => {
+      // Ціни — ПЕРШИМИ, і це не косметика прибирання. `price_calendar`
+      // посилається на `rate_plans` зовнішнім ключем, і на Postgres він
+      // СПРАЦЬОВУЄ: знесення обʼєкта каскадом бере тарифи, а рядки календаря
+      // тримають їх і відмовляють. На SQLite того ж ключа немає, тож сцена
+      // прибирала за собою чисто і мовчки — а на справжньому двигуні падала
+      // ПІСЛЯ всіх тверджень, тобто зелений прогін виглядав червоним прогоном.
+      // Той самий рід, що И14: різниця двигунів видно лише там, де вона є.
+      await sql.run(
+        `DELETE FROM price_calendar WHERE rate_plan_id IN (
+           SELECT rp.id FROM rate_plans rp JOIN properties p ON p.id = rp.property_id
+            WHERE p.organization_id = ?)`, [org]);
+      await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]);
+    });
     await sql.run('DELETE FROM organizations WHERE id = ?', [org]);
   }
   fs.rmSync(tmp, { recursive: true, force: true });

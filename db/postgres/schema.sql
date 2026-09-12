@@ -2001,6 +2001,7 @@ CREATE TABLE "reservations" (
   "lodging_discount_reason" TEXT,
   "breakfast_included" BOOLEAN,
   "company_id" TEXT,
+  "hold_expires_at" TIMESTAMPTZ,
   "external_ref" TEXT,
   "is_pool_unit" BOOLEAN DEFAULT false NOT NULL,
   PRIMARY KEY ("id"),
@@ -3205,6 +3206,7 @@ CREATE UNIQUE INDEX "idx_reservations_external_ref" ON "reservations" ("organiza
 CREATE INDEX "idx_reservations_external_uid" ON "reservations" ("external_uid");
 CREATE INDEX "idx_reservations_guest" ON "reservations" ("guest_id");
 CREATE UNIQUE INDEX "idx_reservations_guest_token" ON "reservations" ("guest_page_token");
+CREATE INDEX "idx_reservations_hold_expires" ON "reservations" ("hold_expires_at") WHERE hold_expires_at IS NOT NULL;
 CREATE INDEX "idx_reservations_hostex_code" ON "reservations" ("hostex_reservation_code");
 CREATE INDEX "idx_reservations_org" ON "reservations" ("organization_id");
 CREATE INDEX "idx_reservations_parent" ON "reservations" ("parent_id");

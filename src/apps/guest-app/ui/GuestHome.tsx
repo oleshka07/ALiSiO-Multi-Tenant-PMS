@@ -16,10 +16,11 @@ import { useEffect, useState } from 'react';
 import {
   GUEST_LANGS, GUEST_LANG_LABELS, GUEST_STRINGS, guestLang, type GuestLang,
 } from './translations';
+import { GuestStay } from './GuestStay';
 
 const LANG_KEY = 'alisio.guest.lang';
 
-type Step = 'home' | 'find';
+type Step = 'home' | 'find' | 'stay';
 
 export function GuestHome({ propertyName, appKey, initialLang }: {
   propertyName: string;
@@ -92,14 +93,21 @@ export function GuestHome({ propertyName, appKey, initialLang }: {
     <main className="guest-root" data-step={step}>
       <header className="guest-top">
         <p className="guest-house">{propertyName}</p>
-        <h1 className="guest-welcome">{step === 'find' ? s.findTitle : s.welcome}</h1>
+        <h1 className="guest-welcome">
+          {step === 'find' ? s.findTitle : step === 'stay' ? s.stayTitle : s.welcome}
+        </h1>
         {step === 'home' && <p className="guest-lead">{s.lead}</p>}
         {/*
           Перемикач мови стоїть ЛИШЕ на перших двох екранах (КІ20): далі гість
           уже в потоці з набраними даними, і мову там міняють не «бо
           захотілось», а бо помилились на початку.
         */}
-        <div className="guest-langs">
+        {/*
+          Перемикач — на перших двох екранах (КІ20): розвилка і перший екран
+          обраної гілки. Далі гість уже набирає дані, і мову там міняють не
+          «бо захотілось», а бо помилились на початку — тоді є «назад».
+        */}
+        {step !== 'stay' && <div className="guest-langs">
           {GUEST_LANGS.map((code) => (
             <button
               key={code}
@@ -111,7 +119,7 @@ export function GuestHome({ propertyName, appKey, initialLang }: {
               {GUEST_LANG_LABELS[code]}
             </button>
           ))}
-        </div>
+        </div>}
       </header>
 
       {step === 'home' && (
@@ -126,19 +134,20 @@ export function GuestHome({ propertyName, appKey, initialLang }: {
               <span className="guest-card-title">{s.haveBooking}</span>
               <span className="guest-card-help">{s.haveBookingHelp}</span>
             </button>
-            {/*
-              Гілка «немає бронювання» — крок 4, ще не підключена, і екран каже
-              це СЛОВАМИ. Кнопка, яка виглядає робочою і нічого не робить, —
-              той самий рід, що намальований QR у нікуди: гість вирішує, що
-              зламаний готель, а не що функція ще не дороблена.
-            */}
-            <button type="button" className="guest-card" disabled>
+            <button
+              type="button"
+              className="guest-card"
+              onClick={() => { setStep('stay'); setMessage(null); }}
+            >
               <span className="guest-card-title">{s.noBooking}</span>
               <span className="guest-card-help">{s.noBookingHelp}</span>
             </button>
           </div>
-          <p className="guest-note">{s.soon}</p>
         </>
+      )}
+
+      {step === 'stay' && (
+        <GuestStay appKey={appKey} lang={lang} onBack={() => setStep('home')} />
       )}
 
       {step === 'find' && (

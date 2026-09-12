@@ -934,7 +934,7 @@ if (fs.existsSync(OUT) && !process.argv.includes('--print')) {
     for (const c of lost) console.error(`  - ${c}`);
     console.error(`
 Almost certainly the local SQLite database is older than the committed schema:
-this generator reads db/pms.db, not the other way round. Bring it up to date
+this generator reads data/alisio.db (DB_PATH), not the other way round. Bring it
 (boot the app once, or copy a current one) and regenerate.
 
 If a column is genuinely meant to go, drop it in SQLite and pass

@@ -66,7 +66,6 @@ export interface GuestStrings {
   noBookingHelp: string;
   welcome: string;
   lead: string;
-  soon: string;
 
   findTitle: string;
   findLead: string;
@@ -81,6 +80,52 @@ export interface GuestStrings {
   /** Бронь є, гостьової сторінки немає — це ІНША порада, ніж «перевірте номер». */
   noPage: string;
   tooMany: string;
+
+  // ── Крок «немає бронювання»: дати → номери з цінами → контакти → готово ──
+  stayTitle: string;
+  arrival: string;
+  departure: string;
+  guests: string;
+  search: string;
+  searchingRooms: string;
+  /** Жодної пари «номер × тариф» на ці дати — і це не помилка гостя. */
+  nothingFree: string;
+  /** Готель веде книгу в іншій системі: бронювання — на його власній сторінці. */
+  handoff: string;
+  handoffOpen: string;
+  perNight: string;
+  nightsOne: string;
+  nightsMany: string;
+  freeLeft: string;
+  totalLabel: string;
+  breakfast: string;
+  choose: string;
+  yourDetails: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  emailHelp: string;
+  bookNow: string;
+  booking: string;
+  /**
+   * Тримаємо номер стільки-то хвилин — сказати вголос, бо строк справжній.
+   * `{minutes}` підставляє екран із `HOLD_MINUTES`: число в тексті, написане
+   * окремо від числа в коді, розійдеться з ним при першій же зміні строку, і
+   * гість читатиме на екрані одне, а бронь житиме інше.
+   */
+  heldFor: string;
+  confirmTitle: string;
+  confirmLead: string;
+  confirm: string;
+  confirming: string;
+  /** Строк минув: номер уже звільнено, і починати треба спочатку. */
+  holdExpired: string;
+  /** Кімнату щойно забрали — інша порада, ніж «нічого немає на ці дати». */
+  roomTaken: string;
+  /** Щось у полях не так: імʼя, телефон, дати. */
+  checkDetails: string;
+  payAtReception: string;
+  bookingFailed: string;
 }
 
 const de: GuestStrings = {
@@ -90,7 +135,6 @@ const de: GuestStrings = {
   haveBookingHelp: 'Einchecken und Zimmerschlüssel erhalten',
   noBooking: 'Ich brauche ein Zimmer',
   noBookingHelp: 'Verfügbarkeit ansehen und buchen',
-  soon: 'Dieser Schritt wird gerade eingerichtet.',
 
   findTitle: 'Ihre Buchung finden',
   findLead: 'Telefonnummer und Name wie bei der Buchung.',
@@ -102,6 +146,40 @@ const de: GuestStrings = {
   notFound: 'Wir konnten die Buchung nicht finden. Bitte prüfen Sie die Angaben oder wenden Sie sich an die Rezeption.',
   noPage: 'Ihre Buchung ist da, aber der Online-Check-in ist dafür nicht freigeschaltet. Bitte wenden Sie sich an die Rezeption.',
   tooMany: 'Zu viele Versuche. Bitte in einer Viertelstunde erneut versuchen.',
+
+  stayTitle: 'Zimmer finden',
+  arrival: 'Anreise',
+  departure: 'Abreise',
+  guests: 'Erwachsene',
+  search: 'Suchen',
+  searchingRooms: 'Wird gesucht…',
+  nothingFree: 'Für diese Daten haben wir leider nichts frei. Bitte andere Daten wählen oder die Rezeption anrufen.',
+  handoff: 'Dieses Haus nimmt Buchungen auf seiner eigenen Seite entgegen.',
+  handoffOpen: 'Zur Buchungsseite',
+  perNight: 'pro Nacht',
+  nightsOne: 'Nacht',
+  nightsMany: 'Nächte',
+  freeLeft: 'noch frei',
+  totalLabel: 'Gesamtpreis',
+  breakfast: 'Frühstück inklusive',
+  choose: 'Auswählen',
+  yourDetails: 'Ihre Daten',
+  firstName: 'Vorname',
+  lastName: 'Nachname',
+  email: 'E-Mail (optional)',
+  emailHelp: 'Für die Bestätigung. Ohne E-Mail bestätigen wir an der Rezeption.',
+  bookNow: 'Zimmer reservieren',
+  booking: 'Wird reserviert…',
+  heldFor: 'Wir halten das Zimmer {minutes} Minuten für Sie.',
+  confirmTitle: 'Fast geschafft',
+  confirmLead: 'Bitte bestätigen Sie die Buchung. Danach können Sie sofort einchecken.',
+  confirm: 'Buchung bestätigen',
+  confirming: 'Wird bestätigt…',
+  holdExpired: 'Die Zeit ist abgelaufen und das Zimmer ist wieder frei. Bitte suchen Sie erneut.',
+  roomTaken: 'Dieses Zimmer wurde gerade vergeben. Bitte wählen Sie ein anderes oder andere Daten.',
+  checkDetails: 'Bitte prüfen Sie Ihre Angaben.',
+  payAtReception: 'Bezahlt wird an der Rezeption — bei der Anreise oder bei der Abreise.',
+  bookingFailed: 'Die Buchung hat nicht geklappt. Bitte erneut versuchen oder die Rezeption anrufen.',
 };
 
 const en: GuestStrings = {
@@ -111,7 +189,6 @@ const en: GuestStrings = {
   haveBookingHelp: 'Check in and get your room key',
   noBooking: 'I need a room',
   noBookingHelp: 'See availability and book',
-  soon: 'This step is still being set up.',
 
   findTitle: 'Find your booking',
   findLead: 'Phone number and name as in the booking.',
@@ -123,6 +200,40 @@ const en: GuestStrings = {
   notFound: 'We could not find the booking. Please check the details or contact the reception.',
   noPage: 'Your booking is there, but online check-in is not enabled for it. Please contact the reception.',
   tooMany: 'Too many attempts. Please try again in fifteen minutes.',
+
+  stayTitle: 'Find a room',
+  arrival: 'Arrival',
+  departure: 'Departure',
+  guests: 'Adults',
+  search: 'Search',
+  searchingRooms: 'Searching…',
+  nothingFree: 'We have nothing free for these dates. Please try other dates or call the reception.',
+  handoff: 'This house takes bookings on its own page.',
+  handoffOpen: 'Go to the booking page',
+  perNight: 'per night',
+  nightsOne: 'night',
+  nightsMany: 'nights',
+  freeLeft: 'left',
+  totalLabel: 'Total price',
+  breakfast: 'Breakfast included',
+  choose: 'Choose',
+  yourDetails: 'Your details',
+  firstName: 'First name',
+  lastName: 'Last name',
+  email: 'E-mail (optional)',
+  emailHelp: 'For the confirmation. Without an e-mail we confirm at the reception.',
+  bookNow: 'Reserve the room',
+  booking: 'Reserving…',
+  heldFor: 'We hold the room for you for {minutes} minutes.',
+  confirmTitle: 'Almost done',
+  confirmLead: 'Please confirm the booking. You can check in straight afterwards.',
+  confirm: 'Confirm booking',
+  confirming: 'Confirming…',
+  holdExpired: 'The time ran out and the room is free again. Please search once more.',
+  roomTaken: 'That room has just been taken. Please choose another one or other dates.',
+  checkDetails: 'Please check your details.',
+  payAtReception: 'Payment is at the reception — on arrival or on departure.',
+  bookingFailed: 'The booking did not go through. Please try again or call the reception.',
 };
 
 export const GUEST_STRINGS: Record<GuestLang, GuestStrings> = { de, en };
