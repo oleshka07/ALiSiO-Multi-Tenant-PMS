@@ -953,6 +953,37 @@ async function main() {
       });
       claim('фактура', paidRes.status === 200, `бронь позначено оплаченою (${paidRes.status})`);
 
+      // ── Історія змін — про ГРОШІ й про ПЛАТНИКА ────────────────
+      //
+      // Власник приймав оплату, міняв платника — і бачив ПОРОЖНЮ вкладку.
+      // Гейт `history-actions` стверджує про перелік подій; тут — про шов, якого
+      // він не бачить: чи доїхав запис до бази й чи віддає його маршрут картки.
+      const hist = async () => (await body(await call(cookie, `/api/audit/bookings?reservation_id=${booking.id}`)))?.items ?? [];
+      const afterPaid = await hist();
+      claim('історія', afterPaid.some((r) => r.action === 'payment_status_change'),
+        `оплата лишила слід (${afterPaid.map((r) => r.action).join(', ') || 'порожньо'})`);
+
+      // Платник: цього роду в журналі не було ВЗАГАЛІ — стрічка `if`-ів
+      // знала девʼять полів, і `company_id` серед них не значився.
+      if (company?.id) {
+        // ПРИРІСТ, а не абсолютне число: родина «тариф» вище вже ставила
+        // й знімала фірму на цій самій броні, і ті записи — ПРАВИЛЬНІ.
+        // Перша редакція цього твердження чекала одного рядка і почервоніла на
+        // трьох — тобто стверджувала про чисту історію, якої тут немає.
+        const payerBefore = (await hist()).filter((r) => r.action === 'payer_change').length;
+        await call(cookie, `/api/bookings/${booking.id}`, {
+          method: 'PATCH', body: JSON.stringify({ company_id: company.id }),
+        });
+        const afterPayer = await hist();
+        const payerRows = afterPayer.filter((r) => r.action === 'payer_change');
+        claim('історія', payerRows.length === payerBefore + 1,
+          `зміна платника додала РІВНО один запис: було ${payerBefore}, стало ${payerRows.length}`);
+        claim('історія', String(payerRows[0]?.details ?? '').includes('Пробна фірма'),
+          `у записі НАЗВА фірми, а не її ідентифікатор (${payerRows[0]?.details ?? '—'})`);
+        claim('історія', !!payerRows[0]?.user_name,
+          `і відомо ХТО це зробив (${payerRows[0]?.user_name ?? 'ніхто'})`);
+      }
+
       let invoice = null;
       for (let i = 0; i < 20 && !invoice; i++) {
         const invRes = await call(cookie, `/api/bookings/${booking.id}/invoice`);

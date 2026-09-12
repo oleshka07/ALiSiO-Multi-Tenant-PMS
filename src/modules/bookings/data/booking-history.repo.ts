@@ -40,6 +40,11 @@ export const HISTORY_ACTIONS = [
   // Заселеність змінено рукою (Блок 4, «перерахувати ціну за новою заселеністю»).
   'guests_change',
   'payment', 'note',
+  // Дописані 12.09.2026: власник приймав оплату й міняв платника,
+  // а «Історія змін» лишалась порожньою. `payment_marker` писався в базу
+  // ще й доті, але в цьому словнику його не було.
+  'payment_marker', 'payer_change', 'rate_plan_change', 'discount_change', 'breakfast_change',
+  'registration_added', 'registration_removed',
   'channel_created', 'channel_modified', 'channel_cancelled',
 ] as const;
 

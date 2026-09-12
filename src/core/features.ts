@@ -303,7 +303,16 @@ export async function setFeature(organizationId: string, feature: FeatureKey, en
  */
 export function featureDisabled(feature: FeatureKey, headers?: Record<string, string>): Response {
   return new Response(
-    JSON.stringify({ error: `Feature "${feature}" is not enabled for this organization` }),
+    // `code` і `feature` — щоб екран міг РОЗРІЗНИТИ цю відмову від «немає
+    // права» (та теж 403, `code: 'FORBIDDEN'`) і сказати людині ту дію, яка
+    // спрацює: увімкнути модуль, а не «спробувати ще раз». Речення лишається
+    // англійським для розробника; будувати розгалуження на ньому означало б
+    // стерегти візерунок замість властивості (AGENTS §3.2.1).
+    JSON.stringify({
+      error: `Feature "${feature}" is not enabled for this organization`,
+      code: 'FEATURE_DISABLED',
+      feature,
+    }),
     { status: 403, headers: { 'Content-Type': 'application/json', ...(headers || {}) } },
   );
 }

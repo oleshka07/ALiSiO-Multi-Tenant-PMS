@@ -12,7 +12,7 @@
  */
 import { NextResponse } from 'next/server';
 import { isRefusal } from '@core/http/refusal';
-import { withPermission } from '@core/auth/session';
+import { withPermission, notFound } from '@core/auth/session';
 import { requestPropertyScope } from '@core/auth/property-scope';
 import * as folios from '../data/folio.repo';
 import * as payments from '../data/folio-payments.repo';
@@ -114,8 +114,17 @@ export const createFolio = withPermission('manage_documents', async (request: Re
     payerAddress: body.payer_address ?? null,
     payerVatNo: body.payer_vat_no ?? null,
     payerDebtorNo: body.payer_debtor_no ?? null,
+    // Гість, на якого виписаний рахунок: розбиття між фізособами
+    // звʼязком, а не набраним рукою рядком.
+    guestId: typeof body.guest_id === 'string' && body.guest_id.trim() ? body.guest_id.trim() : null,
     label: body.label ?? null,
+  }).catch((e: unknown) => {
+    // Чужий або неіснуючий гість — 404, не 500 і не тихе створення без звʼязку
+    // (інваріант 5: чужий id не зізнається, що він існує).
+    if (e instanceof Error && e.message === 'guest_not_found') return null;
+    throw e;
   });
+  if (id === null) return notFound();
   return NextResponse.json({ id }, { status: 201 });
 });
 

@@ -3764,5 +3764,15 @@
   "модулі та інтеграції": "moduly a integrace",
   "Номер візи": "Číslo víza",
   "пошта": "e-mail",
-  "стан звʼязку": "stav připojení"
+  "стан звʼязку": "stav připojení",
+  "Код відповіді": "Kód odpovědi",
+  "Немає права на рахунки гостей": "Chybí oprávnění k účtům hostů",
+  "Рахунки гостей, оплати й фактури живуть у модулі «Фактурування і каса». Увімкніть його в Налаштуваннях → Модулі; повторне завантаження тут не допоможе.": "Účty hostů, platby a faktury patří do modulu „Fakturace a pokladna“. Zapněte jej v Nastavení → Moduly; opětovné načtení zde nepomůže.",
+  "Рахунок, оплати й фактури бачать ролі з правом «Керування документами». Попросіть його у власника готелю.": "Účet, platby a faktury vidí role s oprávněním „Správa dokumentů“. Požádejte o ně majitele hotelu.",
+  "Сервер не відповів": "Server neodpověděl",
+  "Сесія скінчилась": "Relace vypršela",
+  "Увійдіть знову — рахунок гостя відкриється на тому самому місці.": "Přihlaste se znovu — účet hosta se otevře na stejném místě.",
+  "Фактурування вимкнене для цього готелю": "Fakturace je pro tento hotel vypnutá",
+  "або інша особа — імʼя": "nebo jiná osoba — jméno",
+  "Гість із броні…": "Host z rezervace…"
 }

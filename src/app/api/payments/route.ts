@@ -12,6 +12,9 @@ import { withActor, withPermission, type Actor } from '@core/auth/session';
 // (INC-028, ланка 3; клас Р8.3). `handleError` віддає 500 усьому, що не є
 // відмовою, тож деталі драйвера клієнтові й далі не їдуть (інваріант 6).
 import { handleError } from '@core/http/errors';
+// Гроші в історії броні: готівковий платіж — єдиний шлях, де гроші справді
+// рухаються, і він єдиний не лишав сліду в журналі — маркер лишав.
+import { recordBookingChange } from '@/modules/bookings/api/history';
 
 // Legacy /api/payments endpoint — reads/writes via fin_operations.
 //
@@ -129,6 +132,20 @@ export const POST = withPermission('manage_payments', async (
         actor,
         accountId,
       });
+      // Слід у журналі броні. Готівка — єдиний шлях, де гроші справді рухаються,
+      // і саме він сліду НЕ лишав: маркер нижче писав рядок, а взята з рук
+      // готівка — ні. Власник приймав оплату й бачив порожню історію.
+      //
+      // Запис говорить ще й про те, чи лягли гроші В РАХУНОК гостя: для
+      // німецького обʼєкта без `fiscal_de` це постійний стан, і розходження
+      // двох книг мусить бути видним і потім, а не лише в тості.
+      await recordBookingChange(sql, {
+        reservationId: String(reservation_id),
+        action: 'payment',
+        details: `+${Math.abs(Number(amount))} · ${method}${folioRecorded ? '' : ' · лише в касі, не в рахунку гостя'}`,
+        actor: actor?.id ? { id: actor.id, name: actor.name || actor.id } : null,
+      });
+
       // Відмова книги гостя ДОХОДИТЬ до оператора, а не лягає в лог (Р10.10).
       // Для німецького обʼєкта без `fiscal_de` це постійний стан цілого
       // сегмента: гроші в касі, у рахунку гостя їх немає. 201 без жодного
@@ -170,15 +187,15 @@ export const POST = withPermission('manage_payments', async (
     );
     if (!res) return NextResponse.json({ error: 'reservation not found' }, { status: 404 });
 
-    try {
-      const detailsLine = `${method} ${type} ${Math.abs(Number(amount))}${notes ? ' — ' + notes : ''}`;
-      await sql.run(
-        // organization_id from the reservation the payment is against.
-        `INSERT INTO booking_activity_log (id, organization_id, reservation_id, action, details)
-         VALUES (?, (SELECT organization_id FROM reservations WHERE id = ?), ?, 'payment_marker', ?)`,
-        [`al_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, reservation_id, reservation_id, detailsLine],
-      );
-    } catch { /* non-critical */ }
+    // Той самий писач, що й у готівки: власний INSERT тут не знав ні автора,
+    // ні підпису броні, тож у журналі був рядок «ніхто».
+    const markerActor = await getOptionalActor();
+    await recordBookingChange(sql, {
+      reservationId: String(reservation_id),
+      action: 'payment_marker',
+      details: `${method} ${type} ${Math.abs(Number(amount))}${notes ? ' — ' + notes : ''}`,
+      actor: markerActor?.id ? { id: markerActor.id, name: markerActor.name || markerActor.id } : null,
+    });
 
     return NextResponse.json({
       ok: true,

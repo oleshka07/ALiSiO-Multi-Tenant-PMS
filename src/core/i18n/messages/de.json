@@ -3732,5 +3732,15 @@
   "модулі та інтеграції": "Module und Integrationen",
   "Номер візи": "Visumnummer",
   "пошта": "E-Mail",
-  "стан звʼязку": "Verbindungsstatus"
+  "стан звʼязку": "Verbindungsstatus",
+  "Код відповіді": "Antwortcode",
+  "Немає права на рахунки гостей": "Keine Berechtigung für Gastkonten",
+  "Рахунки гостей, оплати й фактури живуть у модулі «Фактурування і каса». Увімкніть його в Налаштуваннях → Модулі; повторне завантаження тут не допоможе.": "Gastkonten, Zahlungen und Rechnungen gehören zum Modul „Rechnungsstellung und Kasse“. Aktivieren Sie es unter Einstellungen → Module; erneutes Laden hilft hier nicht.",
+  "Рахунок, оплати й фактури бачать ролі з правом «Керування документами». Попросіть його у власника готелю.": "Konto, Zahlungen und Rechnungen sehen nur Rollen mit dem Recht „Dokumente verwalten“. Bitten Sie die Hotelleitung darum.",
+  "Сервер не відповів": "Der Server hat nicht geantwortet",
+  "Сесія скінчилась": "Sitzung abgelaufen",
+  "Увійдіть знову — рахунок гостя відкриється на тому самому місці.": "Melden Sie sich erneut an — das Gastkonto öffnet sich an derselben Stelle.",
+  "Фактурування вимкнене для цього готелю": "Rechnungsstellung ist für dieses Hotel deaktiviert",
+  "або інша особа — імʼя": "oder eine andere Person — Name",
+  "Гість із броні…": "Gast aus der Buchung …"
 }
