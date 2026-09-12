@@ -67,6 +67,10 @@ const ALLOWED = new Map([
   // лягає в чергу — фасадом, через `writeReservationChange`.
   ['src/apps/kiosk/api/walkin.handlers.ts',
     'tentative без unit_id і без unit_type_id — не займає ні номера, ні ємності типу; чергу будить assignUnit при заселенні'],
+  ['src/apps/guest-app/data/claim.repo.ts',
+    'те саме, що walkin.handlers: попередня бронь чужої системи, tentative без unit_id і unit_type_id. '
+    + 'Плюс друга причина, якої в кіоску немає окремо: наявність ЦЬОГО обʼєкта веде чужа система, '
+    + 'вона ж і розсилає її в канали — наша звістка сказала б каналу те, чого ми не знаємо'],
 ]);
 
 // Обгортка модуля (`stay-notes` у bookings) рахується дверима: вона сама імпортує

@@ -65,6 +65,65 @@ async function ourGuest(organizationId: string, guestId: string): Promise<void> 
  * версія, мова), а згода називає версію без мови — людина погодилась на
  * редакцію, а не на переклад. Довід повністю — у шапці міграції 0300.
  */
+/**
+ * Тексти згод, чинні в цього готелю, — те, під чим гостю справді є що ставити
+ * галочку.
+ *
+ * ── Чому читач, а не список у коді ──────────────────────────────────────
+ *
+ * Галочка «я приймаю умови» без тексту, який готель написав, — це галочка
+ * ні під чим. Тому екран бронювання не вигадує ні переліку згод, ні їхніх
+ * назв: він питає базу, що в ЦЬОГО готелю чинне, і показує рівно це.
+ * Готель, який текстів не завів, галочок і не побачить — а не побачить
+ * галочку «приймаю умови», яких немає (інваріант 20: те, що клієнт змінює
+ * сам, не буває літералом у коді).
+ *
+ * ── Мова ────────────────────────────────────────────────────────────────
+ *
+ * Довідник ключується парою «версія × мова»: людина погоджується на
+ * РЕДАКЦІЮ, а читає її своєю мовою. Немає редакції мовою гостя — беремо
+ * будь-яку чинну того ж роду: показати текст чужою мовою гірше, ніж нічого,
+ * лише тоді, коли ми вдаємо, що він рідний; тут поруч видно, якою він мовою.
+ * Мовчки пропустити рід узагалі означало б не спитати згоди там, де готель
+ * її вимагає.
+ */
+export interface ConsentText {
+  consentKind: string;
+  version: string;
+  locale: string;
+  body: string;
+}
+
+export async function activeConsentTexts(
+  organizationId: string,
+  locale: string,
+  kinds: readonly string[],
+): Promise<ConsentText[]> {
+  if (kinds.length === 0) return [];
+  const sql = getSql();
+  const holes = kinds.map(() => '?').join(', ');
+  const rows = await sql.rows<Record<string, unknown>>(
+    `SELECT consent_kind, version, locale, body
+       FROM consent_texts
+      WHERE organization_id = ? AND is_active = TRUE AND consent_kind IN (${holes})`,
+    [organizationId, ...kinds]);
+
+  // Один текст на рід: спершу мовою гостя, інакше перший чинний. Рід, у якого
+  // чинних редакцій кілька, — це стан довідника, а не вибір екрана.
+  const byKind = new Map<string, ConsentText>();
+  for (const r of rows) {
+    const text: ConsentText = {
+      consentKind: String(r.consent_kind), version: String(r.version),
+      locale: String(r.locale), body: String(r.body),
+    };
+    const seen = byKind.get(text.consentKind);
+    if (!seen || (seen.locale !== locale && text.locale === locale)) byKind.set(text.consentKind, text);
+  }
+  // Порядок — за списком родів, який дав викликач: екран показує галочки в
+  // тому порядку, у якому їх назвали, а не в тому, як лягли рядки в базі.
+  return kinds.map((k) => byKind.get(k)).filter((t): t is ConsentText => Boolean(t));
+}
+
 export async function recordConsent(input: RecordConsentInput): Promise<void> {
   const sql = getSql();
   await ourGuest(input.organizationId, input.guestId);

@@ -1104,7 +1104,8 @@
           "amount": 3,
           "vatCode": "standard"
         }
-      ]
+      ],
+      "bookableOnline": true
     },
     {
       "name": "Frühstück – Speisen",
@@ -1124,13 +1125,15 @@
       "name": "Tiefgarage",
       "price": 10,
       "vatCode": "standard",
-      "category": "other"
+      "category": "other",
+      "bookableOnline": true
     },
     {
       "name": "Haustier (ohne Futter)",
       "price": 10,
       "vatCode": "reduced",
-      "category": "other"
+      "category": "other",
+      "bookableOnline": true
     },
     {
       "name": "Lunchpaket",
@@ -1148,7 +1151,8 @@
           "amount": 2.4,
           "vatCode": "standard"
         }
-      ]
+      ],
+      "bookableOnline": true
     },
     {
       "name": "Lunchpaket – Speisen",
@@ -1254,7 +1258,8 @@
       "name": "Wäscheservice",
       "price": 5,
       "vatCode": "standard",
-      "category": "other"
+      "category": "other",
+      "bookableOnline": true
     },
     {
       "name": "Buch",

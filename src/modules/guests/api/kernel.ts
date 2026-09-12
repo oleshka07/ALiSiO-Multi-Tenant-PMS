@@ -15,3 +15,11 @@ export type { SignatureAnswer, SignatureRefusal } from '../data/signature.repo';
 
 /** Реєстрація гостей — та сама, якою пише портал і рецепція. */
 export { saveRegistrations } from '../data/registration.repo';
+
+/**
+ * Згоди: що в готелю чинне і запис даної згоди. Потрібні воротам
+ * (гостьовий застосунок) — бронь без прийнятих умов це бронь, під якою
+ * ніхто нічого не підписував.
+ */
+export { activeConsentTexts, recordConsent, consentState } from '../data/guest-consents.repo';
+export type { ConsentText } from '../data/guest-consents.repo';

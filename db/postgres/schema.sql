@@ -55,6 +55,7 @@ CREATE TABLE "additional_services" (
   "category" TEXT DEFAULT 'other' NOT NULL,
   "available_for" TEXT DEFAULT 'all' NOT NULL,
   "is_active" BOOLEAN DEFAULT true NOT NULL,
+  "bookable_online" BOOLEAN DEFAULT false NOT NULL,
   "sort_order" BIGINT DEFAULT 0 NOT NULL,
   "vat_split" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
@@ -2006,6 +2007,7 @@ CREATE TABLE "reservations" (
   "lodging_discount_reason" TEXT,
   "breakfast_included" BOOLEAN,
   "company_id" TEXT,
+  "hold_expires_at" TIMESTAMPTZ,
   "external_ref" TEXT,
   "is_pool_unit" BOOLEAN DEFAULT false NOT NULL,
   PRIMARY KEY ("id"),
@@ -3014,6 +3016,7 @@ ALTER TABLE "reservations" ADD CONSTRAINT "no_double_booking"
 CREATE INDEX "idx_accruals_month" ON "accruals" ("month");
 CREATE INDEX "idx_accruals_org" ON "accruals" ("organization_id");
 CREATE INDEX "idx_accruals_status" ON "accruals" ("status");
+CREATE INDEX "idx_services_bookable_online" ON "additional_services" ("property_id") WHERE bookable_online;
 CREATE INDEX "idx_ai_usage_month" ON "ai_usage" ("organization_id", "created_at");
 CREATE INDEX "idx_ai_usage_org" ON "ai_usage" ("organization_id");
 CREATE INDEX "idx_amenities_category" ON "amenities" ("category_id");
@@ -3211,6 +3214,7 @@ CREATE UNIQUE INDEX "idx_reservations_external_ref" ON "reservations" ("organiza
 CREATE INDEX "idx_reservations_external_uid" ON "reservations" ("external_uid");
 CREATE INDEX "idx_reservations_guest" ON "reservations" ("guest_id");
 CREATE UNIQUE INDEX "idx_reservations_guest_token" ON "reservations" ("guest_page_token");
+CREATE INDEX "idx_reservations_hold_expires" ON "reservations" ("hold_expires_at") WHERE hold_expires_at IS NOT NULL;
 CREATE INDEX "idx_reservations_hostex_code" ON "reservations" ("hostex_reservation_code");
 CREATE INDEX "idx_reservations_org" ON "reservations" ("organization_id");
 CREATE INDEX "idx_reservations_parent" ON "reservations" ("parent_id");

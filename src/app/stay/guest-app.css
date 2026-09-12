@@ -77,3 +77,48 @@
   font-size: 1rem;
   cursor: pointer;
 }
+
+/* ── Крок вибору номера ──────────────────────────────────────────────────
+ *
+ * Картка — це ПАРА «номер × тариф»: одна кімната й дві різні угоди дають дві
+ * картки, і гість має бачити, чим вони відрізняються, не розкриваючи нічого.
+ * Тому на картці одразу і ціна за ніч, і сума, і умови — як на сайті готелю,
+ * з якого власник показував зразок.
+ */
+.guest-stay { display: flex; flex-direction: column; gap: 1rem; }
+.guest-offers { display: flex; flex-direction: column; gap: 1rem; }
+/* Картка-повідомлення (передача на власну сторінку готелю) кнопкою не є. */
+.guest-card[data-static='true'] { cursor: default; }
+.guest-rate { font-size: 1rem; font-weight: 600; color: #9a7b42; }
+.guest-card[data-primary='true'] .guest-rate { color: #fff; }
+.guest-rate-line { font-size: 0.9rem; color: #6b6157; }
+.guest-total { font-size: 1.1rem; font-weight: 600; margin-top: 0.35rem; }
+
+/* Галочка під умовами готелю. Текст — той, що написав готель, тож він може
+   бути довгим: рядок не обрізається, а переноситься. */
+.guest-consent {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  cursor: pointer;
+}
+.guest-consent input { margin-top: 0.25rem; width: 1.15rem; height: 1.15rem; flex: none; }
+.guest-consent-text { color: #6b6157; }
+
+/* Лічильник кількості на кроці послуг. Кнопки великі — палець, не миша. */
+.guest-qty { display: flex; align-items: center; gap: 1rem; margin-top: 0.5rem; }
+.guest-qty-btn {
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 0.8rem;
+  border: 1px solid #e0d7c9;
+  background: #fffdf9;
+  color: inherit;
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.guest-qty-btn:disabled { opacity: 0.4; cursor: default; }
+.guest-qty-n { min-width: 1.5rem; text-align: center; font-size: 1.1rem; font-weight: 600; }

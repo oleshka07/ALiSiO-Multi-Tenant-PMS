@@ -65,6 +65,13 @@ export interface RatePlanSetting {
   code: string;
   currency: string;
   mealPlan: string | null;
+  /**
+   * Умови скасування — дослівний текст готелю, як він стоїть у довіднику.
+   * Читається; цей довідник його не редагує і не переказує своїми словами:
+   * вигадане «безкоштовне скасування» на картці бронювання це обіцянка,
+   * якої готель не давав.
+   */
+  cancellationPolicy: string | null;
   isActive: boolean;
   /** Як рахує гостей: за номер чи за особу (Ц26). Замкнений після заведення у вендора. */
   sellMode: SellMode;
@@ -208,6 +215,7 @@ function toSetting(row: Record<string, any>, priced: string[], mapped: boolean):
     code: String(row.code),
     currency: String(row.currency),
     mealPlan: row.meal_plan == null ? null : String(row.meal_plan),
+    cancellationPolicy: row.cancellation_policy == null ? null : String(row.cancellation_policy),
     isActive: Boolean(Number(row.is_active)),
     sellMode: readSellMode(row.sell_mode, row.id),
     mapped,

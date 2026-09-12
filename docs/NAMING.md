@@ -181,13 +181,18 @@ Charter описує, ЯК називати. Він не вимагає нега
     у `STAGING_REASON` картки. `fiscal_guard` скасовано 10.09 (З34): імпортна
     оплата йде у фоліо з `fin_folio_payments.source = 'import'` і
     `origin = winhotel:<LNR>`; `source` NULL — наша каса.
-  - `guest_consents.consent_kind`: `marketing | data_processing | profiling` —
+  - `guest_consents.consent_kind`: `terms | marketing | data_processing | profiling` —
     на ЩО людина погодилась (INC-300, 0300). Вільний рядок, не CHECK:
     юрисдикції додають свої пункти, і словник, що вимагає міграції, змусив би
     готель чекати релізу заради галочки в анкеті. Читач невідомого роду не
     вигадує дозволу — його немає в жодному похідному, поки його не спитали
-    поіменно
-  - `guest_consents.source`: `portal | reception | widget | import` — звідки
+    поіменно. `terms` (умови готелю, AGB) додано 12.09 воротами: галочка на
+    екрані бронювання. Рід і ТРИМАЄ кнопку — на відміну від `marketing`, яка
+    лишається добровільною: галочка, без якої не забронювати, добровільною не
+    є, і саме за таку беруть штраф. Список родів, які питають ворота, — у
+    `apps/guest-app/domain/consents.ts`, і обовʼязковість там названа окремо
+    від переліку
+  - `guest_consents.source`: `portal | reception | widget | guest_app | import` — звідки
     прийшла згода. Теж вільний рядок; `import` існує окремо саме тому, що
     доказ «це прийшло з попередньої системи, а не від нас» — частина того, що
     показують наглядачеві
@@ -211,6 +216,11 @@ Charter описує, ЯК називати. Він не вимагає нега
     існує на жодному двигуні — його знімає міграція «remove CHECK constraint
     from reservations.source» ще на старті, і на Postgres його не було ніколи;
     перелік родів тримає писач, як `property_type` (О9)
+  - `reservations.source = 'guest_app'` (**гість забронював сам із QR на склі**,
+    КІ25): бронь із гостьового застосунку. Рід походження, як і `kiosk_walkin`,
+    а не канал продажу — рядок у `booking_sources` не заводиться, інакше кожен
+    готель мусив би завести його руками, перш ніж ворота запрацюють. Те саме
+    слово носить `guests.source`: гість, заведений воротами
   - `kiosk_events.kind` (**що робили на терміналі**): вільний рядок —
     `pair`, `search`, `search_miss`, `search_ambiguous`, `register`, `sign`,
     `checkin`, `checkout`, `invoice_elsewhere`, `walkin_claim`.

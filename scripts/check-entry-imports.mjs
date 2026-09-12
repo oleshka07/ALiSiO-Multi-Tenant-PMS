@@ -73,6 +73,11 @@ const DECLARED = [
   'seed-chart-of-accounts.mjs',   // deploy.sh, після смоуку
   'check-isolation.mjs',          // to-postgres.sh
   'pg-import.mjs',                // to-postgres.sh, через `docker run --entrypoint node`
+  // Ключ гостьового застосунку: `deploy/guest-app-key.sh` кличе його в
+  // контейнері. Перехресна перевірка по `deploy/*.sh` знайшла б його й сама —
+  // і знайшла, ще до першого запуску на сервері, — але рядок тут лишає
+  // причину на видноті поруч із рештою.
+  'issue-guest-app-key.mjs',      // deploy/guest-app-key.sh
 ];
 
 const live = fs.readdirSync(path.join(ROOT, 'scripts'))
