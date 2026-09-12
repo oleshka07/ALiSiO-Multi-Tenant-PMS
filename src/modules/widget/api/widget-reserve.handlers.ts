@@ -822,10 +822,14 @@ export async function createWidgetReservation(request: NextRequest) {
       if (slot === 1 && documentNumber) {
         try {
           const grId = `gr_${Date.now()}_widget`;
+          // Мети приїзду тут немає, і це не пропуск: віджет її не питає, а
+          // літерал 'Tourism' стояв саме тут — вигадана відповідь у книзі для
+          // поліції за людину, з якою ще ніхто не говорив. Заповнює її
+          // рецепція при заселенні (гейт `purpose-of-stay.check`).
           await sql.run(`
             INSERT INTO guest_registrations
-              (id, reservation_id, guest_id, is_primary, reg_status, purpose_of_stay)
-            VALUES (?, ?, ?, TRUE, 'pending', 'Tourism')
+              (id, reservation_id, guest_id, is_primary, reg_status)
+            VALUES (?, ?, ?, TRUE, 'pending')
             ON CONFLICT DO NOTHING
           `, [grId, resId, guestId]);
 

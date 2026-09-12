@@ -124,6 +124,7 @@ export default function MobileBookingDetail({
   const [regForm, setRegForm] = useState({
     firstName: '', lastName: '', dateOfBirth: '', documentType: 'ID_CARD',
     documentNumber: '', nationality: '', country: '', address: '',
+    purposeOfStay: '', visaNumber: '',
   });
   const [savingReg, setSavingReg] = useState(false);
   const [invoice, setInvoice] = useState<{ id: string; invoice_number: string; issued_at: string; amount: number; currency: string } | null>(null);
@@ -263,7 +264,7 @@ export default function MobileBookingDetail({
         showToast(data.error || 'Помилка');
         return;
       }
-      setRegForm({ firstName: '', lastName: '', dateOfBirth: '', documentType: 'ID_CARD', documentNumber: '', nationality: '', country: '', address: '' });
+      setRegForm({ firstName: '', lastName: '', dateOfBirth: '', documentType: 'ID_CARD', documentNumber: '', nationality: '', country: '', address: '', purposeOfStay: '', visaNumber: '' });
       setShowRegForm(false);
       onFetchRegistrations(b.id);
       onFetchBookings();
@@ -878,6 +879,14 @@ export default function MobileBookingDetail({
                   </div>
                   <input className="form-input" placeholder={tUi('Адреса')} value={regForm.address}
                     onChange={e => setRegForm(p => ({ ...p, address: e.target.value }))} style={{ fontSize: 13 }} />
+                  {/* Те саме, що на великому екрані: мету приїзду ПИТАЮТЬ,
+                      а не підставляють. Не назвали — порожньо. */}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input className="form-input" placeholder={tUi('Мета приїзду')} value={regForm.purposeOfStay}
+                      onChange={e => setRegForm(p => ({ ...p, purposeOfStay: e.target.value }))} style={{ fontSize: 13 }} />
+                    <input className="form-input" placeholder={tUi('Номер візи')} value={regForm.visaNumber}
+                      onChange={e => setRegForm(p => ({ ...p, visaNumber: e.target.value }))} style={{ fontSize: 13 }} />
+                  </div>
                   <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                     <button onClick={() => setShowRegForm(false)}
                       style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border-primary)', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>

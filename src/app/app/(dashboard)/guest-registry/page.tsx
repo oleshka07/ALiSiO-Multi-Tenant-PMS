@@ -89,6 +89,11 @@ export default function GuestRegistryPage() {
   const [selectedEntry, setSelectedEntry] = useState<RegistryEntry | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
   const [hideConfirm, setHideConfirm] = useState<RegistryEntry | null>(null);
+  // Мета приїзду й номер візи виправні З ЕКРАНА. Доти цей рядок
+  // книги міняв лише код (літералом на реєстрації), тобто помилку в тому,
+  // що читає поліція, не міг виправити ніхто.
+  const [purposeDraft, setPurposeDraft] = useState<{ purpose: string; visa: string } | null>(null);
+  const [savingPurpose, setSavingPurpose] = useState(false);
 
   // Книгу гостей і суму збору подають ПО ЗАКЛАДУ, тож екран мусить сказати,
   // про який обʼєкт питає (INC-037). Порожнє `propertyId` — це «Усі обʼєкти»,
@@ -159,6 +164,40 @@ export default function GuestRegistryPage() {
       console.error('[GuestRegistry] hide error:', e);
     } finally {
       setUpdating(null);
+    }
+  };
+
+  const handleSavePurpose = async (entry: RegistryEntry) => {
+    if (!purposeDraft) return;
+    setSavingPurpose(true);
+    try {
+      const res = await fetch(`/api/guest-registry/${entry.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_purpose',
+          purposeOfStay: purposeDraft.purpose.trim(),
+          visaNumber: purposeDraft.visa.trim(),
+        }),
+      });
+      // Відповідь ЧИТАЄТЬСЯ: чужий рядок віддає 404, і «збережено» на
+      // ньому було б неправдою (check-unread-write-response).
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.error('[GuestRegistry] purpose error:', err?.error || res.status);
+        return;
+      }
+      setSelectedEntry((e) => (e ? {
+        ...e,
+        purpose_of_stay: purposeDraft.purpose.trim() || null,
+        visa_number: purposeDraft.visa.trim() || null,
+      } : e));
+      setPurposeDraft(null);
+      await fetchData();
+    } catch (e) {
+      console.error('[GuestRegistry] purpose error:', e);
+    } finally {
+      setSavingPurpose(false);
     }
   };
 
@@ -410,14 +449,51 @@ export default function GuestRegistryPage() {
                   <label>Adresa</label>
                   <span>{selectedEntry.address || '—'}</span>
                 </div>
-                <div className="detail-field">
-                  <label>Číslo víza</label>
-                  <span>{selectedEntry.visa_number || '—'}</span>
-                </div>
-                <div className="detail-field">
-                  <label>Účel pobytu</label>
-                  <span>{selectedEntry.purpose_of_stay || '—'}</span>
-                </div>
+                {purposeDraft ? (
+                  <>
+                    <div className="detail-field">
+                      <label>Číslo víza</label>
+                      <input className="form-input" value={purposeDraft.visa}
+                        onChange={(e) => setPurposeDraft((d) => (d ? { ...d, visa: e.target.value } : d))} />
+                    </div>
+                    <div className="detail-field">
+                      <label>Účel pobytu</label>
+                      <input className="form-input" value={purposeDraft.purpose}
+                        placeholder="Turistika, pracovní cesta…"
+                        onChange={(e) => setPurposeDraft((d) => (d ? { ...d, purpose: e.target.value } : d))} />
+                    </div>
+                    <div className="detail-field">
+                      <label />
+                      <span style={{ display: 'flex', gap: 8 }}>
+                        <button className="btn btn-sm btn-primary" disabled={savingPurpose}
+                          onClick={() => handleSavePurpose(selectedEntry)}>
+                          <Check size={14} /> Uložit
+                        </button>
+                        <button className="btn btn-sm" disabled={savingPurpose}
+                          onClick={() => setPurposeDraft(null)}>Zrušit</button>
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="detail-field">
+                      <label>Číslo víza</label>
+                      <span>{selectedEntry.visa_number || '—'}</span>
+                    </div>
+                    <div className="detail-field">
+                      <label>Účel pobytu</label>
+                      {/* Порожнє — це прогалина, яку треба доповнити, а не дані. */}
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {selectedEntry.purpose_of_stay || '—'}
+                        <button className="btn btn-sm"
+                          onClick={() => setPurposeDraft({
+                            purpose: selectedEntry.purpose_of_stay || '',
+                            visa: selectedEntry.visa_number || '',
+                          })}>Upravit</button>
+                      </span>
+                    </div>
+                  </>
+                )}
                 <hr />
                 <div className="detail-field">
                   <label>Ubytování</label>

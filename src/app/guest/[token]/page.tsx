@@ -132,7 +132,7 @@ export default function GuestPage() {
   const [regCurrentGuest, setRegCurrentGuest] = useState(0); // 0-indexed: which guest is being registered
   const [regData, setRegData] = useState({
     fullName: '', email: '', phone: '', dateOfBirth: '',
-    documentType: '', documentNumber: '', nationality: '', address: '', purposeOfStay: 'Tourism', visaNumber: ''
+    documentType: '', documentNumber: '', nationality: '', address: '', purposeOfStay: '', visaNumber: ''
   });
   const [consent, setConsent] = useState(false);
   const [regLoading, setRegLoading] = useState(false);
@@ -477,7 +477,7 @@ export default function GuestPage() {
         nationality: g.nationality || null,
         documentType: VALID_DOC_TYPES.includes(g.document_type) ? g.document_type : 'other',
         documentNumber: g.document_number || null,
-        purposeOfStay: g.purpose_of_stay || 'Tourism',
+        purposeOfStay: g.purpose_of_stay || null,
         visaNumber: g.visa_number || null,
       }));
       const allGuests = [...existingGuests, {
@@ -486,8 +486,11 @@ export default function GuestPage() {
         nationality: regData.nationality,
         documentType: regData.documentType,
         documentNumber: regData.documentNumber,
-        purposeOfStay: regData.purposeOfStay || 'Tourism',
-        visaNumber: regData.visaNumber || '',
+        // Не вписав — порожньо. Тут стояв літерал 'Tourism', і він
+        // потрапляв у книгу для поліції як відповідь гостя, якого ніхто
+        // не питав: поля для мети приїзду форма не мала взагалі.
+        purposeOfStay: regData.purposeOfStay.trim() || null,
+        visaNumber: regData.visaNumber.trim() || null,
       }];
       const res = await fetch(`/api/guest/${token}/register`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -508,7 +511,7 @@ export default function GuestPage() {
         // More guests to register — reset form for next guest
         setRegCurrentGuest(newCount);
         setRegStep(1);
-        setRegData({ fullName: '', email: '', phone: '', dateOfBirth: '', documentType: '', documentNumber: '', nationality: '', address: '', purposeOfStay: 'Tourism', visaNumber: '' });
+        setRegData({ fullName: '', email: '', phone: '', dateOfBirth: '', documentType: '', documentNumber: '', nationality: '', address: '', purposeOfStay: '', visaNumber: '' });
         setConsent(false);
         showToast(`✅ ${t.guestReg} ${newCount}/${requiredGuests}`);
       }
@@ -585,7 +588,7 @@ export default function GuestPage() {
           onRegisterClick={() => {
             const rc = data?.registeredGuests?.length || 0;
             setRegCurrentGuest(rc);
-            setRegData({ fullName: '', email: '', phone: '', dateOfBirth: '', documentType: '', documentNumber: '', nationality: '', address: '', purposeOfStay: 'Tourism', visaNumber: '' });
+            setRegData({ fullName: '', email: '', phone: '', dateOfBirth: '', documentType: '', documentNumber: '', nationality: '', address: '', purposeOfStay: '', visaNumber: '' });
             setShowReg(true);
           }}
           checkInTime={r?.check_in_time}
@@ -669,6 +672,19 @@ export default function GuestPage() {
                       placeholder="München, Germany"
                       onChange={e => setRegData(d => ({ ...d, address: e.target.value }))} />
                   </div>
+                  {/* Мета приїзду й віза — БЕЗ зірки: не назвали, значить порожньо.
+                      Доти форми не було зовсім, а в книгу для поліції їхав
+                      літерал 'Tourism' за кожного гостя. */}
+                  <div className="gp-field">
+                    <div className="gp-field-label">{t.purposeOfStay}</div>
+                    <input className="gp-field-input" value={regData.purposeOfStay}
+                      onChange={e => setRegData(d => ({ ...d, purposeOfStay: e.target.value }))} />
+                  </div>
+                  <div className="gp-field">
+                    <div className="gp-field-label">{t.visaNumber}</div>
+                    <input className="gp-field-input" value={regData.visaNumber}
+                      onChange={e => setRegData(d => ({ ...d, visaNumber: e.target.value }))} />
+                  </div>
                 </>
               )}
 
@@ -686,6 +702,8 @@ export default function GuestPage() {
                       [t.documentNumber, regData.documentNumber],
                       [t.nationality, regData.nationality],
                       [t.permanentAddress, regData.address],
+                      [t.purposeOfStay, regData.purposeOfStay || '—'],
+                      [t.visaNumber, regData.visaNumber || '—'],
                     ].map(([label, value], i) => (
                       <div key={i} className="gp-confirm-row">
                         <span className="gp-confirm-label">{label}</span>
@@ -848,7 +866,7 @@ export default function GuestPage() {
                   <div className="gp-action-desc">{registeredCount > 0 ? `${registeredCount}/${requiredGuests} ${t.done}` : t.regMinutes}</div>
                 </div>
               </div>
-              <button className="gp-btn gp-btn-primary" onClick={() => { setRegCurrentGuest(registeredCount); setRegData({ fullName: '', email: '', phone: '', dateOfBirth: '', documentType: '', documentNumber: '', nationality: '', address: '', purposeOfStay: 'Tourism', visaNumber: '' }); setShowReg(true); }}>
+              <button className="gp-btn gp-btn-primary" onClick={() => { setRegCurrentGuest(registeredCount); setRegData({ fullName: '', email: '', phone: '', dateOfBirth: '', documentType: '', documentNumber: '', nationality: '', address: '', purposeOfStay: '', visaNumber: '' }); setShowReg(true); }}>
                 {registeredCount > 0 ? `${t.startReg} (${registeredCount + 1}/${requiredGuests})` : t.startReg}
               </button>
             </div>
@@ -879,7 +897,7 @@ export default function GuestPage() {
                 {regRequired && <ListRow icon={isRegistered ? '✅' : '⚠️'} label={t.guestReg}
                   value={isRegistered ? t.done : `${registeredCount}/${requiredGuests}`}
                   valueClass={isRegistered ? '' : 'required'}
-                  onClick={isRegistered ? null : () => { setRegCurrentGuest(registeredCount); setRegData({ fullName: '', email: '', phone: '', dateOfBirth: '', documentType: '', documentNumber: '', nationality: '', address: '', purposeOfStay: 'Tourism', visaNumber: '' }); setShowReg(true); }} />}
+                  onClick={isRegistered ? null : () => { setRegCurrentGuest(registeredCount); setRegData({ fullName: '', email: '', phone: '', dateOfBirth: '', documentType: '', documentNumber: '', nationality: '', address: '', purposeOfStay: '', visaNumber: '' }); setShowReg(true); }} />}
                 <ListRow icon={(!regRequired || isRegistered) ? '🔑' : '🔒'} label={t.entryInstructions}
                   value={(!regRequired || isRegistered) ? '' : formatDateLocalized(r.check_in, lang)}
                   onClick={(!regRequired || isRegistered) ? () => setSheet('entry') : () => setSheet('reg-required')}
@@ -1447,7 +1465,7 @@ export default function GuestPage() {
           <div style={{ fontSize: 14, color: 'var(--gp-sub)', marginBottom: 20 }}>
             {registeredCount > 0 ? `${registeredCount}/${requiredGuests} ${t.done}` : t.regMinutes}
           </div>
-          <button className="gp-btn gp-btn-primary" onClick={() => { setSheet(null); setRegCurrentGuest(registeredCount); setRegData({ fullName: '', email: '', phone: '', dateOfBirth: '', documentType: '', documentNumber: '', nationality: '', address: '', purposeOfStay: 'Tourism', visaNumber: '' }); setShowReg(true); }}>
+          <button className="gp-btn gp-btn-primary" onClick={() => { setSheet(null); setRegCurrentGuest(registeredCount); setRegData({ fullName: '', email: '', phone: '', dateOfBirth: '', documentType: '', documentNumber: '', nationality: '', address: '', purposeOfStay: '', visaNumber: '' }); setShowReg(true); }}>
             {t.startReg}
           </button>
         </div>
@@ -1583,6 +1601,19 @@ export default function GuestPage() {
                     placeholder="München, Germany"
                     onChange={e => setRegData(d => ({ ...d, address: e.target.value }))} />
                 </div>
+                {/* Мета приїзду й віза — БЕЗ зірки: не назвали, значить порожньо.
+                    Доти форми не було зовсім, а в книгу для поліції їхав
+                    літерал 'Tourism' за кожного гостя. */}
+                <div className="gp-field">
+                  <div className="gp-field-label">{t.purposeOfStay}</div>
+                  <input className="gp-field-input" value={regData.purposeOfStay}
+                    onChange={e => setRegData(d => ({ ...d, purposeOfStay: e.target.value }))} />
+                </div>
+                <div className="gp-field">
+                  <div className="gp-field-label">{t.visaNumber}</div>
+                  <input className="gp-field-input" value={regData.visaNumber}
+                    onChange={e => setRegData(d => ({ ...d, visaNumber: e.target.value }))} />
+                </div>
               </>
             )}
 
@@ -1600,6 +1631,8 @@ export default function GuestPage() {
                     [t.documentNumber, regData.documentNumber],
                     [t.nationality, regData.nationality],
                     [t.permanentAddress, regData.address],
+                    [t.purposeOfStay, regData.purposeOfStay || '—'],
+                    [t.visaNumber, regData.visaNumber || '—'],
                   ].map(([label, value], i) => (
                     <div key={i} className="gp-confirm-row">
                       <span className="gp-confirm-label">{label}</span>

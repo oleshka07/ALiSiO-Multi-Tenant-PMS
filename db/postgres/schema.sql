@@ -1343,8 +1343,6 @@ CREATE TABLE "guest_registrations" (
   "consent_given" BIGINT DEFAULT 0,
   "consent_at" TIMESTAMPTZ,
   "consent_ip" TEXT,
-  "purpose_of_stay" TEXT,
-  "visa_number" TEXT,
   PRIMARY KEY ("id")
 );
 

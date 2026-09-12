@@ -146,7 +146,7 @@ export default function BookingViewModal({
   const [filesCount, setFilesCount] = useState<number | null>(null);
   const [showPayForm, setShowPayForm] = useState(false);
   const [payForm, setPayForm] = useState({ amount: '', method: 'cash', type: 'partial', notes: '' });
-  const [regForm, setRegForm] = useState({ firstName: '', lastName: '', dateOfBirth: '', documentType: 'ID_CARD', documentNumber: '', nationality: '', country: '', address: '' });
+  const [regForm, setRegForm] = useState({ firstName: '', lastName: '', dateOfBirth: '', documentType: 'ID_CARD', documentNumber: '', nationality: '', country: '', address: '', purposeOfStay: '', visaNumber: '' });
   const [savingReg, setSavingReg] = useState(false);
   const [invoice, setInvoice] = useState<{ id: string; invoice_number: string; issued_at: string; amount: number; currency: string } | null>(null);
   const [reissuing, setReissuing] = useState(false);
@@ -399,7 +399,7 @@ export default function BookingViewModal({
       });
       const data = await res.json();
       if (!res.ok) { showToast(data.error || 'Помилка'); return; }
-      setRegForm({ firstName: '', lastName: '', dateOfBirth: '', documentType: 'ID_CARD', documentNumber: '', nationality: '', country: '', address: '' });
+      setRegForm({ firstName: '', lastName: '', dateOfBirth: '', documentType: 'ID_CARD', documentNumber: '', nationality: '', country: '', address: '', purposeOfStay: '', visaNumber: '' });
       onFetchRegistrations(b.id);
       onFetchBookings();
       showToast(tUi('Гостя зареєстровано!'));
@@ -1394,6 +1394,18 @@ export default function BookingViewModal({
                     <div style={{ gridColumn: '1 / -1' }}>
                       <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Адреса')}</label>
                       <input className="form-input" placeholder="Str.C.A.Rosetti nr.15..." value={regForm.address} onChange={e => setRegForm(p => ({ ...p, address: e.target.value }))} />
+                    </div>
+                    {/* Мета приїзду й віза. Поля тут не було зовсім, а в книгу
+                        гостей їхав літерал: книга казала «туризм» про кожного, кого
+                        зареєстрував портьє, і про відрядженого теж. Не зіркові: не назвали —
+                        порожньо, і це видно в реєстрі як прогалина (гейт purpose-of-stay). */}
+                    <div>
+                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Мета приїзду')}</label>
+                      <input className="form-input" placeholder={tUi('відпочинок, відрядження…')} value={regForm.purposeOfStay} onChange={e => setRegForm(p => ({ ...p, purposeOfStay: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Номер візи')}</label>
+                      <input className="form-input" placeholder="—" value={regForm.visaNumber} onChange={e => setRegForm(p => ({ ...p, visaNumber: e.target.value }))} />
                     </div>
                   </div>
                   <button className="btn btn-sm btn-primary" style={{ marginTop: 12, width: '100%' }}

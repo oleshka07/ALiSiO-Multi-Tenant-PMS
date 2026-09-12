@@ -40,7 +40,7 @@ export const registerGuest = withActor(async (request: NextRequest, { params }: 
     }
     const body = await request.json();
 
-    const { firstName, lastName, dateOfBirth, documentType, documentNumber, nationality, country, address, isPrimary } = body;
+    const { firstName, lastName, dateOfBirth, documentType, documentNumber, nationality, country, address, isPrimary, purposeOfStay, visaNumber } = body;
 
     if (!firstName || !lastName || !documentNumber) {
       return NextResponse.json({ error: 'Missing required fields (name + document)' }, { status: 400 });
@@ -76,6 +76,11 @@ export const registerGuest = withActor(async (request: NextRequest, { params }: 
       reservationId: id, guestId, isPrimary: Boolean(isPrimary),
       guest: { firstName, lastName, dateOfBirth: dateOfBirth || null, documentType: documentType || null,
         documentNumber, nationality: nationality || null, address: address || null },
+      // Мета приїзду й віза — від портьє, а не з коду: тут писач ставив
+      // літерал за гостя, якого ніхто не питав. Не назвали — порожньо,
+      // і в реєстрі це видно як прогалину, яку можна доповнити.
+      purposeOfStay: typeof purposeOfStay === 'string' ? purposeOfStay : null,
+      visaNumber: typeof visaNumber === 'string' ? visaNumber : null,
     });
     if (!regId) {
       return NextResponse.json({ error: 'Guest already registered for this reservation' }, { status: 409 });
