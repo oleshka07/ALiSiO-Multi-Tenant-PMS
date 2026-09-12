@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
 import { resolveBookingGuest } from '@guests';
 import { bookingPayerFields } from '@companies/kernel';
+import { assertRatePlanForPayer } from '@pricing/plans';
 import { writeBookingAudit, getBookingActor } from './audit-log.handlers';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
 import { ownedUnit } from '../data/owned.repo';
@@ -72,6 +73,8 @@ export async function createReservationHandler(request: NextRequest, _ctx: unkno
       guestId,
       // Фірма-платник, названа відразу. Порожньо — платить гість, як і досі.
       companyId,
+      // Тариф (прейскурант). Порожньо — базова ціна, як і досі.
+      ratePlanId,
       unitId, checkIn, checkOut, nights,
       adults, children, status, source, totalPrice,
       commissionAmount: commissionOverride,
@@ -142,6 +145,20 @@ export async function createReservationHandler(request: NextRequest, _ctx: unkno
     }
     const p = payer.fields;
 
+    // Тариф звіряється ТИМИ САМИМИ дверима, що й у котируванні (INC-205).
+    //
+    // Доти його перевіряв лише `/api/pricing/quote`, а саму бронь створює інший
+    // маршрут — і він тарифу не бачив узагалі. Щойно форма дає його обрати,
+    // «звузити список на екрані» перестає бути захистом: `ratePlanId` приходить із
+    // ТІЛА запиту, і хто знає ідентифікатор фірмового тарифу — називає його сам.
+    // П'ятий випадок того самого класу (INC-201…203, 205: читач полагоджений,
+    // писач відчинений), гейт `booking-rate-plan.check`.
+    //
+    // Відмова названа і летить винятком — її підхоплює `handleError` нижче й
+    // віддає своїм статусом (404) і своїм текстом.
+    const chosenPlan = typeof ratePlanId === 'string' && ratePlanId.trim() ? ratePlanId.trim() : null;
+    await assertRatePlanForPayer(chosenPlan, actor.organizationId, p.company_id);
+
     const resId = `r_${Date.now()}`;
     let commissionAmount = 0;
     if (commissionOverride !== undefined && commissionOverride !== null) {
@@ -197,9 +214,9 @@ export async function createReservationHandler(request: NextRequest, _ctx: unkno
     // (дедуплікація гостя, комісія, валюта). У це вікно проходили ОБИДВІ броні.
     try {
       await insertingStay(() => sql.run(`
-        INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, check_in, check_out, nights, adults, children, status, payment_status, source, total_price, currency, commission_amount, guest_page_token, city_tax_amount, city_tax_included, city_tax_paid, internal_notes, company_id, invoice_company_name, invoice_company_ico, invoice_company_dic, invoice_company_address, invoice_company_city, invoice_company_country, invoice_company_email)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [resId, actor.organizationId, unit.property_id, unitId, resolvedGuestId, checkIn, checkOut, nights || 1, adults || 1, children || 0, bookingStatus, body.paymentStatus || 'unpaid', source || 'direct', priceGiven, currency, commissionAmount, guestPageToken, finalCityTaxAmount, finalCityTaxIncluded, finalCityTaxPaid, internalNotes || null, p.company_id, p.invoice_company_name, p.invoice_company_ico, p.invoice_company_dic, p.invoice_company_address, p.invoice_company_city, p.invoice_company_country, p.invoice_company_email]),
+        INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, check_in, check_out, nights, adults, children, status, payment_status, source, total_price, currency, commission_amount, guest_page_token, city_tax_amount, city_tax_included, city_tax_paid, internal_notes, rate_plan_id, company_id, invoice_company_name, invoice_company_ico, invoice_company_dic, invoice_company_address, invoice_company_city, invoice_company_country, invoice_company_email)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [resId, actor.organizationId, unit.property_id, unitId, resolvedGuestId, checkIn, checkOut, nights || 1, adults || 1, children || 0, bookingStatus, body.paymentStatus || 'unpaid', source || 'direct', priceGiven, currency, commissionAmount, guestPageToken, finalCityTaxAmount, finalCityTaxIncluded, finalCityTaxPaid, internalNotes || null, chosenPlan, p.company_id, p.invoice_company_name, p.invoice_company_ico, p.invoice_company_dic, p.invoice_company_address, p.invoice_company_city, p.invoice_company_country, p.invoice_company_email]),
       { unitId, checkIn, checkOut, reservationId: resId });
     } catch (e) {
       if (e instanceof UnitOverlap) {

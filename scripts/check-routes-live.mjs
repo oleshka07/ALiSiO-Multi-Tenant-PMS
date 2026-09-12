@@ -642,6 +642,71 @@ async function main() {
       claim('броні', alienCoRes.status === 404,
         `чужа фірма — 404, не 500 (${alienCoRes.status})`);
 
+      // ── Прейскурант і цілісність платника ────────────────────────
+      //
+      // Два різні твердження, і обидва через HTTP: писач звіряє тариф
+      // (С78), і фірма зі знімком знімаються разом (С79).
+      const planRes = await call(cookie, '/api/pricing/rate-plans', {
+        method: 'POST',
+        body: JSON.stringify({ property_id: property.id, name: 'Пробний тариф', code: 'PROBE', currency: 'EUR' }),
+      });
+      const createdPlan = await body(planRes);
+      const planId = createdPlan?.id ?? createdPlan?.rate_plan?.id;
+      if (claim('тариф', planRes.status === 201 && !!planId, `тариф заведено (${planRes.status})`)) {
+        const withPlan = await call(cookie, '/api/bookings', {
+          method: 'POST',
+          body: JSON.stringify({
+            firstName: 'Тариф', lastName: 'Пробний', ratePlanId: planId,
+            unitId: unit.id, checkIn: day(61), checkOut: day(63), nights: 2,
+            adults: 1, status: 'confirmed', source: 'direct', totalPrice: 120,
+          }),
+        });
+        const planned = await body(withPlan);
+        if (claim('тариф', withPlan.status === 201 && planned?.id, `бронь із тарифом — 201 (${withPlan.status})`)) {
+          // Читається НАЗАД маршрутом картки (інваріант 27).
+          const card3 = await body(await call(cookie, `/api/bookings/${planned.id}`));
+          const row3 = card3?.booking ?? card3;
+          claim('тариф', String(row3?.rate_plan_id ?? '') === planId,
+            `тариф у рядку броні (${row3?.rate_plan_id ?? 'порожньо'})`);
+        }
+      }
+
+      // Неіснуючий тариф — 404 з НАЗВАНОЮ відмовою, не 500.
+      const badPlan = await call(cookie, '/api/bookings', {
+        method: 'POST',
+        body: JSON.stringify({
+          firstName: 'Тариф', lastName: 'Чужий', ratePlanId: 'rp_definitely_not_ours',
+          unitId: unit.id, checkIn: day(65), checkOut: day(67), nights: 2,
+          adults: 1, status: 'confirmed', source: 'direct', totalPrice: 120,
+        }),
+      });
+      claim('тариф', badPlan.status === 404, `чужий тариф — 404, не 500 (${badPlan.status})`);
+
+      // Фірма й знімок знімаються РАЗОМ — через той самий PATCH,
+      // який шле блок «🏢 На компанію».
+      if (company?.id) {
+        await call(cookie, `/api/bookings/${booking.id}`, {
+          method: 'PATCH', body: JSON.stringify({ company_id: company.id }),
+        });
+        const withCo = await body(await call(cookie, `/api/bookings/${booking.id}`));
+        const rowCo = withCo?.booking ?? withCo;
+        claim('тариф', String(rowCo?.company_id ?? '') === company.id
+          && !!rowCo?.invoice_company_name, 'фірма й знімок поставлені разом');
+
+        await call(cookie, `/api/bookings/${booking.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            invoice_company_name: null, invoice_company_ico: null, invoice_company_dic: null,
+            invoice_company_address: null, invoice_company_city: null,
+            invoice_company_country: null, invoice_company_email: null,
+          }),
+        });
+        const cleared = await body(await call(cookie, `/api/bookings/${booking.id}`));
+        const rowCl = cleared?.booking ?? cleared;
+        claim('тариф', !rowCl?.invoice_company_name && !rowCl?.company_id,
+          `знятий знімок зняв і фірму (${rowCl?.company_id ?? 'порожньо'})`);
+      }
+
       // ── Картка гостя: поля й ознаки ──────────────────────────
       //
       // Три текстові поля й дві ознаки (С76, С77). Твердження про ФОРМУ

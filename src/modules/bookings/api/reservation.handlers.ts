@@ -105,7 +105,13 @@ export const getReservation = withActor(async (_request: NextRequest, { params }
   }
 });
 
-export const updateReservation = withPermission('manage_bookings', async (request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
+/**
+ * Розгорнутий обробник — той самий розподіл, що в `createReservationHandler`.
+ * Сцена кличе його з готовою особою: варта читає кукі, яких поза запитом
+ * немає, а правило, яке тут треба стерегти (фірма й знімок — разом), живе
+ * саме в обробнику, а не в репозиторії (`payer-consistency.check`).
+ */
+export async function updateReservationHandler(request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) {
   try {
     const sql = getSql();
     const { id } = await params;
@@ -148,6 +154,24 @@ export const updateReservation = withPermission('manage_bookings', async (reques
           : NextResponse.json({ error: 'Not found' }, { status: 404 });
       }
       Object.assign(body, payer.fields);
+    }
+
+    // ЗНЯТИЙ ЗНІМОК ЗНІМАЄ Й ФІРМУ.
+    //
+    // Платника на картці правлять ДВА місця: `PayerPicker` шле `company_id`,
+    // а блок «🏢 На компанію» — самі `invoice_company_*`, і `company_id` не згадує
+    // жодного разу. Знята галочка лишала бронь у стані «фірма є, реквізитів
+    // немає»: картка фірми рахує цю бронь і показує її гостя (С74), а на документі
+    // фірми немає. Два екрани про одну бронь кажуть протилежне, і жоден не
+    // бреше — вони читають різні колонки.
+    //
+    // Стережеться саме НАЗВА, а не будь-яке поле знімка: правка адреси чи
+    // пошти поверх обраної фірми — законна разова зміна бланка, а не зміна
+    // платника, і фірму вона знімати не мусить (гейт `payer-consistency.check`).
+    if (body.company_id === undefined
+      && 'invoice_company_name' in body
+      && !String(body.invoice_company_name ?? '').trim()) {
+      body.company_id = null;
     }
 
     const allowed = [
@@ -447,7 +471,9 @@ export const updateReservation = withPermission('manage_bookings', async (reques
     console.error('PATCH /api/bookings/[id] error:', error?.message || error);
     return serverError('modules/bookings/api/reservation updateReservation', error, 'Failed to update booking');
   }
-});
+}
+
+export const updateReservation = withPermission('manage_bookings', updateReservationHandler);
 
 export const deleteReservation = withPermission('manage_bookings', async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, sessionActor: Actor) => {
   try {

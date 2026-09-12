@@ -9,6 +9,7 @@ import { shouldAskQuote, readQuote, type QuoteResponse } from './quote-prefill';
 import { percentOf } from '@core/money';
 import GuestPicker, { type PickedGuest } from './GuestPicker';
 import CompanyPicker, { type PickedCompany } from './CompanyPicker';
+import RatePlanPicker from './RatePlanPicker';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -176,6 +177,7 @@ export default function BookingForm({
   // рішення «це та сама людина», яке форма лише передає далі.
   const [pickedGuest, setPickedGuest] = useState<PickedGuest | null>(null);
   const [pickedCompany, setPickedCompany] = useState<PickedCompany | null>(null);
+  const [ratePlanId, setRatePlanId] = useState('');
   const [form, setForm] = useState<BookingFormValues>(() => {
     const base = emptyValues();
     if (!initial) return base;
@@ -357,6 +359,12 @@ export default function BookingForm({
             checkOut: form.checkOut,
             adults: form.adults,
             children: form.children,
+            // Тариф і фірма — в ОДНОМУ запиті з ціною, і обидва в залежностях
+            // ефекту нижче. Інакше портьє перемикає прейскурант, а в полі лишається
+            // ціна попереднього — тобто бронь за ціною, якої готель для цього
+            // тарифу ніколи не називав (інваріанти 16 і 17).
+            ratePlanId: ratePlanId || undefined,
+            companyId: pickedCompany?.id ?? undefined,
           }),
         });
         res = { ok: r.ok, body: r.ok ? await r.json() : null };
@@ -388,7 +396,8 @@ export default function BookingForm({
           : {}),
       }));
     })();
-  }, [mode, form.unitTypeId, form.checkIn, form.checkOut, form.adults, form.children, recalcCommission]);
+  }, [mode, form.unitTypeId, form.checkIn, form.checkOut, form.adults, form.children,
+    ratePlanId, pickedCompany?.id, recalcCommission]);
 
   const validate = (): string => {
     if (!form.firstName.trim()) return "Ім'я обовʼязкове";
@@ -485,6 +494,9 @@ export default function BookingForm({
             // Фірма-платник — відразу, а не наступним кліком із картки. Сервер
             // звіряє її з довідником СВОГО готелю й пише знімок реквізитів.
             companyId: pickedCompany?.id ?? null,
+            // Той самий тариф, з яким порахована ціна вище. Писач звіряє його
+            // з платником сам — звужений список не є захистом.
+            ratePlanId: ratePlanId || null,
             unitId,
             checkIn: form.checkIn,
             checkOut: form.checkOut,
@@ -728,6 +740,17 @@ export default function BookingForm({
           <label className="form-label">{t('Платник — фірма')}</label>
           <CompanyPicker picked={pickedCompany} onPick={setPickedCompany} />
         </div>
+
+        {/*
+          Прейскурант — ПІД фірмою, бо список тарифів від неї залежить:
+          фірмова ціна належить одній фірмі (INC-205).
+        */}
+        <RatePlanPicker
+          propertyId={scopedProperty?.id ?? null}
+          companyId={pickedCompany?.id ?? null}
+          value={ratePlanId}
+          onChange={setRatePlanId}
+        />
       </div>
 
       <div style={{ borderTop: '1px solid var(--border-primary)', marginTop: 16, paddingTop: 16 }}>
