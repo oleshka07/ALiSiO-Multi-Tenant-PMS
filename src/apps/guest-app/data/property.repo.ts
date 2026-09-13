@@ -5,6 +5,7 @@
  * орендаря і встановлює. Далі сторінка йде звичайним `runWithOrganization`.
  */
 
+import { readBrandPalette, readBrandLogoUrl, type BrandPaletteKey } from '@core/brand-palettes';
 import { getSql } from '@core/db/async';
 import { runWithPublicToken } from '@core/auth/tenant-context';
 import { hasFeature } from '@core/features';
@@ -19,6 +20,18 @@ export interface GuestAppHome {
   walkinUrl: string | null;
   /** Чия книга головна: `alisio` | `external` — від цього залежить крок 4/5. */
   systemOfRecord: string;
+  /**
+   * Кольори й лого готелю (0419). Уже приведені до відомого.
+   *
+   * `palette: null` — готель нічого не обирав, і тоді стрічка `data-palette`
+   * НЕ ставиться: поверхня лишається у власному базовому наборі. Підставити
+   * тут «дефолтну» палітру означало б перефарбувати кожного, хто нічого не
+   * просив.
+   *
+   * `logoUrl: null` — лого немає, показується назва готелю текстом.
+   */
+  palette: BrandPaletteKey | null;
+  logoUrl: string | null;
 }
 
 /**
@@ -42,8 +55,10 @@ export async function propertyByAppKey(key: string): Promise<GuestAppHome | unde
   const row = await runWithPublicToken(key, () => getSql().row<{
     id: string; organization_id: string; name: string; country: string | null;
     kiosk_walkin_url: string | null; system_of_record: string;
+    brand_palette: string | null; brand_logo_url: string | null;
   }>(
-    `SELECT id, organization_id, name, country, kiosk_walkin_url, system_of_record
+    `SELECT id, organization_id, name, country, kiosk_walkin_url, system_of_record,
+            brand_palette, brand_logo_url
        FROM properties WHERE guest_app_key = ?`,
     [key],
   ));
@@ -73,5 +88,9 @@ export async function propertyByAppKey(key: string): Promise<GuestAppHome | unde
     country: row.country,
     walkinUrl: row.kiosk_walkin_url,
     systemOfRecord: row.system_of_record,
+    // Приводиться ТУТ, а не на екрані: екранів дві штуки і буде більше, а
+    // невідоме значення, приведене в кожному окремо, приводиться по-різному.
+    palette: readBrandPalette(row.brand_palette),
+    logoUrl: readBrandLogoUrl(row.brand_logo_url),
   };
 }

@@ -189,6 +189,16 @@ function buildSchema(database: any) {
       system_of_record TEXT NOT NULL DEFAULT 'alisio'
         CHECK (system_of_record IN ('external', 'alisio')),
       kiosk_walkin_url TEXT,
+      -- 0419: обʼєкт носить власні кольори і власне лого.
+      -- brand_palette — ІМʼЯ набору (реєстр у core/brand-palettes.ts), не
+      -- колір: кольори між собою повʼязані, і готель, якому дали окремо
+      -- «колір кнопки», рано чи пізно зробить білу кнопку на білому.
+      -- Порожньо = той вигляд, що був до появи вибору; CHECK немає навмисно —
+      -- нова палітра не має вимагати міграції бази, слово звіряє код.
+      -- brand_logo_url — порожньо = показати НАЗВУ готелю текстом.
+      -- І тут, і в ALTER нижче (AGENTS §4).
+      brand_palette TEXT,
+      brand_logo_url TEXT,
       -- 0413, частина В: політики картки застосунку.
       -- kiosk_auto_assign — чи вільно терміналу обирати кімнату сам;
       -- kiosk_signature — foreigners (КІ3, як закон) | always | never;
@@ -7495,6 +7505,17 @@ function runMigrations(database: any) {
     if (!propCols.includes('kiosk_walkin_url')) {
       database.exec('ALTER TABLE properties ADD COLUMN kiosk_walkin_url TEXT');
       console.log('[DB] 0410: properties.kiosk_walkin_url');
+    }
+    // 0419 — кольори і лого обʼєкта. І в CREATE вище, і тут (AGENTS §4).
+    // Обидві порожні за замовчуванням: жоден наявний готель не змінює вигляду
+    // від самої міграції.
+    if (!propCols.includes('brand_palette')) {
+      database.exec('ALTER TABLE properties ADD COLUMN brand_palette TEXT');
+      console.log('[DB] 0419: properties.brand_palette');
+    }
+    if (!propCols.includes('brand_logo_url')) {
+      database.exec('ALTER TABLE properties ADD COLUMN brand_logo_url TEXT');
+      console.log('[DB] 0419: properties.brand_logo_url');
     }
     // 0413 — політики картки застосунку (частина В).
     if (!propCols.includes('kiosk_auto_assign')) {

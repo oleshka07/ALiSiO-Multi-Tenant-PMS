@@ -1772,6 +1772,8 @@ CREATE TABLE "properties" (
   "checkin_payment_policy" TEXT DEFAULT 'prepaid' NOT NULL,
   "system_of_record" TEXT DEFAULT 'alisio' NOT NULL,
   "kiosk_walkin_url" TEXT,
+  "brand_palette" TEXT,
+  "brand_logo_url" TEXT,
   "kiosk_auto_assign" BOOLEAN DEFAULT true NOT NULL,
   "kiosk_signature" TEXT DEFAULT 'foreigners' NOT NULL,
   "kiosk_earliest_checkin" TEXT,

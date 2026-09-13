@@ -321,7 +321,14 @@ async function applyStructure(organizationId, plan) {
   for (const [key, col] of [['name', 'name'], ['address', 'address'], ['city', 'city'],
     ['country', 'country'], ['phone', 'phone'], ['email', 'email'],
     ['checkInTime', 'check_in_time'], ['checkOutTime', 'check_out_time'],
-    ['propertyType', 'property_type']]) {
+    ['propertyType', 'property_type'],
+    // Оплата при заселенні (0410) і вигляд гостьових поверхонь (0419).
+    // Усе три — дані КЛІЄНТА, тобто рядок у його файлі, а не константа в
+    // коді (інваріант 20): готель, який бере гроші на стійці, і готель,
+    // який вимагає передоплати, різняться цим рядком, а не релізом.
+    ['checkinPaymentPolicy', 'checkin_payment_policy'],
+    ['brandPalette', 'brand_palette'],
+    ['brandLogoUrl', 'brand_logo_url']]) {
     const v = f(wantProp, key, snake(key), col);
     if (v !== undefined && String(property[col] ?? '') !== String(v)) propPatch[col] = v;
   }

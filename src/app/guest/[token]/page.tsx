@@ -10,6 +10,8 @@ import {
 } from './translations';
 import { translateContent } from './content-translations';
 import { PaymentGateScreen } from '@/modules/guests/ui/PaymentGateScreen';
+import { paymentGateStands } from '@/modules/guests/ui/payment-gate';
+import { readBrandPalette, readBrandLogoUrl } from '@/core/brand-palettes';
 import { FarBeforeScreen } from '@/modules/guests/ui/FarBeforeScreen';
 
 // ─── Helpers ────────────────────────────────────
@@ -318,6 +320,21 @@ export default function GuestPage() {
   // але правильною.
   const stayCurrency: string = r?.currency || '';
 
+  // ─── Вигляд готелю (0419) ──────────────────────
+  //
+  // Стрічка ставиться на КОРІНЬ кожного з шести екранів цієї сторінки —
+  // завантаження і «броні немає» серед них. Саме тому значення рахується тут,
+  // ВИЩЕ за ранні повернення: екран завантаження в чужих кольорах — це спалах
+  // іншого бренду за мить до свого.
+  //
+  // До відповіді сервера палітри ще немає, і `readBrandPalette(undefined)`
+  // чесно дає `null` — «готель не обирав». Стрічки тоді немає взагалі, і
+  // сторінка малюється власним базовим набором (`:root`), тобто рівно тим
+  // виглядом, що був до появи вибору. Підставити тут «дефолтну» палітру
+  // означало б перефарбувати кожного, хто нічого не просив.
+  const palette = readBrandPalette(data?.brand?.palette);
+  const brandLogoUrl = readBrandLogoUrl(data?.brand?.logoUrl);
+
   // ─── isPaid ────────────────────────────────────
   const isPaid = r?.payment_status === 'paid'
     || r?.payment_status === 'prepaid'
@@ -554,10 +571,10 @@ export default function GuestPage() {
 
   // ─── LOADING / ERROR ──────────────────────────
   if (loading) return (
-    <div className="gp-root"><div className="gp-loading"><div className="gp-spinner" /><span>{t.loading}</span></div></div>
+    <div className="gp-root" data-palette={palette ?? undefined}><div className="gp-loading"><div className="gp-spinner" /><span>{t.loading}</span></div></div>
   );
   if (error || !data) return (
-    <div className="gp-root"><div className="gp-error"><div className="gp-error-icon">🔍</div><h2>{t.notFound}</h2><p>{t.notFoundDesc}</p></div></div>
+    <div className="gp-root" data-palette={palette ?? undefined}><div className="gp-error"><div className="gp-error-icon">🔍</div><h2>{t.notFound}</h2><p>{t.notFoundDesc}</p></div></div>
   );
 
   // ─── POST-STAY (expired) ──────────────────────
@@ -566,13 +583,23 @@ export default function GuestPage() {
   }
 
   // ─── PAYMENT GATE ─────────────────────────────
-  // Вимкнена секція payments знімає платіжний шлагбаум: готель, який бере
-  // гроші на рецепції, не мусить тримати гостя перед екраном оплати.
+  //
+  // Рішення НЕ ухвалюється тут (INC-211). Тут стояло `!isPaid &&
+  // paymentsSectionOn`, тобто «до оплати нічого не показуємо» було
+  // властивістю коду, однаковою для всіх готелів, — і гість, який щойно
+  // прочитав у застосунку «платять на рецепції», упирався в стіну «завершіть
+  // оплату». Слово про це належить обʼєкту (`checkin_payment_policy`, 0410),
+  // і читає його `paymentGateStands` — тим самим нормалізатором, що кіоск і
+  // рецепційний PATCH.
   const paymentsSectionOn = !Array.isArray(data?.sections)
     || data.sections.some((sec: any) => sec.key === 'payments');
-  if (!isPaid && paymentsSectionOn) {
+  if (paymentGateStands({
+    isPaid,
+    paymentsSectionOn,
+    checkinPaymentPolicy: r?.checkin_payment_policy,
+  })) {
     return (
-      <div className="gp-root">
+      <div className="gp-root" data-palette={palette ?? undefined}>
         <PaymentGateScreen data={data} t={t} lang={lang} setLang={setLang} token={token} />
       </div>
     );
@@ -581,7 +608,7 @@ export default function GuestPage() {
   // ─── FAR BEFORE ───────────────────────────────
   if (phase === 'far_before') {
     return (
-      <div className="gp-root">
+      <div className="gp-root" data-palette={palette ?? undefined}>
         <FarBeforeScreen
           data={data} t={t} lang={lang} dLeft={dLeft}
           isRegistered={isRegistered}
@@ -794,7 +821,7 @@ export default function GuestPage() {
 
   // ═════════════════════════════════════════════════
   return (
-    <div className="gp-root">
+    <div className="gp-root" data-palette={palette ?? undefined}>
 
       {/* ════ HOME TAB ════ */}
       {tab === 'home' && (
@@ -806,6 +833,15 @@ export default function GuestPage() {
             <div className="gp-wallet-content">
               <div className="gp-wallet-top">
                 <div>
+                  {/*
+                    Лого готелю, якщо він його назвав, — і НАЗВА поруч завжди,
+                    не замість. Гість із поганою мережею мусить бачити, до
+                    якого готелю він приїхав, а не порожній прямокутник.
+                  */}
+                  {brandLogoUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img className="gp-wallet-logo" src={brandLogoUrl} alt={brandName} />
+                  )}
                   <div className="gp-wallet-brand">{brandName}</div>
                   <div className="gp-wallet-title">{unitName}</div>
                 </div>
@@ -1812,9 +1848,13 @@ function PostStayPage({ data, lang, setLang }: {
   const guestName = data.guestName || '';
   const unitTypes = data.unitTypes || [];
   const catIcons: Record<string, string> = { glamping: '🏕️', resort: '🏨', camping: '⛺' };
+  // Своя копія, бо це окремий компонент: сторінка «після виїзду» має ті самі
+  // кольори готелю, що й решта. Інакше гість, який прощається, бачить інший
+  // продукт.
+  const palette = readBrandPalette(data?.brand?.palette);
 
   return (
-    <div className="gp-root">
+    <div className="gp-root" data-palette={palette ?? undefined}>
       {/* Language switcher */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 16px', gap: 4 }}>
         {ALL_LANGS.map(l => (

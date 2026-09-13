@@ -1,4 +1,75 @@
-/* Телефон, не термінал: одна колонка, великі дотики, нічого зайвого. */
+/* Телефон, не термінал: одна колонка, великі дотики, нічого зайвого.
+ *
+ * ── Кольори тут НЕ літерали, і це не косметика ───────────────────────────
+ *
+ * Ця поверхня — те, що гість бачить замість рецепції, тобто бренд готелю, а
+ * не наш. Досі вона мала один вигляд на всіх: теплий беж і латунь. Для одного
+ * клієнта це його кольори, для наступного — чужий одяг.
+ *
+ * Тому всі значення зібрані в токени `--ga-*`, а набір значень обирається
+ * стрічкою `data-palette` на корені (`properties.brand_palette`). Реєстр імен
+ * — `src/core/brand-palettes.ts`; гейт `brand-palettes.check` стверджує, що
+ * кожне імʼя звідти має тут блок, а кожен блок тут — імʼя там. Палітра, яку
+ * можна обрати і яка нічого не міняє, це фальшивий вимикач (П5).
+ *
+ * Ключі названі КОЛЬОРОМ, не готелем (інваріант 20): `teal_warm_grey`, а не
+ * назва клієнта, — інакше наступний готель із бірюзою обирав би зі списку
+ * чуже імʼя.
+ */
+
+/* ── sand_brass: те, з чим поверхня жила до появи вибору ─────────────── */
+.guest-root,
+.guest-root[data-palette='sand_brass'] {
+  --ga-bg: #f6f2ec;
+  --ga-ink: #2b2622;
+  --ga-faint: #8a7f72;
+  --ga-muted: #6b6157;
+  --ga-surface: #fffdf9;
+  --ga-line: #e0d7c9;
+  --ga-accent: #9a7b42;
+  --ga-accent-ink: #ffffff;
+  --ga-heading: Georgia, 'Times New Roman', serif;
+}
+
+/* ── teal_warm_grey: бірюза, тепло-сірий текст, світле тло ───────────── */
+.guest-root[data-palette='teal_warm_grey'] {
+  --ga-bg: #f0f0f0;
+  --ga-ink: #4a403d;
+  --ga-faint: #8a8078;
+  --ga-muted: #6e635c;
+  --ga-surface: #ffffff;
+  --ga-line: #dcd8d4;
+  --ga-accent: #4facb8;
+  --ga-accent-ink: #ffffff;
+  --ga-heading: Georgia, 'Times New Roman', serif;
+}
+
+/* ── forest_stone: глибока зелень і камінь ───────────────────────────── */
+.guest-root[data-palette='forest_stone'] {
+  --ga-bg: #f3f4f1;
+  --ga-ink: #26302a;
+  --ga-faint: #7d8880;
+  --ga-muted: #5c675f;
+  --ga-surface: #ffffff;
+  --ga-line: #d8ded9;
+  --ga-accent: #2e6b4f;
+  --ga-accent-ink: #ffffff;
+  --ga-heading: Georgia, 'Times New Roman', serif;
+}
+
+/* ── ink_amber: темна графіка і бурштин ──────────────────────────────── */
+.guest-root[data-palette='ink_amber'] {
+  --ga-bg: #f5f4f2;
+  --ga-ink: #1f2430;
+  --ga-faint: #858b99;
+  --ga-muted: #5b6270;
+  --ga-surface: #ffffff;
+  --ga-line: #dcdee3;
+  --ga-accent: #c88a00;
+  --ga-accent-ink: #ffffff;
+  --ga-heading: Georgia, 'Times New Roman', serif;
+}
+
 .guest-root {
   min-height: 100dvh;
   margin: 0;
@@ -11,6 +82,17 @@
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 .guest-top { display: flex; flex-direction: column; gap: 0.6rem; }
+/* Лого готелю. Висота обмежена, ширина — вільна: логотипи бувають і
+   квадратні, і довгі стрічки, а `width: 100%` розтягнув би квадратний на
+   пів екрана. `object-fit: contain` не дає обрізати те, що вирізали не ми. */
+.guest-logo {
+  max-height: 4.5rem;
+  max-width: 100%;
+  width: auto;
+  object-fit: contain;
+  align-self: flex-start;
+  margin-bottom: 0.4rem;
+}
 .guest-house { margin: 0; font-size: 0.95rem; letter-spacing: 0.08em; text-transform: uppercase; color: #8a7f72; }
 .guest-welcome { margin: 0; font-size: 2.2rem; font-weight: 600; font-family: Georgia, 'Times New Roman', serif; }
 .guest-lead { margin: 0; font-size: 1.05rem; color: #6b6157; }
@@ -19,13 +101,13 @@
 .guest-lang {
   padding: 0.5rem 1rem;
   border-radius: 999px;
-  border: 1px solid #e0d7c9;
-  background: #fffdf9;
+  border: 1px solid var(--ga-line);
+  background: var(--ga-surface);
   color: inherit;
   font-size: 0.95rem;
   cursor: pointer;
 }
-.guest-lang[data-on='true'] { background: #9a7b42; border-color: #9a7b42; color: #fff; }
+.guest-lang[data-on='true'] { background: var(--ga-accent); border-color: var(--ga-accent); color: var(--ga-accent-ink); }
 
 .guest-cards { display: flex; flex-direction: column; gap: 1rem; }
 .guest-card {
@@ -34,20 +116,20 @@
   gap: 0.35rem;
   padding: 1.4rem 1.2rem;
   border-radius: 1rem;
-  border: 1px solid #e0d7c9;
-  background: #fffdf9;
+  border: 1px solid var(--ga-line);
+  background: var(--ga-surface);
   color: inherit;
   text-align: left;
   cursor: pointer;
 }
-.guest-card[data-primary='true'] { background: #9a7b42; border-color: #9a7b42; color: #fff; }
+.guest-card[data-primary='true'] { background: var(--ga-accent); border-color: var(--ga-accent); color: var(--ga-accent-ink); }
 /* Неактивна картка ВИГЛЯДАЄ неактивною: кнопка, яка мовчки нічого не робить,
    читається як зламаний готель, а не як недороблена функція. */
 .guest-card:disabled { opacity: 0.5; cursor: default; }
 .guest-card-title { font-size: 1.25rem; font-weight: 600; }
 .guest-card-help { font-size: 0.95rem; opacity: 0.85; }
 
-.guest-note { margin: 0; font-size: 0.95rem; color: #6b6157; text-align: center; }
+.guest-note { margin: 0; font-size: 0.95rem; color: var(--ga-muted); text-align: center; }
 
 /* ── Крок пошуку ─────────────────────────────────────────────────────────
  *
@@ -58,22 +140,22 @@
  */
 .guest-form { display: flex; flex-direction: column; gap: 1rem; }
 .guest-field { display: flex; flex-direction: column; gap: 0.35rem; }
-.guest-label { font-size: 0.95rem; color: #6b6157; }
+.guest-label { font-size: 0.95rem; color: var(--ga-muted); }
 .guest-input {
   padding: 0.9rem 1rem;
   border-radius: 0.8rem;
-  border: 1px solid #e0d7c9;
-  background: #fffdf9;
+  border: 1px solid var(--ga-line);
+  background: var(--ga-surface);
   color: inherit;
   font-size: 1.1rem;
   /* 16px і більше — інакше iOS Safari підсовує сторінку при фокусі. */
 }
-.guest-input:focus { outline: 2px solid #9a7b42; outline-offset: 1px; }
+.guest-input:focus { outline: 2px solid var(--ga-accent); outline-offset: 1px; }
 .guest-quiet {
   padding: 0.8rem;
   border: 0;
   background: none;
-  color: #6b6157;
+  color: var(--ga-muted);
   font-size: 1rem;
   cursor: pointer;
 }
@@ -89,9 +171,9 @@
 .guest-offers { display: flex; flex-direction: column; gap: 1rem; }
 /* Картка-повідомлення (передача на власну сторінку готелю) кнопкою не є. */
 .guest-card[data-static='true'] { cursor: default; }
-.guest-rate { font-size: 1rem; font-weight: 600; color: #9a7b42; }
-.guest-card[data-primary='true'] .guest-rate { color: #fff; }
-.guest-rate-line { font-size: 0.9rem; color: #6b6157; }
+.guest-rate { font-size: 1rem; font-weight: 600; color: var(--ga-accent); }
+.guest-card[data-primary='true'] .guest-rate { color: var(--ga-accent-ink); }
+.guest-rate-line { font-size: 0.9rem; color: var(--ga-muted); }
 .guest-total { font-size: 1.1rem; font-weight: 600; margin-top: 0.35rem; }
 
 /* Галочка під умовами готелю. Текст — той, що написав готель, тож він може
@@ -105,7 +187,7 @@
   cursor: pointer;
 }
 .guest-consent input { margin-top: 0.25rem; width: 1.15rem; height: 1.15rem; flex: none; }
-.guest-consent-text { color: #6b6157; }
+.guest-consent-text { color: var(--ga-muted); }
 
 /* Лічильник кількості на кроці послуг. Кнопки великі — палець, не миша. */
 .guest-qty { display: flex; align-items: center; gap: 1rem; margin-top: 0.5rem; }
@@ -113,8 +195,8 @@
   width: 2.6rem;
   height: 2.6rem;
   border-radius: 0.8rem;
-  border: 1px solid #e0d7c9;
-  background: #fffdf9;
+  border: 1px solid var(--ga-line);
+  background: var(--ga-surface);
   color: inherit;
   font-size: 1.3rem;
   line-height: 1;
