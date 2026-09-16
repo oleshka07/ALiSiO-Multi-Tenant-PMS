@@ -45,6 +45,10 @@ export const HISTORY_ACTIONS = [
   // ще й доті, але в цьому словнику його не було.
   'payment_marker', 'payer_change', 'rate_plan_change', 'discount_change', 'breakfast_change',
   'registration_added', 'registration_removed',
+  // Ревізія 16.09.2026: прийом грошей слід лишав, а ЗНЯТТЯ — ні (П10). Питання
+  // «хто прибрав цей платіж» ставлять саме на картці броні, а відповідь лежала
+  // лише в аудиті фінансових операцій, куди рецепція не заходить.
+  'payment_deleted',
   'channel_created', 'channel_modified', 'channel_cancelled',
 ] as const;
 

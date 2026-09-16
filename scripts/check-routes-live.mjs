@@ -29,9 +29,9 @@
  *
  * ── Скільки це покриває насправді (Р8.14) ────────────────────────────────
  *
- * ПʼЯТНАДЦЯТЬ родин і дві передпольотні перевірки (ціль, збірка) — **141
+ * ПʼЯТНАДЦЯТЬ родин і дві передпольотні перевірки (ціль, збірка) — **146
  * місце виклику `claim(`**, а виконаних тверджень більше: частина стоїть у
- * циклах (пʼять полів відповіді каналу, чотири види аркуша дня, девʼять
+ * циклах (пʼять полів відповіді каналу, чотири види аркуша дня, ДЕСЯТЬ
  * маршрутів осі обʼєкта × три). Числа тут МІРЯЮТЬСЯ, а не пам'ятаються:
  * `grep -c "claim('"` і `grep -o "claim('[^']*'" | sort | uniq -c` — рядок,
  * переписаний по пам'яті, застаріває на першому ж поповненні, і саме це з ним
@@ -1367,23 +1367,34 @@ async function main() {
     // Форма відповіді названа поруч із маршрутом: більшість віддає список, а
     // бейдж чернеток — обʼєкт `{count}`. Перевіряти всіх «масивом» означало б,
     // що бейдж або випаде з родини, або дасть хибне червоне.
+    //
+    // Обгорнутий список несе ІМʼЯ СВОГО КЛЮЧА (`wrapped:orders`), а не
+    // припущення, що ключ один на всіх: `wrapped` із зашитим `v.orders` був
+    // візерунком, і десятий маршрут родини (`{closings: […]}`) або випав би з
+    // неї, або дав хибне червоне (AGENTS §3.2.1).
     const AXIS_ROUTES = [
       ['/api/bookings', 'list'], ['/api/booking-sources', 'list'],
       ['/api/additional-services', 'list'], ['/api/availability-blocks', 'list'],
       ['/api/fees', 'list'], ['/api/guest-page-config', 'list'],
-      ['/api/booking/drafts-count', 'count'], ['/api/service-orders', 'wrapped'],
+      ['/api/booking/drafts-count', 'count'], ['/api/service-orders', 'wrapped:orders'],
       ['/api/booking-sources/widget-sites', 'list'],
+      // Каса (П14, ревізія 16.09.2026): чужий обʼєкт віддавав 500, бо
+      // `PropertyNotFound` летіла повз маршрут без жодного `catch`. Маршрут
+      // тепер має екран (`/app/documents/till`), тож це видима поверхня.
+      ['/api/finance/cash-closings', 'wrapped:closings'],
     ];
     const rightShape = (shape, v) => {
       if (shape === 'list') return Array.isArray(v);
       if (!v || typeof v !== 'object') return false;
-      return shape === 'count' ? typeof v.count === 'number' : Array.isArray(v.orders);
+      if (shape === 'count') return typeof v.count === 'number';
+      return Array.isArray(v[shape.slice('wrapped:'.length)]);
     };
     for (const [route, shape] of AXIS_ROUTES) {
       const mineRes = await call(cookie, `${route}?property_id=${property.id}`);
       const mine = await body(mineRes);
       claim('вісь обʼєкта', mineRes.status === 200 && rightShape(shape, mine),
-        `${route}: свій обʼєкт — 200 і ${{ list: 'список', count: 'число', wrapped: 'обгорнутий список' }[shape]} (${mineRes.status})`);
+        `${route}: свій обʼєкт — 200 і ${shape === 'list' ? 'список' : shape === 'count' ? 'число'
+          : `обгорнутий список {${shape.slice('wrapped:'.length)}}`} (${mineRes.status})`);
 
       // Порожнє значення означає «усі обʼєкти» СКАЗАНО — так пишуть екрани
       // (`propertyId ? …id=… : ''`). Воно не має ставати ні відмовою, ні

@@ -108,7 +108,16 @@ const measured = async (label, fn) => {
 
 try {
   // ── Вхід ───────────────────────────────────────────────────────────────
+  //
+  // `networkidle` ДО заповнення, і це не косметика: форму відправляє React,
+  // а `domcontentloaded` настає ДО гідратації. Без затримки мережі вікно між
+  // ними мікроскопічне й прохід щастило; з `LATENCY_MS=120` — тим самим, з
+  // яким тут міряють усе інше, — клік влучав у кнопку без обробника, форма
+  // не йшла нікуди, і гейт падав «Timeout 60000ms» на ВХОДІ, не дійшовши до
+  // жодного твердження про картку. Хибно-червоний гейт лагодиться в гейті
+  // (AGENTS §3.2.1).
   await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
+  await page.waitForLoadState('networkidle', { timeout: 120000 });
   await page.fill('input[type="email"]', EMAIL);
   await page.fill('input[type="password"]', PASSWORD);
   await Promise.all([

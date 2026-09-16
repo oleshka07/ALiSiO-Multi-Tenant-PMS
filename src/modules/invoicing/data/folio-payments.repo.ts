@@ -58,7 +58,32 @@ export interface FolioPayment {
  * the signing path without a live TSE. Production resolves fiskaly from the
  * organization's credentials and the property's fin_fiscal_settings.
  */
-export async function recordPayment(input: {
+/**
+ * Що саме лягло в книгу гостя — без другого читання.
+ *
+ * Клас при названому `methodId` вирішує ДОВІДНИК, а не поле запиту (Д61), і
+ * рахунок може належати як броні, так і залі. Тому писач повертає це сам:
+ * інакше кожен, хто кладе ті самі гроші ще й у касу, перечитував би рядок —
+ * другий запит, який має всі шанси розійтися з першим.
+ */
+export interface RecordedPayment {
+  id: string;
+  /** Клас, ЯКИЙ ЗАПИСАНО (з довідника, якщо його назвали). */
+  method: PaymentMethod;
+  amount: number;
+  /** Бронь цього рахунку — або `null`, коли рахунок обʼєкта (зала, подія). */
+  reservationId: string | null;
+  /** Документ, який цей платіж гасить, якщо він однозначний. */
+  invoiceId: string | null;
+}
+
+/** Те саме, що `recordPaymentDetailed`, але коротко — для тих, кому досить id. */
+export async function recordPayment(input: Parameters<typeof recordPaymentDetailed>[0],
+  deps?: { device?: FiscalDevice }): Promise<string> {
+  return (await recordPaymentDetailed(input, deps)).id;
+}
+
+export async function recordPaymentDetailed(input: {
   folioId: string;
   amount: number;
   /**
@@ -80,7 +105,7 @@ export async function recordPayment(input: {
    */
   source?: 'import' | null;
   origin?: string | null;
-}, deps?: { device?: FiscalDevice }): Promise<string> {
+}, deps?: { device?: FiscalDevice }): Promise<RecordedPayment> {
   const organizationId = await requireOrganizationId();
   const sql = getSql();
 
@@ -108,7 +133,7 @@ export async function recordPayment(input: {
     const row = await sql.row<{ kind: string; is_active: unknown }>(
       'SELECT kind, is_active FROM fin_payment_methods WHERE id = ? AND organization_id = ?',
       [methodId, organizationId]);
-    if (!row) refuse('Payment method not found', 409);
+    if (!row) refuse('Payment method not found', 404);
     if (input.method && String(input.method) !== String(row.kind)) {
       refuse(`Payment method «${row.kind}» does not match the class «${input.method}» given beside it`, 409);
     }
@@ -135,12 +160,12 @@ export async function recordPayment(input: {
   // through the stay otherwise. Both in one query so the answer cannot
   // disagree with the invoice's own jurisdiction resolution.
   const folio = await sql.row<any>(
-    `SELECT f.id, COALESCE(r.property_id, f.property_id) AS property_id
+    `SELECT f.id, f.reservation_id, COALESCE(r.property_id, f.property_id) AS property_id
        FROM fin_folios f
        LEFT JOIN reservations r ON r.id = f.reservation_id
       WHERE f.id = ? AND f.organization_id = ?`,
     [input.folioId, organizationId]);
-  if (!folio) refuse('Folio not found', 409);
+  if (!folio) refuse('Folio not found', 404);
 
   let mustSign = false;
   // Дві правки одного рядка, і обидві чинні: імпортована оплата — не наш
@@ -166,11 +191,32 @@ export async function recordPayment(input: {
     }
   }
 
-  if (input.invoiceId) {
+  // ── Платіж НАЗИВАЄ документ, який гасить ──────────────────────────────
+  //
+  // Колонка `invoice_id` була з першого дня, і по ній рахується борг фірми
+  // (`openInvoicesOfCompany`), але ЗАПОВНЮВАТИ її не вміли ніде: екран її не
+  // шле, місток не передає, виписка документа наявні платежі не дозвʼязує.
+  // Тобто «відкриті фактури» показували б повну суму назавжди, а гейт цього
+  // не бачив — його фікстура вставляла рядок із `invoice_id` сирим SQL,
+  // тобто перевіряла форму даних, якої продукт не виробляє (AGENTS §3.2.1).
+  //
+  // Звʼязок ставиться лише коли він ОДНОЗНАЧНИЙ: рівно один не скасований
+  // документ на цьому рахунку. Два документи — це вибір, і його робить
+  // людина, а не ця функція (інваріант 13: не знаємо — не вирішуємо).
+  let invoiceId = input.invoiceId ?? null;
+  if (!invoiceId) {
+    const open = await sql.rows<{ id: string }>(
+      "SELECT id FROM invoices WHERE organization_id = ? AND folio_id = ? AND status = 'issued'",
+      [organizationId, input.folioId]);
+    if (open.length === 1) invoiceId = String(open[0].id);
+  }
+  if (invoiceId) {
     const inv = await sql.row<any>(
       'SELECT id FROM invoices WHERE id = ? AND organization_id = ?',
-      [input.invoiceId, organizationId]);
-    if (!inv) refuse('Invoice not found', 409);
+      [invoiceId, organizationId]);
+    // Чужий документ — 404, а не 409: чужий ідентифікатор не зізнається, що
+    // він існує (інваріант 5).
+    if (!inv) refuse('Invoice not found', 404);
   }
 
   // The beleg the guest receives IS the invoice — Belegausgabepflicht wants
@@ -179,13 +225,13 @@ export async function recordPayment(input: {
   // with no invoice would have to invent one, so it is refused instead.
   let vatAmounts: VatAmount[] = [];
   if (mustSign) {
-    if (!input.invoiceId) {
+    if (!invoiceId) {
       refuse('A German cash or card payment must name its invoice — the invoice is the beleg being signed', 409);
     }
     vatAmounts = (await sql.rows<any>(
       `SELECT vat_rate, gross_amount FROM fin_invoice_tax_totals
         WHERE invoice_id = ? AND organization_id = ?`,
-      [input.invoiceId, organizationId]))
+      [invoiceId, organizationId]))
       .map((r) => ({ rate: Number(r.vat_rate), amount: Number(r.gross_amount) }));
   }
 
@@ -222,7 +268,7 @@ export async function recordPayment(input: {
         tse_start_time, tse_end_time, tse_qr_payload, tse_client_id, tse_process_type, tse_process_data)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [id, organizationId, folio.property_id ?? null, input.folioId,
-     input.invoiceId ?? null, amount, method, methodId,
+     invoiceId, amount, method, methodId,
      input.paidAt ?? null, input.receivedBy ?? null,
      imported ? 'import' : null, imported ? String(input.origin) : null,
      tseStatus,
@@ -231,7 +277,13 @@ export async function recordPayment(input: {
      signature?.startTime ?? null, signature?.endTime ?? null,
      signature?.qrPayload ?? null, signature?.clientId ?? null,
      signature?.processType ?? null, signature?.processData ?? null]);
-  return id;
+  return {
+    id,
+    method: method as PaymentMethod,
+    amount,
+    reservationId: folio.reservation_id ? String(folio.reservation_id) : null,
+    invoiceId,
+  };
 }
 
 /** The unsigned till operations reception must see — acceptance §6.4 п.3. */

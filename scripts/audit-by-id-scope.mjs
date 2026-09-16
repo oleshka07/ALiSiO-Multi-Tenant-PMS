@@ -118,7 +118,11 @@ const WRITE_BASELINE = {
   'src/modules/guests/data/guest-dedup.repo.ts': 1,
   'src/modules/guests/data/guest-portal.repo.ts': 1,
   'src/modules/guests/data/registration.repo.ts': 2,
-  'src/modules/invoicing/data/reservation-invoice.repo.ts': 2,
+  // 2 → 1 (16.09.2026, ревізія платіжних шляхів П15): перевірка «чи вже є
+  // документ» і `UPDATE invoices SET confirmed` тепер називають орендаря.
+  // Лишається один запис — сам `INSERT` документа, і він іде з орендарем у
+  // колонці, а не у WHERE.
+  'src/modules/invoicing/data/reservation-invoice.repo.ts': 1,
   'src/modules/pricing/data/rate-plans.repo.ts': 1,
   'src/modules/reports/data/partner-report.repo.ts': 1,
   'src/modules/widget/api/widget-reserve.handlers.ts': 7,

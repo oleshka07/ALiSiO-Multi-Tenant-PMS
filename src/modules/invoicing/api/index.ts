@@ -57,7 +57,7 @@ import {
   getFolioCharges as _getFolioCharges, addFolioCharges as _addFolioCharges,
   issueFolioInvoice as _issueFolioInvoice, stornoInvoice as _stornoInvoice,
   moveFolioCharges as _moveFolioCharges,
-  getFolioPayments as _getFolioPayments, addFolioPayment as _addFolioPayment,
+  getFolioPayments as _getFolioPayments,
 } from './folio.handlers';
 
 export const listFolios        = withModule('invoicing', 'manage_documents', _listFolios);
@@ -67,7 +67,6 @@ export const addFolioCharges   = withModule('invoicing', 'manage_documents', _ad
 export const issueFolioInvoice = withModule('invoicing', 'manage_documents', _issueFolioInvoice);
 export const moveFolioCharges  = withModule('invoicing', 'manage_documents', _moveFolioCharges);
 export const getFolioPayments  = withModule('invoicing', 'manage_documents', _getFolioPayments);
-export const addFolioPayment   = withModule('invoicing', 'manage_documents', _addFolioPayment);
 // Сторно — виправлення виписаного документа. Права рецепції на це немає:
 // виданий рахунок не редагується, він скасовується зустрічним, і це рішення
 // того, хто відповідає за звітність.

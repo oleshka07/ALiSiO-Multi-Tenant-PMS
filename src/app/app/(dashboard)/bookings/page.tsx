@@ -341,6 +341,14 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
     fetchPayments(b.id);
     fetchRegistrations(b.id);
     setShowPayForm(false);
+    // Рядок списку — знімок, зроблений при завантаженні сторінки: у ньому
+    // немає книги гостя (`folio`), а платник і статус могли змінитись в іншій
+    // вкладці. Картка перечитує бронь із сервера — так само, як це робить
+    // шахматка, відкриваючи її.
+    fetch(`/api/bookings/${b.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((fresh) => { if (fresh?.id) setViewBooking((cur) => (cur?.id === fresh.id ? { ...cur, ...fresh } : cur)); })
+      .catch(() => { /* лишається рядок списку */ });
   }, [fetchPayments, fetchRegistrations]);
 
   /* ── fetch bookings ───────────────────────────────── */

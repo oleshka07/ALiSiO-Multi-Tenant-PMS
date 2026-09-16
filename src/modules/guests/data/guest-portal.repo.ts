@@ -1,4 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { requireOrganizationId } from '@core/auth/tenant-context';
+import { money } from '@core/money';
+import { reservationBalance } from '@invoicing/kernel';
 import { unitTypeAmenities } from '@properties';
 import { getSql } from '@core/db/async';
 import {
@@ -151,16 +154,45 @@ export async function getRegisteredGuests(reservationId: string) {
   return await sql.rows<any>('SELECT * FROM reservation_guests WHERE reservation_id = ? ORDER BY created_at', [reservationId]);
 }
 
-export async function getPaymentsSummary(reservationId: string) {
+/**
+ * Скільки гість винен — З КНИГИ ГОСТЯ, коли вона щось каже.
+ *
+ * ── Що було зламано (ревізія 16.09.2026, П4) ────────────────────────────
+ *
+ * Сума рахувалась із `fin_operations` проти `total_price`. Гість, який
+ * заплатив на стійці через рахунок (фоліо), у цій книзі не зʼявлявся взагалі:
+ * сторінка показувала йому ПОВНИЙ борг, а на обʼєкті з політикою `prepaid`
+ * перед ним ще й ставав платіжний шлагбаум — при закритому рахунку.
+ *
+ * Книга гостя відповідає першою і тільки коли в ній щось НАРАХОВАНО: порожня
+ * не каже «нічого не винен», вона не каже нічого (той самий закон, що в
+ * `decideCheckout` і `statusFromFolio`). Тоді лишається старий шлях — і він
+ * потрібен: бронь без фоліо ведеться словом і касою.
+ */
+export async function getPaymentsSummary(reservationId: string, totalPrice: number) {
   const sql = getSql();
-  // Post PR #6: sum from fin_operations. Income = paid, refund-expense = refunded.
-  return await sql.row<any>(`
+  const folio = await reservationBalance(reservationId).catch(() => null);
+  if (folio?.hasFolio && folio.charged > 0) {
+    return { total_paid: folio.paid, total_refunded: 0, remaining: folio.balance, source: 'folio' as const };
+  }
+  // Орендар названий явно: сторінка гостя ходить у контексті токена, а без
+  // нього на SQLite (`npm run dev`) сума зібралась би по всій базі (П15).
+  const organizationId = await requireOrganizationId();
+  const ops = await sql.row<any>(`
     SELECT
       COALESCE(SUM(CASE WHEN op_type = 'income' THEN amount ELSE 0 END), 0) as total_paid,
       COALESCE(SUM(CASE WHEN op_type = 'expense' AND payment_subtype = 'refund' THEN amount ELSE 0 END), 0) as total_refunded
     FROM fin_operations
-    WHERE reservation_id = ? AND status = 'completed'
-  `, [reservationId]) as any;
+    WHERE reservation_id = ? AND organization_id = ? AND status = 'completed'
+  `, [reservationId, organizationId]) as any;
+  const paid = Number(ops?.total_paid || 0);
+  const refunded = Number(ops?.total_refunded || 0);
+  return {
+    total_paid: paid,
+    total_refunded: refunded,
+    remaining: money(Number(totalPrice || 0) - paid + refunded),
+    source: 'ledger' as const,
+  };
 }
 
 export async function getUnitTypePhotos(unitTypeId: string) {

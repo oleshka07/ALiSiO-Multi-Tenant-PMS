@@ -14,6 +14,7 @@
 import { getSql } from '@core/db/async';
 import { organizationCurrency } from '@core/currency';
 import { allocateInvoiceNumber, isInvoiceLocked } from '@/modules/invoicing/domain/invoice-numbering';
+import { reservationBalance } from './folio-summary.repo';
 
 /**
  * The organization of a reservation, through its property. Invoice generation
@@ -62,11 +63,38 @@ export async function generateInvoiceForReservation(
     // — the guests' invoices plus one more for the whole room — and that one
     // would carry a real number out of the same sequence. Refusing to add
     // anything is the safe answer; a stay that already has documents has them.
-    const existing = await sql.row<any>("SELECT id, confirmed FROM invoices WHERE reservation_id = ? AND status != 'cancelled'", [reservationId]) as { id: string; confirmed: number } | undefined;
+    // Орендар названий у ВСІХ запитах цієї функції (ревізія 16.09.2026, П15).
+    // Вона кличеться з життєвого циклу броні, де контекст уже стоїть; на
+    // Postgres його тримає політика, на SQLite — ніщо, і чужий рядок тут
+    // вирішував би, чи виписувати документ.
+    const organizationId = await organizationOfReservation(reservationId);
+    if (!organizationId) {
+      console.error('[Invoices] reservation', reservationId, 'has no organization — refusing to number an invoice');
+      return null;
+    }
+
+    // ── Рахунок гостя вже веде цю бронь → документ виставляє ВІН ───────────
+    //
+    // Інакше на одну бронь виходили два номери: цей — на `total_price`, і
+    // другий — на рядки фоліо (ревізія 16.09.2026, П3). Ознака — саме
+    // НАРАХУВАННЯ: фоліо з самим лише платежем ще не книга рахунку, а
+    // готівка через `/api/payments` створює його завжди.
+    // Питає СПІЛЬНИЙ читач книги гостя, а не власний `SELECT`: те саме
+    // число рахує виселення, картка й гостьова сторінка, і четверта копія
+    // запиту розійшлася б із ними на першому ж сторнованому рядку.
+    const billed = await reservationBalance(reservationId).catch(() => null);
+    if (billed?.hasFolio && billed.charged > 0) {
+      console.log(`[Invoices] reservation ${reservationId} is billed through its folio — no legacy document`);
+      return null;
+    }
+
+    const existing = await sql.row<any>(
+      "SELECT id, confirmed FROM invoices WHERE reservation_id = ? AND organization_id = ? AND status != 'cancelled'",
+      [reservationId, organizationId]) as { id: string; confirmed: number } | undefined;
 
     if (existing) {
       if (confirmed && !existing.confirmed) {
-        await sql.run("UPDATE invoices SET confirmed = TRUE, confirmation_source = ? WHERE id = ?", [confirmationSource, existing.id]);
+        await sql.run("UPDATE invoices SET confirmed = TRUE, confirmation_source = ? WHERE id = ? AND organization_id = ?", [confirmationSource, existing.id, organizationId]);
       }
       return existing.id;
     }
@@ -79,12 +107,6 @@ export async function generateInvoiceForReservation(
     `, [reservationId]) as { total_price: number; currency: string; check_out: string; property_id: string | null } | undefined;
 
     if (!res) return null;
-
-    const organizationId = await organizationOfReservation(reservationId);
-    if (!organizationId) {
-      console.error('[Invoices] reservation', reservationId, 'has no organization — refusing to number an invoice');
-      return null;
-    }
 
     const invoiceId = `inv_${Date.now()}`;
     const today = new Date().toISOString().split('T')[0];
