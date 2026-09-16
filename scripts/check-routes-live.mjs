@@ -91,6 +91,7 @@ import { readFile } from 'node:fs/promises';
 import { getSql } from '../src/core/db/async.ts';
 import { runWithOrganization } from '../src/core/auth/tenant-context.ts';
 import { nameResolver, missingFrom, isUnresolvedObject } from './lib/db-names.mjs';
+import { LANGUAGE_CODES } from '../src/core/i18n/languages.ts';
 
 const BASE = process.env.BASE_URL || 'http://localhost:3000';
 const TAG = '__routes_live__';
@@ -1249,8 +1250,18 @@ async function main() {
         claim('кіоск', sessRes.status === 200, `сесія термінала — 200 (${sessRes.status})`);
         claim('кіоск', sess?.property?.id === property.id && typeof sess?.property?.name === 'string',
           'сесія називає будинок іменем, а не лише id — це заголовок екрана');
-        claim('кіоск', Array.isArray(sess?.languages) && sess.languages.length === 2,
-          `сесія віддає дві мови (КІ7), отримали ${JSON.stringify(sess?.languages)}`);
+        // Мови термінала — РЕЄСТР продукту, а не число.
+        //
+        // Тут стояло `length === 2` (КІ7), і це був ДЕВʼЯТИЙ у проєкті спосіб
+        // записати «дві мови». Перевірка на кількість зелена й тоді, коли мов
+        // дві, але не ті: твердження мусить називати МНОЖИНУ, інакше воно про
+        // довжину масиву, а не про те, чим термінал говорить (КІ38).
+        claim('кіоск', Array.isArray(sess?.languages)
+          && JSON.stringify([...sess.languages].sort()) === JSON.stringify([...LANGUAGE_CODES].sort()),
+          `сесія віддає мови продукту, отримали ${JSON.stringify(sess?.languages)}`);
+        // І мова, з якої термінал ПОЧИНАЄ, — з того ж реєстру, не константа.
+        claim('кіоск', typeof sess?.language === 'string' && LANGUAGE_CODES.includes(sess.language),
+          `стартова мова термінала з реєстру, отримали ${JSON.stringify(sess?.language)}`);
         claim('кіоск', typeof sess?.touchBand?.top === 'number' && typeof sess?.touchBand?.bottom === 'number',
           'сесія віддає робочу смугу числами — інакше кнопки лягають на весь екран');
         claim('кіоск', sess?.checkinPaymentPolicy === 'prepaid' || sess?.checkinPaymentPolicy === 'allow_pay_later',
