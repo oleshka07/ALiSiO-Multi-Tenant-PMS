@@ -182,6 +182,34 @@ function CalendarDesktop() {
   const [units, setUnits] = useState<UnitRow[]>([]);
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [loading, setLoading] = useState(true);
+  /**
+   * Оновлення НЕ прибирає з екрана те, що там уже є.
+   *
+   * ── Дефект, проти якого це написано ────────────────────────────────────
+   *
+   * `fetchData()` ставив `loading = true`, а нижче стоїть ранній вихід
+   * «Завантаження…» на ВЕСЬ екран. Тобто будь-яке оновлення — кнопка, перенос
+   * броні, зміна на картці — на час запитів підміняло сторінку спіннером
+   * разом із ВІДКРИТОЮ КАРТКОЮ БРОНІ. Картка при цьому не ховалась, а
+   * розмонтовувалась: коли вона поверталась, кожна її панель перепитувала своє
+   * наново.
+   *
+   * Виміряно в браузері на стенді (45 номерів, 400 броней, затримка мережі
+   * 120 мс): зміна платника — 1.9 с, з них 82 % кадрів картки НЕМАЄ на екрані,
+   * і сімʼю зайвих запитів у хвості дає саме її повернення. Сама зміна коштує
+   * 137 мс. Власник бачив це як «завісло секунд на 15» — на живому готелі
+   * список броней більший, і кожна ланка ланцюжка довша.
+   *
+   * Тому спіннер на весь екран лишається тільки для ПЕРШОГО завантаження, коли
+   * показати справді нічого; далі оновлення тихе, а що воно триває — видно на
+   * кнопці.
+   *
+   * МОБІЛЬНА шахматка так і робила з самого початку —
+   * `loading && units.length === 0 ? спіннер : сітка` (`MobileCalendar.tsx`).
+   * Розійшлась саме десктопна, і саме на ній тримають відкриту картку.
+   */
+  const [refreshing, setRefreshing] = useState(false);
+  const loadedOnce = useRef(false);
   const [search, setSearch] = useState('');
   // v2 key on purpose: the old key holds 'resort' for everyone who ever
   // opened the calendar while that was the hardcoded default — carrying it
@@ -287,7 +315,7 @@ function CalendarDesktop() {
 
   // ─── Fetch data ──────
   const fetchData = useCallback(async () => {
-    setLoading(true);
+    if (loadedOnce.current) setRefreshing(true); else setLoading(true);
     try {
       const [unitsRes, bookingsRes, sourcesRes, utRes] = await Promise.all([
         fetch('/api/units'),
@@ -320,7 +348,9 @@ function CalendarDesktop() {
         setDraftCount(dcData.count || 0);
       }
     } catch { /* non-critical */ }
+    loadedOnce.current = true;
     setLoading(false);
+    setRefreshing(false);
   }, []);
 
   // Fetch prices for visible range
@@ -867,7 +897,10 @@ function CalendarDesktop() {
                   }}>{tUi(ZOOM_LEVELS[z].label)}</button>
                 ))}
               </div>
-              <button className="btn btn-secondary btn-sm" onClick={() => fetchData()} title={tUi('Оновити дані')} style={{ padding: '4px 6px' }}><RefreshCw size={14} /></button>
+              <button className="btn btn-secondary btn-sm" onClick={() => fetchData()} disabled={refreshing}
+                title={refreshing ? tUi('Оновлюємо…') : tUi('Оновити дані')} style={{ padding: '4px 6px' }}>
+                <RefreshCw size={14} className={refreshing ? 'animate-pulse' : undefined} />
+              </button>
               {/*
                 Веде в список броней, а не в модалку розселення.
                 Модалка малювала фізичний коридор F1–F17 одного готелю і
