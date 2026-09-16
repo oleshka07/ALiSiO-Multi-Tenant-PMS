@@ -20,6 +20,8 @@
  */
 import { getSql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+// `@core/http/refusal`, не `errors`: файл читають перевірки під голим node.
+import { refuse } from '@core/http/refusal';
 import { propertyScopeFilter, type PropertyScope } from '@core/property-scope';
 import { TILL_METHODS } from './folio-payments.repo';
 
@@ -33,16 +35,19 @@ export async function closeDay(input: {
   const organizationId = await requireOrganizationId();
   const sql = getSql();
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) throw new Error('date must be YYYY-MM-DD');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) refuse('date must be YYYY-MM-DD', 400);
   const prop = await sql.row<any>(
     'SELECT id FROM properties WHERE id = ? AND organization_id = ?',
     [input.propertyId, organizationId]);
-  if (!prop) throw new Error('Property not found');
+  // Чужий обʼєкт — 404 (інваріант 5), не 409 «конфлікт».
+  if (!prop) refuse('Property not found', 404);
 
+  // Орендар названий і тут: сусідні два запити його називають, а цей — ні
+  // (П15). На Postgres рятує політика, на SQLite — ніщо.
   const existing = await sql.row<any>(
-    'SELECT id FROM fin_cash_closings WHERE property_id = ? AND closing_date = ?',
-    [input.propertyId, input.date]);
-  if (existing) throw new Error(`Day ${input.date} is already closed for this till`);
+    'SELECT id FROM fin_cash_closings WHERE property_id = ? AND closing_date = ? AND organization_id = ?',
+    [input.propertyId, input.date, organizationId]);
+  if (existing) refuse(`Day ${input.date} is already closed for this till`, 409);
 
   // The day's till movements, by the moment the money changed hands.
   // substr() is the one date predicate both engines read identically on a

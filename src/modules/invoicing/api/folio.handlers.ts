@@ -201,31 +201,14 @@ export const getFolioPayments = withPermission('manage_documents', async (
   return NextResponse.json({ payments: await payments.listPayments(id) });
 });
 
-/**
- * Record how the folio was paid. This is where the fiscal guard lives: a
- * German property with the fiscal module off gets a refusal for cash and
- * card-at-the-desk, not a row — see folio-payments.repo.
+/*
+ * Писач оплати переїхав у `@finance` (Д83, `folio-payment.handlers.ts`).
+ *
+ * Тут він записував лише рядок у книгу гостя: ні каси, ні слова броні. Друга
+ * половина роботи лежала на браузері й вимагала іншого права — тобто в
+ * бухгалтера оплата мовчки не закривала бронь. Обидві книги пише тепер одна
+ * функція, і жоден файл цього модуля не імпортує фінансів (`invoicing.check`).
  */
-export const addFolioPayment = withPermission('manage_documents', async (
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-  actor,
-) => {
-  const { id } = await params;
-  const body = await request.json().catch(() => ({})) as any;
-  try {
-    const paymentId = await payments.recordPayment({
-      folioId: id,
-      amount: Number(body.amount),
-      method: String(body.method || ''),
-      invoiceId: body.invoice_id ?? null,
-      paidAt: body.paid_at ?? null,
-      // Who took the money is the session's fact, never the client's claim.
-      receivedBy: actor.user.id,
-    });
-    return NextResponse.json({ id: paymentId }, { status: 201 });
-  } catch (e) { return refuse(e); }
-});
 
 export const issueFolioInvoice = withPermission('manage_documents', async (
   request: Request,

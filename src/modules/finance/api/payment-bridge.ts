@@ -11,8 +11,8 @@ import {
 } from './operations.handlers';
 // В3: гроші за бронь лягають У ФОЛІО, а слово рахує один спільний
 // перерахунок — не цей модуль. Двері фасадів, не чужий SQL.
-import { recordReservationPayment } from '@invoicing/kernel';
-import { recalcPaymentStatusFromFolio } from '@bookings/kernel';
+import { recordReservationPayment, recordPaymentDetailed } from '@invoicing/kernel';
+import { recalcPaymentStatusFromFolio, recordBookingChange } from '@bookings/kernel';
 // Зняття грошей із книги гостя після видалення рядка — одні двері на всіх
 // (Р8.7), інакше кожен видаляч знімає їх по-своєму або не знімає зовсім.
 import { reverseOperationInFolio } from './folio-reversal';
@@ -130,6 +130,182 @@ async function requireCategory(code: string): Promise<string> {
   return id;
 }
 
+/**
+ * Куди покласти готівку — або НАЗВАНА ВІДМОВА.
+ *
+ * Витягнуто з `createPaymentOperation`, бо дверей у каси стало двоє: рецепція
+ * (`/api/payments`) і екран фоліо (`settleFolioPayment`). Дві копії цього
+ * добору розійшлися б у перший же тиждень — а розходяться вони тим, що одна
+ * кладе гроші на вимкнений рахунок або в чужу валюту.
+ */
+async function resolveTillAccount(args: {
+  organizationId: string;
+  currency: string;
+  /** Памʼять екрана (`app_users.default_cash_account_id`) — ПЕРЕВАГА, не наказ. */
+  accountId?: string;
+  source: PaymentSource;
+  channelType?: string;
+}): Promise<{ accountId: string; needsReview: 0 | 1 }> {
+  const sql = getSql();
+  const { organizationId, currency, accountId, source } = args;
+  let resolved: string | undefined;
+  let needsReview: 0 | 1 = 0;
+  if (!accountId && source === 'hostex') {
+    resolved = await findClearingAccount(organizationId, args.channelType, currency) || undefined;
+  }
+  if (!resolved) {
+    // ── Названий рахунок — ПЕРЕВАГА, а не наказ ─────────────────────────
+    //
+    // Тут стояло `let resolvedAccountId = accountId`, тобто явно названий
+    // рахунок шанувався беззастережно і повз усі три умови нижче. Для синку
+    // каналу це правильно (кліринговий рахунок називають свідомо, і його
+    // добір вище вже звіряє і валюту, і чинність), але `accountId` сюди
+    // передає рівно ОДИН викликач — `app/api/payments`, — і він рахунок не
+    // називає, а ПАМʼЯТАЄ: `app_users.default_cash_account_id`. Памʼять
+    // застаріває.
+    //
+    // Виміряно живим прогоном 11.09.2026: після `is_active = FALSE` на
+    // єдиній касі готівка все одно лягла В НЕЇ — 999 CZK на вимкнений
+    // рахунок, 201 і жодного слова. «Закрити касу» не закривало касу. Друге
+    // те саме, тихіше: валюта не звірялась, тож каса в кронах була місцем
+    // для євро.
+    //
+    // `(id = ?) DESC` у порядку, а не окремим запитом: умови придатності вже
+    // написані ТУТ, одним рядком на всіх, і другий запит означав би другу їх
+    // копію — яка розійдеться.
+    const fallback = await sql.row<any>(`
+      SELECT id FROM finance_accounts
+      WHERE organization_id = ? AND currency = ?
+        AND type IN ('cash', 'bank') AND is_active = TRUE
+      ORDER BY (id = ?) DESC, sort_order ASC, created_at ASC LIMIT 1
+    `, [organizationId, currency, accountId ?? '']) as { id: string } | undefined;
+    resolved = fallback?.id || undefined;
+    if (source === 'hostex' || source === 'teia' || source === 'booking_widget') needsReview = 1;
+  }
+
+  // Немає КУДИ покласти гроші — відмова, названа тут і словами оператора
+  // (INC-028, ланка 3). Доти цей випадок доходив до `createOperationInTx`, той
+  // кидав `income requires account_to_id` — англійський рядок про поле запиту,
+  // — а маршрут згортав його в 500 «Внутрішня помилка сервера».
+  //
+  // Відмова називає ВАЛЮТУ: рахунок може бути, але в іншій — саме так виглядає
+  // готель на євро, якому колись завели касу в кронах.
+  if (!resolved) {
+    refuse(
+      `У готелю немає активного рахунку в ${currency}, тож готівку нема куди записати. `
+      + 'Додайте касу: Фінанси → Рахунки → Додати рахунок (тип «Каса», валюта '
+      + `${currency}).`, 409);
+  }
+  return { accountId: resolved as string, needsReview };
+}
+
+/**
+ * СЛІД НА КАРТЦІ БРОНІ — одна форма запису на обидві двері.
+ *
+ * ── Чому це переїхало сюди з маршруту (16.09.2026, доповнення Д83) ──────
+ *
+ * Д81 постановив: правка, якою рухають гроші, лишає рядок у «Історії змін».
+ * Рецепційні двері його лишали — але робив це САМ МАРШРУТ, після повернення
+ * з містка. Тобто «одні двері — однакові книги» було неправдою рівно на одну
+ * книгу: оплата з екрана фоліо не лишала на картці жодного сліду, і питання
+ * «звідки на броні ці гроші» знову не мало відповіді там, де його ставлять.
+ *
+ * Тепер слід лишає той, хто рухає гроші, а не той, хто про це попросив. Це
+ * безпечно: у `createPaymentOperation` рівно ОДИН бойовий викликач
+ * (`app/api/payments`), і він ходить сюди тільки з `cash` — канальний синк і
+ * віджет мають свої шляхи.
+ *
+ * `caveat` — це те, чого з грошима НЕ сталося, і воно не косметика: рядок
+ * «гроші в касі, у рахунку гостя їх немає» — постійний стан німецького
+ * обʼєкта без `fiscal_de`, і видимим він мусить лишатись і через місяць, а не
+ * лише в тості.
+ */
+async function noteMoneyOnBooking(args: {
+  reservationId: string;
+  amount: number;
+  method: string;
+  isRefund: boolean;
+  caveat?: string | null;
+  actor?: OperationActor | null;
+}): Promise<void> {
+  // Знак — із РОДУ платежу, не літералом: повернення 500 готівкою лягало в
+  // журнал як «+500 · cash» (П11) — рядок, який каже протилежне тому, що
+  // сталося з грошима. Власного `try` тут немає навмисно: писач журналу вже
+  // не ковтає своїх помилок мовчки (Д81), і друга обгортка це б повернула.
+  await recordBookingChange(getSql(), {
+    reservationId: args.reservationId,
+    action: 'payment',
+    details: `${args.isRefund ? '−' : '+'}${Math.abs(Number(args.amount))} · ${args.method}`
+      + (args.isRefund ? ' · повернення' : '')
+      + (args.caveat ? ` · ${args.caveat}` : ''),
+    actor: args.actor?.id ? { id: args.actor.id, name: args.actor.name || args.actor.id } : null,
+  });
+}
+
+/** Рядок каси за платежем броні — одна форма запису на обидві двері. */
+async function writeTillOperation(args: {
+  organizationId: string;
+  reservationId: string;
+  stay: { check_in: string | null; check_out: string | null };
+  amount: number;
+  isRefund: boolean;
+  currency: string;
+  accountId: string;
+  needsReview: 0 | 1;
+  paymentSubtype: PaymentSubtype;
+  source: PaymentSource;
+  sourceRef?: string;
+  paidAt: string;
+  comment: string;
+  status: 'completed' | 'pending';
+  actor?: OperationActor | null;
+}): Promise<string> {
+  const { isRefund } = args;
+  const accruedAt = (!isRefund && args.stay.check_in) ? args.stay.check_in : undefined;
+  return await createOperationInTx(args.organizationId, {
+    op_type: isRefund ? 'expense' : 'income',
+    account_from_id: isRefund ? args.accountId : null,
+    account_to_id: isRefund ? null : args.accountId,
+    amount: Math.abs(args.amount),
+    currency: args.currency,
+    paid_at: args.paidAt,
+    ...(accruedAt ? { accrued_at: accruedAt } : {}),
+    ...(args.stay.check_in ? { period_from: args.stay.check_in } : {}),
+    ...(args.stay.check_out ? { period_to: args.stay.check_out } : {}),
+    // Стаття довідника ЦЬОГО готелю, за сталим кодом (INC-025). Тут стояв
+    // літеральний ідентифікатор — рядок, який належить готелю, що завівся
+    // першим: на чистій інсталяції зовнішній ключ відмовляв готівковій оплаті
+    // ПЕРШОГО ж готелю, а на базі з демо операції ДРУГОГО тихо чіплялись на
+    // чужий рядок, який його ж політика при читанні ховає.
+    category_id: isRefund ? await requireCategory('other_exp') : await requireCategory('accommodation'),
+    reservation_id: args.reservationId,
+    status: args.status,
+    method: 'cash',
+    payment_subtype: args.paymentSubtype,
+    comment: args.comment,
+    source: args.source,
+    source_ref: args.sourceRef || args.reservationId,
+    needs_review: args.needsReview,
+  }, args.actor || null);
+}
+
+/**
+ * Стоя очима каси: чий це готель, яка валюта і які дати нарахування.
+ *
+ * Один запит на ОБИДВІ двері. Друга копія того самого питання — це не лише
+ * зайве читання: `check-property-scope` рахує пари «запит × таблиця», і
+ * другий такий `SELECT` підіймав би стелю файла за роботу, якої не було.
+ */
+async function stayForTill(reservationId: string) {
+  return await getSql().row<{
+    org_id: string; check_in: string | null; check_out: string | null; currency: string;
+  }>(`
+    SELECT prop.organization_id AS org_id, r.check_in, r.check_out, r.currency
+    FROM reservations r JOIN properties prop ON r.property_id = prop.id
+    WHERE r.id = ?
+  `, [reservationId]);
+}
+
 export async function createPaymentOperation(input: CreatePaymentOperationInput): Promise<PaymentOperationResult> {
   const sql = getSql();
   const {
@@ -141,13 +317,7 @@ export async function createPaymentOperation(input: CreatePaymentOperationInput)
     comment,
   } = input;
 
-  // Get organization_id via reservations -> properties (+ stay dates for
-  // accrual attribution below)
-  const row = await sql.row<any>(`
-    SELECT prop.organization_id AS org_id, r.check_in, r.check_out, r.currency
-    FROM reservations r JOIN properties prop ON r.property_id = prop.id
-    WHERE r.id = ?
-  `, [reservationId]) as
+  const row = await stayForTill(reservationId) as
     // `reservations.currency` — NOT NULL, тож тип каже це прямо: інакше кожен,
     // хто його читає, дописує запасне значення, а воно не спрацьовує ніколи.
     { org_id: string; check_in: string | null; check_out: string | null; currency: string } | undefined;
@@ -189,102 +359,36 @@ export async function createPaymentOperation(input: CreatePaymentOperationInput)
     ? `${comment}${resContext ? ' | ' + resContext : ''}`
     : `${source === 'booking_widget' ? 'Віджет (готівка)' : 'Готівка'} · ${paymentSubtype}${resContext ? ' | ' + resContext : ''}`;
 
-  // Resolve account in 3 stages:
-  //   1) Explicit accountId from caller — always honoured.
-  //   2) For channel signals (Hostex prepaid via Booking/Airbnb/VRBO),
-  //      route to the matching clearing account ("Booking.com (CZK)" etc).
-  //   3) Final fallback — first cash account in matching currency, BUT
-  //      flag the operation needs_review=1 so the admin can triage.
-  let resolvedAccountId: string | undefined;
-  let needsReview = 0;
-  if (!accountId && source === 'hostex') {
-    resolvedAccountId = await findClearingAccount(row.org_id, input.channelType, currency) || undefined;
-  }
-  if (!resolvedAccountId) {
-    // ── Названий рахунок — ПЕРЕВАГА, а не наказ ─────────────────────────
-    //
-    // Тут стояло `let resolvedAccountId = accountId`, тобто явно названий
-    // рахунок шанувався беззастережно і повз усі три умови нижче. Для синку
-    // каналу це правильно (кліринговий рахунок називають свідомо, і його
-    // добір вище вже звіряє і валюту, і чинність), але `accountId` сюди
-    // передає рівно ОДИН викликач — `app/api/payments`, — і він рахунок не
-    // називає, а ПАМʼЯТАЄ: `app_users.default_cash_account_id`. Памʼять
-    // застаріває.
-    //
-    // Виміряно живим прогоном 11.09.2026: після `is_active = FALSE` на
-    // єдиній касі готівка все одно лягла В НЕЇ — 999 CZK на вимкнений
-    // рахунок, 201 і жодного слова. «Закрити касу» не закривало касу. Друге
-    // те саме, тихіше: валюта не звірялась, тож каса в кронах була місцем
-    // для євро.
-    //
-    // `(id = ?) DESC` у порядку, а не окремим запитом: умови придатності вже
-    // написані ТУТ, одним рядком на всіх, і другий запит означав би другу їх
-    // копію — яка розійдеться. Не підійшов названий — мовчки беремо той, що
-    // підходить; не підійшов жоден — нижче названа відмова, яку портьє
-    // тепер бачить на екрані.
-    const fallback = await sql.row<any>(`
-      SELECT id FROM finance_accounts
-      WHERE organization_id = ? AND currency = ?
-        AND type IN ('cash', 'bank') AND is_active = TRUE
-      ORDER BY (id = ?) DESC, sort_order ASC, created_at ASC LIMIT 1
-    `, [row.org_id, currency, accountId ?? '']) as { id: string } | undefined;
-    resolvedAccountId = fallback?.id || undefined;
-    if (source === 'hostex' || source === 'teia' || source === 'booking_widget') {
-      needsReview = 1;
-    }
-  }
-
-  // Немає КУДИ покласти гроші — відмова, названа тут і словами оператора
-  // (INC-028, ланка 3). Доти цей випадок доходив до `createOperationInTx`, той
-  // кидав `income requires account_to_id` — англійський рядок про поле запиту,
-  // — а маршрут згортав його в 500 «Внутрішня помилка сервера». Портьє бачив
-  // «щось пішло не так» замість «у готелю немає рахунку в цій валюті».
-  //
-  // Відмова називає ВАЛЮТУ: рахунок може бути, але в іншій — саме так виглядає
-  // готель на євро, якому колись завели касу в кронах, і без цього слова
-  // причина не вгадується.
-  if (!resolvedAccountId) {
-    refuse(
-      `У готелю немає активного рахунку в ${currency}, тож готівку нема куди записати. `
-      + 'Додайте касу: Фінанси → Рахунки → Додати рахунок (тип «Каса», валюта '
-      + `${currency}).`, 409);
-  }
-
-  const accruedAt = (!isRefund && row.check_in) ? row.check_in : undefined;
+  // Куди лягають гроші — спільним добором (одна копія на обидві двері).
+  // Порядок збережено: відмова «немає рахунку» лунає ДО розгалуження за
+  // способом, як і раніше.
+  const { accountId: tillAccountId, needsReview } = await resolveTillAccount({
+    organizationId: row.org_id, currency, accountId, source, channelType: input.channelType,
+  });
 
   // ONLY cash payments create an operation in fin_operations (the central ledger).
   // Non-cash methods (card, bank_transfer, online, booking_platform, etc.) arrive
   // via bank statement import and will be recorded when the real bank transaction lands.
   if (method !== 'cash') {
     await recalcPaymentStatusFromFolio(reservationId);
+    // Слід лишається і тут, з чесною приміткою: грошей ще немає ні в касі, ні
+    // в рахунку гостя — вони приїдуть випискою.
+    await noteMoneyOnBooking({
+      reservationId, amount, method, isRefund,
+      caveat: 'ще не в касі — приїде випискою', actor: input.actor ?? null,
+    });
     return { operationId: '', folioRecorded: false, folioRefusal: 'non-cash payment is recorded when the bank transaction lands' };
   }
 
-  const operationId = await createOperationInTx(row.org_id, {
-    op_type: opType,
-    account_from_id: isRefund ? (resolvedAccountId || null) : null,
-    account_to_id: isRefund ? null : (resolvedAccountId || null),
-    amount: Math.abs(amount),
-    currency,
-    paid_at: paidAt,
-    ...(accruedAt ? { accrued_at: accruedAt } : {}),
-    ...(row.check_in ? { period_from: row.check_in } : {}),
-    ...(row.check_out ? { period_to: row.check_out } : {}),
-    // Стаття довідника ЦЬОГО готелю, за сталим кодом (INC-025). Тут стояв
-    // літеральний ідентифікатор — рядок, який належить готелю, що завівся
-    // першим: на чистій інсталяції зовнішній ключ відмовляв готівковій оплаті
-    // ПЕРШОГО ж готелю, а на базі з демо операції ДРУГОГО тихо чіплялись на
-    // чужий рядок, який його ж політика при читанні ховає.
-    category_id: isRefund ? await requireCategory('other_exp') : await requireCategory('accommodation'),
-    reservation_id: reservationId,
-    status,
-    method,
-    payment_subtype: paymentSubtype,
-    comment: fullComment,
-    source,
-    source_ref: sourceRef || reservationId,
-    needs_review: needsReview,
-  }, input.actor || null);
+  const operationId = await writeTillOperation({
+    organizationId: row.org_id, reservationId,
+    stay: { check_in: row.check_in, check_out: row.check_out },
+    amount, isRefund, currency,
+    accountId: tillAccountId, needsReview,
+    paymentSubtype, source, sourceRef,
+    paidAt, comment: fullComment, status,
+    actor: input.actor || null,
+  });
 
   // В3: гроші за бронь ЛЯГАЮТЬ У ФОЛІО, а не живуть поруч із ним.
   //
@@ -346,7 +450,162 @@ export async function createPaymentOperation(input: CreatePaymentOperationInput)
     console.error('[payment-bridge] auto-rules apply failed (non-fatal):', e.message);
   }
 
+  // Слід на картці — ТУТ, а не в маршруті: див. `noteMoneyOnBooking`.
+  await noteMoneyOnBooking({
+    reservationId, amount, method, isRefund,
+    caveat: folioRecorded ? null : 'лише в касі, не в рахунку гостя',
+    actor: input.actor ?? null,
+  });
   return { operationId, folioRecorded, folioRefusal };
+}
+
+/**
+ * ОПЛАТА З ЕКРАНА ФОЛІО — і вона закриває ті самі книги, що й рецепційна.
+ *
+ * ── Що було ─────────────────────────────────────────────────────────────
+ *
+ * Дверей у гроші двоє, і вони давали різне. Виміряно запуском 16.09.2026 на
+ * тій самій фікстурі, тими самими 1000 готівкою:
+ *
+ *                      книга гостя   слово броні   каса
+ *   екран фоліо        борг 0        unpaid        0 рядків
+ *   рецепція           борг 0        paid          1 рядок, 1000
+ *
+ * Обробник фоліо писав рядок у `fin_folio_payments` і повертав 201. Слово
+ * броні ставив БРАУЗЕР — окремим `PATCH`, який вимагає `manage_bookings`; у
+ * бухгалтера цього права немає, тож у нього оплата мовчки лишала бронь
+ * «не оплаченою». А каса не бачила рецепційної готівки взагалі: у ролі
+ * `receptionist` немає `manage_payments`, тобто ЄДИНІ доступні рецепції
+ * двері були ті, що в касу не пишуть.
+ *
+ * ── Що тут ──────────────────────────────────────────────────────────────
+ *
+ * Один порядок на обидві двері, і він саме такий:
+ *
+ *   1. книга гостя — ПЕРША. Фіскальна варта (німецький обʼєкт без TSE)
+ *      відмовляє тут, і тоді в касу не лягає нічого: гроші в касі за платіж,
+ *      якого рахунок гостя не прийняв, — це та сама розбіжність книг, тільки
+ *      з іншого боку;
+ *   2. каса — ЛИШЕ готівка. `transfer` і `card_terminal` приходять випискою
+ *      банку чи еквайра, і рядок тут дав би подвійний рахунок тих самих
+ *      грошей (те саме правило, що `CASH_METHODS` у `/api/payments`);
+ *   3. звʼязок `folio_payment_id` — щоб видалення знімало СВОЇ гроші (Р10.6);
+ *   4. слово броні — спільним перерахунком, а не вигаданим статусом.
+ *
+ * Фоліо без броні (зала, подія) проходить кроки 1 і 3: слова немає, бо немає
+ * броні, і в касу гроші кладе той, хто вміє назвати обʼєкт.
+ */
+export interface SettleFolioInput {
+  folioId: string;
+  amount: number;
+  /** Клас оплати або порожньо, якщо названо `methodId` (Д61). */
+  method?: string;
+  methodId?: string | null;
+  invoiceId?: string | null;
+  paidAt?: string | null;
+  receivedBy?: string | null;
+  actor?: OperationActor | null;
+}
+
+export interface SettleFolioResult {
+  paymentId: string;
+  /** Рядок каси, коли гроші справді лягли в касу; інакше `null`. */
+  operationId: string | null;
+  reservationId: string | null;
+  /** Слово броні після перерахунку — те, що показувати оператору. */
+  paymentStatus: string | null;
+  /**
+   * Чому готівка не дійшла до каси, хоч мала.
+   *
+   * Найчастіший випадок — у готелю немає активного рахунку в валюті броні.
+   * Втрачати через це ПЛАТІЖ ГОСТЯ не можна: гроші вже в руках, і рахунок
+   * гостя мусить їх бачити. Але й мовчати не можна — саме мовчання цих двох
+   * книг і було вадою, яку лікує Д83. Тому: платіж записано, каса порожня,
+   * причина названа й доїжджає до оператора (той самий взірець, що
+   * `folioRefusal` у рецепційних дверях).
+   */
+  tillRefusal?: string;
+}
+
+export async function settleFolioPayment(input: SettleFolioInput): Promise<SettleFolioResult> {
+  const organizationId = await requireOrganizationId();
+  const sql = getSql();
+
+  // 1. Книга гостя — ПЕРША, і вона ж каже, що саме записала: клас із
+  //    довідника, суму і бронь, якій належить рахунок. Усі відмови писача
+  //    (чужий рахунок → 404, клас, фіскальна варта) лунають тут і своїм
+  //    статусом — далі нічого не виконується.
+  const written = await recordPaymentDetailed({
+    folioId: input.folioId,
+    amount: input.amount,
+    method: input.method,
+    methodId: input.methodId ?? null,
+    invoiceId: input.invoiceId ?? null,
+    paidAt: input.paidAt ?? null,
+    receivedBy: input.receivedBy ?? null,
+  });
+  const paymentId = written.id;
+  const reservationId = written.reservationId;
+  const method = String(written.method);
+  const amount = Number(written.amount);
+
+  // 2. Каса — лише готівка і лише там, де є бронь, від якої відомі валюта,
+  //    обʼєкт і дати нарахування.
+  let operationId: string | null = null;
+  let tillRefusal: string | undefined;
+  if (method === 'cash' && reservationId) {
+    const stay = await stayForTill(reservationId);
+    if (stay) try {
+      const currency = String(stay.currency);
+      const { accountId, needsReview } = await resolveTillAccount({
+        organizationId, currency, source: 'manual',
+      });
+      // Відʼємний рядок — це повернена з каси готівка, тобто ВИТРАТА з тим
+      // самим знаком в обох книгах. Зустрічний рядок не «видаляє платіж».
+      const isRefund = amount < 0;
+      operationId = await writeTillOperation({
+        organizationId, reservationId,
+        stay: { check_in: stay.check_in, check_out: stay.check_out },
+        amount, isRefund, currency,
+        accountId, needsReview,
+        paymentSubtype: isRefund ? 'refund' : 'partial',
+        source: 'manual',
+        sourceRef: reservationId,
+        paidAt: input.paidAt ?? new Date().toISOString(),
+        comment: `Готівка з рахунку гостя${isRefund ? ' (повернення)' : ''}`,
+        status: 'completed',
+        actor: input.actor ?? null,
+      });
+      // 3. Операція НЕСЕ рядок, який поклала (0096, Р10.6): без цього
+      //    видалення не відрізнить свій платіж від ручної проводки бухгалтера.
+      await sql.run(
+        'UPDATE fin_operations SET folio_payment_id = ? WHERE id = ? AND organization_id = ?',
+        [paymentId, operationId, organizationId]);
+    } catch (e: unknown) {
+      // Каса відмовила — найчастіше «немає активного рахунку в цій валюті».
+      // Платіж гостя вже записаний і лишається: гроші в руках, і книга гостя
+      // мусить їх бачити. Відмова їде оператору названою, а не в лог.
+      operationId = null;
+      tillRefusal = (e as Error)?.message ?? 'till refused the operation';
+      console.warn(`[payment-bridge] каса не прийняла готівку за ${reservationId}: ${tillRefusal}`);
+    }
+  }
+
+  // 4. Слово броні — тим самим перерахунком, що й усюди (В3).
+  let paymentStatus: string | null = null;
+  if (reservationId) {
+    const change = await recalcPaymentStatusFromFolio(reservationId);
+    paymentStatus = change?.now ?? null;
+    // 5. І слід на картці — тією самою формою, що з рецепції. Фоліо без броні
+    //    сліду не має, бо немає картки, на якій його шукати.
+    await noteMoneyOnBooking({
+      reservationId, amount, method, isRefund: amount < 0,
+      caveat: tillRefusal ? 'у рахунку гостя, але не в касі' : null,
+      actor: input.actor ?? null,
+    });
+  }
+
+  return { paymentId, operationId, reservationId, paymentStatus, ...(tillRefusal ? { tillRefusal } : {}) };
 }
 
 /**
@@ -394,8 +653,27 @@ export async function deletePaymentOperation(operationId: string): Promise<{ del
   // Слід у журналі — так само, як у видаленні операції з екрана Фінансів:
   // двері одні, тож і запис про видалення мусить бути один, інакше рядок,
   // знесений старим маршрутом платежів, зникав без автора (Р10.10).
-  await writeOperationAudit(operationId, 'delete', await getOptionalActor(), op, null);
+  const actor = await getOptionalActor();
+  await writeOperationAudit(operationId, 'delete', actor, op, null);
   await sql.run('DELETE FROM fin_operations WHERE id = ? AND organization_id = ?', [operationId, organizationId]);
   await reverseOperationInFolio(op);
+
+  // Слід на КАРТЦІ БРОНІ, а не лише в аудиті операцій (П10): прийом грошей
+  // рядок лишав, зняття — ні, і «хто прибрав цей платіж» не мало відповіді
+  // там, де його питають.
+  if (op.reservation_id) {
+    try {
+      await recordBookingChange(sql, {
+        reservationId: String(op.reservation_id),
+        action: 'payment_deleted',
+        details: `−${Math.abs(Number(op.amount) || 0)} ${String(op.currency ?? '')}`.trim()
+          + (op.method ? ` · ${String(op.method)}` : ''),
+        actor: actor?.id ? { id: actor.id, name: actor.name || actor.id } : null,
+      });
+    } catch (e: unknown) {
+      // Журнал не причина зірвати видалення, але й мовчати він не має.
+      console.error('[payments] слід видалення платежу не записався:', (e as Error)?.message ?? e);
+    }
+  }
   return { deleted: true, reservationId: op.reservation_id ?? null };
 }

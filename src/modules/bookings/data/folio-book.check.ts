@@ -44,7 +44,7 @@ const { openFolio: createFolio, addCharges } = await import('@invoicing/kernel')
 const { recordPayment, reservationFolioSummary } = await import('@invoicing/kernel');
 const { decideCheckout } = await import('./checkout.repo.ts');
 const { recalcPaymentStatusFromFolio } = await import('./payment-status.repo.ts');
-const { createPaymentOperation, deletePaymentOperation } = await import('../../finance/api/payment-bridge.ts');
+const { createPaymentOperation, deletePaymentOperation, settleFolioPayment } = await import('../../finance/api/payment-bridge.ts');
 // Ручна проводка у Фінансах — тим самим писачем, яким її заводить екран
 // операцій, а не своїм INSERT: сцена має тиснути на живий шлях (урок Р8.10).
 const { createOperationInTx } = await import('../../finance/api/operations.handlers.ts');
@@ -173,12 +173,14 @@ try {
     // ── СЦЕНА А: 3000 наперед ЧЕРЕЗ ФОЛІО ────────────────────────────────
     const a = '__folbook__a';
     const folioA = await seedStay(a);
-    await recordPayment({ folioId: folioA, amount: PREPAID, method: 'cash' });
-    // Той самий перерахунок, у який упирається картка, — не свій UPDATE поруч.
-    // Доти сцена рахувала слово сама (`statusFromFolio` + `UPDATE`), тобто
-    // повторювала логіку писача замість того, щоб її перевіряти: зламати
-    // `recalcPaymentStatusFromFolio` можна було, лишивши сцену зеленою.
-    await recalcPaymentStatusFromFolio(a);
+    // ДВЕРІ МАРШРУТУ, а не писач із дорахунком руками (Д83, 16.09.2026).
+    //
+    // Доти тут стояло `recordPayment` + власний виклик
+    // `recalcPaymentStatusFromFolio`, тобто сцена ставала на місце БРАУЗЕРА:
+    // вона доводила, що перерахунок працює, а не що шлях його кличе. Саме
+    // через це вада «оплата з фоліо лишає бронь unpaid» жила при зеленому
+    // гейті (AGENTS §3.2.1). Тепер сцена кличе те саме, що маршрут.
+    await settleFolioPayment({ folioId: folioA, amount: PREPAID, method: 'cash' });
     const seenA = await asSeen(a);
     console.log('  А (через фоліо):', JSON.stringify(seenA));
 
@@ -365,8 +367,7 @@ try {
       'виселення з боргом мало бути відмовлене політикою blocking');
 
     // ── Доплата решти закриває бронь, теж однаково ───────────────────────
-    await recordPayment({ folioId: folioA, amount: REST, method: 'cash' });
-    await recalcPaymentStatusFromFolio(a);
+    await settleFolioPayment({ folioId: folioA, amount: REST, method: 'cash' });
     const finalA = await asSeen(a);
     say(finalA.status === 'paid' && finalA.owed === 0 && finalA.allowed === true,
       `А: після доплати ${JSON.stringify(finalA)} — мало бути paid, борг 0, виселення дозволене`);
@@ -389,10 +390,15 @@ try {
     .replace(/\/\*[\s\S]*?\*\//g, (m: string) => m.replace(/[^\n]/g, ' '))
     .replace(/(^|[^:])\/\/[^\n]*/g, (m: string, p1: string) => p1 + ' '.repeat(m.length - p1.length));
   const say = (ok: boolean, msg: string) => { if (!ok) fails.push(msg); };
-  say(/const\s+word\s*=\s*statusFromFolio\(/.test(card),
-    'картка більше не рахує слово через statusFromFolio — гейт про це мовчав би');
-  say(/payment_status:\s*word\b/.test(card),
-    'картка шле PATCH не тим словом, яке порахувала');
+  // Слово тепер рахує СЕРВЕР і віддає його разом із платежем (Д83). Картка
+  // мусить брати саме його — і не сміє ні рахувати своє, ні слати `PATCH`
+  // окремим правом (`manage_bookings`), якого в бухгалтера немає.
+  say(/r\.payment_status/.test(card),
+    'картка не читає слово з відповіді писача — значить, воно знову рахується десь іще');
+  say(!/statusFromFolio\(/.test(card),
+    'картка знову рахує слово сама — друга копія правила, яка розійдеться з сервером');
+  say(!/method:\s*'PATCH'[\s\S]{0,400}payment_status/.test(card),
+    'картка знову шле статус окремим PATCH — саме він 403-ив у бухгалтера й ковтався catch-ем');
   say(!/payment_status:\s*'(paid|partial|unpaid)'/.test(card),
     'у картці зашите слово статусу літералом — саме так виглядала стара поведінка');
 }

@@ -22,6 +22,10 @@
 // ════════════════════════════════════════════════════════════
 
 import { withPermission, withFinanceRead } from './_guard';
+// Оплата в рахунок гостя. Варта на ній — модуля `invoicing` (див. шапку
+// файла): фінансового пароля рецепція не має і не потребує, а книга каси
+// належить цьому модулю, тож композиція живе тут.
+export { addFolioPayment } from './folio-payment.handlers';
 
 // ─── Finance step-up passphrase (security) — self-guarded, owner-only ─────────
 // These must stay reachable while finance is locked, so they are NOT wrapped

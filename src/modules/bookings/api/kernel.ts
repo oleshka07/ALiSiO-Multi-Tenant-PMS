@@ -17,6 +17,10 @@ export type { CompanyGuest } from '../data/company-stays.repo';
 // фасаді: `@bookings` тягне `@invoicing`, а той — генератор PDF, який під
 // голим node падає на `__dirname`, тож сцена каси не піднімалась узагалі.
 export { recalcPaymentStatusFromFolio } from '../data/payment-status.repo';
+// Журнал броні — двері для сусідніх модулів: зняття платежу робить каса
+// (`@finance`), а слід про це людина шукає на картці броні (П10).
+export { recordBookingChange } from '../data/booking-history.repo';
+export type { HistoryActor } from '../data/booking-history.repo';
 export type { PaymentStatusChange } from '../data/payment-status.repo';
 
 /**

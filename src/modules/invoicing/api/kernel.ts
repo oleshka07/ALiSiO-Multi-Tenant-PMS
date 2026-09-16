@@ -67,7 +67,7 @@ export { reservationBalance, reservationFolioSummary } from '../data/folio-summa
  * власним `INSERT` у таблицю фактурування). Фіскальна варта всередині — та
  * сама, що на маршруті.
  */
-export { recordPayment, listPayments } from '../data/folio-payments.repo';
+export { recordPayment, recordPaymentDetailed, listPayments } from '../data/folio-payments.repo';
 export type { ReservationFolioSummary, FolioSummary } from '../data/folio-summary.repo';
 export { loadInvoiceDocument } from '../data/invoice-document.repo';
 export { generateGermanInvoicePdf } from '../domain/invoice-pdf-de';

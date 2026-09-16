@@ -233,9 +233,12 @@ export async function getInvoiceByReservation(
       LIMIT 1
     `, [id, actor.organizationId]) as { id: string; invoice_number: string; issued_at: string; amount: number; currency: string; status: string } | undefined;
     return NextResponse.json(row ?? null);
-  } catch (e: any) {
-    console.error('[Invoices] getInvoiceByReservation error:', e.message);
-    return NextResponse.json(null);
+  } catch (e: unknown) {
+    // `null` тут означав «документа немає», і цим самим реченням відповідала
+    // БУДЬ-ЯКА поломка: картка показувала кнопку «створити», коли насправді
+    // запит не виконався. Рівно той клас, що коштував місяця в серпні —
+    // 200 із `null` (ревізія 16.09.2026, П8).
+    return handleError('modules/invoicing/api/invoices getInvoiceByReservation', e);
   }
 }
 

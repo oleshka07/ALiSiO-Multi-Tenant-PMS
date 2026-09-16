@@ -17,7 +17,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useT } from '@core/i18n/client';
 import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import { EmptyState, LoadingState, ErrorState, DeniedState } from '@/components/ui/State';
-import { statusFromFolio } from '@/modules/bookings/ui/folio-payment';
 import { folioLoadOutcome, type FolioLoadOutcome } from '@/modules/bookings/ui/folio-load';
 import { Receipt, Plus, CreditCard, FileText, Loader2, ArrowRight } from 'lucide-react';
 
@@ -216,31 +215,31 @@ export default function FolioPanel({ booking: b, compact, showToast, onBookingCh
     if (!r) return;
     setOpen({ kind: null, folioId: null });
     setPayForm({ amount: '', method: 'cash' });
-    // Рахунок закрито — бронь стає оплаченою: саме це слово читає варта
-    // заселення. Лише коли нараховано проживання і боргу нема
-    // (`folioSettlesStay`): оплата за воду до нарахування бронь не закриває.
-    // `payment_method` folio/folio_cash каже серверу НЕ виписувати
-    // legacy-документ — документ виставляє фоліо (рецензія 07.09 п.1).
-    try {
-      const fresh = await fetch(`/api/finance/folios?reservation_id=${b.id}&summary=1`).then((x) => x.json());
-      // Слово рахує фоліо, і воно каже не лише «оплачено»: внесок із залишком
-      // робить бронь `partial` (В3). Доти частина не ставила НІЧОГО — бронь,
-      // оплачена половиною, у фільтр «частково» не потрапляла взагалі.
-      const word = statusFromFolio(fresh);
-      if (word && word !== b.payment_status && b.payment_status !== 'prepaid') {
-        const res = await fetch(`/api/bookings/${b.id}`, {
-          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ payment_status: word, payment_method: payForm.method === 'cash' ? 'folio_cash' : 'folio' }),
-        });
-        if (res.ok) {
-          setBooking?.({ ...b, payment_status: word });
-          onBookingChanged?.();
-          showToast(word === 'paid'
-            ? tUi('✅ Рахунок закрито — бронь оплачена')
-            : tUi('Оплату записано — бронь частково оплачена'));
-        }
-      }
-    } catch { /* статус оплати оновиться наступним читанням */ }
+
+    // Слово броні рахує СЕРВЕР і віддає його разом із платежем (Д83).
+    //
+    // Доти цей екран перечитував підсумок, рахував слово в себе
+    // (`statusFromFolio`) і слав окремий `PATCH /api/bookings/<id>` — а той
+    // вимагає `manage_bookings`, якого в бухгалтера немає: 403 ковтався
+    // `catch`-ем, і оплата мовчки лишала бронь «не оплаченою». Друга копія
+    // правила заодно зникла: рахує один, той самий, що й на рецепції.
+    const word = typeof r.payment_status === 'string' ? r.payment_status : null;
+    if (word && word !== b.payment_status) {
+      setBooking?.({ ...b, payment_status: word });
+      onBookingChanged?.();
+    }
+    // Каса могла не прийняти готівку (немає рахунку в цій валюті) — платіж
+    // гостя при цьому записано. Мовчати про це не можна: саме розходження
+    // двох книг Д83 і лікує.
+    if (typeof r.till_refusal === 'string' && r.till_refusal) {
+      showToast(`⚠️ ${r.till_refusal}`);
+      return;
+    }
+    showToast(word === 'paid'
+      ? tUi('✅ Рахунок закрито — бронь оплачена')
+      : word === 'partial'
+        ? tUi('Оплату записано — бронь частково оплачена')
+        : tUi('Оплату записано'));
   };
 
   const issue = (folioId: string) => call(() => fetch(`/api/finance/folios/${folioId}/issue`, {

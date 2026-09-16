@@ -6,6 +6,7 @@ import { getDb, generateGuestToken } from '@core/db';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
 import { ownedReservation, ownedUnit } from '../data/owned.repo';
 import { generateInvoiceForReservation } from '@invoicing';
+import { reservationBalance } from '@invoicing/kernel';
 import { cookies } from 'next/headers';
 import { getSessionUser } from '@core/auth';
 import { writeBookingAudit, getBookingActor, buildBookingLabel } from './audit-log.handlers';
@@ -95,10 +96,26 @@ export const getReservation = withActor(async (_request: NextRequest, { params }
     // Count children
     const childCount = (await sql.row<any>('SELECT COUNT(*) as n FROM reservations WHERE parent_id = ?', [id]) as any).n;
 
+    // Скільки гість справді винен — З КНИГИ ГОСТЯ, одним числом на всі
+    // екрани картки (ревізія 16.09.2026, П4).
+    //
+    // Смуга «сплачено / залишок» рахувала це з `fin_operations` проти
+    // `total_price`, тобто з ІНШОЇ книги і проти іншої суми: оплата, записана
+    // у фоліо переказом, там не зʼявлялась, а послуги, знижка й турзбір
+    // робили `total_price` несхожим на нараховане. На вкладці «Фінанси» тієї
+    // самої картки при цьому стояло правильне число.
+    //
+    // Порожня книга не відповідає: `charged = 0` лишає екранові старий шлях
+    // (той самий закон, що в `decideCheckout`).
+    const folio = await reservationBalance(id, sql).catch(() => null);
+
     return NextResponse.json({
       ...row as any,
       subBookings: subBookingsWithItems,
       childReservationCount: childCount,
+      folio: folio && folio.hasFolio && folio.charged > 0
+        ? { charged: folio.charged, paid: folio.paid, balance: folio.balance }
+        : null,
     });
   } catch (error: any) {
     console.error('GET /api/bookings/[id] error:', error?.message || error);
@@ -450,9 +467,19 @@ export async function updateReservationHandler(request: NextRequest, { params }:
     // Оплата з фоліо (`payment_method` folio/folio_cash) сюди не потрапляє:
     // документ виставляє фоліо, і він там один (рецензія 07.09 п.1,
     // `domain/folio-payment.ts`). Інакше на одну суму виходило два номери.
+    let invoiceOutcome: 'issued' | 'skipped' | null = null;
     if (legacyInvoiceWanted(body)) {
       const isCash = body.payment_method === 'cash';
-      generateInvoiceForReservation(id, isCash ? { confirmed: true, source: 'cash' } : { confirmed: false, source: 'manual' });
+      // ЧЕКАЄМО на відповідь (П12). Доти виклик був fire-and-forget над
+      // функцією з глухим `catch`: якщо документ не виписався, про це не
+      // дізнавався ніхто — саме так у серпні фактури не було десять днів, і
+      // саме тому це видно в коментарі самої функції. Виняток вона й далі не
+      // кидає, тож PATCH броні від цього не падає; відповідь лише каже, чим
+      // скінчилось. `skipped` — це ще й нормальний стан: бронь, яку ведуть у
+      // рахунку гостя, документ отримує звідти (П3).
+      invoiceOutcome = await generateInvoiceForReservation(
+        id, isCash ? { confirmed: true, source: 'cash' } : { confirmed: false, source: 'manual' },
+      ) ? 'issued' : 'skipped';
     }
 
     // Return updated booking with guest_page_token — і прапорець виселення з
@@ -461,6 +488,7 @@ export async function updateReservationHandler(request: NextRequest, { params }:
     return NextResponse.json({
       success: true,
       guest_page_token: updated?.guest_page_token || null,
+      ...(invoiceOutcome ? { invoice: invoiceOutcome } : {}),
       ...(checkout?.warning
         ? { warning: checkout.warning, balance: checkout.balance, currency: beforeSnapshot?.currency ?? null }
         : checkinWarning ? { warning: checkinWarning } : {}),
