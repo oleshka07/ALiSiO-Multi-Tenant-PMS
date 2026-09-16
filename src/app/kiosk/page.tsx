@@ -24,7 +24,7 @@
  * рівно стільки, скільки той віддав, — імена вже приходять маскою.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { Keyboard } from '@/apps/kiosk/ui/Keyboard';
 import { KioskCalendar, formatDay, localToday } from '@/apps/kiosk/ui/KioskCalendar';
 import { Signature } from '@/apps/kiosk/ui/Signature';
@@ -56,6 +56,8 @@ interface Session {
   /** Вигляд ЦЬОГО готелю: обидва з `config_json` пристрою, обидва можуть бути порожні. */
   logoUrl: string | null;
   backgroundUrl: string | null;
+  /** Мова ГОТЕЛЮ — з неї екран починає, поки гість не натиснув кнопку. */
+  language: string;
 }
 
 interface Stay {
@@ -139,7 +141,20 @@ const IconExtras = () => (
 
 export default function KioskPage() {
   const { token, setToken, ready } = useDeviceToken();
+  // Стартова мова — німецька лише як перше значення до відповіді сервера:
+  // сесія приносить мову ГОТЕЛЮ і замінює її, поки гість нічого не обрав.
+  // Константа в коді мовою готелю не є (інваріант 20).
   const [lang, setLang] = useState<KioskLang>('de');
+  /**
+   * Чи торкався мови ГІСТЬ.
+   *
+   * `ref`, не стан: він нічого не малює, а читається всередині зворотного
+   * виклику, який інакше побачив би значення з моменту свого створення.
+   * Потрібен, бо сесія приходить ПІСЛЯ першого малювання: без нього
+   * гість, який устиг натиснути «Français», за мить дістав би назад
+   * німецьку — і подумав би, що кнопка не працює.
+   */
+  const langTouched = useRef(false);
   const [step, setStep] = useState<Step>('start');
   const [session, setSession] = useState<Session | null>(null);
   const [info, setInfo] = useState<{ reception: { phone: string | null; whatsapp: string | null } } | null>(null);
@@ -229,7 +244,12 @@ export default function KioskPage() {
       const answer = await call('session');
       if (!alive) return;
       if (answer?.ok) {
-        setSession(answer.body as Session);
+        const body = answer.body as Session;
+        setSession(body);
+        // Мова готелю — лише СТАРТОВА. Вибір гостя, вже зроблений кнопкою,
+        // вона не перебиває: сесія приходить асинхронно, і перезапис тут
+        // відкотив би натиснуту мову через півсекунди після натиску.
+        setLang((current) => (langTouched.current ? current : kioskLang(body.language, current)));
       } else if (answer?.status === 401) {
         // Токен більше не дійсний (термінал відкликали). Забути його —
         // інакше екран довіку показує «помилку», якої гість не полагодить.
@@ -475,10 +495,21 @@ export default function KioskPage() {
           <p className="kiosk-subtitle">{stay.guest} · {stay.checkIn} → {stay.checkOut}</p>
         )}
         {/*
-          Мова — дві кнопки, не список, що розкривається: мов рівно дві, і
-          випадайка коштувала б гостю зайвого дотику заради того самого.
+          Мови — кнопками в РЯД, не списком, що розкривається. Тут стояло
+          «мов рівно дві, і випадайка коштувала б зайвого дотику»; мов тепер
+          сім, і довід від цього не зник, а посилився: випадайка на терміналі
+          означає, що гість мусить спершу здогадатись її відкрити, щоб узагалі
+          побачити свою мову. Сім кнопок видно одразу — вони переносяться
+          рядком (`flex-wrap` у `.kiosk-langs`).
+
+          Підпис — РІДНА назва мови, не код: людина шукає слово, яке впізнає.
           Прапорців немає навмисно: у Windows немає шрифту з прапорцями
-          взагалі, і 🇬🇧 показався б там як літери «GB».
+          взагалі, і 🇬🇧 показався б там як літери «GB». Та й прапор — це
+          країна, а не мова: під 🇬🇧 не стане австрієць, під 🇫🇷 — бельгієць.
+
+          Перемикач стоїть у шапці, тобто В ОДНОМУ місці на всі кроки: той,
+          що домальовується до кожного екрана окремо, зникне на наступному
+          доданому екрані, і ніхто цього не помітить (П5).
         */}
         <div className="kiosk-langs">
           {KIOSK_LANGS.map((code) => (
@@ -487,7 +518,8 @@ export default function KioskPage() {
               type="button"
               className="kiosk-lang"
               data-on={lang === code}
-              onClick={wrap(() => setLang(kioskLang(code)))}
+              lang={code}
+              onClick={wrap(() => { langTouched.current = true; setLang(code); })}
             >
               {KIOSK_LANG_LABELS[code]}
             </button>

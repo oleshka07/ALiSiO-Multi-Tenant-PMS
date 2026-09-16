@@ -126,21 +126,35 @@ try {
   // ── 5. Мова приходить із ТЕЛЕФОНА, і з ваги, а не з порядку ──────────────
   //
   // Заголовок — список із вагами в довільному порядку. Читач «перший підрядок»
-  // на `cs,en;q=0.9` віддав би чеську, якої в нас немає, і сторінка мовчки
-  // впала б у дефолт; на `de;q=0.2,en;q=0.9` він віддав би німецьку людині,
-  // яка просила англійську. Тому осі дві: і вага, і невідома мова.
-  assert.strictEqual(languageFromHeader('de-AT,de;q=0.9,en-US;q=0.8'), 'de', 'de-AT це de');
-  assert.strictEqual(languageFromHeader('en-GB,en;q=0.9'), 'en', 'англієць дістав не англійську');
-  assert.strictEqual(languageFromHeader('de;q=0.2,en;q=0.9'), 'en',
+  // на `de;q=0.2,en;q=0.9` віддав би німецьку людині, яка просила англійську.
+  //
+  // Запасна мова тепер НАЗИВАЄТЬСЯ викликачем і в житті це мова готелю. Тут
+  // вона взята чеською навмисно, а не німецькою: німецька збіглася б із
+  // мовою половини заголовків у цій сцені, і твердження «впало в запасну»
+  // було б нерозрізненне з «прочитало заголовок» (інваріант 26).
+  const FALLBACK = 'cs' as const;
+  assert.strictEqual(languageFromHeader('de-AT,de;q=0.9,en-US;q=0.8', FALLBACK), 'de', 'de-AT це de');
+  assert.strictEqual(languageFromHeader('en-GB,en;q=0.9', FALLBACK), 'en', 'англієць дістав не англійську');
+  assert.strictEqual(languageFromHeader('de;q=0.2,en;q=0.9', FALLBACK), 'en',
     'вага знехтувана — узято перший рядок, а не найбажаніший');
-  assert.strictEqual(languageFromHeader('cs,en;q=0.8'), 'en',
-    'чех із англійською другою мусить дістати англійську, а не дефолт');
-  assert.strictEqual(languageFromHeader('cs,sk;q=0.8'), 'de',
-    'мова, якої ми не знаємо, має впасти в дефолт');
-  assert.strictEqual(languageFromHeader(''), 'de', 'порожній заголовок');
-  assert.strictEqual(languageFromHeader(undefined), 'de', 'заголовка немає взагалі');
-  assert.strictEqual(languageFromHeader('en;q=0'), 'de',
+  // Тут стояло «чех із англійською другою мусить дістати АНГЛІЙСЬКУ»: воно було
+  // істинне рівно доти, доки чеської в застосунку не було. Тепер чех дістає
+  // чеську — і саме заради цього мови й розширювались.
+  assert.strictEqual(languageFromHeader('cs,en;q=0.8', 'en'), 'cs',
+    'чеську знаємо — чех не має діставати другу свою мову');
+  // Мова, якої не знає ПРОДУКТ (словацька), — далі запасна. Разом із рядком
+  // вище це пара, що розрізняє «читаємо заголовок» і «завжди перше слово».
+  assert.strictEqual(languageFromHeader('sk,hr;q=0.8', FALLBACK), FALLBACK,
+    'мова, якої ми не знаємо, має впасти в запасну');
+  assert.strictEqual(languageFromHeader('', FALLBACK), FALLBACK, 'порожній заголовок');
+  assert.strictEqual(languageFromHeader(undefined, FALLBACK), FALLBACK, 'заголовка немає взагалі');
+  assert.strictEqual(languageFromHeader('en;q=0', FALLBACK), FALLBACK,
     'вага 0 означає «не треба», а не «треба найбільше»');
+  // Запасна — та, яку НАЗВАЛИ, а не константа в коді. Два різних виклики з
+  // тим самим заголовком і різною запасною мусять дати різне: інакше
+  // «мова готелю» знову виявиться німецькою з літерала.
+  assert.notStrictEqual(languageFromHeader('sk', 'cs'), languageFromHeader('sk', 'fr'),
+    'запасна мова не читається — усі готелі дістануть одну');
   console.log('  ok  5. мова з Accept-Language: за вагою, з регіоном, із запасним дефолтом');
 
   // ── 6. Пошук своєї броні: обидва чинники, вузьке вікно, лише токен ──────

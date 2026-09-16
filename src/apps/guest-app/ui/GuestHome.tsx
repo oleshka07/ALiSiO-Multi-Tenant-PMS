@@ -22,12 +22,18 @@ const LANG_KEY = 'alisio.guest.lang';
 
 type Step = 'home' | 'find' | 'stay';
 
-export function GuestHome({ propertyName, appKey, initialLang, palette, logoUrl }: {
+export function GuestHome({ propertyName, appKey, initialLang, hotelLang, palette, logoUrl }: {
   propertyName: string;
   /** Ключ із адреси — його ж маршрут пошуку чекає в тілі (інваріант 8). */
   appKey: string;
   /** Мова з `Accept-Language`, вирішена на СЕРВЕРІ — щоб перший екран не блимав. */
   initialLang: GuestLang;
+  /**
+   * Мова готелю — те, чим лишається екран, коли ні телефон, ні пам'ять
+   * браузера нічого не сказали. Не константа в коді: обʼєкт у Чехії не має
+   * відкриватись німецькою тому, що так написано (інваріант 20).
+   */
+  hotelLang: GuestLang;
   /**
    * Кольори готелю (0419) — уже приведені в `property.repo`, тож сюди
    * приходить імʼя, яке напевно має блок у таблиці стилів, або `null`.
@@ -56,7 +62,7 @@ export function GuestHome({ propertyName, appKey, initialLang, palette, logoUrl 
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(LANG_KEY);
-      if (saved) setLang(guestLang(saved));
+      if (saved) setLang(guestLang(saved, hotelLang));
     } catch {
       // Приватне вікно або вимкнені дані сайту — лишається мова пристрою.
     }
@@ -121,16 +127,20 @@ export function GuestHome({ propertyName, appKey, initialLang, palette, logoUrl 
         </h1>
         {step === 'home' && <p className="guest-lead">{s.lead}</p>}
         {/*
-          Перемикач мови стоїть ЛИШЕ на перших двох екранах (КІ20): далі гість
-          уже в потоці з набраними даними, і мову там міняють не «бо
-          захотілось», а бо помилились на початку.
+          ── Перемикач мови стоїть на КОЖНОМУ екрані ───────────────────────
+          Тут було `step !== 'stay' &&` — «на перших двох, далі гість уже в
+          потоці». Доти мов було дві й обидві європейські; із сімома це
+          перетворилось на пастку: гість, який дійшов до контактів і аж там
+          побачив слово, якого не розуміє, мусив вертатись на початок, щоб
+          змінити мову, — а «назад» із кроку підтвердження скидає бронь, яку
+          ми для нього тримаємо.
+
+          Він живе в шапці, тобто В ОДНОМУ місці на всі кроки, і це навмисно:
+          перемикач, домальований до кожного екрана окремо, зникне на
+          наступному доданому екрані, і ніхто цього не помітить — бо помилка
+          мовчить (П5).
         */}
-        {/*
-          Перемикач — на перших двох екранах (КІ20): розвилка і перший екран
-          обраної гілки. Далі гість уже набирає дані, і мову там міняють не
-          «бо захотілось», а бо помилились на початку — тоді є «назад».
-        */}
-        {step !== 'stay' && <div className="guest-langs">
+        <div className="guest-langs">
           {GUEST_LANGS.map((code) => (
             <button
               key={code}
@@ -138,11 +148,12 @@ export function GuestHome({ propertyName, appKey, initialLang, palette, logoUrl 
               className="guest-lang"
               data-on={lang === code}
               onClick={() => choose(code)}
+              lang={code}
             >
               {GUEST_LANG_LABELS[code]}
             </button>
           ))}
-        </div>}
+        </div>
       </header>
 
       {step === 'home' && (

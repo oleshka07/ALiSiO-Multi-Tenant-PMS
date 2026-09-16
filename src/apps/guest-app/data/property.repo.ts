@@ -6,8 +6,9 @@
  */
 
 import { readBrandPalette, readBrandLogoUrl, type BrandPaletteKey } from '@core/brand-palettes';
+import { parseLanguage, type Language } from '@core/i18n/languages';
 import { getSql } from '@core/db/async';
-import { runWithPublicToken } from '@core/auth/tenant-context';
+import { runWithPublicToken, runWithOrganization } from '@core/auth/tenant-context';
 import { hasFeature } from '@core/features';
 
 export interface GuestAppHome {
@@ -32,6 +33,16 @@ export interface GuestAppHome {
    */
   palette: BrandPaletteKey | null;
   logoUrl: string | null;
+  /**
+   * Мова ГОТЕЛЮ — те, чим лишається екран, коли телефон гостя нічого не сказав.
+   *
+   * Доти тут була константа `'de'` у розборі заголовка: обʼєкт у Чехії
+   * відкривався б німецькою через літерал у коді, а не через чийсь вибір
+   * (інваріант 20). Гостьова сторінка вже давно робить саме так
+   * (`parseLanguage(reservation.organization_language)`), і дві сусідні
+   * поверхні одного готелю не мають розходитись у тому, з чого починають.
+   */
+  hotelLanguage: Language;
 }
 
 /**
@@ -81,6 +92,21 @@ export async function propertyByAppKey(key: string): Promise<GuestAppHome | unde
   // наперед, сам по собі нічого не відчиняє.
   if (!(await hasFeature(String(row.organization_id), 'guest_app'))) return undefined;
 
+  // ── Мова готелю ─────────────────────────────────────────────────────────
+  //
+  // Окремим запитом, а не JOIN до `organizations` у запиті вище — і це не
+  // стиль, а інваріант 14. Той запит іде під ПУБЛІЧНОЮ перепусткою, де
+  // орендар порожній; політика `organizations` пускає рядок лише свого
+  // орендаря, тож на Postgres JOIN не знайшов би нічого і викинув би сам
+  // рядок обʼєкта. Сторінка віддала б 404 при правильному ключі — рівно
+  // INC-210, тільки з іншого боку.
+  //
+  // Тому: спершу орендар (він уже відомий із рядка), і лише тоді читання,
+  // тим самим взірцем, що `hasFeature` (INC-014).
+  const org = await runWithOrganization(String(row.organization_id), () =>
+    getSql().row<{ language: string | null }>(
+      'SELECT language FROM organizations WHERE id = ?', [row.organization_id]));
+
   return {
     organizationId: row.organization_id,
     propertyId: row.id,
@@ -92,5 +118,8 @@ export async function propertyByAppKey(key: string): Promise<GuestAppHome | unde
     // невідоме значення, приведене в кожному окремо, приводиться по-різному.
     palette: readBrandPalette(row.brand_palette),
     logoUrl: readBrandLogoUrl(row.brand_logo_url),
+    // Рядка немає або мова чужа — англійська: нейтральніша за будь-яку
+    // національну, коли про готель ми нічого не знаємо.
+    hotelLanguage: parseLanguage(org?.language, 'en'),
   };
 }

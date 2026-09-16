@@ -97,14 +97,21 @@
 .guest-welcome { margin: 0; font-size: 2.2rem; font-weight: 600; font-family: Georgia, 'Times New Roman', serif; }
 .guest-lead { margin: 0; font-size: 1.05rem; color: #6b6157; }
 
-.guest-langs { display: flex; gap: 0.5rem; margin-top: 0.4rem; }
+/* Сім мов, не дві: `wrap` обовʼязковий. Без нього рядок кнопок виїжджає за
+   край телефона, і останні дві мови просто немає як натиснути — на екрані
+   шириною 360 px це «перемикача немає», а не «перемикач негарний». */
+.guest-langs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.6rem; }
 .guest-lang {
-  padding: 0.5rem 1rem;
+  /* Дотик лишається дотиком: 44 px — нижня межа, під якою палець промахується.
+     Поле звузилось із 1rem до 0.7rem заради семи кнопок, тож висоту тримаємо
+     окремо, а не сподіваємось на padding. */
+  min-height: 2.75rem;
+  padding: 0.5rem 0.7rem;
   border-radius: 999px;
   border: 1px solid var(--ga-line);
   background: var(--ga-surface);
   color: inherit;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   cursor: pointer;
 }
 .guest-lang[data-on='true'] { background: var(--ga-accent); border-color: var(--ga-accent); color: var(--ga-accent-ink); }

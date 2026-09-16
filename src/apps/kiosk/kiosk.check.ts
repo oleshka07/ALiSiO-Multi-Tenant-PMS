@@ -42,6 +42,9 @@ process.env.APP_SECRET_KEY ||= '0'.repeat(64);
 
 await import('@core/db/index.ts');
 const { getSql } = await import('@core/db/async.ts');
+// Динамічно, як і решта: статичний імпорт аліаса виконався б ДО
+// `module-aliases`, і вузол упав би на резолвінгу, а не на твердженні.
+const { LANGUAGE_CODES } = await import('@core/i18n/languages.ts');
 const { runWithOrganization } = await import('@core/auth/tenant-context.ts');
 const { setFeature } = await import('@core/features.ts');
 const { checkIn, checkOut, assignUnit, readCheckinPolicy } = await import('@bookings/kernel.ts');
@@ -220,10 +223,20 @@ try {
   assert.strictEqual(res.status, 200, `живий токен: очікували 200, отримали ${res.status} ${text}`);
   const state = JSON.parse(text) as {
     property: { id: string }; checkinPaymentPolicy: string; walkinUrl: string | null;
-    touchBand: { top: number; bottom: number }; languages: string[];
+    touchBand: { top: number; bottom: number }; languages: string[]; language: string;
   };
   assert.strictEqual(state.property.id, P1, 'сесія назвала не той обʼєкт');
-  assert.deepStrictEqual(state.languages, ['de', 'en'], 'мови екрана не DE+EN (К7)');
+  // Мови екрана — РЕЄСТР продукту, не власний список. Тут стояло
+  // `['de', 'en']`, і разом із таким самим списком у хендлері це було
+  // твердження «дві копії однієї константи збігаються», а не «термінал
+  // говорить мовами продукту»: чех у холі бачив дві кнопки при семи мовах
+  // на сусідній гостьовій сторінці.
+  assert.deepStrictEqual(state.languages, LANGUAGE_CODES,
+    'термінал пропонує не ті мови, які знає продукт');
+  assert.ok(state.languages.length >= 5,
+    `мов у реєстрі лише ${state.languages.length} — перевірка нічого не стереже`);
+  assert.ok(LANGUAGE_CODES.includes(state.language as never),
+    `мова, з якої починає термінал (${state.language}), не з реєстру`);
   assert.strictEqual(state.walkinUrl, null, 'walk-in увімкнений без адреси');
   assert.deepStrictEqual(state.touchBand, session.DEFAULT_TOUCH_BAND, 'робоча смуга не дефолтна');
   res = await ask(null);
@@ -636,26 +649,47 @@ try {
       checkedOut: 'CO', errors: 'E', invoiceList: 'INV', none: 'NONE' },
     propRow!.name, 'alisio');
   assert.ok(emptyLetter.text.includes('NONE'), `порожня доба без слова: ${emptyLetter.text}`);
-  // Юрисдикція поза словником — англійська, а не мовчазна німецька.
+  // Лист складається мовою ГОТЕЛЮ, і мов тепер стільки, скільки знає продукт.
   //
-  // Той самий закон, що в решти документів (`localeForLanguage`): своя мова
-  // там, де вона є, англійська там, де немає. Мовчазний `de` дав би
-  // французькому готелю лист чужою мовою, і він вирішив би, що це помилка
-  // адреси. Перевіряється ТА САМА функція, яку кличе крон.
+  // Тут стояло «fr, pl, uk → англійська»: воно було істинне рівно доти, доки
+  // словник листа знав три мови з семи, і польський готель читав англійський
+  // звіт при польській адмінці. Тепер кожна мова реєстру має свої слова.
+  //
+  // Твердження — про РОЗРІЗНЕННЯ, а не про наявність: якби `words()` віддавав
+  // англійську всім, перевірка «у fr є рядок» лишилась би зеленою.
   assert.strictEqual(dayMail.words('de').checkedIn, 'Selbst eingecheckt', 'німецька зникла');
   assert.strictEqual(dayMail.words('cs').checkedIn, 'Samoobslužné ubytování', 'чеська зникла');
-  for (const other of ['fr', 'pl', 'uk', 'en', '', 'zz']) {
-    assert.strictEqual(dayMail.words(other).checkedIn, 'Self check-ins',
-      `мова «${other}» дала не англійську: ${dayMail.words(other).checkedIn}`);
+  const mailWords = new Set<string>();
+  for (const code of LANGUAGE_CODES) {
+    const word = dayMail.words(code).checkedIn;
+    assert.ok(word && word.trim() !== '', `мова «${code}» лишилась без слів у листі`);
+    mailWords.add(word);
   }
-  // І це доходить до самого листа, а не лише до словника: обʼєкт із чужою
-  // юрисдикцією читається `documentLanguage()` і складається англійською.
+  assert.strictEqual(mailWords.size, LANGUAGE_CODES.length,
+    `сім мов дали ${mailWords.size} різних заголовків — частина з них та сама англійська`);
+  // Мова, якої продукт НЕ знає, і порожня — англійська, а не мовчазна німецька.
+  // Французькому готелю німецький лист виглядав би як помилка адреси.
+  for (const other of ['zz', '', 'sk']) {
+    assert.strictEqual(dayMail.words(other).checkedIn, 'Self check-ins',
+      `невідома мова «${other}» дала не англійську: ${dayMail.words(other).checkedIn}`);
+  }
+  // І це доходить до самого листа, а не лише до словника: юрисдикцію обʼєкта
+  // читає `documentLanguage()`, і лист складається ЇЇ мовою.
+  //
+  // Тут стояло «французький обʼєкт → англійський лист»: істинне доти, доки
+  // французьких слів не було. Тепер рецепція в Ліоні читає звіт французькою,
+  // і це не косметика — лист із рядком «виставити рахунок у попередній
+  // системі» мусить бути зрозумілий тому, хто його виставлятиме.
   await runWithOrganization(A, () => sql.run("UPDATE properties SET country = 'FR' WHERE id = ?", [P1]));
   const frLetter = dayMail.renderKioskDay(
     dayA, dayMail.words(await runWithOrganization(A, () => documentLanguage(P1))),
     propRow!.name, 'alisio');
-  assert.ok(frLetter.text.includes('Self check-ins'),
-    `лист для FR-юрисдикції не англійською: ${frLetter.text.slice(0, 120)}`);
+  assert.ok(frLetter.text.includes('Enregistrements en autonomie'),
+    `лист для FR-юрисдикції не французькою: ${frLetter.text.slice(0, 160)}`);
+  // І це саме ІНШИЙ лист, а не той самий із перейменованим заголовком:
+  // англійського рядка в ньому бути не має.
+  assert.ok(!frLetter.text.includes('Self check-ins'),
+    'французький лист містить англійський рядок — словник не застосувався');
   await runWithOrganization(A, () => sql.run("UPDATE properties SET country = 'DE' WHERE id = ?", [P1]));
   console.log('  ok  21. лист: підсумок доби, список рецепції лише в external, порожня доба словом; юрисдикція поза словником — англійська');
 

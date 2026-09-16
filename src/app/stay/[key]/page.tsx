@@ -34,13 +34,15 @@ export default async function StayPage({ params }: { params: Promise<{ key: stri
   const home = await propertyByAppKey(key);
   if (!home) notFound();
 
-  const lang = languageFromHeader((await headers()).get('accept-language'));
+  // Мова: телефон гостя, а якщо він мовчить — мова ГОТЕЛЮ, не константа.
+  const lang = languageFromHeader((await headers()).get('accept-language'), home.hotelLanguage);
 
   return (
     <GuestHome
       propertyName={home.propertyName}
       appKey={key}
       initialLang={lang}
+      hotelLang={home.hotelLanguage}
       palette={home.palette}
       logoUrl={home.logoUrl}
     />

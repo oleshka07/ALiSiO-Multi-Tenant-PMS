@@ -24,6 +24,7 @@
  * зробило б повільним холом кожен другий. Ключ — id пристрою, тобто те, що
  * токен уже довів.
  */
+import { LANGUAGE_CODES, parseLanguage } from '@core/i18n/languages';
 import { NextResponse } from 'next/server';
 import { runWithOrganization } from '@core/auth/tenant-context';
 import { getSql } from '@core/db/async';
@@ -100,9 +101,13 @@ export async function deviceSession(request: Request): Promise<Response> {
       const property = await getSql().row<{
         name: string; checkin_payment_policy: string | null;
         system_of_record: string | null; kiosk_walkin_url: string | null;
+        organization_language: string | null;
       }>(`
-        SELECT name, checkin_payment_policy, system_of_record, kiosk_walkin_url
-          FROM properties WHERE id = ? AND organization_id = ?
+        SELECT p.name, p.checkin_payment_policy, p.system_of_record, p.kiosk_walkin_url,
+               o.language AS organization_language
+          FROM properties p
+          JOIN organizations o ON o.id = p.organization_id
+         WHERE p.id = ? AND p.organization_id = ?
       `, [device.propertyId, device.organizationId]);
       // Обʼєкта немає — терміналу немає де стояти. Відмова, не порожній
       // екран із дефолтами (інваріант 13).
@@ -111,9 +116,15 @@ export async function deviceSession(request: Request): Promise<Response> {
       return NextResponse.json({
         device: { id: device.id, name: device.name },
         property: { id: device.propertyId, name: property.name },
-        // Мови екрана — DE + EN (К7). Список, а не одне слово: перемикач
-        // на екрані читає саме його.
-        languages: ['de', 'en'],
+        // Мови екрана — ті, які знає продукт. Тут стояв власний список
+        // `['de', 'en']`, і це був СЬОМИЙ перелік мов у проєкті: реєстр
+        // `core/i18n/languages.ts` заведений рівно щоб він був один.
+        languages: LANGUAGE_CODES,
+        // Мова, з якої термінал починає, поки гість не натиснув кнопку, —
+        // мова ГОТЕЛЮ. Доти екран відкривався німецькою константою в коді,
+        // тобто термінал у чеському холі вітав чеха німецькою тому, що так
+        // написано (інваріант 20).
+        language: parseLanguage(property.organization_language, 'en'),
         checkinPaymentPolicy: readCheckinPolicy(property.checkin_payment_policy),
         systemOfRecord: readSystemOfRecord(property.system_of_record),
         // Порожня адреса = walk-in вимкнено (К8). `null`, а не порожній
