@@ -41,7 +41,20 @@
 import { useMemo, useState } from 'react';
 import type { KioskLang } from './translations';
 
-const LOCALES: Record<KioskLang, string> = { de: 'de-DE', en: 'en-GB' };
+/**
+ * Код мови → локаль `Intl`.
+ *
+ * Не `lang` навпростець: `Intl` від голого `de` дасть `de` (Німеччина за
+ * замовчуванням), а від `en` — американський формат `9/11/2026`, тобто
+ * день і місяць навпаки. Гість у європейському готелі прочитає це як
+ * 9 листопада, і помилиться на два місяці.
+ *
+ * Тому регіон називається явно, і саме європейський для кожної мови.
+ */
+const LOCALES: Record<KioskLang, string> = {
+  de: 'de-DE', en: 'en-GB', cs: 'cs-CZ', uk: 'uk-UA',
+  pl: 'pl-PL', nl: 'nl-NL', fr: 'fr-FR',
+};
 
 /** Сьогодні за МІСЦЕВИМ годинником екрана, `YYYY-MM-DD`. */
 export function localToday(now: Date = new Date()): string {

@@ -23,6 +23,7 @@
  * належить. Та сама причина, з якої підсумок доби рахує `today.repo.ts`, а не
  * кожен читач окремо.
  */
+import { parseLanguage, type Language } from '@core/i18n/languages';
 import { getSql } from '@core/db/async';
 import { documentLanguage } from '@core/i18n/resolve';
 import { runWithOrganization } from '@core/auth/tenant-context';
@@ -64,7 +65,18 @@ interface Words {
   none: string;
 }
 
-const WORDS: Record<'de' | 'cs' | 'en', Words> = {
+/**
+ * Слова листа — усіма мовами продукту, а не трьома.
+ *
+ * Тут стояло `Record<'de' | 'cs' | 'en', Words>`, тобто ще один власний
+ * перелік мов, і польський готель діставав щоденний звіт англійською, хоч
+ * його адмінка говорить польською. `Record<Language, Words>` цього більше не
+ * дозволяє: нова мова продукту не збереться, поки для неї немає слів.
+ *
+ * Це НЕ гостьова поверхня: лист читає рецепція, тож мова тут — мова
+ * ГОТЕЛЮ (`organizations.language`), а не гостя.
+ */
+const WORDS: Record<Language, Words> = {
   de: {
     subject: (day: string, name: string) => `Kiosk ${day} — ${name}`,
     checkedIn: 'Selbst eingecheckt',
@@ -92,6 +104,42 @@ const WORDS: Record<'de' | 'cs' | 'en', Words> = {
     invoiceList: 'Issue the invoice in the previous system',
     none: 'No activity.',
   },
+  uk: {
+    subject: (day: string, name: string) => `Кіоск ${day} — ${name}`,
+    checkedIn: 'Самостійні заселення',
+    registered: 'Зареєстровано',
+    checkedOut: 'Виїзди',
+    errors: 'Невдалі спроби на терміналі',
+    invoiceList: 'Виставити рахунок у попередній системі',
+    none: 'Подій не було.',
+  },
+  pl: {
+    subject: (day: string, name: string) => `Kiosk ${day} — ${name}`,
+    checkedIn: 'Samodzielne zameldowania',
+    registered: 'Zarejestrowano',
+    checkedOut: 'Wyjazdy',
+    errors: 'Nieudane próby przy terminalu',
+    invoiceList: 'Wystawić fakturę w poprzednim systemie',
+    none: 'Brak zdarzeń.',
+  },
+  nl: {
+    subject: (day: string, name: string) => `Kiosk ${day} — ${name}`,
+    checkedIn: 'Zelf ingecheckt',
+    registered: 'Geregistreerd',
+    checkedOut: 'Vertrekken',
+    errors: 'Mislukte pogingen bij de terminal',
+    invoiceList: 'Factuur in het oude systeem opmaken',
+    none: 'Geen activiteit.',
+  },
+  fr: {
+    subject: (day: string, name: string) => `Borne ${day} — ${name}`,
+    checkedIn: 'Enregistrements en autonomie',
+    registered: 'Enregistrés',
+    checkedOut: 'Départs',
+    errors: 'Tentatives échouées à la borne',
+    invoiceList: 'Établir la facture dans l’ancien système',
+    none: 'Aucune activité.',
+  },
 };
 
 /**
@@ -101,9 +149,10 @@ const WORDS: Record<'de' | 'cs' | 'en', Words> = {
  * правила: копія доводила б, що правильна копія правильна.
  */
 export function words(language: string): Words {
-  if (language === 'cs') return WORDS.cs;
-  if (language === 'de') return WORDS.de;
-  return WORDS.en;
+  // Через реєстр, а не трьома `if`: ланцюжок умов мовчки віддавав англійську
+  // всьому, чого в ньому не назвали, — і саме так польський готель читав
+  // англійський звіт при польській адмінці.
+  return WORDS[parseLanguage(language, 'en')];
 }
 
 export function renderKioskDay(day: KioskDay, w: Words, propertyName: string, phase: string): { subject: string; html: string; text: string } {

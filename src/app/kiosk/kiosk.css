@@ -491,10 +491,21 @@
 }
 
 /* ── Мова ───────────────────────────────────────────────────────────────── */
-.kiosk-langs { display: flex; gap: 1vw; justify-content: center; padding-top: 2.5vh; }
+/* Сім мов, не дві. `wrap` обовʼязковий: без нього рядок кнопок виїжджає за
+   край екрана, і останні мови просто немає як натиснути — а на терміналі,
+   де немає скролу, це «перемикача немає», а не «перемикач негарний».
+   Поле звузилось із 2.2vw до 1.2vw заради семи; кнопка лишається великою
+   настільки, наскільки її тримає розмір шрифту, бо тицяють у неї пальцем. */
+.kiosk-langs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8vw 1vw;
+  justify-content: center;
+  padding-top: 2.5vh;
+}
 .kiosk-lang {
   font-size: 1.9vh;
-  padding: 0.8vh 2.2vw;
+  padding: 0.8vh 1.2vw;
   border-radius: 4vh;
   border: 0.2vh solid var(--k-line);
   background: rgba(255, 253, 250, 0.86);
