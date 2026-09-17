@@ -29,6 +29,8 @@ const { runWithOrganization } = await import('@core/auth/tenant-context.ts');
 const { propertyByAppKey } = await import('./data/property.repo.ts');
 const { generateGuestAppKey, readGuestAppKey } = await import('./domain/key.ts');
 const { languageFromHeader } = await import('./ui/translations.ts');
+const { localisedContent } = await import('@core/i18n/content-field.ts');
+const { textHash } = await import('@core/i18n/translate.ts');
 const lookup = await import('./api/lookup.handlers.ts');
 const { coreSource } = await import('./source/core.source.ts');
 const { calculateQuote } = await import('@pricing/quote.ts');
@@ -51,8 +53,13 @@ for (const [org, prop, name, key] of [
   // її з організації, і послуги показуються лише в ТІЙ САМІЙ валюті. З
   // дефолтною крони проти євро в послугах сцена червоніла б з чужої причини
   // — і саме так вона й почервоніла першого разу.
-  await sql.run('INSERT INTO organizations (id, name, slug, default_currency) VALUES (?, ?, ?, ?)',
-    [org, org, org, 'EUR']);
+  // Мова названа, а не лишена на дефолт колонки, і це вісь, а не косметика:
+  // дефолт там 'uk', тобто німецький готель сцени вважався б українським, і
+  // правило «мова готелю → базова колонка» перевірялось би не на тій мові.
+  // Обидва готелі німецькі — сцена про мову ГОСТЯ; вісь «мова готелю» з
+  // обох боків тримає `content-field.check`.
+  await sql.run('INSERT INTO organizations (id, name, slug, default_currency, language) VALUES (?, ?, ?, ?, ?)',
+    [org, org, org, 'EUR', 'de']);
   // Застосунок увімкнено ЯВНО: ключ реєстру фіч стоїть OFF за замовчуванням,
   // і без цього рядка кожна сцена нижче міряла б 404 від вимикача, а не те,
   // про що вона.
@@ -1000,6 +1007,127 @@ try {
   assert.strictEqual(buysNeighbour.status, 409,
     `гість купив послугу СУСІДНЬОГО готелю (${buysNeighbour.status}) — довідник читається без осі обʼєкта`);
   console.log('  ok  17. продається лише назване; ціну бере довідник; послуги окремо від суми проживання');
+
+  // ── 17-б. Послуга говорить мовою ГОСТЯ, а не мовою готелю ─────────────
+  //
+  // Гість у Грайці перемикав прапорець на чеську, і сніданок лишався
+  // `Frühstück`. Причин було пʼять, і жодна не ламалася голосно; ця сцена
+  // стереже дві з них — ті, що видно з відповіді:
+  //
+  //   МОВА ЇДЕ — застосунок мусить СКАЗАТИ серверу, якою мовою дивиться
+  //     гість. Тіло запиту `offers` мови не несло, а в хендлері стояло
+  //     `body.lang ?? 'de'` — той самий клас, що `|| 'CZK'`;
+  //   КОЛОНКУ ЧИТАЮТЬ — запит брав `s.name` і віддавав його як є, при тому
+  //     що `name_cs`/`name_de`/`name_pl`… у таблиці є.
+  //
+  // Осі не вироджені (інваріант 26). Мов у сцені ТРИ, і кожна відповідає на
+  // своє питання:
+  //
+  //   `cs` — колонка заповнена, і відповідь мусить бути нею;
+  //   `nl` — колонки НЕМАЄ, і відповідь мусить лишитись мовою готелю. Це
+  //     головне твердження: у рядка при цьому заповнена чеська, тож двері,
+  //     які віддають «перший непорожній переклад», тут червоніють;
+  //   `de` — мова самого готелю, і вона мусить дати базову колонку.
+  //
+  // Друга послуга (`Tiefgarage`) лишається БЕЗ перекладів навмисно: сцена, у
+  // якій перекладено все, зелена і на коді, який перекладає все однаково.
+  await runWithOrganization(A, () => sql.run(
+    'UPDATE additional_services SET name_cs = ?, name_en = ? WHERE id = ?',
+    ['Snídaně', 'Breakfast', 'ga_svc_bf']));
+
+  // Сцена міряє те, що бачить ГІСТЬ: відповідь сервера, пропущена через ті
+  // самі двері, що їх кличе екран. Не `body.services[i].name` напряму — там
+  // лежить текст готелю, і так і має бути: приведення робить екран, бо
+  // перемикач мови видимий на кроці послуг, а список на той момент уже в
+  // стані. Ланка, яку тримає око, а не машина, рівно одна — що екран кличе
+  // ці двері; решта тут виконується.
+  const shownIn = async (lang: string, id: string) => {
+    const r = await gate(booking.listOffers, 'offers',
+      { key: keyA, from: day(6), to: day(7), adults: 2, lang });
+    const list = (r.body.services as any[]) ?? [];
+    const row = list.find((x) => x.id === id);
+    assert.ok(row, `послуги ${lang}: рядка ${id} немає у відповіді — сцена міряє не те`);
+    assert.strictEqual(r.body.hotelLanguage, 'de',
+      'відповідь не називає мови готелю — екран не має від чого відштовхнутись');
+    return localisedContent(row, 'name', lang as any,
+      { sourceLang: r.body.hotelLanguage, stored: r.body.translations });
+  };
+
+  assert.strictEqual(await shownIn('cs', 'ga_svc_bf'), 'Snídaně',
+    'чеський гість бачить німецьку назву — або мова не доїхала до сервера, або запит не читає name_cs');
+  assert.strictEqual(await shownIn('en', 'ga_svc_bf'), 'Breakfast',
+    'англійський гість бачить не свою колонку');
+  assert.strictEqual(await shownIn('nl', 'ga_svc_bf'), 'Frühstück',
+    'нідерландському гостю підсунули ЧУЖУ мову замість мови готелю — двері віддають перший непорожній переклад');
+  assert.strictEqual(await shownIn('de', 'ga_svc_bf'), 'Frühstück',
+    'мовою самого готелю послуга мусить читатись із базової колонки');
+  assert.notStrictEqual(await shownIn('cs', 'ga_svc_bf'), await shownIn('nl', 'ga_svc_bf'),
+    'дві різні мови дали однакову назву — вісь мови у відповіді відсутня');
+
+  // Послуга без жодного перекладу лишається собою в кожній мові: це не
+  // помилка, це «готель нічого не написав». Вигадати тут переклад означало б
+  // показати гостю слово, якого готель не називав (інваріант 17 за духом).
+  for (const lang of ['cs', 'en', 'nl']) {
+    assert.strictEqual(await shownIn(lang, 'ga_svc_park'), 'Tiefgarage',
+      `послуга без перекладу змінила назву в ${lang} — переклад вигадано`);
+  }
+
+  // І порожні колонки у відповідь НЕ їдуть: 18 порожніх рядків на послугу в
+  // кожній відповіді — це не лише вага, це ще й значення, яке той, хто не
+  // подивиться, зарахує за переклад.
+  const raw = await gate(booking.listOffers, 'offers',
+    { key: keyA, from: day(6), to: day(7), adults: 2, lang: 'cs' });
+  const park = ((raw.body.services as any[]) ?? []).find((x) => x.id === 'ga_svc_park');
+  const empties = Object.entries(park).filter(([k, v]) => /_(en|de|cs|pl|nl|fr)$/.test(k) && !v);
+  assert.strictEqual(empties.length, 0,
+    `у відповіді ${empties.length} порожніх колонок мов: ${empties.map(([k]) => k).join(', ')}`);
+
+  // ── Кеш перекладів доїжджає у відповідь ──────────────────────────────
+  //
+  // Колонки покривають шість мов, кеш `content_translations` — усе інше, і
+  // саме він відповідає за готель, який не заповнював колонок руками (його
+  // наповнює модель при збереженні послуги). Питати кеш про ВСЕ було б
+  // запитом на кожен текст на кожен показ вітрини, тож репозиторій питає
+  // лише про поля, які колонки НЕ покривають цілком, — і саме це рішення
+  // тут і міряється: помилка в ньому мовчки з'їдає переклад готелю, у якого
+  // частина мов заповнена, а частина ні.
+  //
+  // Фікстура не вироджена: у `ga_svc_park` колонок НЕМАЄ жодної, а кеш є, і
+  // мова питається та, якої в колонках не буває ніколи (`uk` — базова, без
+  // колонки). Двері мусять узяти кеш.
+  await runWithOrganization(A, () => sql.run(
+    `INSERT INTO content_translations (text_hash, source_text, lang, translated_text)
+     VALUES (?, 'Tiefgarage', 'uk', 'Підземний гараж')`, [textHash('Tiefgarage')]));
+  assert.strictEqual(await shownIn('uk', 'ga_svc_park'), 'Підземний гараж',
+    'кеш перекладів не доїхав у відповідь — готель, який не заповнював колонок, лишається без перекладу');
+  // І та сама послуга іншою мовою, якої немає НІДЕ, лишається собою: інакше
+  // твердження вище було б зелене й на дверях, що віддають єдиний переклад
+  // будь-кому.
+  assert.strictEqual(await shownIn('fr', 'ga_svc_park'), 'Tiefgarage',
+    'мова без жодного джерела дістала чужий переклад із кешу');
+
+  // Мова доїхала не лише до послуг: тексти згод теж обираються НЕЮ. Тут
+  // стояв дефолт 'de' і поле, якого екран не слав, — тобто чех отримував
+  // німецькі умови. Готель має чеську редакцію, і саме її він мусить бачити.
+  //
+  // Фікстура не вироджена: чеська редакція є рівно в ОДНОГО роду. Готель, у
+  // якого перекладено все, лишив би сцену зеленою і на коді, що ігнорує мову
+  // (всі редакції були б чеські); готель, у якого немає нічого, — теж
+  // (всі німецькі). Двома значеннями на осі видно обидві властивості одразу:
+  // мова доїхала ТА запасний шлях на месці.
+  await runWithOrganization(A, () => sql.run(
+    `INSERT INTO consent_texts (id, organization_id, consent_kind, version, locale, body, is_active)
+     VALUES ('ga_ct_terms_v2_cs', ?, 'terms', 'v2', 'cs', 'terms v2 — text hotelu', TRUE)`, [A]));
+  const csOffers = await gate(booking.listOffers, 'offers',
+    { key: keyA, from: day(6), to: day(7), adults: 2, lang: 'cs' });
+  const byKind = Object.fromEntries(((csOffers.body.consents as any[]) ?? [])
+    .map((c) => [c.kind, c.locale]));
+  assert.strictEqual(byKind.terms, 'cs',
+    `чеському гостю віддали умови мовою «${byKind.terms}», хоча чеська редакція заведена — `
+    + 'мова не доїхала до сервера (стояв дефолт \'de\', і поля екран не слав)');
+  assert.strictEqual(byKind.data_processing, 'de',
+    'рід без чеської редакції мусить лишитись мовою готелю, а не зникнути з екрана');
+  console.log('  ok  17-б. послуга говорить мовою гостя; без перекладу — мовою готелю, не третьою');
 
   // ── 18. Вимикач застосунку: вимкнено — 404 всюди, і ключ не рятує ──────
   //

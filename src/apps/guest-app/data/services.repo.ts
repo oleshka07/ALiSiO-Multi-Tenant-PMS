@@ -13,6 +13,25 @@
  * те саме слово, що в номерів. Дефолт порожній, тож жоден наявний готель не
  * почав продавати нічого від самої міграції.
  *
+ * ── Мова ────────────────────────────────────────────────────────────────
+ *
+ * Тут віддається СИРОВИНА, а не готове слово: базова колонка, заповнені
+ * колонки мов і кеш перекладів. Приводить їх до мови гостя екран —
+ * `localisedContent` з `@core/i18n/content-field`, ті самі двері, що на
+ * гостьовій сторінці.
+ *
+ * Чому не на сервері: перемикач мови в цьому застосунку живе в шапці й
+ * видимий НА КОЖНОМУ кроці, зокрема на кроці послуг. Гість, який перемкнув
+ * мову, стоячи над кошиком, мусить побачити зміну негайно — а список послуг
+ * уже лежить у стані екрана. Приведення на сервері означало б або повторний
+ * пошук вільних номерів заради назви сніданку, або застиглий німецький
+ * список під чеськими кнопками.
+ *
+ * Колонки їдуть лише ЗАПОВНЕНІ (`pickContentColumns`): шість порожніх на
+ * кожне з трьох полів — це 18 порожніх рядків на послугу в кожній відповіді,
+ * і, гірше, порожній рядок у колонці читається як відповідь тим, хто не
+ * подивиться (саме це стереже четвертий злом гейта дверей).
+ *
  * ── Валюта ──────────────────────────────────────────────────────────────
  *
  * Послуга з валютою, відмінною від валюти котирування, не показується: її
@@ -22,17 +41,27 @@
  * властивість гостя.
  */
 import { getSql } from '@core/db/async';
+import { CONTENT_COLUMN_LANGS, contentColumns, pickContentColumns } from '@core/i18n/content-field';
+import { getStoredTranslations, type StoredTranslations } from '@core/i18n/translate';
 import { money } from '@core/money';
 
-export interface GuestService {
+export interface GuestService extends Record<string, unknown> {
   id: string;
+  /** Текст ГОТЕЛЮ, його мовою. Колонки мов їдуть поруч, окремими ключами. */
   name: string;
   description: string | null;
   /** Ціна за ОДИНИЦЮ. Скільки одиниць — вирішує гість. */
   price: number;
   currency: string;
-  /** «за особу/добу», «за добу» — текст готелю, не наш переказ. */
-  unitLabel: string;
+  /**
+   * «за особу/добу», «за добу» — текст готелю, не наш переказ.
+   *
+   * Імʼя ЗМІЇНЕ, як колонка, і це не недогляд: поруч їдуть `unit_label_cs`,
+   * `unit_label_de` і решта, і двері шукають їх як `${поле}_${мова}`. Камельне
+   * `unitLabel` означало б два імені на одну колонку — а далі когось потягне
+   * додати `unitLabelCs`, і мови розійдуться з рештою.
+   */
+  unit_label: string;
   category: string;
 }
 
@@ -44,13 +73,13 @@ export interface GuestService {
  */
 export async function bookableServices(
   organizationId: string, propertyId: string, currency: string,
-): Promise<GuestService[]> {
+): Promise<{ services: GuestService[]; translations: StoredTranslations }> {
   const sql = getSql();
-  const rows = await sql.rows<{
-    id: string; name: string; description: string | null; price: number;
-    currency: string; unit_label: string; category: string;
-  }>(
-    `SELECT s.id, s.name, s.description, s.price, s.currency, s.unit_label, s.category
+  const rows = await sql.rows<Record<string, unknown>>(
+    `SELECT s.id, s.name, s.description, s.price, s.currency, s.unit_label, s.category,
+            ${contentColumns('s', 'name')},
+            ${contentColumns('s', 'description')},
+            ${contentColumns('s', 'unit_label')}
        FROM additional_services s
        JOIN properties p ON p.id = s.property_id
       WHERE s.property_id = ? AND p.organization_id = ?
@@ -59,19 +88,55 @@ export async function bookableServices(
     [propertyId, organizationId]);
 
   const out: GuestService[] = [];
+  const texts = new Set<string>();
   for (const r of rows) {
-    if (currency && r.currency && r.currency !== currency) {
+    const rowCurrency = String(r.currency ?? '');
+    if (currency && rowCurrency && rowCurrency !== currency) {
       console.error('[guest-app] послуга у валюті, відмінній від котирування — не показана',
-        r.id, r.currency, currency);
+        r.id, rowCurrency, currency);
       continue;
     }
+    // Кеш питаємо лише про те, чого НЕ покривають колонки. Поле, у якого
+    // заповнені всі шість мов, у кеші шукати нема чого: двері до нього не
+    // дійдуть ніколи. `getStoredTranslations` робить запит НА КОЖЕН текст, і
+    // готель, у якого все заповнено (Ґрайц), інакше платив би пʼятнадцятьма
+    // зайвими запитами за кожен показ вітрини.
+    const filled = {
+      name: pickContentColumns(r, 'name'),
+      description: pickContentColumns(r, 'description'),
+      unit_label: pickContentColumns(r, 'unit_label'),
+    };
+    for (const field of ['name', 'description', 'unit_label'] as const) {
+      if (Object.keys(filled[field]).length === CONTENT_COLUMN_LANGS.length) continue;
+      const base = String(r[field] ?? '').trim();
+      if (base.length > 1) texts.add(base);
+    }
     out.push({
-      id: r.id, name: r.name, description: r.description,
-      price: Number(r.price), currency: r.currency,
-      unitLabel: r.unit_label, category: r.category,
+      id: String(r.id),
+      name: String(r.name ?? ''),
+      description: r.description == null ? null : String(r.description),
+      price: Number(r.price),
+      currency: rowCurrency,
+      unit_label: String(r.unit_label ?? ''),
+      category: String(r.category ?? ''),
+      ...filled.name,
+      ...filled.description,
+      ...filled.unit_label,
     });
   }
-  return out;
+
+  // Кеш — одним походом на всі тексти разом, і лише коли є про що питати.
+  // Порожній список тут коштував би запиту на кожен показ порожньої вітрини.
+  const translations = texts.size > 0
+    ? await getStoredTranslations([...texts]).catch((e) => {
+      // Кеш — прикраса, а не умова: готель без жодного перекладу мусить
+      // показати послуги СВОЄЮ мовою, а не порожній крок.
+      console.error('[guest-app] кеш перекладів не прочитався', (e as Error)?.message);
+      return {} as StoredTranslations;
+    })
+    : {};
+
+  return { services: out, translations };
 }
 
 /** Одна позиція вибору гостя: що і скільки. */

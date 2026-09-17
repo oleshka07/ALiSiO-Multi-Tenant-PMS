@@ -158,6 +158,7 @@ const units = await import('../src/modules/properties/data/units.repo.ts');
 const amenities = await import('../src/modules/properties/data/amenities.repo.ts');
 const currency = await import('../src/core/currency.ts');
 const pricing = await import('../src/modules/pricing/data/occupancy-price.repo.ts');
+const { CONTENT_COLUMN_LANGS } = await import('../src/core/i18n/content-field.ts');
 const { priceNights } = await import('../src/modules/pricing/data/nightly-price.ts');
 const { oneProperty } = await import('../src/core/property-scope.ts');
 
@@ -789,19 +790,61 @@ async function applyStructure(organizationId, plan) {
     // повний список нарахувань, і поруч зі сніданком у ньому стоять штраф за
     // скасування, втрачений ключ і знижка. Онлайн продається лише назване.
     const online = both(s, 'bookableOnline') === true ? 1 : 0;
+    // ── Назви мовами гостей ─────────────────────────────────────────────
+    //
+    // `names: { en: …, cs: … }` у файлі готелю. Базова колонка `name` — мовою
+    // готелю, тож своєї мови в цій мапі бути не може й не треба.
+    //
+    // Навіщо детермінований шлях, коли є машинний: `translateAndStore` живе в
+    // хендлері збереження і потребує ключа OpenAI. Заведення готелю йде повз
+    // хендлер — і йде на машині, де ключа може не бути взагалі. Готель, у
+    // якого послуги завели файлом, лишався б без перекладів, і причина була б
+    // невидима: колонки є, порожні, гість бачить мову готелю.
+    //
+    // Порожнє значення пропускається: воно не «переклад відсутній», воно
+    // «колонку не чіпаємо» — інакше правка файла стирала б те, що людина
+    // вписала в екрані.
+    const namesRaw = both(s, 'names') || {};
+    const names = {};
+    for (const code of CONTENT_COLUMN_LANGS) {
+      const value = typeof namesRaw[code] === 'string' ? namesRaw[code].trim() : '';
+      if (value) names[code] = value;
+    }
+    const unknown = Object.keys(namesRaw).filter((c) => !CONTENT_COLUMN_LANGS.includes(c));
+    if (unknown.length > 0) {
+      say.refused(`послуга ${name}`, `мови [${unknown.join(', ')}] не мають колонки — переклад нікуди покласти`);
+      continue;
+    }
+    const nameCols = Object.keys(names).map((code) => `name_${code}`);
+
     const has = await sql.row(
-      'SELECT id, price, vat_code, is_active, vat_split, bookable_online FROM additional_services WHERE property_id = ? AND name = ?',
+      `SELECT id, price, vat_code, is_active, vat_split, bookable_online${nameCols.map((c) => `, ${c}`).join('')}
+         FROM additional_services WHERE property_id = ? AND name = ?`,
       [property.id, name]);
     const asBool = (v) => (v === true || v === 1 || v === 't' || v === '1');
+    // Назви входять у порівняння, інакше другий прогін скаже «те саме» і
+    // колонки лишаться порожніми назавжди — той самий клас, що гейт, який
+    // ніколи не був червоним.
+    const namesSame = has && Object.entries(names)
+      .every(([code, value]) => String(has[`name_${code}`] ?? '') === value);
     if (has && Number(has.price) === price && has.vat_code === vat
         && asBool(has.is_active) === !!active
         && asBool(has.bookable_online) === !!online
+        && namesSame
         && String(has.vat_split ?? '') === String(split ?? '')) { say.same(`послуга ${name}`); continue; }
     if (DRY) { say[has ? 'changed' : 'made'](`[суха] послуга ${name}`); continue; }
+    // Колонки й значення — з ОДНОГО перебору: два незалежні `Object.keys`
+    // розійшлися б порядком, і готель дістав би чеську назву в польській
+    // колонці. Мовчки, бо обидві є рядками.
+    const namePairs = Object.entries(names);
+    const nameSets = namePairs.map(([code]) => `, name_${code} = ?`).join('');
+    const nameVals = namePairs.map(([, value]) => value);
     if (has) {
-      await sql.run('UPDATE additional_services SET price = ?, vat_code = ?, is_active = ?, vat_split = ?, bookable_online = ? WHERE id = ? AND property_id = ?',
-        [price, vat, active, split, online, has.id, property.id]);
-      say.changed(`послуга ${name}${active ? '' : ' (вимкнено)'}${online ? ' (продається онлайн)' : ''}${split ? ' (поділ ПДВ)' : ''}`);
+      await sql.run(
+        `UPDATE additional_services SET price = ?, vat_code = ?, is_active = ?, vat_split = ?, bookable_online = ?${nameSets}
+          WHERE id = ? AND property_id = ?`,
+        [price, vat, active, split, online, ...nameVals, has.id, property.id]);
+      say.changed(`послуга ${name}${active ? '' : ' (вимкнено)'}${online ? ' (продається онлайн)' : ''}${split ? ' (поділ ПДВ)' : ''}${nameCols.length ? ` (${nameCols.length} мов)` : ''}`);
     } else if (!active) {
       // Вимкнену і не заведену — не заводити: стан «її немає» вже досягнуто.
       say.same(`послуга ${name} (вимкнена, не заведена)`);
@@ -810,11 +853,11 @@ async function applyStructure(organizationId, plan) {
       // CHECK: food / wellness / sport / entertainment / other. Порожнє —
       // 'other', бо NOT NULL, а не тому що ми знаємо, що це «інше».
       await sql.run(
-        `INSERT INTO additional_services (id, property_id, name, price, currency, vat_code, service_type, category, is_active, vat_split, bookable_online)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?)`,
+        `INSERT INTO additional_services (id, property_id, name, price, currency, vat_code, service_type, category, is_active, vat_split, bookable_online${nameCols.map((c) => `, ${c}`).join('')})
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?${nameCols.map(() => ', ?').join('')})`,
         [crypto.randomUUID(), property.id, name, price, both(s, 'currency') || 'EUR', vat,
-          both(s, 'serviceType') || 'simple', both(s, 'category') || 'other', split, online]);
-      say.made(`послуга ${name}${online ? ' (продається онлайн)' : ''}`);
+          both(s, 'serviceType') || 'simple', both(s, 'category') || 'other', split, online, ...nameVals]);
+      say.made(`послуга ${name}${online ? ' (продається онлайн)' : ''}${nameCols.length ? ` (${nameCols.length} мов)` : ''}`);
     }
   }
 

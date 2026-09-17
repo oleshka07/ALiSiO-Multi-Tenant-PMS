@@ -1107,7 +1107,14 @@
           "vatCode": "standard"
         }
       ],
-      "bookableOnline": true
+      "bookableOnline": true,
+      "names": {
+        "en": "Breakfast",
+        "cs": "Snídaně",
+        "pl": "Śniadanie",
+        "nl": "Ontbijt",
+        "fr": "Petit-déjeuner"
+      }
     },
     {
       "name": "Frühstück – Speisen",
@@ -1128,14 +1135,28 @@
       "price": 10,
       "vatCode": "standard",
       "category": "other",
-      "bookableOnline": true
+      "bookableOnline": true,
+      "names": {
+        "en": "Underground parking",
+        "cs": "Podzemní garáž",
+        "pl": "Parking podziemny",
+        "nl": "Parkeergarage",
+        "fr": "Parking souterrain"
+      }
     },
     {
       "name": "Haustier (ohne Futter)",
       "price": 10,
       "vatCode": "reduced",
       "category": "other",
-      "bookableOnline": true
+      "bookableOnline": true,
+      "names": {
+        "en": "Pet (food not included)",
+        "cs": "Domácí mazlíček (bez krmiva)",
+        "pl": "Zwierzę (bez karmy)",
+        "nl": "Huisdier (zonder voer)",
+        "fr": "Animal de compagnie (sans nourriture)"
+      }
     },
     {
       "name": "Lunchpaket",
@@ -1154,7 +1175,14 @@
           "vatCode": "standard"
         }
       ],
-      "bookableOnline": true
+      "bookableOnline": true,
+      "names": {
+        "en": "Packed lunch",
+        "cs": "Balíček s obědem",
+        "pl": "Pakiet lunchowy",
+        "nl": "Lunchpakket",
+        "fr": "Panier-repas"
+      }
     },
     {
       "name": "Lunchpaket – Speisen",
@@ -1261,7 +1289,14 @@
       "price": 5,
       "vatCode": "standard",
       "category": "other",
-      "bookableOnline": true
+      "bookableOnline": true,
+      "names": {
+        "en": "Laundry service",
+        "cs": "Prádelní služba",
+        "pl": "Usługa pralnicza",
+        "nl": "Wasservice",
+        "fr": "Service de blanchisserie"
+      }
     },
     {
       "name": "Buch",

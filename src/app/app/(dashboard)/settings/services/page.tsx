@@ -2,9 +2,19 @@
 'use client';
 
 import { useT } from '@core/i18n/client';
+import { CONTENT_COLUMN_LANGS } from '@core/i18n/content-field';
+import { LANGUAGES } from '@core/i18n/languages';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, Save, Trash2, GripVertical, ToggleLeft, ToggleRight } from 'lucide-react';
 import { ImageUploadField } from '@/components/ui/ImageUploadField';
+
+/**
+ * Порожні колонки мов — одним обʼєктом, щоб форма мала КЛЮЧ на кожну мову
+ * реєстру. Без ключа поле некероване (React лається і значення не тримається),
+ * а перелічити їх руками означало б завести той самий список мов удруге.
+ */
+const EMPTY_NAMES: Record<string, string> =
+  Object.fromEntries(CONTENT_COLUMN_LANGS.map((code) => [`name_${code}`, '']));
 
 const SERVICE_TYPES = [
   { value: 'simple', label: 'Просте замовлення' },
@@ -35,9 +45,9 @@ export default function ServicesSettingsPage() {
   const [editForm, setEditForm] = useState<any>({});
   const [showNew, setShowNew] = useState(false);
   const [newForm, setNewForm] = useState({
-    name: '', name_en: '', description: '', price: 0, currency: 'CZK',
+    name: '', description: '', price: 0, currency: 'CZK',
     unit_label: '', icon: '✨', category: 'other', service_type: 'simple', vat_code: '',
-    duration_minutes: 0, sort_order: 99, name_cs: '', name_de: '', photo_url: '',
+    duration_minutes: 0, sort_order: 99, photo_url: '', ...EMPTY_NAMES,
   });
   const [toast, setToast] = useState<string | null>(null);
 
@@ -62,7 +72,7 @@ export default function ServicesSettingsPage() {
       });
       if (res.ok) {
         showToast(tUi('Послугу створено!'));
-        setNewForm({ name: '', name_en: '', description: '', price: 0, currency: 'CZK', unit_label: '', icon: '✨', category: 'other', service_type: 'simple', vat_code: '', duration_minutes: 0, sort_order: 99, name_cs: '', name_de: '', photo_url: '' });
+        setNewForm({ name: '', description: '', price: 0, currency: 'CZK', unit_label: '', icon: '✨', category: 'other', service_type: 'simple', vat_code: '', duration_minutes: 0, sort_order: 99, photo_url: '', ...EMPTY_NAMES });
         setShowNew(false);
         fetchServices();
       }
@@ -107,12 +117,13 @@ export default function ServicesSettingsPage() {
   const startEdit = (svc: any) => {
     setEditing(svc.id);
     setEditForm({
-      name: svc.name, name_en: svc.name_en || '', description: svc.description || '',
+      name: svc.name, description: svc.description || '',
       price: svc.price, currency: svc.currency, unit_label: svc.unit_label || '',
       icon: svc.icon, category: svc.category, service_type: svc.service_type,
       vat_code: svc.vat_code || '',
       duration_minutes: svc.duration_minutes || 0, sort_order: svc.sort_order,
-      name_cs: svc.name_cs || '', name_de: svc.name_de || '', photo_url: svc.photo_url || '',
+      photo_url: svc.photo_url || '',
+      ...Object.fromEntries(CONTENT_COLUMN_LANGS.map((code) => [`name_${code}`, svc[`name_${code}`] || ''])),
     });
   };
 
@@ -232,12 +243,14 @@ function ServiceForm({ form, setForm }: { form: any; setForm: (f: any) => void }
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
       <div>
-        <label className="form-label">{tUi('Назва (укр) *')}</label>
+        {/*
+          Підпис БЕЗ назви мови. Тут стояло «Назва (укр) *» — твердження, яке
+          для готелю в Грайці неправда з першого дня: він пише `Frühstück`, і
+          саме це поле є його текстом. Базова колонка написана мовою ГОТЕЛЮ,
+          а яка вона — вирішує `organizations.language`, не цей екран.
+        */}
+        <label className="form-label">{tUi('Назва *')}</label>
         <input className="form-input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder={tUi('Сніданок')} />
-      </div>
-      <div>
-        <label className="form-label">{tUi('Назва (eng)')}</label>
-        <input className="form-input" value={form.name_en} onChange={e => setForm({ ...form, name_en: e.target.value })} placeholder="Breakfast" />
       </div>
       <div style={{ gridColumn: '1 / -1' }}>
         <label className="form-label">{tUi('Опис')}</label>
@@ -313,14 +326,44 @@ function ServiceForm({ form, setForm }: { form: any; setForm: (f: any) => void }
           placeholder={tUi('https://... або завантажте фото')}
         />
       </div>
-      <div>
-        <label className="form-label">{tUi('Назва (чеськ)')}</label>
-        <input className="form-input" value={form.name_cs || ''} onChange={e => setForm({ ...form, name_cs: e.target.value })} placeholder="Snídaně" />
+      {/*
+        ── Назви мовами гостей ─────────────────────────────────────────────
+
+        Список береться з РЕЄСТРУ (`CONTENT_COLUMN_LANGS`), а не пишеться тут
+        руками. Доти їх було три — чеська, німецька, англійська, — а колонок у
+        таблиці шість: польська, нідерландська і французька не мали писача
+        взагалі. Помилка мовчала: колонка є, форма її не питає, гість бачить
+        мову готелю і думає, що так і має бути.
+
+        Підписи — рідною назвою мови з того самого реєстру, що й перемикач у
+        гостя: `t('Назва (чеськ)')` було другим списком мов, який довелося б
+        доповнювати вручну і який мовчки відстав би від першого (КІ38).
+
+        Порожнє поле — не порожній переклад, а «не заповнено»: сервер його не
+        пише, і далі за це береться машина при збереженні.
+      */}
+      <div style={{ gridColumn: '1 / -1', color: 'var(--text-secondary)', fontSize: 13, marginTop: 4 }}>
+        {tUi('Назви мовами гостей — порожнє поле перекладемо самі')}
       </div>
-      <div>
-        <label className="form-label">{tUi('Назва (нім)')}</label>
-        <input className="form-input" value={form.name_de || ''} onChange={e => setForm({ ...form, name_de: e.target.value })} placeholder="Frühstück" />
-      </div>
+      {CONTENT_COLUMN_LANGS.map((code) => (
+        <div key={code}>
+          {/*
+            БЕЗ `tUi()`. Рідна назва мови — це ДАНІ реєстру, а не наше слово:
+            «Čeština» мусить читатись чеською на будь-якому екрані, і саме в
+            цьому сенс підпису рідною назвою (КІ38). `extract-strings` загорнув
+            її сюди сам — це та його вада, що названа в ARCHITECTURE §8: він
+            стереже візерунок `{вираз.властивість}` у JSX, а не властивість
+            «це літерал з нашого коду». Після прогону дивимось у `git diff`.
+          */}
+          <label className="form-label">{LANGUAGES[code].native}</label>
+          <input
+            className="form-input"
+            lang={code}
+            value={form[`name_${code}`] || ''}
+            onChange={e => setForm({ ...form, [`name_${code}`]: e.target.value })}
+          />
+        </div>
+      ))}
     </div>
   );
 }

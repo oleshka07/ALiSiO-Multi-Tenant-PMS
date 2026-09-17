@@ -10,11 +10,23 @@
  * the organization's base language, and the targets are every other one.
  *
  * Storage: content_translations table (text_hash + lang → translated_text).
- * Trigger: called on admin save (config routes) and via /api/admin/retranslate.
+ *
+ * Callers: the two guest-page config saves, and — since КІ39 — the save of an
+ * additional service. The third was missing for as long as the table existed:
+ * `extractServiceTexts` below was called only on READ (the guest portal), so
+ * it asked a table nobody ever wrote service names into and got nothing, every
+ * time, silently.
+ *
+ * The comment here used to name a third trigger, `/api/admin/retranslate`.
+ * That route does not exist and, as far as the history shows, never did — a
+ * plan written down as fact. Removed rather than built: a hotel's text is
+ * translated when the hotel saves it, and a bulk re-run belongs to a script
+ * with a tenant argument, not to an ambient admin route.
  */
 import crypto from 'node:crypto';
 import { requireOrganizationId } from '../auth/tenant-context.ts';
 import { getSql } from '../db/async.ts';
+import { type StoredTranslations } from './content-field.ts';
 import { LANGUAGES, type Language, targetLanguages } from './languages.ts';
 import { organizationLanguage } from './resolve.ts';
 import { recordAiUsage } from '../ai-usage.ts';
@@ -226,13 +238,18 @@ Return ONLY the translations, one per line, prefixed with index like [0] transla
 /**
  * Look up stored translations for an array of source texts.
  * Returns: { "source text": { en: "...", de: "...", cs: "...", ... } }
+ *
+ * The shape is `StoredTranslations` from content-field.ts, and it is that
+ * type on purpose: the door that READS this cache and the function that
+ * fills it have to agree on the shape, and two hand-written record types
+ * drift the way two language lists drift.
  */
-export async function getStoredTranslations(
-  texts: string[],
-): Promise<Record<string, Record<string, string>>> {
+export type { StoredTranslations };
+
+export async function getStoredTranslations(texts: string[]): Promise<StoredTranslations> {
   if (texts.length === 0) return {};
   const sql = getSql();
-  const result: Record<string, Record<string, string>> = {};
+  const result: StoredTranslations = {};
 
   for (const text of texts) {
     const rows = (await sql.rows<any>(

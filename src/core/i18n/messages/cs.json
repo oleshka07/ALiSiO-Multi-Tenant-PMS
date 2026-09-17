@@ -1470,6 +1470,7 @@
   "Назва, код, валюта, харчування, похідні від іншого тарифу. Ціни на дати — в календарі «Ціни» і в сезонах; доплати за гостей — у «Надбавках за заселеність»": "Název, kód, měna, stravování, odvozené od jiného ceníku. Ceny na data jsou v kalendáři «Ceny» a v sezónách; příplatky za hosty v «Příplatcích za obsazenost»",
   "Назва, код, валюта, харчування, ціна дитини, похідні від іншого тарифу. Ціни на дати — в календарі «Ціни» і в сезонах": "Název, kód, měna, stravování, cena dítěte, odvozené z jiného tarifu. Ceny na data — v kalendáři „Ceny“ a v sezónách",
   "Назва, код, валюта, харчування, ціна дитини. Ціни на дати — в календарі «Ціни»": "Název, kód, měna, strava, cena za dítě. Ceny na data — v kalendáři „Ceny“",
+  "Назви мовами гостей — порожнє поле перекладемо самі": "Názvy v jazycích hostů — prázdné pole přeložíme sami",
   "Найближчі заїзди": "Nejbližší příjezdy",
   "Найпізніше виселення": "Nejpozdější check-out",
   "Найраніше заселення": "Nejdřívější check-in",
