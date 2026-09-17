@@ -59,7 +59,7 @@ export async function getGuestPortal(
     else if (today > checkOut) phase = 'post_checkout';
 
     const registeredGuests = await portalRepo.getRegisteredGuests(reservation.id);
-    const payments = await portalRepo.getPaymentsSummary(reservation.id);
+    const payments = await portalRepo.getPaymentsSummary(reservation.id, Number(reservation.total_price || 0));
     const unitTypePhotos = await portalRepo.getUnitTypePhotos(reservation.unit_type_id);
     const propertyPhotos = await portalRepo.getPropertyPhotos(reservation.property_id);
     const services = await portalRepo.getAvailableServices(reservation.property_id, reservation.category_type);
@@ -90,7 +90,9 @@ export async function getGuestPortal(
       payments: {
         totalPaid: payments?.total_paid || 0,
         totalRefunded: payments?.total_refunded || 0,
-        remaining: reservation.total_price - (payments?.total_paid || 0) + (payments?.total_refunded || 0),
+        // Залишок рахує репозиторій: із книги гостя, коли вона є, і з каси
+        // проти `total_price`, коли її немає (П4). Тут він лише передається.
+        remaining: payments?.remaining ?? 0,
       },
       photos: { unitType: unitTypePhotos, property: propertyPhotos },
       // Вигляд готелю (0419), уже приведений: сторінка дістає імʼя палітри,

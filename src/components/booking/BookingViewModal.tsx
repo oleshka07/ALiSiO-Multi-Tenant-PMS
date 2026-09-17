@@ -373,13 +373,30 @@ export default function BookingViewModal({
     finally { setReissuing(false); }
   };
 
-  const total = b.total_price || 0;
+  // ── Скільки сплачено: КНИГА ГОСТЯ відповідає першою (П4, 16.09.2026) ──
+  //
+  // Тут стояла арифметика по `fin_operations` проти `total_price` — інша
+  // книга й інша сума. Оплата, записана у фоліо переказом, у ній не
+  // зʼявлялась, а послуги, знижка й турзбір робили `total_price` несхожим на
+  // нараховане; на вкладці «Фінанси» цієї ж картки при цьому стояло
+  // правильне число. `folio` приходить із `GET /api/bookings/<id>` і
+  // зʼявляється лише коли в книзі щось нараховано.
+  const folio = (b as any).folio as { charged: number; paid: number; balance: number } | null | undefined;
   const paidFromOps = payments.filter(p => p.status === 'completed').reduce((s: number, p: any) => s + (p.type === 'refund' ? -p.amount : p.amount), 0);
   const isPaid = b.payment_status === 'paid' || b.payment_status === 'prepaid';
-  // If DB says paid but no fin_operations exist (prepaid OTA, Teya widget), show full bar
-  const paid = isPaid && paidFromOps === 0 ? total : paidFromOps;
-  const remaining = Math.max(0, total - paid);
-  const pct = isPaid ? 100 : total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0;
+  const total = folio ? folio.charged : (b.total_price || 0);
+  // Без книги — старий шлях: слово «оплачено» без жодної операції (передоплата
+  // каналу) показує повну смугу.
+  const paid = folio ? folio.paid : (isPaid && paidFromOps === 0 ? total : paidFromOps);
+  const remaining = Math.max(0, folio ? folio.balance : total - paid);
+  // Смуга показує ЧИСЛА, що стоять поруч із нею, а не слово броні. Тут було
+  // `isPaid ? 100 : …`, тобто повна смуга над підписом «залишок 700»: слово
+  // могло відстати від книги (саме це й лікує Д83), і суперечність у двох
+  // сантиметрах одна від одної читалась як поломка. Нуль-сума без книги —
+  // єдиний випадок, де відповідає слово: ділити нема на що.
+  const pct = total > 0
+    ? Math.min(100, Math.round((paid / total) * 100))
+    : (isPaid ? 100 : 0);
   const barColor = pct >= 100 ? '#22c55e' : pct > 0 ? '#3b82f6' : '#ef4444';
   const isRegistered = b.registration_status === 'registered';
   const canCheckIn = isPaid && isRegistered;
@@ -997,7 +1014,7 @@ export default function BookingViewModal({
                   </div>
                   {payForm.method !== 'cash' && (
                     <div style={{ fontSize: 11, color: 'var(--text-secondary)', padding: '6px 8px', background: 'rgba(99,102,241,0.08)', borderRadius: 6, lineHeight: 1.4 }}>
-                      {tUi('ℹ️ Це')} <b>{tUi('позначка статусу')}</b> {tUi('— реальна транзакція з\'явиться в Операціях, коли надійде з')} {payForm.method === 'card' ? 'Teya sync' : payForm.method === 'bank_transfer' ? tUi('банківської виписки') : payForm.method === 'booking_platform' ? tUi('виписки платформи') : tUi('фактичного джерела')}{tUi('. Оплата картою / банком / платформою тут не створює подвійних записів у фінансах.')}
+                      {tUi('ℹ️ Це')} <b>{tUi('позначка статусу')}</b> {tUi('— реальна транзакція з\'явиться в Операціях, коли надійде з')} {payForm.method === 'card' ? tUi('виписки еквайра') : payForm.method === 'bank_transfer' ? tUi('банківської виписки') : payForm.method === 'booking_platform' ? tUi('виписки платформи') : tUi('фактичного джерела')}{tUi('. Оплата картою / банком / платформою тут не створює подвійних записів у фінансах.')}
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -1025,7 +1042,7 @@ export default function BookingViewModal({
                         onFetchPayments(b.id);
                         onFetchBookings();
                         if (outcome.kind === 'marker') {
-                          showToast(tUi('✅ Позначка збережена. Реальна транзакція з\'явиться через Teya / банк.'));
+                          showToast(tUi('✅ Позначка збережена. Реальна транзакція зʼявиться з банківської виписки.'));
                         } else if (outcome.kind === 'recorded_not_in_folio') {
                           // Гроші в касі, у рахунку гостя — ні. Не помилка
                           // запиту, але й не «додано»: на виселенні борг

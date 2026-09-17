@@ -11,6 +11,9 @@
 import { getSql } from '@core/db/async';
 import type { Sql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+// `@core/http/refusal`, не `errors`: цей файл читають перевірки під ГОЛИМ
+// node, а `errors.ts` тягне `next/server`.
+import { refuse } from '@core/http/refusal';
 import { money } from '@core/money';
 import { propertyOrSharedFilter, type PropertyScope } from '@core/property-scope';
 import { recordPayment } from './folio-payments.repo';
@@ -591,6 +594,29 @@ export async function issueInvoice(input: {
 
   const items = await openCharges(input.folioId);
   if (items.length === 0) throw new Error('Nothing to invoice on this folio');
+
+  // ── ДВА ДОКУМЕНТИ НА ОДНІ ГРОШІ ────────────────────────────────────────
+  //
+  // Виміряно ревізією 16.09.2026: бронь, яку спершу позначили оплаченою, а
+  // потім виставили з фоліо, отримувала ДВА номери однієї серії на ту саму
+  // суму — `2026-001` на `total_price` (шлях «позначка оплати») і `2026-002`
+  // на рядки фоліо. Захист був лише в один бік: legacy не виписується, коли
+  // оплата прийшла через фоліо.
+  //
+  // Тут — другий бік. Відмова НАЗИВАЄ номер: виправити це можна лише сторно,
+  // і оператор мусить знати, що саме скасовувати.
+  if (folio.reservation_id) {
+    const legacy = await sql.row<{ invoice_number: string }>(
+      `SELECT invoice_number FROM invoices
+        WHERE organization_id = ? AND reservation_id = ? AND folio_id IS NULL
+          AND status != 'cancelled' LIMIT 1`,
+      [organizationId, folio.reservation_id]);
+    if (legacy) {
+      refuse(
+        `На цю бронь уже виписано документ ${legacy.invoice_number} — його створила позначка «оплачено». `
+        + 'Другий номер на ті самі гроші не виписується: скасуйте той документ (сторно) і виставте заново.', 409);
+    }
+  }
 
   // Строк оплати ВИВОДИТЬСЯ з умов фірми, а не вводиться руками (Д58).
   //

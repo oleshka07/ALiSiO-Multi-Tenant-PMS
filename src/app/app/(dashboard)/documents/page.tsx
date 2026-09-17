@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useT } from '@core/i18n/client';
 import { useEffect, useState, useCallback } from 'react';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
@@ -659,6 +660,20 @@ export default function DocumentsPage() {
               )}
             </button>
           ))}
+          {/* Каса — окремий екран, а не вкладка: закриття дня має свою адресу,
+              на яку можна дати посилання, і свій стан. Доти його не було
+              взагалі, і закрити день можна було лише запитом (П7). */}
+          <Link
+            href="/app/documents/till"
+            style={{
+              padding: '10px 16px', fontSize: 14, fontWeight: 600,
+              color: 'var(--text-secondary)', borderBottom: '2px solid transparent',
+              marginBottom: -1, display: 'flex', alignItems: 'center', gap: 8,
+              textDecoration: 'none',
+            }}
+          >
+            {tUi('🔒 Каса')}
+          </Link>
         </div>
 
         {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•

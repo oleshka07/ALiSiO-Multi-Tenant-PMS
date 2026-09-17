@@ -1,3 +1,4 @@
+import { organizationCurrency } from '@core/currency';
 import type { Sql } from '@core/db/async';
 import { ALL_PROPERTIES, oneProperty, propertyScopeFilter, type PropertyScopeFilter } from '@core/property-scope';
 import { connectionInTenant } from './connections.repo';
@@ -422,7 +423,12 @@ export async function applyRevision(
         await guestFor(sql, conn.organizationId, rev),
         rev.checkIn ?? '', rev.checkOut ?? '', nightsBetween(rev.checkIn, rev.checkOut),
         rev.adults ?? 1, rev.children ?? 0,
-        sourceOf(rev.otaName), rev.totalPrice ?? 0, rev.currency ?? '',
+        // Валюта: своя з ревізії, а без неї — валюта ГОТЕЛЮ, не порожній
+        // рядок (П16 ревізії 16.09.2026). Порожня валюта переживала NOT NULL
+        // і доходила до каси: добір рахунку шукав `currency = ''`, не
+        // знаходив і відмовляв реченням «немає активного рахунку в », де
+        // причини не названо, бо її нічим назвати.
+        sourceOf(rev.otaName), rev.totalPrice ?? 0, rev.currency || await organizationCurrency(conn.organizationId),
         rev.otaReservationCode ?? null],
     );
   }

@@ -152,12 +152,30 @@ export default function MobileBookingDetail({
   const checkIn = formatDate(b.check_in);
   const checkOut = formatDate(b.check_out);
 
-  const total = b.total_price || 0;
+  // ── Скільки сплачено: КНИГА ГОСТЯ відповідає першою (П4, 16.09.2026) ──
+  //
+  // Тут стояла арифметика по `fin_operations` проти `total_price` — інша
+  // книга й інша сума. Оплата, записана у фоліо переказом, у ній не
+  // зʼявлялась, а послуги, знижка й турзбір робили `total_price` несхожим на
+  // нараховане; на вкладці «Фінанси» цієї ж картки при цьому стояло
+  // правильне число. `folio` приходить із `GET /api/bookings/<id>` і
+  // зʼявляється лише коли в книзі щось нараховано.
+  const folio = (b as any).folio as { charged: number; paid: number; balance: number } | null | undefined;
   const paidFromOps = payments.filter(p => p.status === 'completed').reduce((s: number, p: any) => s + (p.type === 'refund' ? -p.amount : p.amount), 0);
   const isPaid = b.payment_status === 'paid' || b.payment_status === 'prepaid';
-  const paid = isPaid && paidFromOps === 0 ? total : paidFromOps;
-  const remaining = Math.max(0, total - paid);
-  const pct = isPaid ? 100 : total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0;
+  const total = folio ? folio.charged : (b.total_price || 0);
+  // Без книги — старий шлях: слово «оплачено» без жодної операції (передоплата
+  // каналу) показує повну смугу.
+  const paid = folio ? folio.paid : (isPaid && paidFromOps === 0 ? total : paidFromOps);
+  const remaining = Math.max(0, folio ? folio.balance : total - paid);
+  // Смуга показує ЧИСЛА, що стоять поруч із нею, а не слово броні. Тут було
+  // `isPaid ? 100 : …`, тобто повна смуга над підписом «залишок 700»: слово
+  // могло відстати від книги (саме це й лікує Д83), і суперечність у двох
+  // сантиметрах одна від одної читалась як поломка. Нуль-сума без книги —
+  // єдиний випадок, де відповідає слово: ділити нема на що.
+  const pct = total > 0
+    ? Math.min(100, Math.round((paid / total) * 100))
+    : (isPaid ? 100 : 0);
   const isRegistered = b.registration_status === 'registered';
   const canCheckIn = isPaid && isRegistered;
   const regNeeded = b.adults || 1;
