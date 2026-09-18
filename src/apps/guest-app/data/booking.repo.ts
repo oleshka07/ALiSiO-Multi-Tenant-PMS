@@ -43,7 +43,7 @@ import { freeUnitsForRange } from '@properties/kernel';
 import { calculateQuote } from '@pricing/quote';
 import { noteAvailabilityChanged, lastNight } from '@channels/outbox';
 import { insertingStay, UnitOverlap } from '@bookings/overlap';
-import { activeConsentTexts, recordConsent } from '@guests/kernel';
+import { activeConsentEditions, recordConsent } from '@guests/kernel';
 import { GUEST_APP_CONSENTS, missingConsents, blocks } from '../domain/consents';
 import { priceServices, type ServicePick } from './services.repo';
 import { ALL_PROPERTIES, propertyScopeFilter } from '@core/property-scope';
@@ -176,7 +176,12 @@ export async function holdStay(req: HoldRequest): Promise<HeldStay> {
   // Умови — ПЕРЕД записом. Бронь, під якою ніхто нічого не прийняв, це рядок,
   // який нема чим накрити перед наглядачем; а відмовити після створення
   // означало б лишити по собі напівбронь, що тримає номер.
-  const texts = await activeConsentTexts(req.organizationId, req.lang, GUEST_APP_CONSENTS);
+  // МОВИ тут немає, і це не спрощення: доти писач перепитував довідник із
+  // `req.lang`, а читач екрана — зі своєю мовою, і в роду з двома чинними
+  // версіями вони могли назвати РІЗНІ. Гість тоді бачив відмову «прийміть
+  // умови» під галочкою, яку щойно поставив. Тепер редакцію обирає одне
+  // правило, однакове для показу і для запису.
+  const texts = await activeConsentEditions(req.organizationId, GUEST_APP_CONSENTS);
   const missing = missingConsents(texts, req.consents);
   if (missing.length > 0) refuse('Щоб забронювати, потрібно прийняти умови готелю', 400);
 

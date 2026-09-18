@@ -20,10 +20,9 @@ import { NextResponse } from 'next/server';
 import { runWithOrganization } from '@core/auth/tenant-context';
 import { handleError, refuse } from '@core/http/errors';
 import { checkRateLimit } from '@core/security/rate-limit';
-import { parseLanguage } from '@core/i18n/languages';
 import { propertyByAppKey } from '../data/property.repo';
 import { readGuestAppKey } from '../domain/key';
-import { activeConsentTexts } from '@guests/kernel';
+import { activeConsentEditions } from '@guests/kernel';
 import { coreSource } from '../source/core.source';
 import { handoffSource } from '../source/handoff.source';
 import { sourceFor } from '../domain/port';
@@ -112,14 +111,17 @@ export async function listOffers(request: Request): Promise<Response> {
     const source = sourceFor(home.systemOfRecord, { core: coreSource, handoff: handoffSource });
     const away = source.kind === 'handoff' ? (home.walkinUrl ?? null) : null;
 
-    // Мова ГОСТЯ, а не константа. Тут стояло `body.lang ?? 'de'`, і застосунок
-    // цього поля не слав узагалі — тобто тексти згод їхали німецькою на будь-якій
-    // обраній мові. Той самий клас, що `|| 'CZK'` і `|| 'Europe/Prague'`:
-    // мова одного клієнта, тихо виставлена всім.
+    // МОВИ тут більше немає, і це не спрощення, а те, заради чого правка.
     //
-    // Немає поля — мова ГОТЕЛЮ. Вона і є те, чим готель говорить, коли ніхто
-    // не обрав; вигадувати тут третю країну нема з чого.
-    const lang = parseLanguage(body.lang, home.hotelLanguage);
+    // Було `body.lang ?? 'de'` — клас `|| 'CZK'`, мова одного клієнта, тихо
+    // виставлена всім, — і вчора це полагодили на «мова гостя, інакше мова
+    // готелю». Сьогодні виявилось, що ЧИТАТИ мову тут не можна взагалі:
+    // єдиним її споживачем був вибір редакції згоди, а він від мови залежати
+    // не сміє (КІ40). Версія лягає в `guest_consents`, тобто мова телефона
+    // вирішувала, ПІД ЧИМ гість підписався.
+    //
+    // Мову обирає екран, з тих, що редакція має. Змінна, яку ніхто не читає,
+    // сказала б наступному читачеві протилежне.
     const { offers, consents } = await runWithOrganization(home.organizationId, async () => ({
       offers: await source.offers({
         organizationId: home.organizationId, propertyId: home.propertyId, from, to, adults,
@@ -128,12 +130,22 @@ export async function listOffers(request: Request): Promise<Response> {
       // кроці контактів, який іде одразу за вибором, і другий похід по мережі
       // тут купував би лише зайву мить очікування.
       //
+      // Їде РЕДАКЦІЯ, а не один текст: `bodies` несе всі мови, якими готель
+      // завів цю версію, і мову обирає ЕКРАН. Перемикач мови видимий на
+      // кожному кроці, зокрема на цьому, і згоди на той момент уже в стані —
+      // приведення на сервері лишило б гостя з німецьким текстом під
+      // чеськими кнопками.
+      //
+      // Мови в аргументах читача немає ВЗАГАЛІ, і це головне: доти версію
+      // обирала в тому числі мова, тож німець приймав v1, а чех — v2 того
+      // самого документа (КІ40).
+      //
       // Готель без заведених текстів віддає порожній список — і галочок не
       // буде. Вигадати їх тут означало б показати гостю «приймаю умови»
       // готелю, який жодних умов не писав.
-      consents: (await activeConsentTexts(home.organizationId, lang, GUEST_APP_CONSENTS))
+      consents: (await activeConsentEditions(home.organizationId, GUEST_APP_CONSENTS))
         .map((t) => ({
-          kind: t.consentKind, version: t.version, locale: t.locale, body: t.body,
+          kind: t.consentKind, version: t.version, bodies: t.bodies,
           required: blocks(t.consentKind),
         })),
     }));

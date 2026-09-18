@@ -53,3 +53,36 @@ export function missingConsents(
     .filter((r) => !accepted.some((a) => a.kind === r.consentKind && a.version === r.version))
     .map((r) => r.consentKind);
 }
+
+/**
+ * Яким текстом показати редакцію ЦЬОМУ гостю.
+ *
+ * ── Порядок, і чому саме такий ──────────────────────────────────────────
+ *
+ *   1. мова ГОСТЯ — те, заради чого все це;
+ *   2. мова ГОТЕЛЮ — його власне формулювання, і воно принаймні не випадкове;
+ *   3. будь-яка, але детерміновано: ключі сортуються, тож той самий готель
+ *      дає той самий текст на кожному рушії. «Перша, що трапилась» — це
+ *      порядок рядків бази, а він у SQLite, PGlite і Postgres різний (INC-027),
+ *      і саме так француз діставав два роди різними мовами.
+ *
+ * Редакція без жодного тексту не показується (`null`): галочка без тексту —
+ * це галочка ні під чим, а вигадати текст згоди не можна тим більше
+ * (інваріант 13 — не знайшли, отже відмовляємо, а не дозволяємо).
+ *
+ * Повертається ПАРА: мова тут не косметика, вона їде в `lang` елемента —
+ * німецьке речення, підписане як чеське, читач озвучить неправильно, а гість
+ * не зрозуміє, чому текст не його мовою.
+ */
+export function consentBody(
+  edition: { bodies: Record<string, string> } | null | undefined,
+  lang: string,
+  hotelLang: string,
+): { body: string; locale: string } | null {
+  const bodies = edition?.bodies ?? {};
+  const has = (code: string) => typeof bodies[code] === 'string' && bodies[code].trim() !== '';
+  if (has(lang)) return { body: bodies[lang], locale: lang };
+  if (has(hotelLang)) return { body: bodies[hotelLang], locale: hotelLang };
+  const rest = Object.keys(bodies).filter(has).sort();
+  return rest.length > 0 ? { body: bodies[rest[0]], locale: rest[0] } : null;
+}
