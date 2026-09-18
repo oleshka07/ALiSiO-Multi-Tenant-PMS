@@ -19,14 +19,27 @@
  * plain node, where '@core/…' and 'next/server' do not resolve.
  */
 
+/**
+ * ── Порядок тут і є порядком на екрані ──────────────────────────────────
+ *
+ * Не абетка і не історія — це список, який бачить гість у перемикачі й
+ * оператор у налаштуваннях, зверху вниз. Німецька першою, бо продукт
+ * продається німецькому готелю, і мова, якою він говорить зі своїми гостями,
+ * має стояти першою; далі англійська як спільна, далі сусіди за ринком.
+ *
+ * Українська ОСТАННЯ і при цьому нікуди не дівається: нею написані літерали
+ * в JSX (`UI_SOURCE_LANGUAGE`), тобто вона лишається мовою, у яку впирається
+ * запасний шлях каталогу. Це дві РІЗНІ ролі, і плутати їх не можна —
+ * `language-order.check` тримає їх окремо.
+ */
 export const LANGUAGES = {
-  uk: { native: 'Українська', english: 'Ukrainian' },
-  en: { native: 'English', english: 'English' },
   de: { native: 'Deutsch', english: 'German' },
+  en: { native: 'English', english: 'English' },
   cs: { native: 'Čeština', english: 'Czech' },
   pl: { native: 'Polski', english: 'Polish' },
   nl: { native: 'Nederlands', english: 'Dutch' },
   fr: { native: 'Français', english: 'French' },
+  uk: { native: 'Українська', english: 'Ukrainian' },
 } as const;
 
 export type Language = keyof typeof LANGUAGES;
@@ -34,16 +47,28 @@ export type Language = keyof typeof LANGUAGES;
 export const LANGUAGE_CODES = Object.keys(LANGUAGES) as Language[];
 
 /**
- * What an organization gets when nobody chose. Ukrainian because that is what
- * every string in the product is written in today; the moment the interface
- * dictionaries are complete this should become 'en'.
+ * Мова, яку дістає готель, коли ніхто нічого не обрав, — і ПЕРША в реєстрі.
+ *
+ * Була українська, «бо нею написані всі рядки продукту». Це плутало дві речі:
+ * мову, якою написані ЛІТЕРАЛИ (вона нижче, і вона й далі українська), і
+ * мову, яку продукт пропонує ПЕРШОЮ. Друга — рішення про ринок, а не
+ * властивість нашого коду, і для німецького готелю українська першою була
+ * просто неправильною відповіддю.
+ *
+ * Що це збігається з `LANGUAGE_CODES[0]`, стверджує `language-order.check`:
+ * інакше перша кнопка перемикача каже одне, а система без вибору робить інше,
+ * і побачить це лише той, хто нічого не обирав.
  */
-export const DEFAULT_LANGUAGE: Language = 'uk';
+export const DEFAULT_LANGUAGE: Language = 'de';
 
 /**
- * The language the product's own interface is written in — the literals in the
- * JSX. Distinct from an organization's language: the hotel chooses what its
- * staff read, this is what the untranslated fallback is.
+ * Мова, якою написані літерали в JSX. Ключі каталогу — це САМІ ці рядки, тож
+ * поки каталог такий, вона лишається українською, хоч би яка мова була
+ * базовою.
+ *
+ * Змінити її можна лише разом із переписуванням усього каталогу (3717 ключів
+ * на день цього рядка). `DEFAULT_LANGUAGE` міняється коли завгодно — це різні
+ * речі, і `language-order.check` стверджує саме їхню окремість.
  */
 export const UI_SOURCE_LANGUAGE: Language = 'uk';
 

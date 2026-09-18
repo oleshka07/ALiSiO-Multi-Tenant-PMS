@@ -2,9 +2,12 @@
 
 import { useState } from 'react';
 import type { Translations, Lang } from '@/app/guest/[token]/translations';
+import { GUEST_PAGE_LANGS, LANG_LABELS } from '@/app/guest/[token]/translations';
 
-const ALL_LANGS: Lang[] = ['en', 'de', 'cs', 'uk', 'pl', 'nl', 'fr'];
-const LANG_LABELS: Record<Lang, string> = { en: 'EN', de: 'DE', cs: 'CZ', uk: 'UA', pl: 'PL', nl: 'NL', fr: 'FR' };
+// Ще один власний список мов, і з власними підписами: `CZ` це код КРАЇНИ, а
+// мова чеська — `cs`. Обидва беруться з того самого місця, що й у решти
+// гостьових поверхонь.
+const ALL_LANGS = GUEST_PAGE_LANGS;
 
 interface Props {
   data: any;

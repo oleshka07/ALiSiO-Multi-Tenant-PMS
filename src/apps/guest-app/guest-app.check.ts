@@ -30,6 +30,7 @@ const { propertyByAppKey } = await import('./data/property.repo.ts');
 const { generateGuestAppKey, readGuestAppKey } = await import('./domain/key.ts');
 const { languageFromHeader } = await import('./ui/translations.ts');
 const { localisedContent } = await import('@core/i18n/content-field.ts');
+const { consentBody } = await import('./domain/consents.ts');
 const { textHash } = await import('@core/i18n/translate.ts');
 const lookup = await import('./api/lookup.handlers.ts');
 const { coreSource } = await import('./source/core.source.ts');
@@ -729,7 +730,7 @@ try {
   // Четверта вісь тримається сама собою: готель Б текстів не має, і сцена 11
   // вище вже бронювала в А до того, як тексти зʼявились. Але покластись на
   // порядок сцен не можна — твердження про це стоїть окремо, нижче.
-  const { activeConsentTexts, consentState } = await import('@guests/kernel.ts');
+  const { activeConsentEditions, consentState } = await import('@guests/kernel.ts');
   // Ціна на дати цієї сцени — інакше писач відмовляє за інваріантом 17, і
   // твердження «бронь без галочки не пройшла» було б зелене з чужої причини
   // (перша редакція сцени саме так і помилилась: 409 замість 400).
@@ -738,7 +739,7 @@ try {
   // сцени відмовляло б у другій, і та червоніла б із чужої причини.
   await runWithOrganization(A, () => upsertPrices('ga_t1',
     [6, 7, 8, 9, 10, 11].map((n) => ({ date: day(n), base_price: 100 }))));
-  const consentBody = (kind: string, version: string) => `${kind} ${version} — текст готелю`;
+  const consentFixture = (kind: string, version: string) => `${kind} ${version} — текст готелю`;
   await runWithOrganization(A, async () => {
     for (const [kind, version, active] of [
       ['terms', 'v1', false],           // стара редакція: під нею згода вже не рахується
@@ -749,12 +750,13 @@ try {
       await sql.run(
         `INSERT INTO consent_texts (id, organization_id, consent_kind, version, locale, body, is_active)
          VALUES (?, ?, ?, ?, 'de', ?, ?)`,
-        [`ga_ct_${kind}_${version}`, A, kind, version, consentBody(kind, version), active]);
+        [`ga_ct_${kind}_${version}`, A, kind, version, consentFixture(kind, version), active]);
     }
   });
 
+  // Мови в аргументах немає: редакцію обирає одне правило на всіх гостей.
   const shown = await runWithOrganization(A,
-    () => activeConsentTexts(A, 'de', ['terms', 'data_processing', 'marketing']));
+    () => activeConsentEditions(A, ['terms', 'data_processing', 'marketing']));
   assert.deepStrictEqual(shown.map((t) => `${t.consentKind}:${t.version}`),
     ['terms:v2', 'data_processing:v2', 'marketing:v2'],
     `гостю показали не ті редакції: ${JSON.stringify(shown.map((t) => `${t.consentKind}:${t.version}`))} `
@@ -1095,9 +1097,18 @@ try {
   // Фікстура не вироджена: у `ga_svc_park` колонок НЕМАЄ жодної, а кеш є, і
   // мова питається та, якої в колонках не буває ніколи (`uk` — базова, без
   // колонки). Двері мусять узяти кеш.
+  //
+  // UPSERT, а не голий INSERT: `content_translations` — таблиця ГЛОБАЛЬНА
+  // (вона в переліку винятків `rls-check.sql`), тож на постійному Postgres
+  // вона переживає прогін, і другий запуск бився б об унікальність
+  // `(text_hash, lang)`. Це було б хибно-червоне ПРО СТЕНД, а не про код —
+  // на SQLite і в CI бази щоразу свіжі, тож перший прогін цього не показав.
+  // Прибирається вона наприкінці разом із рештою.
   await runWithOrganization(A, () => sql.run(
     `INSERT INTO content_translations (text_hash, source_text, lang, translated_text)
-     VALUES (?, 'Tiefgarage', 'uk', 'Підземний гараж')`, [textHash('Tiefgarage')]));
+     VALUES (?, 'Tiefgarage', 'uk', 'Підземний гараж')
+     ON CONFLICT (text_hash, lang) DO UPDATE SET translated_text = excluded.translated_text`,
+    [textHash('Tiefgarage')]));
   assert.strictEqual(await shownIn('uk', 'ga_svc_park'), 'Підземний гараж',
     'кеш перекладів не доїхав у відповідь — готель, який не заповнював колонок, лишається без перекладу');
   // І та сама послуга іншою мовою, якої немає НІДЕ, лишається собою: інакше
@@ -1106,27 +1117,130 @@ try {
   assert.strictEqual(await shownIn('fr', 'ga_svc_park'), 'Tiefgarage',
     'мова без жодного джерела дістала чужий переклад із кешу');
 
-  // Мова доїхала не лише до послуг: тексти згод теж обираються НЕЮ. Тут
-  // стояв дефолт 'de' і поле, якого екран не слав, — тобто чех отримував
-  // німецькі умови. Готель має чеську редакцію, і саме її він мусить бачити.
+  // Умови гість читає СВОЄЮ мовою — і обирає її ЕКРАН, тими самими дверима,
+  // що поїдуть у браузер (`consentBody`). Сервер мови для згод більше не
+  // приймає взагалі: доти він вибирав редакцію в тому числі за нею, і версія
+  // залежала від мови телефона (див. 17-в).
   //
   // Фікстура не вироджена: чеська редакція є рівно в ОДНОГО роду. Готель, у
   // якого перекладено все, лишив би сцену зеленою і на коді, що ігнорує мову
-  // (всі редакції були б чеські); готель, у якого немає нічого, — теж
+  // (всі тексти були б чеські); готель, у якого немає нічого, — теж
   // (всі німецькі). Двома значеннями на осі видно обидві властивості одразу:
-  // мова доїхала ТА запасний шлях на месці.
+  // мова обрана ТА запасний шлях на місці.
   await runWithOrganization(A, () => sql.run(
     `INSERT INTO consent_texts (id, organization_id, consent_kind, version, locale, body, is_active)
      VALUES ('ga_ct_terms_v2_cs', ?, 'terms', 'v2', 'cs', 'terms v2 — text hotelu', TRUE)`, [A]));
   const csOffers = await gate(booking.listOffers, 'offers',
     { key: keyA, from: day(6), to: day(7), adults: 2, lang: 'cs' });
-  const byKind = Object.fromEntries(((csOffers.body.consents as any[]) ?? [])
-    .map((c) => [c.kind, c.locale]));
+  const readAs = (lang: string, body: Record<string, any>) => Object.fromEntries(
+    ((body.consents as any[]) ?? []).map((c) => [c.kind, consentBody(c, lang, 'de')?.locale]));
+  const byKind = readAs('cs', csOffers.body);
   assert.strictEqual(byKind.terms, 'cs',
-    `чеському гостю віддали умови мовою «${byKind.terms}», хоча чеська редакція заведена — `
-    + 'мова не доїхала до сервера (стояв дефолт \'de\', і поля екран не слав)');
+    `чеському гостю дістались умови мовою «${byKind.terms}», хоча чеська редакція заведена`);
   assert.strictEqual(byKind.data_processing, 'de',
-    'рід без чеської редакції мусить лишитись мовою готелю, а не зникнути з екрана');
+    'рід без чеської редакції мусить лишитись мовою ГОТЕЛЮ, а не зникнути з екрана '
+    + 'і не дістатись мові, що випадково лягла першою (клас INC-027)');
+
+  // ── 17-в. Згода ПЕРЕМИКАЄТЬСЯ мовою, а ВЕРСІЯ не ворухнеться ─────────
+  //
+  // Учора тут стояло «не зроблено свідомо»: редакція обиралась ОДИН раз, на
+  // пошуку, і гість, який перемкнув мову на кроці контактів, лишався з
+  // німецьким текстом під чеськими кнопками.
+  //
+  // Дивлячись у це впритул, знайшлося гірше, і саме воно вирішує форму
+  // правки: **версія залежала від мови гостя**. У роду з двома чинними
+  // редакціями німець діставав v1, а чех — v2; двоє гостей, що бронюють в
+  // одну хвилину, приймали РІЗНІ редакції того самого документа, і вирішувала
+  // це мова їхнього телефона. Це не показ, це юридичний запис.
+  //
+  // Тому відповідь тепер несе РЕДАКЦІЮ (`version` + `bodies` на кожну мову),
+  // а мову обирає екран — як із послугами. Мови в аргументах читача немає
+  // взагалі: версія не може залежати від того, чого читач не знає.
+  //
+  // Осі не вироджені:
+  //   МОВА — у `terms` дві редакції однієї версії (de, cs) з РІЗНИМ текстом;
+  //     фікстура з однією мовою була б зелена й на коді, що везе один рядок;
+  //   ВЕРСІЯ — у `data_processing` дві ЧИННІ версії різними мовами, і саме
+  //     вона ловить «версія від мови»: одна версія лишила б це зеленим;
+  //   МОВА ГОСТЯ, ЯКОЇ НЕМАЄ — третій запит фрацузькою: запасний шлях мусить
+  //     дати мову ГОТЕЛЮ, а не ту, що випадково лягла першою (клас INC-027).
+  await runWithOrganization(A, async () => {
+    // Друга чинна версія того самого роду, іншою мовою. Її не існувало, поки
+    // сцена не питала про версію, — і дефект був невидимий.
+    await sql.run(
+      `INSERT INTO consent_texts (id, organization_id, consent_kind, version, locale, body, is_active)
+       VALUES ('ga_ct_dp_v3_cs', ?, 'data_processing', 'v3', 'cs', 'GDPR v3 — text hotelu', TRUE)`, [A]);
+  });
+
+  // `lang` у тілі СВІДОМО лишений: сцена доводить, що сервер його НЕ читає —
+  // три різні мови мусять дати ту саму редакцію. Прибрати поле означало б
+  // довести лише те, що без нього все однаково.
+  const editions = async (lang: string) => {
+    const r = await gate(booking.listOffers, 'offers',
+      { key: keyA, from: day(6), to: day(7), adults: 2, lang });
+    return Object.fromEntries(((r.body.consents as any[]) ?? []).map((c) => [c.kind, c]));
+  };
+
+  const de = await editions('de');
+  const cs = await editions('cs');
+  const fr = await editions('fr');
+
+  // 1. Версія НЕ ворушиться від мови. Це головне твердження, і саме воно було
+  //    червоне на коді, який стояв у проді.
+  for (const kind of ['terms', 'data_processing']) {
+    assert.strictEqual(de[kind]?.version, cs[kind]?.version,
+      `${kind}: німець бачить версію ${de[kind]?.version}, чех — ${cs[kind]?.version}. `
+      + 'Редакцію обирає мова телефона, тобто двоє гостей приймають різні документи');
+    assert.strictEqual(de[kind]?.version, fr[kind]?.version,
+      `${kind}: мова без власної редакції зрушила ВЕРСІЮ`);
+  }
+
+  // 2. Відповідь несе ВСІ мови редакції — інакше екран не має чим перемкнути.
+  assert.deepStrictEqual(Object.keys(de.terms?.bodies ?? {}).sort(), ['cs', 'de'],
+    `terms везе мови [${Object.keys(de.terms?.bodies ?? {})}] — екран не зможе перемкнути без походу в мережу`);
+
+  // 3. Тексти двох мов РІЗНІ: однакові лишили б вісь мови невидимою.
+  assert.notStrictEqual(de.terms.bodies.de, de.terms.bodies.cs,
+    'дві мови однієї редакції дали однаковий текст — вісь мови у фікстурі вироджена');
+
+  // 4. Обрана версія — найновіша чинна, і вона одна для всіх.
+  assert.strictEqual(de.data_processing?.version, 'v3',
+    `data_processing віддав версію ${de.data_processing?.version}, а чинна найновіша — v3`);
+  // 5. НАСКРІЗЬ: гість шукав німецькою, перемкнув на чеську, поставив
+  //    галочки і забронював — у запис пішла ТА САМА редакція, яку він бачив.
+  //
+  //    Саме це ламалось у житті, і ламалось тихо з двох боків: писач
+  //    перепитував довідник із `req.lang`, тож у роду з двома чинними
+  //    версіями показ називав одну, а запис — іншу, і гість діставав відмову
+  //    «прийміть умови» під галочкою, яку щойно поставив. Сцена бере версії
+  //    з НІМЕЦЬКОЇ відповіді, а бронює з `lang: 'cs'` — тобто рівно той
+  //    розрив, що був.
+  const heldSwitched = await gate(booking.holdOffer, 'hold', {
+    key: keyA, from: day(10), to: day(11), adults: 2, unitTypeId: 'ga_t1', ratePlanId: null,
+    firstName: 'Lída', lastName: 'Jazyk', phone: '+49 170 5550009', lang: 'cs',
+    consents: ['terms', 'data_processing'].map((k) => ({ kind: k, version: de[k].version })),
+  });
+  assert.strictEqual(heldSwitched.status, 201,
+    `бронь після перемикання мови відмовлена (${heldSwitched.status}): `
+    + `${JSON.stringify(heldSwitched.body)} — показ і запис назвали різні редакції`);
+
+  const stayRow2 = await runWithOrganization(A, () => sql.row<any>(
+    'SELECT id, guest_id FROM reservations WHERE guest_page_token = ?', [heldSwitched.body.token]));
+  // Журнал згод читається ФАСАДОМ (`consentState`), не сирим SQL до
+  // `guest_consents`: таблиця належить `modules/guests`, і сцена, яка лізе
+  // повз двері, це новий пробій межі — `check-boundaries` спіймав його тут
+  // же. Заразом твердження стає сильнішим: воно про те, що побачить
+  // наглядач, а не про рядки, які ніхто так не читає.
+  const stateOf = await runWithOrganization(A, () => consentState(A, stayRow2.guest_id));
+  // Твердження про МНОЖИНУ пар, не про перший знайдений рядок: рядків кілька,
+  // і `.find()` був би зелений на тому рушії, чий порядок випадково зручний
+  // (AGENTS §7).
+  assert.deepStrictEqual(
+    Object.entries(stateOf).map(([kind, v]: [string, any]) => `${kind}:${v.version}`).sort(),
+    ['data_processing:' + de.data_processing.version, 'terms:' + de.terms.version].sort(),
+    `у журнал згод лягло ${JSON.stringify(Object.entries(stateOf).map(([k, v]: [string, any]) => `${k}:${v.version}`))}, `
+    + 'а гість бачив інші редакції — мова перемкнула документ, а не текст');
+  console.log('  ok  17-в. згода перемикається мовою; версія не залежить від мови ні в показі, ні в записі');
   console.log('  ok  17-б. послуга говорить мовою гостя; без перекладу — мовою готелю, не третьою');
 
   // ── 18. Вимикач застосунку: вимкнено — 404 всюди, і ключ не рятує ──────
@@ -1202,5 +1316,10 @@ try {
     });
     await sql.run('DELETE FROM organizations WHERE id = ?', [org]);
   }
+  // І глобальна таблиця, яка орендарю не належить і тому не потрапила в
+  // цикл вище. Проба, лишена в спільній таблиці, — це рядок, який побачить
+  // хтось інший (інваріант 25 за духом), і рівно вона робила другий прогін
+  // на тому самому Postgres червоним.
+  await sql.run('DELETE FROM content_translations WHERE text_hash = ?', [textHash('Tiefgarage')]);
   fs.rmSync(tmp, { recursive: true, force: true });
 }

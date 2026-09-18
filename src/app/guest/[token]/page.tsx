@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import './guest-page.css';
 import {
-  type Lang, LANG_LABELS,
+  type Lang, LANG_LABELS, GUEST_PAGE_LANGS,
   getTranslations, detectLanguage, getBrandName,
   formatDateLocalized, formatPriceLocalized,
 } from './translations';
@@ -38,7 +38,10 @@ type Phase = 'far_before' | 'before' | 'checkin_day' | 'during' | 'checkout';
 
 const FAR_BEFORE_DAYS = 7;
 
-const ALL_LANGS: Lang[] = ['en', 'de', 'cs', 'uk', 'pl', 'nl', 'fr'];
+// Список мов — із реєстру (`GUEST_PAGE_LANGS`), а не свій. Восьмий власний
+// масив жив тут: множина збігалася, порядок — ні, і множинний гейт мовчав
+// правильно, бо стереже не те.
+const ALL_LANGS: readonly Lang[] = GUEST_PAGE_LANGS;
 
 // ═════════════════════════════════════════════════
 // BOTTOM SHEET

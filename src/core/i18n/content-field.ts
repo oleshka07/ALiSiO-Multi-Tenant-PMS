@@ -134,7 +134,7 @@ export function localisedText(value: unknown, lang: Language, origin: ContentOri
  * продуктом (КІ38). Мови, у якої немає колонки в таблиці, у списку теж не
  * буде: колонки заведені під шість мов перекладу, українська — базова.
  */
-export const CONTENT_COLUMN_LANGS: readonly Language[] = ['en', 'de', 'cs', 'pl', 'nl', 'fr'];
+export const CONTENT_COLUMN_LANGS: readonly Language[] = ['de', 'en', 'cs', 'pl', 'nl', 'fr'];
 
 /** `name` → `name_en, name_de, …` — для `SELECT`. */
 export function contentColumns(prefix: string, field: string): string {

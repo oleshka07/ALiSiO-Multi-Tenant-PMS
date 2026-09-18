@@ -66,8 +66,8 @@ async function ourGuest(organizationId: string, guestId: string): Promise<void> 
  * редакцію, а не на переклад. Довід повністю — у шапці міграції 0300.
  */
 /**
- * Тексти згод, чинні в цього готелю, — те, під чим гостю справді є що ставити
- * галочку.
+ * Редакції згод, чинні в цього готелю, — те, під чим гостю справді є що
+ * ставити галочку.
  *
  * ── Чому читач, а не список у коді ──────────────────────────────────────
  *
@@ -78,50 +78,88 @@ async function ourGuest(organizationId: string, guestId: string): Promise<void> 
  * галочку «приймаю умови», яких немає (інваріант 20: те, що клієнт змінює
  * сам, не буває літералом у коді).
  *
- * ── Мова ────────────────────────────────────────────────────────────────
+ * ── Чому МОВИ немає в аргументах ────────────────────────────────────────
  *
- * Довідник ключується парою «версія × мова»: людина погоджується на
- * РЕДАКЦІЮ, а читає її своєю мовою. Немає редакції мовою гостя — беремо
- * будь-яку чинну того ж роду: показати текст чужою мовою гірше, ніж нічого,
- * лише тоді, коли ми вдаємо, що він рідний; тут поруч видно, якою він мовою.
- * Мовчки пропустити рід узагалі означало б не спитати згоди там, де готель
- * її вимагає.
+ * Тут стояло `activeConsentTexts(org, locale, kinds)`, і воно віддавало ОДИН
+ * текст на рід, обраний у тому числі за мовою. Виміряно 18.09.2026 запуском:
+ *
+ *     ГІСТЬ DE →  terms:v2@de   data_processing:v1@de
+ *     ГІСТЬ CS →  terms:v2@cs   data_processing:v2@cs
+ *     ГІСТЬ FR →  terms:v2@cs   data_processing:v1@de
+ *
+ * Тобто в роду з двома чинними редакціями **версію обирала мова телефона**:
+ * німець приймав v1, чех — v2, і це не показ, а юридичний запис — саме пара
+ * «рід + версія» лягає в `guest_consents`. Двоє гостей, що бронюють в одну
+ * хвилину, погоджувались на різні документи.
+ *
+ * Третій рядок гірший за перші два: француз дістав ДВА роди різними мовами,
+ * і яка кому дісталась, вирішив порядок рядків — клас INC-027, де SQLite,
+ * PGlite і Postgres упорядковують по-різному.
+ *
+ * Тому мови тут немає ВЗАГАЛІ. Версія не може залежати від того, чого читач
+ * не знає; а мову обирає екран, з усіх, які редакція має (`consentBody`).
+ *
+ * ── Яку версію брати, коли чинних кілька ────────────────────────────────
+ *
+ * Найновішу за `created_at`, а при рівності — більшу за рядком версії, і
+ * рахується це в JS, не `ORDER BY`: порядок рядків від бази — не твердження
+ * (AGENTS §7). Кілька чинних версій одного роду — це стан довідника, а не
+ * вибір екрана; але вибір мусить бути ОДНАКОВИЙ для всіх гостей, інакше ми
+ * повертаємось рівно до того, що лагодимо.
+ *
+ * Показати найновішу редакцію мовою, якої гість не знає, — краще, ніж
+ * показати СТАРУ його мовою: приймають редакцію, а не переклад. Якою мовою
+ * текст насправді, видно в атрибуті `lang` поруч.
  */
-export interface ConsentText {
+export interface ConsentEdition {
   consentKind: string;
   version: string;
-  locale: string;
-  body: string;
+  /** Мова → текст. Рівно ті мови, якими готель завів ЦЮ версію. */
+  bodies: Record<string, string>;
 }
 
-export async function activeConsentTexts(
+export async function activeConsentEditions(
   organizationId: string,
-  locale: string,
   kinds: readonly string[],
-): Promise<ConsentText[]> {
+): Promise<ConsentEdition[]> {
   if (kinds.length === 0) return [];
   const sql = getSql();
   const holes = kinds.map(() => '?').join(', ');
   const rows = await sql.rows<Record<string, unknown>>(
-    `SELECT consent_kind, version, locale, body
+    `SELECT consent_kind, version, locale, body, created_at
        FROM consent_texts
       WHERE organization_id = ? AND is_active = TRUE AND consent_kind IN (${holes})`,
     [organizationId, ...kinds]);
 
-  // Один текст на рід: спершу мовою гостя, інакше перший чинний. Рід, у якого
-  // чинних редакцій кілька, — це стан довідника, а не вибір екрана.
-  const byKind = new Map<string, ConsentText>();
+  /** рід → версія → { мови, НАЙНОВІША мітка часу серед рядків цієї версії } */
+  const byKind = new Map<string, Map<string, { bodies: Record<string, string>; at: number }>>();
   for (const r of rows) {
-    const text: ConsentText = {
-      consentKind: String(r.consent_kind), version: String(r.version),
-      locale: String(r.locale), body: String(r.body),
-    };
-    const seen = byKind.get(text.consentKind);
-    if (!seen || (seen.locale !== locale && text.locale === locale)) byKind.set(text.consentKind, text);
+    const kind = String(r.consent_kind);
+    const version = String(r.version);
+    if (!byKind.has(kind)) byKind.set(kind, new Map());
+    const versions = byKind.get(kind)!;
+    // `created_at` приходить рядком на SQLite і датою на Postgres; непрочитане
+    // дає 0, і тоді вирішує саме версія — а не «перший, що трапився».
+    const at = Number(new Date(String(r.created_at ?? ''))) || 0;
+    const seen = versions.get(version);
+    if (!seen) versions.set(version, { bodies: { [String(r.locale)]: String(r.body) }, at });
+    else {
+      seen.bodies[String(r.locale)] = String(r.body);
+      if (at > seen.at) seen.at = at;
+    }
   }
+
+  const chosen: ConsentEdition[] = [];
   // Порядок — за списком родів, який дав викликач: екран показує галочки в
   // тому порядку, у якому їх назвали, а не в тому, як лягли рядки в базі.
-  return kinds.map((k) => byKind.get(k)).filter((t): t is ConsentText => Boolean(t));
+  for (const kind of kinds) {
+    const versions = byKind.get(kind);
+    if (!versions || versions.size === 0) continue;
+    const best = [...versions.entries()].sort((a, b) =>
+      (b[1].at - a[1].at) || b[0].localeCompare(a[0]))[0];
+    chosen.push({ consentKind: kind, version: best[0], bodies: best[1].bodies });
+  }
+  return chosen;
 }
 
 export async function recordConsent(input: RecordConsentInput): Promise<void> {

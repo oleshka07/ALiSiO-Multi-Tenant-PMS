@@ -21,5 +21,5 @@ export { saveRegistrations } from '../data/registration.repo';
  * (гостьовий застосунок) — бронь без прийнятих умов це бронь, під якою
  * ніхто нічого не підписував.
  */
-export { activeConsentTexts, recordConsent, consentState } from '../data/guest-consents.repo';
-export type { ConsentText } from '../data/guest-consents.repo';
+export { activeConsentEditions, recordConsent, consentState } from '../data/guest-consents.repo';
+export type { ConsentEdition } from '../data/guest-consents.repo';

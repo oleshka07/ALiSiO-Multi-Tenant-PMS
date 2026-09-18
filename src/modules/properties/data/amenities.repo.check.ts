@@ -268,7 +268,10 @@ try {
   // пощастило.
   // Перевірка статична — на самому словнику, не на базі.
   {
-    const { AMENITIES, AMENITY_CATEGORIES, CATALOG_LANGUAGES } = await import('../domain/amenity-catalog.ts');
+    const { AMENITIES, AMENITY_CATEGORIES } = await import('../domain/amenity-catalog.ts');
+    // Мови — з РЕЄСТРУ, не з копії поруч зі словником: копія розходиться
+    // мовчки саме тоді, коли реєстр міняють.
+    const { LANGUAGE_CODES: CATALOG_LANGUAGES } = await import('@core/i18n/languages.ts');
     const holes: string[] = [];
     for (const seed of [...AMENITY_CATEGORIES, ...AMENITIES]) {
       for (const lang of CATALOG_LANGUAGES) {

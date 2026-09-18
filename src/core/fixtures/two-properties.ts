@@ -238,7 +238,19 @@ export async function seedTwoProperties(
 
   // `organizations` — єдина таблиця без RLS: створення рахунку за означенням
   // відбувається поза орендарем (AGENTS §7). Усе інше — вже під контекстом.
-  await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [ORG, 'Two Properties', ORG]);
+  // Мова НАЗВАНА, а не лишена на дефолт колонки.
+  //
+  // Це не косметика: `documentLanguage()` падає на мову організації, коли в
+  // обʼєкта немає країни з відомою юрисдикцією, — тобто дефолт колонки вирішує
+  // МОВУ ДОКУМЕНТА. Поки дефолтом була українська, сцени про область обʼєкта
+  // мовчки міряли українську юрисдикцію; щойно базовою мовою продукту стала
+  // німецька (КІ41), ті самі сцени почали вимагати німецьку фактуру й
+  // червоніли з чужої причини.
+  //
+  // Фікстура, яка про мову нічого не стверджує, мусить її НАЗВАТИ — інакше
+  // вона міряє те, що сьогодні стоїть дефолтом.
+  await sql.run('INSERT INTO organizations (id, name, slug, language) VALUES (?, ?, ?, ?)',
+    [ORG, 'Two Properties', ORG, 'uk']);
 
   const fixture = await runWithOrganization(ORG, () => seedInsideTenant(sql, alsoSeed));
 
@@ -501,7 +513,9 @@ export async function seedNeighbourOrganization(
   const sql = getSql();
   const org = '__two_props__neighbour';
 
-  await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [org, 'Neighbour', org]);
+  // Мова названа з тієї ж причини, що в сусіда вище.
+  await sql.run('INSERT INTO organizations (id, name, slug, language) VALUES (?, ?, ?, ?)',
+    [org, 'Neighbour', org, 'uk']);
   return runWithOrganization(org, () => seedNeighbourInsideTenant(sql, org, alsoSeed));
 }
 

@@ -87,8 +87,20 @@ function imports(file) {
 
   const walk = (node, insideFunction) => {
     if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier) {
+      // `import type …` / `export type …` node СТИРАЄ і ніколи не резолвить,
+      // тож такого ребра в графі виконання просто немає.
+      //
+      // Гейт цього не розрізняв, і поки він дивився лише в `scripts/**`, це
+      // не було видно: скрипти типів звідти не тягнуть. Щойно під нього
+      // потрапили `.check.ts`, стало 31 «порушення», і всі до одного через
+      // `import type` — тобто хибно-червоне про код, який працює. Лагодиться
+      // в гейті, не в коді (§3.2.1).
+      const typeOnly = node.importClause?.isTypeOnly === true
+        || node.isTypeOnly === true
+        || (node.importClause?.namedBindings?.elements ?? []).length > 0
+          && (node.importClause.namedBindings.elements).every((e) => e.isTypeOnly === true);
       const spec = literal(node.moduleSpecifier);
-      if (spec) eagerStatic.push(spec);
+      if (spec && !typeOnly) eagerStatic.push(spec);
     } else if (node.kind === ts.SyntaxKind.CallExpression
       && (node.expression?.kind === ts.SyntaxKind.ImportKeyword
         || (ts.isIdentifier(node.expression) && node.expression.text === 'require'))) {
@@ -130,12 +142,44 @@ function allScripts(dir) {
   return out;
 }
 
-const scripts = allScripts(path.join(ROOT, 'scripts')).sort();
+/**
+ * ── І ВХОДИ `npm run check` ──────────────────────────────────────────────
+ *
+ * Гейт дивився лише в `scripts/**`, і це була діра рівно того класу, який він
+ * ловить: `npm run check` запускає ще й півтори сотні `.check.ts` — тим самим
+ * голим node, з тими самими правилами. 18.09.2026 `widget-language.ts` дістав
+ * імпорт `@core/i18n/languages`, гейт сказав «чисто», а прогін упав через
+ * чверть години з ERR_MODULE_NOT_FOUND.
+ *
+ * Властивість та сама — «граф входу, який виконує голий node, не містить
+ * аліасів без резолвера», — просто входів більше, ніж гейт знав. Список
+ * береться з `package.json`, а не вгадується: сценарій, доданий завтра,
+ * потрапляє під перевірку сам.
+ */
+function checkEntries() {
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const out = new Set();
+  for (const name of ['check', 'check:pg']) {
+    for (const m of String(pkg.scripts?.[name] ?? '').matchAll(/node\s[^&|]*?([\w./[\]()@-]+\.check\.ts)/g)) {
+      const file = path.join(ROOT, m[1].replace(/^["']|["']$/g, ''));
+      if (fs.existsSync(file)) out.add(file);
+    }
+  }
+  return [...out].sort();
+}
+
+const scripts = [...allScripts(path.join(ROOT, 'scripts')), ...checkEntries()].sort();
 const inventory = [];
 
 for (const file of scripts) {
   const own = imports(file);
-  const appImports = own.all.filter((s) => /(^|\/)\.\.\/src\//.test(s) || s.startsWith('../src/'));
+  // Для `.check.ts` «вхід у застосунок» — це будь-який ВІДНОСНИЙ імпорт: файл
+  // уже лежить усередині `src/`, тож сусід поруч — такий самий код застосунку,
+  // як `../src/…` для скрипта з `scripts/`.
+  const isCheckTs = file.endsWith('.check.ts');
+  const appImports = isCheckTs
+    ? own.all.filter((s) => s.startsWith('.'))
+    : own.all.filter((s) => /(^|\/)\.\.\/src\//.test(s) || s.startsWith('../src/'));
   const ownAliases = own.eagerStatic.filter(isAlias);
   if (appImports.length === 0 && ownAliases.length === 0) continue;
 

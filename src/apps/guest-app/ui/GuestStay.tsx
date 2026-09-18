@@ -25,6 +25,7 @@
  */
 
 import { useCallback, useState } from 'react';
+import { consentBody } from '../domain/consents';
 import { HOLD_MINUTES } from '../domain/hold';
 import type { StayOffer } from '../domain/port';
 import { localisedContent, type StoredTranslations } from '@core/i18n/content-field';
@@ -32,12 +33,21 @@ import { GUEST_STRINGS, type GuestLang } from './translations';
 
 type Stage = 'dates' | 'rooms' | 'extras' | 'details' | 'confirm' | 'claim';
 
-/** Текст згоди, який ЦЕЙ готель справді написав (ніяких літералів у коді). */
+/**
+ * Редакція згоди, яку ЦЕЙ готель справді написав (ніяких літералів у коді).
+ *
+ * `bodies` — мова → текст, усі мови ЦІЄЇ версії. Мову обирає екран
+ * (`consentBody`), бо перемикач видимий на кроці контактів, а згоди на той
+ * момент уже в стані.
+ *
+ * `version` при цьому НЕ залежить від мови й не має права залежати: у
+ * `guest_consents` лягає пара «рід + версія», тобто приймають редакцію, а не
+ * переклад. Доти версію обирала мова телефона — німець приймав v1, чех v2.
+ */
 interface ConsentOffer {
   kind: string;
   version: string;
-  locale: string;
-  body: string;
+  bodies: Record<string, string>;
   /** Без неї кнопка не працює. Розсилка — ні: добровільна згода добровільна. */
   required: boolean;
 }
@@ -151,6 +161,17 @@ export function GuestStay({ appKey, lang, hotelLang, onBack }: {
       localisedContent(row, field, lang, { sourceLang: hotelLang, stored: contentTranslations }),
     [lang, hotelLang, contentTranslations]);
 
+  /**
+   * Текст згоди мовою гостя — з тієї ж редакції, що поїде в запис.
+   *
+   * Мова тут міняє ТЕКСТ і нічого більше: `version` лишається тим, що приїхав
+   * із сервера, і саме він іде в `hold`. Інакше перемикання мови посеред
+   * потоку мовчки змінювало б документ, під яким гість ставить галочку.
+   */
+  const consentShown = useCallback(
+    (c: ConsentOffer) => consentBody(c, lang, hotelLang),
+    [lang, hotelLang]);
+
   /** Кнопку тримають лише обовʼязкові роди — і рахує це екран, і звіряє сервер. */
   const allRequiredTicked = consents.every((c) => !c.required || ticked[c.kind]);
 
@@ -186,9 +207,18 @@ export function GuestStay({ appKey, lang, hotelLang, onBack }: {
     setMessage(null);
     setBusy(true);
     try {
-      // Мова їде в тілі: нею сервер обирає редакцію текстів згод. Без цього
-      // поля там стояв дефолт 'de', і чех бачив німецькі умови.
-      const { ok, status, json } = await post('offers', { from, to, adults, lang });
+      // Мови в цьому запиті НЕМАЄ, і це навмисно.
+      //
+      // Вчора вона тут зʼявилась: сервер обирав нею редакцію текстів згод.
+      // Сьогодні виявилось, що обирати редакцію мовою не можна взагалі —
+      // версія лягає в журнал згод, тобто мова телефона вирішувала, під чим
+      // гість підписався (КІ40). Тепер сервер везе всі мови редакції, а
+      // обирає екран.
+      //
+      // Поле, яке шлють і яке ніхто не читає, — запрошення повернути вибір
+      // мови на сервер. У `hold` мова лишається: там вона лягає в
+      // `booking_lang`, тобто якою мовою писати гостю листи.
+      const { ok, status, json } = await post('offers', { from, to, adults });
       if (!ok) { setMessage(refusalText(status)); return; }
       const list = (json.offers ?? []) as StayOffer[];
       const away = (json.handoff ?? null) as string | null;
@@ -485,18 +515,37 @@ export function GuestStay({ appKey, lang, hotelLang, onBack }: {
             заведених текстів галочок не показує, і бронювання від цього не
             спиняється: прийняти те, чого немає, не можна.
           */}
-          {consents.map((c) => (
-            <label key={c.kind} className="guest-consent">
-              <input
-                type="checkbox"
-                checked={Boolean(ticked[c.kind])}
-                onChange={(e) => setTicked((was) => ({ ...was, [c.kind]: e.target.checked }))}
-              />
-              <span className="guest-consent-text" lang={c.locale}>
-                {c.body}{c.required ? ' *' : ''}
-              </span>
-            </label>
-          ))}
+          {consents.map((c) => {
+            // Редакція без жодного тексту не показується: галочка без тексту —
+            // це галочка ні під чим, і вигадати його не можна (інваріант 13).
+            //
+            // Наслідок названо тут, щоб його не відкривали вдруге: якщо такий
+            // рід ще й ОБОВʼЯЗКОВИЙ, кнопка лишиться неактивною і гість не
+            // забронює. Це свідомо консервативний бік — сервер у тій самій
+            // ситуації віддає названу відмову (`missingConsents`), тож
+            // пропустити бронь без згоди не вийде в жодному разі. Порожній
+            // `body` при цьому суто теоретичний: `consent_texts` у продукті
+            // не пише ЖОДЕН писач (див. ARCHITECTURE §8).
+            const text = consentShown(c);
+            if (!text) return null;
+            return (
+              <label key={c.kind} className="guest-consent">
+                <input
+                  type="checkbox"
+                  checked={Boolean(ticked[c.kind])}
+                  onChange={(e) => setTicked((was) => ({ ...was, [c.kind]: e.target.checked }))}
+                />
+                {/*
+                  `lang` — мова ТЕКСТУ, а не гостя: редакція може не мати його
+                  мови, і тоді німецьке речення, підписане як чеське, читач
+                  озвучить неправильно.
+                */}
+                <span className="guest-consent-text" lang={text.locale}>
+                  {text.body}{c.required ? ' *' : ''}
+                </span>
+              </label>
+            );
+          })}
           {message && <p className="guest-note" role="status">{message}</p>}
           <button type="submit" className="guest-card" data-primary="true"
             disabled={busy || !allRequiredTicked}>

@@ -131,7 +131,17 @@ function buildSchema(database: any) {
       -- The hotel's base language: what its staff see, and the language its
       -- people type content in — so also the source for translating that
       -- content to guests. See core/i18n/languages.ts.
-      language TEXT NOT NULL DEFAULT 'uk',
+      --
+      -- Дефолт мусить збігатися з DEFAULT_LANGUAGE у коді. Доти тут стояло
+      -- 'uk', а код казав те саме, тож різниці не було видно; щойно базовою
+      -- стала німецька, дефолт колонки лишився б ДРУГОЮ відповіддю на те саме
+      -- питання — і відповідав би та, кого спитали останнім. Той самий клас,
+      -- що запасне 'CZK' у валюті. Постгресу це каже міграція 0420.
+      --
+      -- Зворотних лапок у цьому коментарі немає навмисно: він усередині
+      -- шаблонного рядка, і лапка закриває його посеред SQL. Це вже третій
+      -- такий випадок у проєкті.
+      language TEXT NOT NULL DEFAULT 'de',
       -- Вікові вилки дітей (Блок 2 крок 3, Ц30, 0070): JSON-список меж,
       -- '[3, 12]' → 0–2, 3–11, 12–17; дорослий від 18. '[]' — одна вилка 0–17.
       child_age_bands TEXT NOT NULL DEFAULT '[]',
@@ -5707,7 +5717,11 @@ function runMigrations(database: any) {
   try {
     const orgCols = (database.prepare('PRAGMA table_info(organizations)').all() as any[]).map((c: any) => c.name);
     if (!orgCols.includes('language')) {
-      // Existing installations are Ukrainian — that is what their data is in.
+      // Тут 'uk' лишається НАВМИСНО, на відміну від CREATE вище: ця гілка
+      // виконується лише там, де колонки ще немає, тобто на встановленні
+      // старішому за саму колонку. Її дефолт заповнює НАЯВНІ рядки, а вони
+      // справді українські — це не «базова мова продукту», це констатація
+      // про дані, які там уже лежать.
       database.exec("ALTER TABLE organizations ADD COLUMN language TEXT NOT NULL DEFAULT 'uk'");
       console.log('[DB] organizations: base language column added');
     }

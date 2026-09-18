@@ -41,7 +41,11 @@
    * Must match WIDGET_LANGUAGES in src/modules/widget/ui/widget-language.ts;
    * widget-language.check.ts fails if these two lists drift apart.
    */
-  var WIDGET_LANGUAGES = ['uk', 'en', 'cs', 'de'];
+  // Порядок — реєстру продукту (core/i18n/languages.ts), звужений до мов,
+  // які віджет справді вміє. Список починався з української, тобто німецький
+  // готель першою пропонував мову, якою не говорить ні він, ні гість.
+  // Що він збігається зі списком віджета — стверджує widget-language.check.
+  var WIDGET_LANGUAGES = ['de', 'en', 'cs', 'uk'];
 
   function browserLang() {
     if (typeof navigator === 'undefined' || !navigator.language) return '';
