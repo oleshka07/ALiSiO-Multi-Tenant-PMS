@@ -100,11 +100,23 @@ COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./tsconfig.json
 RUN printf '{"type":"module"}' > ./src/package.json \
  && chown nextjs:nodejs ./src/package.json
 
-# The SQLite database and guest uploads live here, mounted as volumes by
-# deploy/docker-compose.yml. Created up front and owned by the runtime user so a
-# first start does not fail writing into a root-owned directory.
-RUN mkdir -p /app/data /app/public/uploads \
- && chown -R nextjs:nodejs /app/data /app/public/uploads
+# The SQLite database, guest uploads and Winhotel snapshots live here, mounted
+# as volumes by deploy/docker-compose.yml. Created up front and owned by the
+# runtime user so a first start does not fail writing into a root-owned
+# directory.
+#
+# /app/data/winhotel is its own volume (winhotel-snapshots), NOT a folder
+# inside app-data — and that is exactly why it needs its own mkdir. Docker
+# copies the image's ownership onto a fresh named volume only when the mount
+# point ALREADY EXISTS in the image; otherwise it creates the directory itself,
+# owned by root, and the container's unprivileged user cannot write there.
+# `mkdir -p /app/data` does not create the child. Two of the three volumes
+# worked and the third answered every single upload with
+#   EACCES: permission denied, mkdir '/app/data/winhotel/org_…'
+# — from the day the volume was created (10.09.2026) until it was measured on
+# a live hotel server (18.09.2026). Held by scripts/check-volume-dirs.mjs.
+RUN mkdir -p /app/data /app/data/winhotel /app/public/uploads \
+ && chown -R nextjs:nodejs /app/data /app/data/winhotel /app/public/uploads
 
 USER nextjs
 

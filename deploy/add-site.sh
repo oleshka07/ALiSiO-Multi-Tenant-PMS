@@ -25,6 +25,9 @@ fi
 BETA="beta.${DOMAIN}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 CONF="/etc/nginx/sites-available/${DOMAIN}.conf"
+# Одна лінія сертифіката на обидва імені: `certbot --cert-name "$DOMAIN"`
+# нижче, і саме цю теку називає шаблон в обох серверних блоках.
+CERT_DIR="/etc/letsencrypt/live/${DOMAIN}"
 
 command -v nginx >/dev/null || { echo "nginx is not installed — this script does not install it" >&2; exit 1; }
 command -v certbot >/dev/null || { echo "certbot is not installed — this script does not install it" >&2; exit 1; }
@@ -54,17 +57,76 @@ echo "==> nginx snippet"
 install -d /etc/nginx/snippets /var/www/certbot
 cp "${HERE}/nginx/alisio-proxy.conf" /etc/nginx/snippets/alisio-proxy.conf
 
-echo "==> server blocks for ${DOMAIN} and ${BETA}"
-{
-  echo "$MARKER"
-  sed "s/pms\.example\.com/${DOMAIN}/g" "${HERE}/nginx/alisio.conf"
-} > "$CONF"
 ln -sf "$CONF" "/etc/nginx/sites-enabled/${DOMAIN}.conf"
 
-# The template references certificates that do not exist yet, so the config
-# cannot be tested or reloaded until certbot has run. Serve plain HTTP first.
-TMP_HTTP="$(mktemp)"
-cat > "$TMP_HTTP" <<EOF
+# ── Шаблон — це те, що зрештою стоїть на сервері ────────────────────────────
+#
+# Досі було навпаки, і мовчки. Скрипт клав сюди повний deploy/nginx/alisio.conf,
+# а через шістнадцять рядків перезаписував його ТИМЧАСОВИМ HTTP-конфігом — бо
+# шаблон посилається на сертифікати, яких ще немає. Далі `certbot --nginx`
+# дописував TLS у ТИМЧАСОВИЙ, і на цьому все закінчувалось: шаблон не
+# повертався ніколи, ні при першому запуску, ні при повторному.
+#
+# Ціна вимірялась 18.09.2026 на живому готелі. У шаблоні є
+# `location = /api/apps/winhotel-import/snapshots` з `client_max_body_size
+# 200m` і коментарем «gzip на ~80 МБ» — автор угадав до мегабайта (вимір дав
+# 81 738 КБ). Цей блок не діяв у ЖОДНОМУ середовищі й ніколи не діяв: агент
+# готелю отримував 413 від nginx, а не відповідь застосунку.
+#
+# Порядок нижче обраний так, щоб пережити повторний запуск: тимчасовий конфіг
+# існує рівно доти, доки certbot не має що встановлювати, а ОСТАННЄ, що
+# скрипт робить завжди, — кладе шаблон і перезавантажує nginx. Тобто скільки
+# б разів його не запустили, на диску лишається шаблон, а не сліди
+# проміжного стану.
+
+# Повний шаблон із підставленим доменом. Одна лінія сертифіката на обидва
+# імені — `--cert-name "$DOMAIN"` нижче, і саме її називає шаблон.
+render_template() {
+  echo "$MARKER"
+  sed "s/pms\.example\.com/${DOMAIN}/g" "${HERE}/nginx/alisio.conf"
+}
+
+# Покласти шаблон і перезавантажити — але лише якщо nginx його прийняв.
+#
+# Перевірка не косметична: `nginx -t` над конфігом, який посилається на
+# неіснуючий сертифікат, падає, і наступне перезавантаження кладе КОЖЕН
+# інший сайт на цьому хості. Тому при провалі ми повертаємо те, що працювало
+# (конфіг, який залишив certbot), і виходимо з помилкою, так і не
+# перезавантаживши nginx зі зламаним файлом.
+install_template() {
+  local backup=''
+  if [ -f "$CONF" ]; then
+    backup="$(mktemp)"
+    cp "$CONF" "$backup"
+  fi
+  render_template > "$CONF"
+  if ! nginx -t; then
+    echo "!! шаблон nginx/alisio.conf не проходить nginx -t для ${DOMAIN}" >&2
+    if [ -n "$backup" ]; then
+      cp "$backup" "$CONF"
+      rm -f "$backup"
+      echo "!! повернуто попередній конфіг; nginx не перезавантажувався" >&2
+    else
+      rm -f "$CONF" "/etc/nginx/sites-enabled/${DOMAIN}.conf"
+      echo "!! конфіг прибрано; nginx не перезавантажувався" >&2
+    fi
+    echo "!! найчастіша причина: certbot назвав лінію сертифіката інакше," >&2
+    echo "!! ніж ${CERT_DIR} — подивіться certbot certificates" >&2
+    exit 1
+  fi
+  if [ -n "$backup" ]; then rm -f "$backup"; fi
+  systemctl reload nginx
+}
+
+if [ -s "${CERT_DIR}/fullchain.pem" ]; then
+  echo "==> certificate for ${DOMAIN} is already there — template goes up as is"
+else
+  echo "==> temporary HTTP server blocks for ${DOMAIN} and ${BETA}"
+  # Живе рівно до відповіді certbot: шаблон вимагає сертифікатів, яких ще
+  # немає, а certbot --nginx вимагає конфіга, який nginx приймає. Нижче він
+  # буде замінений шаблоном беззастережно.
+  TMP_HTTP="$(mktemp)"
+  cat > "$TMP_HTTP" <<EOF
 $MARKER
 map \$http_upgrade \$connection_upgrade { default upgrade; '' close; }
 server {
@@ -72,6 +134,7 @@ server {
     listen [::]:80;
     server_name ${DOMAIN};
     client_max_body_size 25m;
+    location /.well-known/acme-challenge/ { root /var/www/certbot; }
     location / { proxy_pass http://127.0.0.1:3130; include /etc/nginx/snippets/alisio-proxy.conf; }
 }
 server {
@@ -80,14 +143,16 @@ server {
     server_name ${BETA};
     client_max_body_size 25m;
     add_header X-Robots-Tag "noindex, nofollow" always;
+    location /.well-known/acme-challenge/ { root /var/www/certbot; }
     location / { proxy_pass http://127.0.0.1:3131; include /etc/nginx/snippets/alisio-proxy.conf; }
 }
 EOF
-cp "$TMP_HTTP" "$CONF"
-rm -f "$TMP_HTTP"
+  cp "$TMP_HTTP" "$CONF"
+  rm -f "$TMP_HTTP"
 
-nginx -t
-systemctl reload nginx
+  nginx -t
+  systemctl reload nginx
+fi
 
 echo "==> certificates"
 # --nginx edits only the server blocks matching -d, so other sites are left
@@ -95,8 +160,11 @@ echo "==> certificates"
 certbot --nginx --non-interactive --agree-tos -m "$EMAIL" \
   -d "$DOMAIN" -d "$BETA" --cert-name "$DOMAIN"
 
-nginx -t
-systemctl reload nginx
+echo "==> server blocks for ${DOMAIN} and ${BETA} (deploy/nginx/alisio.conf)"
+# Останній крок, і він же той самий при повторному запуску: усе, що certbot
+# дописав у файл, замінюється шаблоном, який лежить у репозиторії. Що стоїть
+# на сервері — видно в git, а не лише на сервері.
+install_template
 
 cat <<EOF
 

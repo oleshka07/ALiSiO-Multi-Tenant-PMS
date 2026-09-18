@@ -55,6 +55,30 @@ jobs:
         # would refuse
         run: npm run check
 
+      - name: the hotel's agent actually runs
+        # PowerShell, executed rather than read. The Winhotel agent is the only
+        # thing in this repository that runs on somebody else's machine, and it
+        # was the only thing nothing ever ran: `npm run check` cannot load a
+        # .ps1, `tsc` does not know it exists.
+        #
+        # The price was measured on 18.09.2026, the first time the agent was
+        # installed on a hotel's server. A local variable in the body shared a
+        # name with a parameter carrying [ValidateSet], and PowerShell validates
+        # a set on EVERY assignment: `$Mode = $null` became an empty string,
+        # the empty string is not in the set, and the terminating error happened
+        # BEFORE the try{} block — so the log stayed empty and the process left
+        # with 1. The nightly snapshot had therefore never worked anywhere, on
+        # any machine, since the day it was written. Delta was fine: it returns
+        # before that line.
+        #
+        # This step runs the agent against a fixture and a local listener that
+        # answers 401, and asserts what actually left the machine: exit code 4
+        # (the named "upload failed" refusal, not 1), one POST, the headers, and
+        # a body whose sha256 matches its header and gunzips to the fresh .fbk.
+        # Ubuntu runners ship pwsh; the gate refuses loudly rather than skipping
+        # when it is missing.
+        run: npm run check:agent
+
       - name: translations
         # fails on dead entries — a translation whose Ukrainian key no longer
         # exists in the source, which inflates coverage and translates nothing
