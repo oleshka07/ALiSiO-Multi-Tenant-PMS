@@ -4,7 +4,6 @@ import { parseLanguage } from '@core/i18n/languages';
 import { readBrandPalette, paletteBackground } from '@core/brand-palettes';
 import { logoFor } from '@core/brand-assets';
 import { brandAssetsOf } from '@properties/brand-assets';
-import { runWithOrganization } from '@core/auth/tenant-context';
 import * as portalRepo from '../data/guest-portal.repo';
 // TODO: replace with @shared/translate when shared module exists
 import { extractTexts, extractServiceTexts, getStoredTranslations } from '@core/i18n/translate';
@@ -77,12 +76,21 @@ export async function getGuestPortal(
 
     const propertyName = reservation.property_name || '';
 
-    // Зображення обʼєкта (0421) — через двері модуля і ПІД ОРЕНДАРЕМ.
-    // `property_brand_assets` під RLS без пункту про публічну перепустку, тож
-    // читання поза орендарем віддало б порожньо — мовчки (рід INC-014).
-    const brandAssets = await runWithOrganization(
-      String(reservation.organization_id),
-      () => brandAssetsOf(String(reservation.organization_id), String(reservation.property_id)),
+    // Зображення обʼєкта (0421) — через ДВЕРІ модуля, не сирим SQL:
+    // `property_brand_assets` належить `modules/properties`, і запит звідси
+    // був би пробоєм межі (`check-boundaries`).
+    //
+    // Свого `runWithOrganization` тут НЕМАЄ, і це перевірено, а не припущено:
+    // весь хендлер уже біжить усередині нього — `withGuest` у `api/index.ts`
+    // розвʼязує токен і кличе `withGuestReservation`, тобто орендар стоїть на
+    // зʼєднанні ще до першого читання. Обгортка тут була б другою відповіддю
+    // на те саме питання й казала б наступному читачеві, що контексту немає.
+    //
+    // Доведено зломом: прибрати обгортку й прогнати сцену на СПРАВЖНЬОМУ
+    // Postgres — зелено, бо політиці вже є що звіряти. Гейт, який не вміє
+    // почервоніти, нічого не стверджує (AGENTS §3.2).
+    const brandAssets = await Promise.resolve(
+      brandAssetsOf(String(reservation.organization_id), String(reservation.property_id)),
     ).catch((e) => {
       // Вигляд — прикраса, а не умова: збій тут не має закривати гостю
       // сторінку його броні. У лог, на екран — назва текстом.

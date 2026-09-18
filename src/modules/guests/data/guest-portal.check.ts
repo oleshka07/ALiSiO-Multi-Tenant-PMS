@@ -25,6 +25,7 @@ import '../../../../scripts/lib/module-aliases.mjs';
 
 const { getSql } = await import('@core/db/async');
 const { getGuestPortal } = await import('@guests');
+const { runWithOrganization } = await import('@core/auth/tenant-context');
 
 const sql = getSql();
 const ORG = '__guest_portal__';
@@ -32,60 +33,80 @@ const PROP = `${ORG}_prop`;
 const TOKEN = 'tok_guest_portal_check_0001';
 const iso = (offsetDays: number) => new Date(Date.now() + offsetDays * 86400000).toISOString().slice(0, 10);
 
+/**
+ * Засів і прибирання йдуть ПІД ОРЕНДАРЕМ.
+ *
+ * Спершу ця сцена бігала лише на SQLite, де політик немає, і сіяла голим
+ * `sql.run`. На справжньому Postgres той самий рядок відхиляється —
+ * `new row violates row-level security policy` — бо `WITH CHECK` вимагає,
+ * щоб орендар стояв на ЗʼЄДНАННІ (інваріант 11). Сцена, яка вміє лише
+ * SQLite, не бачить рівно того класу, заради якого її й додано в
+ * `check:pg`: лого лежить у таблиці під RLS, і читання поза орендарем
+ * віддає порожньо мовчки.
+ *
+ * `organizations` — таблиця особи, її читають до того, як орендар відомий,
+ * тож вона лишається поза обгорткою.
+ */
+const asOrg = <T>(fn: () => Promise<T>): Promise<T> => runWithOrganization(ORG, fn);
+
 async function cleanup() {
-  await sql.run('DELETE FROM reservations WHERE property_id = ?', [PROP]);
-  await sql.run('DELETE FROM guests WHERE organization_id = ?', [ORG]);
-  await sql.run('DELETE FROM units WHERE property_id = ?', [PROP]);
-  await sql.run('DELETE FROM unit_types WHERE property_id = ?', [PROP]);
-  await sql.run('DELETE FROM categories WHERE property_id = ?', [PROP]);
-  await sql.run('DELETE FROM property_brand_assets WHERE property_id = ?', [PROP]);
-  await sql.run('DELETE FROM properties WHERE organization_id = ?', [ORG]);
-  await sql.run('DELETE FROM organization_features WHERE organization_id = ?', [ORG]);
+  await asOrg(async () => {
+    await sql.run('DELETE FROM reservations WHERE property_id = ?', [PROP]);
+    await sql.run('DELETE FROM guests WHERE organization_id = ?', [ORG]);
+    await sql.run('DELETE FROM units WHERE property_id = ?', [PROP]);
+    await sql.run('DELETE FROM unit_types WHERE property_id = ?', [PROP]);
+    await sql.run('DELETE FROM categories WHERE property_id = ?', [PROP]);
+    await sql.run('DELETE FROM property_brand_assets WHERE property_id = ?', [PROP]);
+    await sql.run('DELETE FROM properties WHERE organization_id = ?', [ORG]);
+    await sql.run('DELETE FROM organization_features WHERE organization_id = ?', [ORG]);
+  });
   await sql.run('DELETE FROM organizations WHERE id = ?', [ORG]);
 }
 
 await cleanup();
 try {
   await sql.run('INSERT INTO organizations (id, name, slug, language) VALUES (?, ?, ?, ?)', [ORG, ORG, ORG, 'uk']);
-  // Гостьова сторінка — платний модуль (П15): без нього варта віддає той
-  // самий 404, що й неіснуючий токен, і сцена доводила б не те.
-  await sql.run('INSERT INTO organization_features (organization_id, feature, enabled) VALUES (?, ?, ?)', [ORG, 'guest_page', 1]);
-  await sql.run(
-    `INSERT INTO properties (id, organization_id, name, slug, address, city, country, phone, email, check_in_time, check_out_time)
-     VALUES (?, ?, 'Hotel', ?, 'Street 1', 'City', 'CZ', '+420000000000', 'hotel@example.test', '14:00', '10:00')`,
-    [PROP, ORG, PROP],
-  );
-  await sql.run('INSERT INTO categories (id, property_id, name, type) VALUES (?, ?, ?, ?)', [`${ORG}_cat`, PROP, 'Rooms', 'room']);
-  await sql.run(
-    `INSERT INTO unit_types (id, property_id, category_id, name, code, description,
-                             max_adults, max_children, max_occupancy, base_occupancy, beds_single, beds_double, beds_sofa)
-     VALUES (?, ?, ?, 'Double', 'DBL', 'Room description', 2, 0, 2, 2, 0, 1, 0)`,
-    [`${ORG}_ut`, PROP, `${ORG}_cat`],
-  );
-  await sql.run(
-    `INSERT INTO units (id, property_id, unit_type_id, category_id, name, code, beds) VALUES (?, ?, ?, ?, '101', '101', 2)`,
-    [`${ORG}_unit`, PROP, `${ORG}_ut`, `${ORG}_cat`],
-  );
-  await sql.run(
-    `INSERT INTO guests (id, organization_id, first_name, last_name, email, phone) VALUES (?, ?, 'Anna', 'Guest', ?, '+420111111111')`,
-    [`${ORG}_g`, ORG, 'anna@example.test'],
-  );
-  await sql.run(
-    `INSERT INTO reservations (id, organization_id, property_id, guest_id, unit_id, check_in, check_out, nights,
-                               adults, children, infants, status, payment_status, total_price, currency, source, guest_page_token)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 2, 2, 0, 0, 'confirmed', 'unpaid', 4000, 'CZK', 'direct', ?)`,
-    [`${ORG}_r`, ORG, PROP, `${ORG}_g`, `${ORG}_unit`, iso(1), iso(3), TOKEN],
-  );
+  await asOrg(async () => {
+    // Гостьова сторінка — платний модуль (П15): без нього варта віддає той
+    // самий 404, що й неіснуючий токен, і сцена доводила б не те.
+    await sql.run('INSERT INTO organization_features (organization_id, feature, enabled) VALUES (?, ?, TRUE)', [ORG, 'guest_page']);
+    await sql.run(
+      `INSERT INTO properties (id, organization_id, name, slug, address, city, country, phone, email, check_in_time, check_out_time)
+       VALUES (?, ?, 'Hotel', ?, 'Street 1', 'City', 'CZ', '+420000000000', 'hotel@example.test', '14:00', '10:00')`,
+      [PROP, ORG, PROP],
+    );
+    await sql.run('INSERT INTO categories (id, property_id, name, type) VALUES (?, ?, ?, ?)', [`${ORG}_cat`, PROP, 'Rooms', 'room']);
+    await sql.run(
+      `INSERT INTO unit_types (id, property_id, category_id, name, code, description,
+                               max_adults, max_children, max_occupancy, base_occupancy, beds_single, beds_double, beds_sofa)
+       VALUES (?, ?, ?, 'Double', 'DBL', 'Room description', 2, 0, 2, 2, 0, 1, 0)`,
+      [`${ORG}_ut`, PROP, `${ORG}_cat`],
+    );
+    await sql.run(
+      `INSERT INTO units (id, property_id, unit_type_id, category_id, name, code, beds) VALUES (?, ?, ?, ?, '101', '101', 2)`,
+      [`${ORG}_unit`, PROP, `${ORG}_ut`, `${ORG}_cat`],
+    );
+    await sql.run(
+      `INSERT INTO guests (id, organization_id, first_name, last_name, email, phone) VALUES (?, ?, 'Anna', 'Guest', ?, '+420111111111')`,
+      [`${ORG}_g`, ORG, 'anna@example.test'],
+    );
+    await sql.run(
+      `INSERT INTO reservations (id, organization_id, property_id, guest_id, unit_id, check_in, check_out, nights,
+                                 adults, children, infants, status, payment_status, total_price, currency, source, guest_page_token)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 2, 2, 0, 0, 'confirmed', 'unpaid', 4000, 'CZK', 'direct', ?)`,
+      [`${ORG}_r`, ORG, PROP, `${ORG}_g`, `${ORG}_unit`, iso(1), iso(3), TOKEN],
+    );
 
-  // Лого — РОЛЬОВИМ рядком (0421), не колонкою `properties.brand_logo_url`.
-  // Ролей дві, і вони РІЗНІ: інакше твердження «взяли logo» було б зелене і
-  // на дверях, що беруть перший-ліпший рядок (інваріант 26).
-  await sql.run(
-    `INSERT INTO property_brand_assets (organization_id, property_id, role, url) VALUES (?, ?, ?, ?)`,
-    [ORG, PROP, 'logo', '/uploads/brand-dark-ink.png']);
-  await sql.run(
-    `INSERT INTO property_brand_assets (organization_id, property_id, role, url) VALUES (?, ?, ?, ?)`,
-    [ORG, PROP, 'cover', '/uploads/brand-cover.jpg']);
+    // Лого — РОЛЬОВИМ рядком (0421), не колонкою `properties.brand_logo_url`.
+    // Ролей дві, і вони РІЗНІ: інакше твердження «взяли logo» було б зелене і
+    // на дверях, що беруть перший-ліпший рядок (інваріант 26).
+    await sql.run(
+      `INSERT INTO property_brand_assets (organization_id, property_id, role, url) VALUES (?, ?, ?, ?)`,
+      [ORG, PROP, 'logo', '/uploads/brand-dark-ink.png']);
+    await sql.run(
+      `INSERT INTO property_brand_assets (organization_id, property_id, role, url) VALUES (?, ?, ?, ?)`,
+      [ORG, PROP, 'cover', '/uploads/brand-cover.jpg']);
+  });
 
   const call = (token: string) => getGuestPortal(
     new Request('http://localhost/api/guest/' + token) as any,
