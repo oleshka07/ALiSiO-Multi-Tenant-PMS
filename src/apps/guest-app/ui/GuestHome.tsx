@@ -181,7 +181,7 @@ export function GuestHome({ propertyName, appKey, initialLang, hotelLang, palett
       )}
 
       {step === 'stay' && (
-        <GuestStay appKey={appKey} lang={lang} onBack={() => setStep('home')} />
+        <GuestStay appKey={appKey} lang={lang} hotelLang={hotelLang} onBack={() => setStep('home')} />
       )}
 
       {step === 'find' && (

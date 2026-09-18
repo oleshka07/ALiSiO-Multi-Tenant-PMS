@@ -20,6 +20,7 @@ import { NextResponse } from 'next/server';
 import { runWithOrganization } from '@core/auth/tenant-context';
 import { handleError, refuse } from '@core/http/errors';
 import { checkRateLimit } from '@core/security/rate-limit';
+import { parseLanguage } from '@core/i18n/languages';
 import { propertyByAppKey } from '../data/property.repo';
 import { readGuestAppKey } from '../domain/key';
 import { activeConsentTexts } from '@guests/kernel';
@@ -111,7 +112,14 @@ export async function listOffers(request: Request): Promise<Response> {
     const source = sourceFor(home.systemOfRecord, { core: coreSource, handoff: handoffSource });
     const away = source.kind === 'handoff' ? (home.walkinUrl ?? null) : null;
 
-    const lang = String(body.lang ?? 'de');
+    // Мова ГОСТЯ, а не константа. Тут стояло `body.lang ?? 'de'`, і застосунок
+    // цього поля не слав узагалі — тобто тексти згод їхали німецькою на будь-якій
+    // обраній мові. Той самий клас, що `|| 'CZK'` і `|| 'Europe/Prague'`:
+    // мова одного клієнта, тихо виставлена всім.
+    //
+    // Немає поля — мова ГОТЕЛЮ. Вона і є те, чим готель говорить, коли ніхто
+    // не обрав; вигадувати тут третю країну нема з чого.
+    const lang = parseLanguage(body.lang, home.hotelLanguage);
     const { offers, consents } = await runWithOrganization(home.organizationId, async () => ({
       offers: await source.offers({
         organizationId: home.organizationId, propertyId: home.propertyId, from, to, adults,
@@ -134,12 +142,22 @@ export async function listOffers(request: Request): Promise<Response> {
     // послуг іде одразу за вибором номера, і сума на ньому одна. Валюту
     // бере перша пропозиція; немає пропозицій — немає й кроку послуг, бо
     // додавати сніданок нема до чого.
-    const services = offers.length > 0
+    const extras = offers.length > 0
       ? await runWithOrganization(home.organizationId,
         () => bookableServices(home.organizationId, home.propertyId, offers[0].currency))
-      : [];
+      : { services: [], translations: {} };
 
-    return NextResponse.json({ offers, consents, services, handoff: away });
+    // `hotelLanguage` їде у відповіді, бо без нього екран не може привести
+    // текст до мови гостя: правило «мова готелю → базова колонка» потребує
+    // знати, яка вона. Зашити тут 'uk' означало б припустити, що вміст
+    // будь-якого готелю написаний українською — для Грайця це неправда з
+    // першого дня.
+    return NextResponse.json({
+      offers, consents, handoff: away,
+      services: extras.services,
+      translations: extras.translations,
+      hotelLanguage: home.hotelLanguage,
+    });
   } catch (error) {
     return handleError('apps/guest listOffers', error, 'Не вдалося показати вільні номери');
   }

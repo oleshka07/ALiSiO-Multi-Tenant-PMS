@@ -1,14 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import './guest-page.css';
 import {
   type Lang, LANG_LABELS,
   getTranslations, detectLanguage, getBrandName,
   formatDateLocalized, formatPriceLocalized,
 } from './translations';
-import { translateContent } from './content-translations';
+import { localisedContent, localisedText } from '@core/i18n/content-field';
 import { PaymentGateScreen } from '@/modules/guests/ui/PaymentGateScreen';
 import { paymentGateStands } from '@/modules/guests/ui/payment-gate';
 import { readBrandPalette, readBrandLogoUrl } from '@/core/brand-palettes';
@@ -270,32 +270,42 @@ export default function GuestPage() {
     return () => window.removeEventListener('beforeunload', handleUnload);
   }, [token, cartItems, data?.phase]);
 
-  // Translate DB content (stored in Ukrainian) to the active language.
-  // Priority: static dictionary → server-side cache (DB + static fallback) → original.
-  // Text is trimmed before all lookups to handle whitespace inconsistencies.
-  const tc = useCallback((text: string): string => {
-    if (!text || lang === 'uk') return text;
-    const trimmed = text.trim();
-    // 1. Static dictionary (instant, no network)
-    const dictResult = translateContent(trimmed, lang);
-    if (dictResult !== trimmed) return dictResult;
-    // 2. Server-side cache returned by the API (includes static dict as fallback)
-    const cached = data?.translations?.[trimmed]?.[lang];
-    if (cached) return cached;
-    // 3. Original text (Ukrainian) — only for truly custom untranslated content
-    return text;
-  }, [lang, data?.translations]);
+  /**
+   * ── Текст ГОТЕЛЮ мовою гостя ──────────────────────────────────────────
+   *
+   * Тут стояли два приватні прочитання поруч: `tc` для одиноких рядків і
+   * `svcField` для рядків довідника. Обидва казали приблизно те саме й обидва
+   * казали це по-своєму — а гостьовий ЗАСТОСУНОК, який гість проходить за
+   * пів кроку до цієї сторінки, не мав жодного і показував ту саму послугу
+   * німецькою.
+   *
+   * Тепер одні двері (`@core/i18n/content-field`) на всі три поверхні, і
+   * порядок джерел у них ОДИН. Розійтись він більше не може за побудовою.
+   *
+   * `sourceLang` — мова ГОТЕЛЮ (`data.language`), а не 'uk': тут це стояло
+   * літералом, тобто припущенням, що вміст будь-якого готелю написаний
+   * українською. Для німецького готелю це неправда з першого дня, і саме
+   * через це його власний текст ішов у словник і в кеш, замість того щоб
+   * лишитись собою.
+   */
+  const contentOrigin = useMemo(
+    () => ({
+      // Мова готелю приїжджає з відповіддю (`organizations.language`). Немає
+      // її — англійська, як і в решті сторінки: вигадати тут українську
+      // означало б послати німецький текст у словник українських ключів.
+      sourceLang: (ALL_LANGS.includes(data?.language) ? data!.language : 'en') as Lang,
+      stored: data?.translations ?? null,
+    }),
+    [data?.language, data?.translations]);
 
-  // Pick localised name/label from a service/menu-item object.
-  // Priority: per-column (name_en, name_de…) → tc(name) → name
-  const svcField = useCallback((obj: any, field: 'name' | 'description' | 'unit_label'): string => {
-    if (!obj) return '';
-    if (lang !== 'uk') {
-      const colKey = `${field}_${lang}`;
-      if (obj[colKey]) return obj[colKey];
-    }
-    return tc(obj[field] || '') || obj[field] || '';
-  }, [lang, tc]);
+  const tc = useCallback(
+    (text: string): string => localisedText(text, lang, contentOrigin),
+    [lang, contentOrigin]);
+
+  const svcField = useCallback(
+    (obj: any, field: 'name' | 'description' | 'unit_label'): string =>
+      localisedContent(obj, field, lang, contentOrigin),
+    [lang, contentOrigin]);
 
   const t = getTranslations(lang);
 

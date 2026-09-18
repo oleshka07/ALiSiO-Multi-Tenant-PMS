@@ -24,9 +24,10 @@
  * звіряють, рано чи пізно звіряють не з тим.
  */
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { HOLD_MINUTES } from '../domain/hold';
 import type { StayOffer } from '../domain/port';
+import { localisedContent, type StoredTranslations } from '@core/i18n/content-field';
 import { GUEST_STRINGS, type GuestLang } from './translations';
 
 type Stage = 'dates' | 'rooms' | 'extras' | 'details' | 'confirm' | 'claim';
@@ -41,14 +42,26 @@ interface ConsentOffer {
   required: boolean;
 }
 
-/** Послуга, яку готель дозволив продавати онлайн (`bookable_online`, 0417). */
-interface ServiceOffer {
+/**
+ * Послуга, яку готель дозволив продавати онлайн (`bookable_online`, 0417).
+ *
+ * `name`, `description` і `unit_label` тут — текст ГОТЕЛЮ, його мовою. Поруч
+ * приїжджають заповнені колонки мов (`name_cs`, `unit_label_pl`…) — саме тому
+ * тут індексна сигнатура, а не перелік: набір ключів залежить від того, що
+ * готель заповнив, і перелічувати 18 можливих імен означало б завести
+ * сьомий список мов (КІ38).
+ *
+ * До мови гостя це приводить `localisedContent`, і робить це ЕКРАН, а не
+ * сервер: перемикач мови видимий на кожному кроці, зокрема на цьому, і
+ * список послуг на той момент уже лежить у стані.
+ */
+interface ServiceOffer extends Record<string, unknown> {
   id: string;
   name: string;
   description: string | null;
   price: number;
   currency: string;
-  unitLabel: string;
+  unit_label: string;
   category: string;
 }
 
@@ -72,9 +85,11 @@ function defaultDates(): { from: string; to: string } {
   return { from: d(0), to: d(1) };
 }
 
-export function GuestStay({ appKey, lang, onBack }: {
+export function GuestStay({ appKey, lang, hotelLang, onBack }: {
   appKey: string;
   lang: GuestLang;
+  /** Мова, якою написаний вміст готелю. Без неї текст не привести. */
+  hotelLang: GuestLang;
   onBack: () => void;
 }) {
   const s = GUEST_STRINGS[lang];
@@ -88,6 +103,8 @@ export function GuestStay({ appKey, lang, onBack }: {
   const [handoff, setHandoff] = useState<string | null>(null);
   const [consents, setConsents] = useState<ConsentOffer[]>([]);
   const [services, setServices] = useState<ServiceOffer[]>([]);
+  /** Кеш перекладів, який приїхав разом із послугами. Порожній — не помилка. */
+  const [contentTranslations, setContentTranslations] = useState<StoredTranslations>({});
   /** Скільки чого гість узяв. Немає ключа — не взяв; нуль тут не зберігається. */
   const [extras, setExtras] = useState<Record<string, number>>({});
   const [ticked, setTicked] = useState<Record<string, boolean>>({});
@@ -122,6 +139,17 @@ export function GuestStay({ appKey, lang, onBack }: {
    * правим буде довідник — і саме тому гість бачить суму ще до кнопки.
    */
   const extrasTotal = services.reduce((sum, x) => sum + x.price * (extras[x.id] ?? 0), 0);
+
+  /**
+   * Текст готелю мовою гостя — ті самі двері, що на гостьовій сторінці.
+   *
+   * `sourceLang` — мова ГОТЕЛЮ, а не 'uk': саме вона вирішує, коли переклад
+   * не потрібен, бо текст уже свій.
+   */
+  const shown = useCallback(
+    (row: ServiceOffer, field: 'name' | 'description' | 'unit_label') =>
+      localisedContent(row, field, lang, { sourceLang: hotelLang, stored: contentTranslations }),
+    [lang, hotelLang, contentTranslations]);
 
   /** Кнопку тримають лише обовʼязкові роди — і рахує це екран, і звіряє сервер. */
   const allRequiredTicked = consents.every((c) => !c.required || ticked[c.kind]);
@@ -158,7 +186,9 @@ export function GuestStay({ appKey, lang, onBack }: {
     setMessage(null);
     setBusy(true);
     try {
-      const { ok, status, json } = await post('offers', { from, to, adults });
+      // Мова їде в тілі: нею сервер обирає редакцію текстів згод. Без цього
+      // поля там стояв дефолт 'de', і чех бачив німецькі умови.
+      const { ok, status, json } = await post('offers', { from, to, adults, lang });
       if (!ok) { setMessage(refusalText(status)); return; }
       const list = (json.offers ?? []) as StayOffer[];
       const away = (json.handoff ?? null) as string | null;
@@ -166,6 +196,7 @@ export function GuestStay({ appKey, lang, onBack }: {
       setHandoff(away);
       setConsents((json.consents ?? []) as ConsentOffer[]);
       setServices((json.services ?? []) as ServiceOffer[]);
+      setContentTranslations((json.translations ?? {}) as StoredTranslations);
       // Порожньо — це стан, а не помилка: гість має бачити речення, а не
       // порожній екран, з якого не зрозуміло, чи воно шукало взагалі.
       if (list.length === 0 && !away) { setMessage(s.nothingFree); return; }
@@ -372,10 +403,10 @@ export function GuestStay({ appKey, lang, onBack }: {
             const n = extras[x.id] ?? 0;
             return (
               <div key={x.id} className="guest-card" data-static="true">
-                <span className="guest-card-title">{x.name}</span>
-                {x.description && <span className="guest-card-help">{x.description}</span>}
+                <span className="guest-card-title">{shown(x, 'name')}</span>
+                {x.description && <span className="guest-card-help">{shown(x, 'description')}</span>}
                 <span className="guest-rate">
-                  {price(x.price, x.currency)} {x.unitLabel}
+                  {price(x.price, x.currency)} {shown(x, 'unit_label')}
                 </span>
                 <span className="guest-qty">
                   <button type="button" className="guest-qty-btn" aria-label={s.remove}
