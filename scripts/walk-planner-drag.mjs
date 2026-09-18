@@ -31,7 +31,10 @@
  * Ганяти лише на тестовому середовищі. Пароля у файлі немає — куку сесії
  * передає той, хто запускає, як у `smoke-writes.mjs`.
  */
-import { chromium } from 'playwright';
+// `@playwright/test`, не `playwright`: другий лежить у node_modules лише
+// тому, що його тягне перший, і зник би разом зі зміною його залежностей —
+// зламався б цей скрипт, а причина була б не тут (`check-lockfile`).
+import { chromium } from '@playwright/test';
 
 const BASE = process.env.APP_URL || 'http://127.0.0.1:3000';
 const SESSION = process.env.WALK_SESSION;
