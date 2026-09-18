@@ -32,6 +32,13 @@ CERT_DIR="/etc/letsencrypt/live/${DOMAIN}"
 command -v nginx >/dev/null || { echo "nginx is not installed — this script does not install it" >&2; exit 1; }
 command -v certbot >/dev/null || { echo "certbot is not installed — this script does not install it" >&2; exit 1; }
 
+# Шаблон перевіряється ТУТ, а не в момент запису. `render_template > "$CONF"`
+# спершу обнуляє файл і лише потім запускає sed: відсутній шаблон лишив би на
+# сервері порожній конфіг сайта, і наступне перезавантаження nginx — чиє
+# завгодно — поклало б домен. Дешевше не дійти до цього місця.
+TEMPLATE="${HERE}/nginx/alisio.conf"
+[ -s "$TEMPLATE" ] || { echo "не знайдено шаблон $TEMPLATE — запускати з клону репозиторію" >&2; exit 1; }
+
 # Refuse to overwrite a server block that some other tool put there. If the
 # file exists and does not carry our marker, the operator decides.
 MARKER="# managed by alisio deploy/add-site.sh"
@@ -83,7 +90,7 @@ ln -sf "$CONF" "/etc/nginx/sites-enabled/${DOMAIN}.conf"
 # імені — `--cert-name "$DOMAIN"` нижче, і саме її називає шаблон.
 render_template() {
   echo "$MARKER"
-  sed "s/pms\.example\.com/${DOMAIN}/g" "${HERE}/nginx/alisio.conf"
+  sed "s/pms\.example\.com/${DOMAIN}/g" "$TEMPLATE"
 }
 
 # Покласти шаблон і перезавантажити — але лише якщо nginx його прийняв.
@@ -119,7 +126,13 @@ install_template() {
 }
 
 if [ -s "${CERT_DIR}/fullchain.pem" ]; then
+  # Сертифікат уже є — шаблон можна класти одразу, і його треба класти ДО
+  # certbot: `ln -sf` вище вже створив посилання в sites-enabled, і якщо
+  # `$CONF` при цьому не існує (його прибрали руками), nginx спотикається об
+  # биту вʼязь — а `nginx -t` усередині certbot падає разом із ним. Далі
+  # install_template виконається ще раз, після certbot: він ідемпотентний.
   echo "==> certificate for ${DOMAIN} is already there — template goes up as is"
+  install_template
 else
   echo "==> temporary HTTP server blocks for ${DOMAIN} and ${BETA}"
   # Живе рівно до відповіді certbot: шаблон вимагає сертифікатів, яких ще
