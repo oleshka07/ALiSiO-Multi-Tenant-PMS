@@ -1292,6 +1292,52 @@ function runMigrations(database: any) {
     )
   `);
 
+  // --- Migration: property_brand_assets (0421) ---
+  //
+  // Зображення обʼєкта, названі РОЛЯМИ: лого, лого для темного тла,
+  // обкладинка. Реєстр ролей і, головне, ЧИТАЧ кожної — у
+  // `src/core/brand-assets.ts`.
+  //
+  // Роль без читача тут уже вмирала: сусідня `property_photos` мала
+  // `photo_type` із CHECK на building/territory/common/aerial, і її знесло
+  // прибирання мертвих колонок нижче — писач був, читача не було жодного.
+  //
+  // CHECK на `role` немає свідомо (як у 0410 і 0419): нова роль не має
+  // вимагати міграції, слово звіряє код, а невідоме просто не показується.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS property_brand_assets (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+      role TEXT NOT NULL,
+      url TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  // Один рядок на роль: дві обкладинки не мають сенсу, а екран, який дістав
+  // би дві, обирав би за порядком рядків від бази (клас INC-027).
+  database.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_property_brand_assets_role
+    ON property_brand_assets (property_id, role)`);
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_property_brand_assets_org
+    ON property_brand_assets (organization_id)`);
+  // Лого ПЕРЕЇЖДЖАЄ з колонки в роль і в колонці очищається: дві адреси
+  // одного лого — два джерела одного факту (клас запасного CZK). Дані не
+  // гинуть, вони в новій таблиці.
+  try {
+    const cols = (database.prepare('PRAGMA table_info(properties)').all() as any[]).map((c: any) => c.name);
+    if (cols.includes('brand_logo_url')) {
+      database.exec(`
+        INSERT OR IGNORE INTO property_brand_assets (organization_id, property_id, role, url)
+        SELECT p.organization_id, p.id, 'logo', p.brand_logo_url
+          FROM properties p
+         WHERE p.brand_logo_url IS NOT NULL AND TRIM(p.brand_logo_url) <> ''
+      `);
+      database.exec(`UPDATE properties SET brand_logo_url = NULL
+         WHERE brand_logo_url IS NOT NULL AND TRIM(brand_logo_url) <> ''`);
+    }
+  } catch { /* колонки ще немає — нічого переносити */ }
+
   // --- Migration: create guest_page_config table ---
   const gpcExists = database.prepare(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='guest_page_config'"

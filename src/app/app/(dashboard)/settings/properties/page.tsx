@@ -12,6 +12,7 @@ import { LODGING_KINDS } from '@core/lodging-kinds';
 // нижче: готель без каналів не має бачити нічого про чужі тарифи.
 import { LodgingBillingHint } from '@/modules/channels/ui/LodgingBillingHint';
 import { CatalogStaleNotice } from '@/modules/channels/ui/CatalogStaleNotice';
+import { PropertyBrandCard } from '@/modules/properties/ui/PropertyBrandCard';
 import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import {
   Building2, Edit3, Trash2, Plus, Save, X, Check, Search,
@@ -29,6 +30,8 @@ interface PropertyRow extends AnyRow {
   id: string; name: string; slug: string; address?: string; city?: string;
   country?: string; phone?: string; email?: string;
   check_in_time: string; check_out_time: string; city_tax_per_night?: number; is_active: number;
+  /** Імʼя набору кольорів (0419); порожньо — готель нічого не обирав. */
+  brand_palette?: string | null;
   checkout_balance_policy?: 'none' | 'warning' | 'blocking';
   /** Рід житла для каналу; поки готель не назвався — NULL. Див. поле нижче. */
   property_type?: string | null;
@@ -234,6 +237,31 @@ export default function SettingsPropertiesPage() {
   const toggle = (key: string) => setCollapsed(p => ({ ...p, [key]: !p[key] }));
 
   const currentProperty = properties.find(p => p.id === propertyId);
+
+  /**
+   * Палітра пишеться тим самим PATCH, що й решта полів обʼєкта.
+   *
+   * Відповідь ЧИТАЄТЬСЯ: писач обʼєкта віддає названі відмови (чужий id —
+   * 404), і екран, який не подивиться в тіло, показав би успіх на будь-якій
+   * із них (`check-unread-write-response`).
+   */
+  async function savePalette(id: string, key: string) {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/properties/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brand_palette: key }),
+      });
+      const body = await res.json().catch(() => ({})) as { error?: string };
+      if (!res.ok) { alert(body.error ?? tUi('Не вдалося зберегти')); return; }
+      await fetchProperties();
+    } catch {
+      alert(tUi('Не вдалося зберегти'));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   // ── Filtered Units (search) ──
   const filteredUnits = useMemo(() => {
@@ -665,6 +693,26 @@ export default function SettingsPropertiesPage() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/*
+          Вигляд обʼєкта: кольори і зображення за ролями (0421).
+
+          Переїхало сюди з Налаштування → Гостьова сторінка. Там воно опинилось
+          тому, що там уперше знадобилось; але це ДАНІ ОБʼЄКТА — те саме лого
+          бере гостьовий застосунок із наліпки, аркуш A4 для друку і візьме
+          кожен наступний екран. Шукати лого готелю в налаштуваннях однієї
+          поверхні оператор не мусить.
+        */}
+        {currentProperty && (
+          <div style={{ marginBottom: 20 }}>
+            <PropertyBrandCard
+              propertyId={currentProperty.id}
+              palette={currentProperty.brand_palette ?? ''}
+              busy={saving}
+              onPalette={(key: string) => { void savePalette(currentProperty.id, key); }}
+            />
           </div>
         )}
 

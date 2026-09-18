@@ -87,10 +87,14 @@ export async function getReservationByToken(token: string) {
       -- readCheckinPolicy — той самий нормалізатор, що в кіоска й рецепції.
       -- (Зворотних лапок тут бути не може: це тіло шаблонного рядка.)
       p.checkin_payment_policy,
-      -- Кольори й лого обʼєкта (0419). Сирими: приводить їх до відомого
-      -- readBrandPalette / readBrandLogoUrl у хендлері, одним місцем на
-      -- обидві гостьові поверхні.
-      p.brand_palette, p.brand_logo_url,
+      -- Палітра обʼєкта (0419), сирою: приводить її readBrandPalette у
+      -- хендлері, одним місцем на обидві гостьові поверхні.
+      --
+      -- Лого тут БІЛЬШЕ НЕ БЕРЕТЬСЯ: з 0421 воно рольовий рядок у
+      -- property_brand_assets, а колонку brand_logo_url міграція очистила.
+      -- Лишити її в списку означало б везти на сторінку порожнє значення,
+      -- яке виглядає як відповідь.
+      p.brand_palette,
       p.organization_id,
       o.language as organization_language
     FROM reservations r

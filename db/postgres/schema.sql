@@ -1797,6 +1797,18 @@ CREATE TABLE "property_amenities" (
   UNIQUE ("property_id", "amenity_id")
 );
 
+CREATE TABLE "property_brand_assets" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "property_id" TEXT NOT NULL,
+  "role" TEXT NOT NULL,
+  "url" TEXT NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  UNIQUE ("property_id", "role")
+);
+
 CREATE TABLE "property_guest_config" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "property_id" TEXT NOT NULL,
@@ -2847,6 +2859,10 @@ ALTER TABLE "property_amenities" ADD CONSTRAINT "fk_property_amenities_property_
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "property_amenities" ADD CONSTRAINT "fk_property_amenities_organization_id_3"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "property_brand_assets" ADD CONSTRAINT "fk_property_brand_assets_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "property_brand_assets" ADD CONSTRAINT "fk_property_brand_assets_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "property_guest_config" ADD CONSTRAINT "fk_property_guest_config_property_id_1"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "property_photos" ADD CONSTRAINT "fk_property_photos_property_id_1"
@@ -3206,6 +3222,8 @@ CREATE INDEX "idx_price_rules_property" ON "price_rules" ("property_id", "priori
 CREATE UNIQUE INDEX "idx_properties_guest_app_key" ON "properties" ("guest_app_key") WHERE guest_app_key IS NOT NULL;
 CREATE INDEX "idx_property_amenities_org" ON "property_amenities" ("organization_id");
 CREATE INDEX "idx_property_amenities_property" ON "property_amenities" ("property_id");
+CREATE INDEX "idx_property_brand_assets_org" ON "property_brand_assets" ("organization_id");
+CREATE UNIQUE INDEX "idx_property_brand_assets_role" ON "property_brand_assets" ("property_id", "role");
 CREATE INDEX "idx_reservation_files_org" ON "reservation_files" ("organization_id");
 CREATE INDEX "idx_reservation_files_reservation" ON "reservation_files" ("reservation_id", "created_at");
 CREATE INDEX "idx_line_items_sub" ON "reservation_line_items" ("sub_booking_id");
@@ -3340,6 +3358,7 @@ CREATE INDEX IF NOT EXISTS "idx_price_occupancy_org" ON "price_occupancy" ("orga
 CREATE INDEX IF NOT EXISTS "idx_price_rules_org" ON "price_rules" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_properties_org" ON "properties" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_property_amenities_org" ON "property_amenities" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_property_brand_assets_org" ON "property_brand_assets" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_reservation_files_org" ON "reservation_files" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_reservations_org" ON "reservations" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_season_prices_org" ON "season_prices" ("organization_id");
@@ -3517,6 +3536,8 @@ ALTER TABLE "price_rules" ALTER COLUMN "organization_id"
 ALTER TABLE "properties" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "property_amenities" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "property_brand_assets" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "reservation_files" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -4111,6 +4132,12 @@ CREATE POLICY "properties_tenant" ON "properties"
 ALTER TABLE "property_amenities" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "property_amenities" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "property_amenities_tenant" ON "property_amenities"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "property_brand_assets" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "property_brand_assets" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "property_brand_assets_tenant" ON "property_brand_assets"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 

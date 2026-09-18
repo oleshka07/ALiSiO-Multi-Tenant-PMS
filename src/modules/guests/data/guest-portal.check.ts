@@ -38,6 +38,7 @@ async function cleanup() {
   await sql.run('DELETE FROM units WHERE property_id = ?', [PROP]);
   await sql.run('DELETE FROM unit_types WHERE property_id = ?', [PROP]);
   await sql.run('DELETE FROM categories WHERE property_id = ?', [PROP]);
+  await sql.run('DELETE FROM property_brand_assets WHERE property_id = ?', [PROP]);
   await sql.run('DELETE FROM properties WHERE organization_id = ?', [ORG]);
   await sql.run('DELETE FROM organization_features WHERE organization_id = ?', [ORG]);
   await sql.run('DELETE FROM organizations WHERE id = ?', [ORG]);
@@ -76,6 +77,16 @@ try {
     [`${ORG}_r`, ORG, PROP, `${ORG}_g`, `${ORG}_unit`, iso(1), iso(3), TOKEN],
   );
 
+  // Лого — РОЛЬОВИМ рядком (0421), не колонкою `properties.brand_logo_url`.
+  // Ролей дві, і вони РІЗНІ: інакше твердження «взяли logo» було б зелене і
+  // на дверях, що беруть перший-ліпший рядок (інваріант 26).
+  await sql.run(
+    `INSERT INTO property_brand_assets (organization_id, property_id, role, url) VALUES (?, ?, ?, ?)`,
+    [ORG, PROP, 'logo', '/uploads/brand-dark-ink.png']);
+  await sql.run(
+    `INSERT INTO property_brand_assets (organization_id, property_id, role, url) VALUES (?, ?, ?, ?)`,
+    [ORG, PROP, 'cover', '/uploads/brand-cover.jpg']);
+
   const call = (token: string) => getGuestPortal(
     new Request('http://localhost/api/guest/' + token) as any,
     { params: Promise.resolve({ token }) },
@@ -89,11 +100,24 @@ try {
   assert.strictEqual(body?.reservation?.id ?? body?.id ?? body?.reservationId, `${ORG}_r`,
     `у відповіді мусить бути та сама бронь: ${JSON.stringify(body).slice(0, 300)}`);
 
+  // ── Лого приїжджає з РОЛЬОВОГО рядка, а не з очищеної колонки ────────
+  //
+  // 0421 переніс `properties.brand_logo_url` у роль `logo` і колонку очистив.
+  // Читач, який лишився на колонці, віддає `null` — і це НІЧОГО не ламає
+  // голосно: сторінка малює назву текстом, як і в готелю без лого взагалі.
+  // Тобто рівно той рід поломки, що ця сторінка вже мала (INC-210) — усе
+  // відповідає, просто одного немає.
+  assert.strictEqual(body?.brand?.logoUrl, '/uploads/brand-dark-ink.png',
+    `лого гостьової сторінки — з ролі 'logo' (0421), не з колонки: ${JSON.stringify(body?.brand)}`);
+  // І саме РОЛЬ `logo`, не «перший рядок обʼєкта»: обкладинка лежить поруч.
+  assert.notStrictEqual(body?.brand?.logoUrl, '/uploads/brand-cover.jpg',
+    'обкладинка не є лого — читач мусить питати роль, а не брати перший рядок');
+
   // ── Чужий токен: 404, і та сама відповідь для «немає» й «не наше» ─────
   const missing = await call('tok_nobody_ever_issued_this');
   assert.strictEqual(missing.status, 404, 'неіснуючий токен — 404, а не 500 і не 502');
 
-  console.log('guest-portal: посилання гостя відкривається (200 і та сама бронь), чужий токен — 404');
+  console.log('guest-portal: посилання відкривається (200, та сама бронь), лого — з ролі 0421, чужий токен — 404');
 } finally {
   await cleanup();
 }

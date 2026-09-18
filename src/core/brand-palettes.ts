@@ -43,6 +43,17 @@ export type BrandPaletteKey = 'sand_brass' | 'teal_warm_grey' | 'forest_stone' |
 
 export interface BrandPalette {
   key: BrandPaletteKey;
+  /**
+   * Чи ТЕМНА в цієї палітри шапка.
+   *
+   * Тут, а не в кожного читача: правило «`forest_stone` та `ink_amber` темні»
+   * стояло літералом у `guest-app/data/property.repo.ts`, і рівно те саме
+   * потрібне гостьовому порталу. Дві копії одного факту розходяться тоді,
+   * коли зʼявиться пʼята палітра: одна поверхня дістане правильний знак,
+   * друга — темний на темному, і це помітить не автор, а гість. Клас
+   * запасного `'CZK'`, тільки про вигляд.
+   */
+  darkHeader: boolean;
 }
 
 /*
@@ -68,11 +79,22 @@ export interface BrandPalette {
  * обрано» і хтось обере навмання.
  */
 export const BRAND_PALETTES: readonly BrandPalette[] = [
-  { key: 'sand_brass' },
-  { key: 'teal_warm_grey' },
-  { key: 'forest_stone' },
-  { key: 'ink_amber' },
+  { key: 'sand_brass', darkHeader: false },
+  { key: 'teal_warm_grey', darkHeader: false },
+  { key: 'forest_stone', darkHeader: true },
+  { key: 'ink_amber', darkHeader: true },
 ] as const;
+
+/**
+ * Тло, під яке обирається лого (0421).
+ *
+ * Готель без вибору — світле: базові набори обох поверхонь світлі, і темне
+ * тут означало б віддати `logo_light` тому, хто нічого не обирав.
+ */
+export function paletteBackground(raw: unknown): 'light' | 'dark' {
+  const key = readBrandPalette(raw);
+  return BRAND_PALETTES.find((p) => p.key === key)?.darkHeader ? 'dark' : 'light';
+}
 
 /**
  * Палітра, яку показують першою в списку: вона ж — вигляд гостьового

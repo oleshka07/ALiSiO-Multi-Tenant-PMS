@@ -1,0 +1,160 @@
+/**
+ * Аркуш A4: QR веде туди, куди вказує підпис під ним.
+ *
+ *   node src/modules/properties/domain/a4-sheet.check.ts
+ *
+ * ── Чому саме це твердження ─────────────────────────────────────────────
+ *
+ * Аркуш вішають на скло й забувають про нього на місяці. Якщо код веде не
+ * туди, куди адреса під ним, помилка МОВЧИТЬ двічі: сторінка відкриється
+ * (просто не та), і папір про це не повідомить. Побачить гість.
+ *
+ * Тому QR тут не «зібрався», а **розкодовується назад** — `jsqr` читає
+ * пікселі згенерованого PNG. Різниця не формальна: твердження «ми попросили
+ * закодувати правильний рядок» зелене й тоді, коли в документ вклали інше
+ * зображення; це ж читає те, що справді намальовано.
+ *
+ * ── Осі, і жодна не вироджена (інваріант 26) ────────────────────────────
+ *
+ *   ОБʼЄКТ — два обʼєкти з РІЗНИМИ ключами. З одним «узяв не той рядок»
+ *     лишалось би зеленим, а це найдорожча помилка тут: готель надрукував
+ *     аркуш сусіда;
+ *   ПРАВКА — поле, яке оператор ЗМІНИВ, і поле, якого не торкнувся, і поле,
+ *     яке він стер. Три значення, бо «стер» і «не торкнувся» приходять із
+ *     форми однаково (порожнім рядком), а означати мусять одне: як у готелю;
+ *   МОВА — готель німецький (два блоки) і готель англомовний (один). З одним
+ *     готелем правило «не друкувати англійську двічі» недоказове.
+ */
+import assert from 'node:assert';
+import '../../../../scripts/lib/module-aliases.mjs';
+
+const { buildSheet, sheetUrl } = await import('./a4-sheet.ts');
+const QRCode = (await import('qrcode')).default;
+const { PNG } = await import('pngjs');
+const jsQR = (await import('jsqr')).default;
+
+let ok = 0;
+const say = (what: string) => { console.log(`  ok  ${what}`); ok += 1; };
+
+const ORIGIN = 'https://beta.example.test';
+const HOUSE = {
+  name: 'Haus am Berg',
+  address: 'Marienstr. 1',
+  city: 'Greiz',
+  phone: '+49 3661 000000',
+  guestAppKey: 'avstta7hamqxcpva',
+  hotelLanguage: 'de' as const,
+};
+// Другий обʼєкт: інший ключ, інша мова. Обидві осі одразу.
+const NEIGHBOUR = {
+  name: 'Seaside Lodge',
+  address: 'Pier 4',
+  city: 'Dover',
+  phone: '+44 1304 000000',
+  guestAppKey: 'bcdefghjkmnpqrst',
+  hotelLanguage: 'en' as const,
+};
+
+// ── 1. Адреса в QR = адреса, надрукована текстом ────────────────────────
+const sheet = buildSheet(HOUSE, ORIGIN);
+assert.strictEqual(sheet.qrPayload, sheet.url,
+  'вміст QR і надрукована адреса розійшлись — код веде не туди, куди підпис');
+assert.strictEqual(sheet.url, `${ORIGIN}/stay/${HOUSE.guestAppKey}`,
+  `адреса зібрана не так: ${sheet.url}`);
+say('вміст QR дорівнює надрукованій адресі');
+
+// ── 2. І це доводиться РОЗКОДУВАННЯМ, а не рівністю змінних ─────────────
+//
+// `qrcode` малює, `jsqr` читає. Якщо в документ колись покладуть не те
+// зображення, рівність рядків вище лишиться зеленою, а це твердження — ні.
+const decode = async (payload: string): Promise<string | null> => {
+  const buf = await QRCode.toBuffer(payload, { margin: 4, width: 512, errorCorrectionLevel: 'M' });
+  const png = PNG.sync.read(buf);
+  const got = jsQR(new Uint8ClampedArray(png.data), png.width, png.height);
+  return got?.data ?? null;
+};
+assert.strictEqual(await decode(sheet.qrPayload), sheet.url,
+  'згенерований QR розкодувався НЕ в ту адресу, що надрукована текстом');
+say('QR розкодовано назад — у ньому рівно та адреса');
+
+// ── 3. Вісь обʼєкта: аркуш сусіда — це інший аркуш ──────────────────────
+const other = buildSheet(NEIGHBOUR, ORIGIN);
+assert.notStrictEqual(other.url, sheet.url,
+  'два обʼєкти з різними ключами дали ОДНУ адресу — аркуш веде на чужий готель');
+assert.strictEqual(await decode(other.qrPayload), `${ORIGIN}/stay/${NEIGHBOUR.guestAppKey}`);
+say('два обʼєкти — два різні коди, кожен на свій');
+
+// ── 4. Тиха зона: без неї частина читачів коду не бачить ────────────────
+//
+// Твердження про ЗОБРАЖЕННЯ, не про аргумент: рахуються білі рядки зверху.
+// `margin: 0` (як у фактурі, де код у власній рамці) дав би нуль.
+const withMargin = PNG.sync.read(
+  await QRCode.toBuffer(sheet.qrPayload, { margin: 4, width: 512, errorCorrectionLevel: 'M' }));
+const whiteRows = (png: { data: Buffer; width: number; height: number }) => {
+  let n = 0;
+  for (let y = 0; y < png.height; y += 1) {
+    let white = true;
+    for (let x = 0; x < png.width; x += 1) {
+      if (png.data[(y * png.width + x) * 4] < 200) { white = false; break; }
+    }
+    if (!white) break;
+    n += 1;
+  }
+  return n;
+};
+const quiet = whiteRows(withMargin);
+// 4 модулі від 512 px: модуль ≈ 512 / (21…49 + 8) — тобто десятки пікселів.
+// Беремо обережну межу: менш як 20 px білого зверху означає, що тихої зони
+// фактично немає.
+assert.ok(quiet >= 20,
+  `тиха зона ${quiet} px — замало; з margin: 0 частина читачів коду не бачить узагалі`);
+const noMargin = PNG.sync.read(
+  await QRCode.toBuffer(sheet.qrPayload, { margin: 0, width: 512, errorCorrectionLevel: 'M' }));
+assert.ok(whiteRows(noMargin) < quiet,
+  'вимір тихої зони нічого не розрізняє: margin 0 і margin 4 дали однаково');
+say(`тиха зона на місці (${quiet} px), і вимір відрізняє її від margin: 0`);
+
+// ── 5. Правки: змінене, незаймане і СТЕРТЕ ──────────────────────────────
+const edited = buildSheet(HOUSE, ORIGIN, {
+  phone: '+49 3661 999111',   // оператор дав інший телефон рецепції
+  address: '',                // стер — а означає це «як у готелю»
+  hotelName: '   ',           // самі пробіли — те саме
+});
+assert.strictEqual(edited.phone, '+49 3661 999111', 'правка телефону не доїхала до аркуша');
+assert.strictEqual(edited.address, 'Marienstr. 1, Greiz',
+  'порожнє поле стерло адресу, а мало лишити ту, що в готелю');
+assert.strictEqual(edited.hotelName, HOUSE.name, 'пробіли в полі стерли назву готелю');
+assert.notStrictEqual(edited.phone, sheet.phone,
+  'правка й дефолт дали однаково — вісь правки у фікстурі вироджена');
+say('правка діє; порожнє поле означає «як у готелю», не «зітри»');
+
+// ── 6. Дві мови, і НЕ дві однакові ──────────────────────────────────────
+assert.deepStrictEqual(sheet.blocks.map((b) => b.lang), ['de', 'en'],
+  'німецький готель мусить дати свою мову і англійську, саме в такому порядку');
+assert.notStrictEqual(sheet.blocks[0].headline, sheet.blocks[1].headline,
+  'два блоки з однаковим текстом — це не переклад, а копія');
+assert.deepStrictEqual(other.blocks.map((b) => b.lang), ['en'],
+  'англомовний готель дістав англійську ДВІЧІ — другий блок тут зайвий');
+say('дві мови для німецького готелю, одна для англомовного');
+
+// ── 7. Власний заклик — лише в блок СВОЄЇ мови ──────────────────────────
+const ownWords = buildSheet(HOUSE, ORIGIN, { headline: 'Hier einchecken' });
+assert.strictEqual(ownWords.blocks[0].headline, 'Hier einchecken');
+assert.strictEqual(ownWords.blocks[1].headline, sheet.blocks[1].headline,
+  'німецький заклик оператора потрапив в АНГЛІЙСЬКИЙ блок — це не переклад, це підміна');
+say('власний заклик стоїть у своїй мові й не вдає переклад');
+
+// ── 8. Підвал: чи аркуш іще чинний (КІ35) ───────────────────────────────
+assert.strictEqual(sheet.keyTail, 'cpva', 'хвіст ключа в підвалі не той');
+assert.ok(!sheet.keyTail.includes(HOUSE.guestAppKey.slice(0, 4)),
+  'у підвал потрапив початок ключа замість хвоста');
+assert.match(sheet.printedOn, /^\d{4}-\d{2}-\d{2}$/, 'дата друку не схожа на дату');
+say('підвал називає хвіст ключа й дату — старий аркуш видно');
+
+// ── 9. Скісна риска в origin не подвоюється ─────────────────────────────
+assert.strictEqual(sheetUrl('https://x.test/', 'abcdefghjkmnpqrs'),
+  'https://x.test/stay/abcdefghjkmnpqrs',
+  'подвійна риска в адресі — QR поведе на 404');
+say('origin зі скісною і без неї дають ту саму адресу');
+
+console.log(`a4-sheet: код веде туди, куди підпис, ${ok} тверджень`);
