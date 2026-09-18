@@ -147,11 +147,18 @@ assert.ok(CONTENT_COLUMN_LANGS.length >= LANGUAGE_CODES.length - 1,
   + 'мова, у якої немає колонки, перекладається лише кешем, і мовчки');
 say(`колонки заведені під ${CONTENT_COLUMN_LANGS.length} мов реєстру`);
 
+// Рядок для SELECT звіряється з РЕЄСТРОМ, а не з переліком, вписаним сюди:
+// інакше зміна порядку мов у продукті ламала б цей гейт із чужої причини —
+// хибно-червоне про порядок, а не про двері (§3.2.1, сьомий підвид).
 assert.strictEqual(contentColumns('s', 'name'),
-  's.name_en, s.name_de, s.name_cs, s.name_pl, s.name_nl, s.name_fr',
-  'список колонок для SELECT зібрано не так');
+  CONTENT_COLUMN_LANGS.map((c) => `s.name_${c}`).join(', '),
+  'список колонок для SELECT зібрано не з реєстру колонок');
+assert.ok(contentColumns('s', 'name').startsWith(`s.name_${CONTENT_COLUMN_LANGS[0]}`),
+  'перша колонка в SELECT не та, що перша в переліку — порядок збирається окремо від списку');
 assert.deepStrictEqual(pickContentColumns(svc, 'name'),
-  { name_en: 'Breakfast', name_cs: 'Snídaně' },
+  Object.fromEntries(CONTENT_COLUMN_LANGS
+    .filter((c) => c === 'en' || c === 'cs')
+    .map((c) => [`name_${c}`, c === 'en' ? 'Breakfast' : 'Snídaně'])),
   'у відповідь мусять потрапити лише ЗАПОВНЕНІ колонки: порожні роздули б тіло й читались би як відповідь');
 say('SELECT і тіло відповіді збираються з того самого списку');
 

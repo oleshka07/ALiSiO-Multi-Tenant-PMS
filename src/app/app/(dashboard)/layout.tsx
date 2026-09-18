@@ -13,7 +13,7 @@ import ModuleGate from '@/components/layout/ModuleGate';
 import { useDevice } from '@/ui/hooks/useDevice';
 import { I18nProvider, useT } from '@core/i18n/client';
 import { PropertyScopeProvider, type ScopedProperty } from '@/ui/PropertyScopeContext';
-import { DEFAULT_LANGUAGE, type Language, parseLanguage } from '@core/i18n/languages';
+import { type Language, UI_SOURCE_LANGUAGE, parseLanguage } from '@core/i18n/languages';
 
 export default function DashboardLayout({
   children,
@@ -27,7 +27,17 @@ export default function DashboardLayout({
   const [searchOpen, setSearchOpen] = useState(false);
   // Comes back on the same /api/auth/me the auth check already makes — one
   // request decides both whether this person may be here and what they read.
-  const [language, setLanguage] = useState<Language>(DEFAULT_LANGUAGE);
+  //
+  // Початковий стан — мова ЛІТЕРАЛІВ, не базова мова продукту. Доти тут
+  // стояла `DEFAULT_LANGUAGE`, і поки вони збігались, це нічого не важило.
+  // Щойно базовою стала німецька, різниця з'явилась: до відповіді сервера
+  // екран малювався б через НІМЕЦЬКИЙ словник, тобто український оператор
+  // бачив би спалах чужої мови на кожному завантаженні.
+  //
+  // `UI_SOURCE_LANGUAGE` словника не потребує взагалі — `t()` повертає сам
+  // літерал (`dictionary.ts`), тож перший кадр малюється без жодного
+  // перекладу і без миготіння, хай якою буде базова мова далі.
+  const [language, setLanguage] = useState<Language>(UI_SOURCE_LANGUAGE);
   // Set only when the supplier is working inside a customer's account. The
   // screens are the customer's own, so the only thing that must never be in
   // doubt is whose data is on them.

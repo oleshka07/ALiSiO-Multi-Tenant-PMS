@@ -19,9 +19,24 @@
  * would mean either a `Vary` no cache respects well, or one guest's language
  * served to the next. The browser is read where it belongs — in the browser.
  */
+// Шлях ВІДНОСНИЙ, не аліас: цей файл вантажить `widget-language.check.ts`,
+// який запускають ГОЛИМ node, а він аліасів `tsconfig.paths` не знає. З
+// аліасом перевірка падає з ERR_MODULE_NOT_FOUND — і падає лише в прогоні,
+// бо `tsc` резолвер має (той самий клас, що `check-bare-node`).
+import { LANGUAGE_CODES } from '../../../core/i18n/languages.ts';
 
-export const WIDGET_LANGUAGES = ['uk', 'en', 'cs', 'de'] as const;
-export type WidgetLang = (typeof WIDGET_LANGUAGES)[number];
+/**
+ * Чотири мови віджета, впорядковані РЕЄСТРОМ.
+ *
+ * Множина тут менша за реєстр свідомо — словників у віджета чотири, і про це
+ * вище. А от ПОРЯДОК своїм бути не має: список починався з української, тобто
+ * німецький готель показував гостю першою мову, якою не говорить ні він, ні
+ * гість. Підмножина — не привід переставляти.
+ */
+const WIDGET_SPEAKS = ['de', 'en', 'cs', 'uk'] as const;
+export const WIDGET_LANGUAGES: readonly WidgetLang[] =
+  LANGUAGE_CODES.filter((c): c is WidgetLang => (WIDGET_SPEAKS as readonly string[]).includes(c));
+export type WidgetLang = (typeof WIDGET_SPEAKS)[number];
 
 /** The language if the widget can render it, otherwise null. */
 export function asWidgetLang(value: unknown): WidgetLang | null {

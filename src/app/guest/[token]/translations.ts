@@ -1,12 +1,33 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // ─── Guest Page v3 Translations ───────────────────
-// Languages: EN, DE, CS, UK, PL, NL, FR
+import { LANGUAGE_CODES, LANGUAGES, type Language } from '@core/i18n/languages';
 
-export type Lang = 'en' | 'de' | 'cs' | 'uk' | 'pl' | 'nl' | 'fr';
+export type Lang = Language;
 
-export const LANG_LABELS: Record<Lang, string> = {
-  en: 'EN', de: 'DE', cs: 'CZ', uk: 'UA', pl: 'PL', nl: 'NL', fr: 'FR',
-};
+/**
+ * Порядок мов у перемикачі — РЕЄСТРУ, не власний.
+ *
+ * Тут стояв власний масив `['en','de','cs','uk','pl','nl','fr']` — восьмий
+ * список мов у проєкті. Множина в нього збігалася з реєстром, тож
+ * `guest-languages.check` мовчав правильно: він стереже множину. Розходився
+ * саме ПОРЯДОК, і його не стерегло ніщо — гість німецького готелю бачив
+ * першою англійську, а поруч, у гостьовому застосунку, першою була та, що
+ * в реєстрі.
+ *
+ * Тепер список один на всі поверхні, і тримає це `language-order.check`.
+ */
+export const GUEST_PAGE_LANGS: readonly Lang[] = LANGUAGE_CODES;
+
+/**
+ * Підписи в перемикачі — РІДНОЮ назвою з реєстру.
+ *
+ * Тут були двобуквені коди (`EN`, `DE`, `CZ`, `UA`). Гість шукає слово, яке
+ * впізнає, а не код; `CZ` при цьому ще й код КРАЇНИ, а не мови (чеська — `cs`),
+ * тобто підпис говорив неправду двічі. Той самий довід, що в КІ38 для
+ * застосунку й кіоска.
+ */
+export const LANG_LABELS: Record<Lang, string> =
+  Object.fromEntries(LANGUAGE_CODES.map((c) => [c, LANGUAGES[c].native])) as Record<Lang, string>;
 
 export const LANG_FLAGS: Record<Lang, string> = {
   en: '🇬🇧', de: '🇩🇪', cs: '🇨🇿', uk: '🇺🇦', pl: '🇵🇱', nl: '🇳🇱', fr: '🇧🇪',
