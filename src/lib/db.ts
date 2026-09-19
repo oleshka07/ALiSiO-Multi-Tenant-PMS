@@ -3507,7 +3507,7 @@ function runMigrations(database: any) {
     console.log('[DB] reception_hours migration note:', e.message);
   }
 
-  // --- Migration: property_guest_config.reception_name (0423) ---
+  // --- Migration: property_guest_config.reception_name (0424) ---
   //
   // Хто саме відповість. Номер без імені — «подзвони кудись»; з іменем —
   // «попроси Анну». Для чату це важить більше, ніж для дзвінка: у WhatsApp
@@ -3519,7 +3519,7 @@ function runMigrations(database: any) {
     const pgcCols4 = (database.prepare('PRAGMA table_info(property_guest_config)').all() as any[]).map((c: any) => c.name);
     if (!pgcCols4.includes('reception_name')) {
       database.exec('ALTER TABLE property_guest_config ADD COLUMN reception_name TEXT');
-      console.log('[DB] 0423: property_guest_config.reception_name');
+      console.log('[DB] 0424: property_guest_config.reception_name');
     }
   } catch (e: any) {
     console.log('[DB] reception_name migration note:', e.message);

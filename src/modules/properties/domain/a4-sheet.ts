@@ -63,7 +63,7 @@ export interface SheetProperty {
    * той номер, що друкується на аркуші (див. `buildSheet`).
    */
   whatsappPhone?: string | null;
-  /** Хто відповість — друкується поруч із номером (0423). */
+  /** Хто відповість — друкується поруч із номером (0424). */
   receptionName?: string | null;
 }
 

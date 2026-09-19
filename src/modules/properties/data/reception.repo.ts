@@ -18,7 +18,7 @@ export interface ReceptionContact {
   whatsapp: string | null;
   /** «8:00 – 22:00», «цілодобово» — рядок готелю, не наш переказ. */
   hours: string | null;
-  /** Хто відповість: «Анна», «Frau Müller», «черговий адміністратор» (0423). */
+  /** Хто відповість: «Анна», «Frau Müller», «черговий адміністратор» (0424). */
   name: string | null;
 }
 

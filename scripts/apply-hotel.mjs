@@ -393,7 +393,7 @@ async function applyStructure(organizationId, plan) {
       'restaurant_menu_url', 'rules', 'useful_info', 'faq_items', 'maps_url',
       'territory_map_url', 'pets_policy', 'parking_info', 'video_guide_url',
       'emergency_phone', 'weather_lat', 'weather_lon', 'parking_photo_url',
-      'parking_maps_url', 'whatsapp_phone', 'reception_hours'];
+      'parking_maps_url', 'whatsapp_phone', 'reception_hours', 'reception_name'];
     const has = await sql.row(
       'SELECT * FROM property_guest_config WHERE property_id = ?', [property.id]);
     const patch = {};
