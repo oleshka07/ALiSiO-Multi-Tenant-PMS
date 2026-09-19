@@ -54,7 +54,7 @@ export const updatePropertyGuestConfig = withModule('guest_page', 'manage_proper
       'wifi_network', 'wifi_password', 'restaurant_name', 'restaurant_hours', 'restaurant_menu_url',
       'rules', 'useful_info', 'faq_items', 'maps_url', 'territory_map_url',
       'pets_policy', 'parking_info', 'parking_photo_url', 'parking_maps_url', 'video_guide_url', 'emergency_phone',
-      'whatsapp_phone', 'reception_hours',
+      'whatsapp_phone', 'reception_hours', 'reception_name',
       'weather_lat', 'weather_lon',
     ];
 
@@ -74,8 +74,8 @@ export const updatePropertyGuestConfig = withModule('guest_page', 'manage_proper
       }
     } else {
       await sql.run(`
-        INSERT INTO property_guest_config (property_id, wifi_network, wifi_password, restaurant_name, restaurant_hours, restaurant_menu_url, rules, useful_info, faq_items, maps_url, territory_map_url, pets_policy, parking_info, parking_photo_url, parking_maps_url, video_guide_url, emergency_phone, whatsapp_phone, reception_hours, weather_lat, weather_lon)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO property_guest_config (property_id, wifi_network, wifi_password, restaurant_name, restaurant_hours, restaurant_menu_url, rules, useful_info, faq_items, maps_url, territory_map_url, pets_policy, parking_info, parking_photo_url, parking_maps_url, video_guide_url, emergency_phone, whatsapp_phone, reception_hours, reception_name, weather_lat, weather_lon)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [property_id,
         body.wifi_network || null, body.wifi_password || null,
         body.restaurant_name || '', body.restaurant_hours || '', body.restaurant_menu_url || null,
@@ -86,7 +86,7 @@ export const updatePropertyGuestConfig = withModule('guest_page', 'manage_proper
         body.pets_policy || 'welcome', body.parking_info || '', body.parking_photo_url || null, body.parking_maps_url || null,
         body.video_guide_url || null,
         body.emergency_phone || null, body.whatsapp_phone || null,
-        body.reception_hours || null,
+        body.reception_hours || null, body.reception_name || null,
         body.weather_lat || null, body.weather_lon || null]);
     }
 

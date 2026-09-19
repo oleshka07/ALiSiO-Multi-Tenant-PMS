@@ -116,6 +116,7 @@ export default function GuestPageSettingsPage() {
   const [pEmergency, setPEmergency] = useState('');
   const [pWhatsapp, setPWhatsapp] = useState('');
   const [pHours, setPHours] = useState('');
+  const [pDeskName, setPDeskName] = useState('');
   const [pVideoGuide, setPVideoGuide] = useState('');
 
   // ═══ UNIT TYPE STATE ═══
@@ -250,6 +251,7 @@ export default function GuestPageSettingsPage() {
     setPEmergency(cfg.emergency_phone || '');
     setPWhatsapp(cfg.whatsapp_phone || '');
     setPHours(cfg.reception_hours || '');
+    setPDeskName(cfg.reception_name || '');
     setPVideoGuide(cfg.video_guide_url || '');
   };
 
@@ -286,7 +288,7 @@ export default function GuestPageSettingsPage() {
           weather_lat: pWeatherLat ? parseFloat(pWeatherLat) : null,
           weather_lon: pWeatherLon ? parseFloat(pWeatherLon) : null,
           emergency_phone: pEmergency || null, whatsapp_phone: pWhatsapp || null,
-          reception_hours: pHours || null,
+          reception_hours: pHours || null, reception_name: pDeskName || null,
           video_guide_url: pVideoGuide || null,
         }),
       });
@@ -499,7 +501,16 @@ export default function GuestPageSettingsPage() {
                       <label className="form-label">{t('WhatsApp гостьової сторінки')}</label>
                       <input className="form-input" value={pWhatsapp} placeholder="+420…" onChange={e => setPWhatsapp(e.target.value)} />
                       <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
-                        {t('Порожньо — вкладки WhatsApp у гостя не буде.')}
+                        {t('Порожньо — вкладки WhatsApp у гостя не буде, а QR чату на аркуші A4 поведе на номер, надрукований поруч.')}
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">{t('Хто на рецепції')}</label>
+                      <input className="form-input" value={pDeskName}
+                        placeholder={t('напр. Анна')}
+                        onChange={e => setPDeskName(e.target.value)} />
+                      <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
+                        {t('Друкується поруч із номером на аркуші A4. У чат пишуть людині, і контакт без імені гість радше пропустить.')}
                       </div>
                     </div>
                     <div className="form-group">

@@ -29,7 +29,9 @@ import assert from 'node:assert';
 import '../../../../scripts/lib/module-aliases.mjs';
 
 const { buildSheet, sheetUrl } = await import('./a4-sheet.ts');
-const { renderSheetPdf } = await import('./a4-sheet-pdf.ts');
+const { renderSheetPdf, planSheet, mm, QR_MIN_MM } = await import('./a4-sheet-pdf.ts');
+const PDFDocument = (await import('pdfkit')).default;
+const path = await import('node:path');
 const { whatsappLink } = await import('../data/reception.repo.ts');
 const QRCode = (await import('qrcode')).default;
 const { PNG } = await import('pngjs');
@@ -157,16 +159,19 @@ say('власний заклик стоїть у своїй мові й не в�
 // Телефон без годин — обіцянка, якої ніхто не давав; «цілодобово» за
 // замовчуванням було б тією обіцянкою, надрукованою нами (клас інваріанта 17).
 const withDesk = buildSheet(
-  { ...HOUSE, receptionHours: ' 8:00 – 22:00 ', whatsappUrl: 'https://wa.me/49366100000' }, ORIGIN);
+  { ...HOUSE, receptionHours: ' 8:00 – 22:00 ', receptionName: '  Anna  ' }, ORIGIN);
 assert.strictEqual(withDesk.hours, '8:00 – 22:00', 'години не доїхали або не обрізані');
-assert.strictEqual(withDesk.whatsappUrl, 'https://wa.me/49366100000', 'посилання чату не доїхало');
+assert.strictEqual(withDesk.helpName, 'Anna', 'імʼя чергового не доїхало або не обрізане');
 assert.strictEqual(sheet.hours, null, 'готель без годин дістав НЕ null — це вигадана обіцянка');
-assert.strictEqual(sheet.whatsappUrl, null, 'готель без WhatsApp дістав посилання нізвідки');
+assert.strictEqual(sheet.helpName, null, 'готель без імені чергового дістав НЕ null');
 // І порожній рядок — це теж «немає», а не рядок: інакше на папері лишилась
 // би порожня смужка під телефоном, яку читач сприйме за брак друку.
 assert.strictEqual(buildSheet({ ...HOUSE, receptionHours: '   ' }, ORIGIN).hours, null,
   'самі пробіли в годинах мусять означати «немає», як і порожнє поле');
-say('години й чат приїжджають названими, а їх відсутність — це null, не вигадка');
+// А от коду чату без ЖОДНОГО номера бути не може: вести йому нікуди.
+assert.strictEqual(buildSheet({ ...HOUSE, phone: null }, ORIGIN).whatsappUrl, null,
+  'готель без телефона взагалі дістав код чату нізвідки');
+say('години й імʼя приїжджають названими, а їх відсутність — це null, не вигадка');
 
 // ── 8б. Посилання чату будується з ЦИФР ─────────────────────────────────
 //
@@ -212,6 +217,98 @@ assert.strictEqual(pages, 1,
 // І не порожній: документ без вмісту теж «одна сторінка».
 assert.ok(printed.length > 20_000, `PDF підозріло малий (${printed.length} Б) — сторінка одна, але порожня`);
 say(`аркуш друкується однією сторінкою (${(printed.length / 1024).toFixed(0)} КБ)`);
+
+// ── 8д. Довгий підвал НЕ вилазить, і аркуш лишається одним ──────────────
+//
+// Заведено після того, як це надрукували: готель Ґрайца вписав у години два
+// речення — робочі дні, вихідні, і окремо про ключовий автомат уночі, — і
+// рядок виліз із сірої плашки на білий папір трьома рядками. Нічого не
+// впало: PDF зібрався, сторінка лишилась одна, просто виглядало зламано.
+//
+// Клас, а не випадок: висота тексту залежить від ДАНИХ ГОТЕЛЮ, яких ми не
+// бачили. Тому вісь фікстури — саме ДОВЖИНА, і вона не вироджена: короткий
+// підвал і той самий підвал, роздутий у кілька рядків. З одним лише
+// коротким твердження було б зелене й на сталій висоті плашки.
+const LONG_HOURS = 'Mo–Fr 7.00–18.00 Uhr · Sa, So und Feiertage 7.00–15.00 Uhr · '
+  + 'Check-in rund um die Uhr: außerhalb dieser Zeiten erhalten Sie Ihren Schlüssel '
+  + 'über den Schlüsselautomaten vor der Eingangstür.';
+const roomy = buildSheet({ ...HOUSE, receptionHours: '8:00 – 22:00', receptionName: 'Anna' }, ORIGIN);
+const crowded = buildSheet({
+  ...HOUSE,
+  receptionHours: LONG_HOURS,
+  receptionName: 'Anna Berger, Empfangsleiterin',
+  address: 'Marienstraße 1-5, 07973 Greiz, Freistaat Thüringen',
+}, ORIGIN);
+assert.notStrictEqual(roomy.hours!.length, crowded.hours!.length,
+  'обидві фікстури однакової довжини — вісь «скільки тексту» вироджена');
+
+// Твердження про ПЛАН, не про сторінку. Лічильник сторінок цього класу не
+// бачить за побудовою: нижнє поле знято, тож текст, що виліз із плашки, не
+// додає сторінки — він просто малюється поверх білого паперу. Саме так це
+// й надрукували. Тому міряємо тими самими метриками, що й малювання.
+const planOf = (content: Parameters<typeof renderSheetPdf>[0]) => {
+  const doc = new PDFDocument({ size: 'A4', margin: mm(18) });
+  doc.registerFont('body', path.join(process.cwd(), 'src/assets/fonts/DejaVuSans.ttf'));
+  doc.registerFont('bold', path.join(process.cwd(), 'src/assets/fonts/DejaVuSans-Bold.ttf'));
+  // Висота шапки стала для цих фікстур; беремо ту саму для обох, щоб
+  // різниця між ними була різницею ПІДВАЛУ, а не заголовка.
+  return planSheet(doc as never, content, mm(75), Boolean(content.whatsappUrl));
+};
+
+for (const [what, content] of [['короткий', roomy], ['роздутий', crowded]] as const) {
+  const plan = planOf(content);
+  assert.ok(plan.fits, `${what} підвал не вмістився — а мусив`);
+  // ГОЛОВНЕ: плашка не менша за свій текст. Саме це зламалось на живому
+  // готелі — висота була стала 26 мм, а текст виріс до трьох рядків.
+  assert.ok(plan.panelH >= plan.panelTextH + plan.pad * 2,
+    `${what}: текст ${(plan.panelTextH / mm(1)).toFixed(0)}мм у плашці `
+    + `${(plan.panelH / mm(1)).toFixed(0)}мм — вилізе на білий папір`);
+  // І все разом лишається на сторінці.
+  assert.ok(plan.contentBottom <= mm(297), `${what}: вміст заходить за край сторінки`);
+  assert.ok(plan.qrSide >= mm(QR_MIN_MM), `${what}: код менший за підлогу читабельності`);
+
+  const buf = await renderSheetPdf(content);
+  const n = (buf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) ?? []).length;
+  assert.strictEqual(n, 1, `${what} підвал дав ${n} сторінок — аркуш A4 це ОДИН аркуш`);
+}
+// Вісь не вироджена і в ПЛАНІ: роздутий підвал мусить дати вищу плашку й
+// менший код. Однакові числа означали б, що план ігнорує довжину тексту.
+assert.ok(planOf(crowded).panelH > planOf(roomy).panelH,
+  'плашка не виросла під довший текст — висота знову стала');
+assert.ok(planOf(crowded).qrSide < planOf(roomy).qrSide,
+  'код не поступився місцем підвалу — щось із двох вилізе');
+say('плашка росте під свій текст, код поступається місцем, аркуш лишається одним');
+
+// ── 8е. А те, що НЕ вміщається, — відмова, не папір ─────────────────────
+//
+// Друга половина того самого твердження, і без неї перша нічого не варта:
+// «вміщається» доводиться лише разом із «а от це вже ні». Знявши нижнє поле
+// (інакше підвал у полі дав би другу сторінку), ми забрали в pdfkit змогу
+// скаржитись самому — він просто малює поверх краю. Тож межу тримає виняток.
+await assert.rejects(
+  () => renderSheetPdf(buildSheet({ ...HOUSE, receptionHours: LONG_HOURS.repeat(40) }, ORIGIN)),
+  /does not fit/,
+  'підвал, який не вміщається навіть найдрібнішим кеглем, мусить ВІДМОВИТИ, а не заїхати за поле');
+say('підвал, що не вміщається, дає названу відмову, а не аркуш із заїханим текстом');
+
+// ── 8є. Чат веде на ТОЙ номер, що надрукований ──────────────────────────
+//
+// Власник ввів номер у вікні друку, побачив його великим кеглем на аркуші —
+// і НЕ побачив коду: код будувався лише з окремого поля «WhatsApp гостьової
+// сторінки», якого він не заповнював. Два поля, один підпис.
+const chatFromSheet = buildSheet(HOUSE, ORIGIN, { phone: '+11 222 333 444' });
+assert.strictEqual(chatFromSheet.whatsappUrl, 'https://wa.me/11222333444',
+  'код чату мусить вести на НАДРУКОВАНИЙ номер, коли окремого номера чату немає');
+assert.ok(chatFromSheet.whatsappUrl!.includes(chatFromSheet.phone.replace(/\D/g, '')),
+  'код і підпис поруч ведуть на різні номери — рівно те, що ловив гейт адреси');
+// Названий окремо номер чату виграє: готель міг дати мобільний саме для чату.
+const named = buildSheet({ ...HOUSE, whatsappPhone: '(0)55-66 77 88' }, ORIGIN,
+  { phone: '+11 222 333 444' });
+assert.strictEqual(named.whatsappUrl, 'https://wa.me/055667788',
+  'окремо названий номер чату мусить вигравати в надрукованого');
+assert.notStrictEqual(named.whatsappUrl, chatFromSheet.whatsappUrl,
+  'обидва шляхи дали одне — вісь «окремий номер чату» вироджена');
+say('чат іде на надрукований номер; названий окремо виграє');
 
 // ── 9. Скісна риска в origin не подвоюється ─────────────────────────────
 assert.strictEqual(sheetUrl('https://x.test/', 'abcdefghjkmnpqrs'),

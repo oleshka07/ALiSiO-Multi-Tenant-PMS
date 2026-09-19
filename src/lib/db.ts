@@ -3436,7 +3436,8 @@ function runMigrations(database: any) {
         parking_photo_url TEXT,
         parking_maps_url TEXT,
         whatsapp_phone TEXT,
-        reception_hours TEXT
+        reception_hours TEXT,
+        reception_name TEXT
       )
     `);
     // Seed from first existing guest_page_config
@@ -3504,6 +3505,24 @@ function runMigrations(database: any) {
     }
   } catch (e: any) {
     console.log('[DB] reception_hours migration note:', e.message);
+  }
+
+  // --- Migration: property_guest_config.reception_name (0423) ---
+  //
+  // Хто саме відповість. Номер без імені — «подзвони кудись»; з іменем —
+  // «попроси Анну». Для чату це важить більше, ніж для дзвінка: у WhatsApp
+  // пишуть людині, і контакт без імені гість радше пропустить.
+  //
+  // Окремо від годин навмисно: години міняються двічі на рік, імʼя — коли
+  // змінюється людина. Склеєні в один рядок, вони стирали б одне одного.
+  try {
+    const pgcCols4 = (database.prepare('PRAGMA table_info(property_guest_config)').all() as any[]).map((c: any) => c.name);
+    if (!pgcCols4.includes('reception_name')) {
+      database.exec('ALTER TABLE property_guest_config ADD COLUMN reception_name TEXT');
+      console.log('[DB] 0423: property_guest_config.reception_name');
+    }
+  } catch (e: any) {
+    console.log('[DB] reception_name migration note:', e.message);
   }
 
   // `guest_chat_messages` тут БУЛА і не створюється більше.

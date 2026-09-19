@@ -33,6 +33,7 @@
  * є англійська, другої немає: один блок замість двох однакових.
  */
 import { logoFor, type BrandAssets } from '@core/brand-assets.ts';
+import { whatsappLink } from '../data/reception.repo.ts';
 import { type Language } from '@core/i18n/languages.ts';
 
 /** Те, що збирач знає про обʼєкт. Рівно колонки `properties` + мова готелю. */
@@ -57,8 +58,13 @@ export interface SheetProperty {
   brand?: BrandAssets;
   /** Години, коли на телефон рецепції відповідають (0422). Порожньо — не друкуємо. */
   receptionHours?: string | null;
-  /** Готове посилання на чат. Будує `whatsappLink`, тут воно вже перевірене. */
-  whatsappUrl?: string | null;
+  /**
+   * Окремий номер для чату, якщо готель його НАЗВАВ. Порожньо — чат іде на
+   * той номер, що друкується на аркуші (див. `buildSheet`).
+   */
+  whatsappPhone?: string | null;
+  /** Хто відповість — друкується поруч із номером (0423). */
+  receptionName?: string | null;
 }
 
 /** Що оператор поправив у вікні друку. Порожнє поле = «як у готелю». */
@@ -127,6 +133,8 @@ export interface SheetContent {
    * замало цифр: код, що веде на сторінку помилки, гірший за порожнє місце.
    */
   whatsappUrl: string | null;
+  /** Хто відповість. Порожньо — рядок просто без імені. */
+  helpName: string | null;
 }
 
 /**
@@ -314,6 +322,23 @@ export function buildSheet(
     logoUrl: logoFor(property.brand ?? {}, 'light'),
     coverUrl: property.brand?.cover ?? null,
     hours: (property.receptionHours ?? '').trim() || null,
-    whatsappUrl: property.whatsappUrl ?? null,
+    helpName: (property.receptionName ?? '').trim() || null,
+    // ── Чат іде на ТОЙ номер, що надрукований ────────────────────────────
+    //
+    // Доти код будувався лише з окремого поля «WhatsApp гостьової сторінки»,
+    // а великим кеглем друкувався зовсім інший номер — телефон обʼєкта або
+    // правка оператора у вікні друку. Власник ввів номер у вікні друку,
+    // побачив його на аркуші й НЕ побачив коду: два поля, одна підпис.
+    //
+    // Тепер: названий окремо номер чату виграє (готель міг дати мобільний
+    // саме для чату), а якщо його немає — чат веде на надрукований номер.
+    // Інакше поруч стояли б код і підпис, що ведуть на різні номери, — рівно
+    // той клас, що адреса під кодом, який вів не туди.
+    //
+    // Ціна названа: якщо надрукований номер стаціонарний, код відкриє
+    // WhatsApp і той скаже «номера немає в WhatsApp». Це видно одразу при
+    // першій перевірці телефоном, на відміну від мовчазної відсутності коду.
+    whatsappUrl: whatsappLink(
+      (property.whatsappPhone ?? '').trim() || pick(overrides.phone, property.phone)),
   };
 }

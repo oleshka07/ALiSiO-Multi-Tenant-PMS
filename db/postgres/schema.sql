@@ -1834,6 +1834,7 @@ CREATE TABLE "property_guest_config" (
   "parking_maps_url" TEXT,
   "whatsapp_phone" TEXT,
   "reception_hours" TEXT,
+  "reception_name" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("property_id")
 );

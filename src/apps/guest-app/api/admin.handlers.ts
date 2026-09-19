@@ -31,7 +31,7 @@ import { ownsProperty } from '@properties/kernel';
 import { generateGuestAppKey } from '../domain/key';
 import { brandAssetsOf } from '@properties/brand-assets';
 import {
-  buildSheet, renderSheetPdf, receptionContact, whatsappLink,
+  buildSheet, renderSheetPdf, receptionContact,
   type SheetOverrides,
 } from '@properties/a4-sheet';
 import { parseLanguage } from '@core/i18n/languages';
@@ -234,10 +234,12 @@ export const guestAppSheet = withOwner(async (request: Request, _ctx: unknown, a
       hotelLanguage: parseLanguage(org?.language, 'en'),
       brand,
       receptionHours: reception.hours,
-      // Посилання будує модуль: `wa.me` хоче самі цифри, і номер, у якому
-      // їх замало, дає `null` — код, що веде на сторінку помилки, гірший за
-      // порожнє місце в панелі.
-      whatsappUrl: whatsappLink(reception.whatsapp),
+      receptionName: reception.name,
+      // Номер чату — лише якщо готель назвав ОКРЕМИЙ. Порожньо — збирач
+      // візьме той, що друкується: інакше поруч стояли б код і підпис, які
+      // ведуть на різні номери (саме так власник ввів номер у вікні друку,
+      // побачив його на аркуші й не побачив коду).
+      whatsappPhone: reception.whatsapp,
     }, originOf(request), overrides);
 
     const pdf = await renderSheetPdf(sheet);

@@ -18,14 +18,18 @@ export interface ReceptionContact {
   whatsapp: string | null;
   /** «8:00 – 22:00», «цілодобово» — рядок готелю, не наш переказ. */
   hours: string | null;
+  /** Хто відповість: «Анна», «Frau Müller», «черговий адміністратор» (0423). */
+  name: string | null;
 }
 
 /** Кличеться ВСЕРЕДИНІ `runWithOrganization`. Немає рядка — обидва `null`. */
 export async function receptionContact(
   organizationId: string, propertyId: string,
 ): Promise<ReceptionContact> {
-  const row = await getSql().row<{ whatsapp_phone: string | null; reception_hours: string | null }>(
-    `SELECT c.whatsapp_phone, c.reception_hours
+  const row = await getSql().row<{
+    whatsapp_phone: string | null; reception_hours: string | null; reception_name: string | null;
+  }>(
+    `SELECT c.whatsapp_phone, c.reception_hours, c.reception_name
        FROM property_guest_config c
        JOIN properties p ON p.id = c.property_id
       WHERE c.property_id = ? AND p.organization_id = ?`,
@@ -35,7 +39,11 @@ export async function receptionContact(
     const t = (v ?? '').trim();
     return t ? t : null;
   };
-  return { whatsapp: clean(row?.whatsapp_phone), hours: clean(row?.reception_hours) };
+  return {
+    whatsapp: clean(row?.whatsapp_phone),
+    hours: clean(row?.reception_hours),
+    name: clean(row?.reception_name),
+  };
 }
 
 /**
