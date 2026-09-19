@@ -112,7 +112,14 @@ for (const surface of SURFACES) {
 // написаний машинною мовою, читається як недороблений, а не як «забули
 // підпис». Реєстр підписів живе на екрані (там його бачить `extract-strings`),
 // тож звіряється саме файл екрана.
-const SETTINGS = 'src/app/app/(dashboard)/settings/guest-page/page.tsx';
+//
+// Файл змінився 18.09.2026: вибір вигляду переїхав із налаштувань гостьової
+// СТОРІНКИ в картку ОБʼЄКТА — те саме лого бере ще й застосунок із наліпки
+// та аркуш A4. Гейт при цьому лишався зеленим із неправильної причини:
+// `PALETTE_NAMES` у старому файлі стала мертвою константою, а він далі
+// дивився на неї. Тобто твердження «підпис є там, де вибір» перетворилось на
+// «рядок є десь у файлі» — і саме так гейти тихо перестають стерегти.
+const SETTINGS = 'src/modules/properties/ui/PropertyBrandCard.tsx';
 const screen = fs.readFileSync(SETTINGS, 'utf8');
 const namesAt = screen.indexOf('const PALETTE_NAMES');
 assert.ok(namesAt >= 0, `${SETTINGS}: PALETTE_NAMES зник — вибір палітри лишився без підписів`);

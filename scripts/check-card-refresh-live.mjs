@@ -40,7 +40,10 @@
  *
  * Пароль — лише з оточення. Літерала тут немає навмисно (інваріант 7).
  */
-import { chromium } from 'playwright';
+// `@playwright/test`, не `playwright`: другий лежить у node_modules лише
+// тому, що його тягне перший, і зник би разом зі зміною його залежностей —
+// зламався б цей скрипт, а причина була б не тут (`check-lockfile`).
+import { chromium } from '@playwright/test';
 
 const BASE = process.env.BASE_URL || 'http://localhost:3000';
 const EMAIL = process.env.PROBE_EMAIL;

@@ -156,6 +156,7 @@ const cats = await import('../src/modules/properties/data/categories.repo.ts');
 const types = await import('../src/modules/properties/data/unit-types.repo.ts');
 const units = await import('../src/modules/properties/data/units.repo.ts');
 const amenities = await import('../src/modules/properties/data/amenities.repo.ts');
+const brand = await import('../src/modules/properties/data/brand-assets.repo.ts');
 const currency = await import('../src/core/currency.ts');
 const pricing = await import('../src/modules/pricing/data/occupancy-price.repo.ts');
 const { CONTENT_COLUMN_LANGS } = await import('../src/core/i18n/content-field.ts');
@@ -328,8 +329,7 @@ async function applyStructure(organizationId, plan) {
     // коді (інваріант 20): готель, який бере гроші на стійці, і готель,
     // який вимагає передоплати, різняться цим рядком, а не релізом.
     ['checkinPaymentPolicy', 'checkin_payment_policy'],
-    ['brandPalette', 'brand_palette'],
-    ['brandLogoUrl', 'brand_logo_url']]) {
+    ['brandPalette', 'brand_palette']]) {
     const v = f(wantProp, key, snake(key), col);
     if (v !== undefined && String(property[col] ?? '') !== String(v)) propPatch[col] = v;
   }
@@ -338,6 +338,31 @@ async function applyStructure(organizationId, plan) {
     say.changed(`обʼєкт ${property.name}: ${Object.keys(propPatch).join(', ')}`);
   } else {
     say.same(`обʼєкт ${property.name}`);
+  }
+
+  // ── зображення обʼєкта: РОЛЬОВИМИ рядками (0421) ────────────────────────
+  //
+  // Не через `updateProperty`: колонки `brand_logo_url` більше немає серед
+  // дозволених полів, і патч із нею відповідав би «оновлено», не записавши
+  // нічого. Ролі йдуть тими самими дверима, що екран, тож файл готелю і
+  // форма не можуть розійтися в тому, що вважається придатною адресою.
+  for (const [key, role] of [
+    ['brandLogoUrl', 'logo'],
+    ['brandLogoLightUrl', 'logo_light'],
+    ['brandCoverUrl', 'cover']]) {
+    // Порожнє значення `f` не віддає взагалі, тож «стерти зображення»
+    // файлом готелю не можна — лише назвати інше. Так само поводяться
+    // й решта полів обʼєкта: відсутній ключ означає «не чіпати».
+    const v = f(wantProp, key, snake(key));
+    if (v === undefined) continue;
+    if (DRY) { say.changed(`обʼєкт ${property.name}: зображення ${role}`); continue; }
+    const outcome = await brand.setBrandAsset(organizationId, property.id, role, String(v ?? ''));
+    // Відмову НАЗИВАЄМО: мовчазний пропуск тут означав би готель, заведений
+    // без знака, при зеленому прогоні файлу.
+    if (outcome === 'bad-url' || outcome === 'bad-role') {
+      throw new Error(`обʼєкт ${property.name}: зображення ${role} — ${outcome}: ${String(v)}`);
+    }
+    say.changed(`обʼєкт ${property.name}: зображення ${role} — ${outcome}`);
   }
 
   // ── зміст гостьової сторінки ──────────────────────────────────────────────

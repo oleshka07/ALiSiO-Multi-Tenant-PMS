@@ -5,7 +5,7 @@ import { getSql } from '@core/db/async';
 // (`channels/channex/property-type.ts`).
 import { isLodgingKind } from '@core/lodging-kinds';
 import { refuse } from '@core/http/refusal';
-import { BRAND_PALETTES, readBrandLogoUrl } from '@core/brand-palettes';
+import { BRAND_PALETTES } from '@core/brand-palettes';
 import { CHECKIN_PAYMENT_POLICIES } from '@bookings/checkin-policy';
 import { unitColumnsSql } from './units.repo';
 
@@ -196,7 +196,7 @@ export async function updateProperty(organizationId: string, id: string, fields:
   const sql = getSql();
   if (!await owns(organizationId, id)) return null;
 
-  const allowed = ['name', 'slug', 'address', 'city', 'country', 'phone', 'email', 'check_in_time', 'check_out_time', 'city_tax_per_night', 'is_active', 'checkout_balance_policy', 'property_type', 'checkin_payment_policy', 'brand_palette', 'brand_logo_url'];
+  const allowed = ['name', 'slug', 'address', 'city', 'country', 'phone', 'email', 'check_in_time', 'check_out_time', 'city_tax_per_night', 'is_active', 'checkout_balance_policy', 'property_type', 'checkin_payment_policy', 'brand_palette'];
   // Рід житла: назване значення звіряється, порожнє ЗНІМАЄТЬСЯ з патча.
   //
   // Саме зняття, а не запис `null`: форма обʼєкта шле `{...propForm}` цілком,
@@ -243,17 +243,14 @@ export async function updateProperty(organizationId: string, id: string, fields:
       refuse(`Палітру «${want}» ми не знаємо — оберіть зі списку у формі обʼєкта.`);
     }
   }
-  // Лого: або адреса, придатна для показу, або порожньо. Пів-адреса в колонці
-  // дає гостю порожній прямокутник замість назви готелю — мовчки.
-  if (fields.brand_logo_url !== undefined) {
-    const raw = String(fields.brand_logo_url ?? '').trim();
-    fields = { ...fields };
-    if (!raw) fields.brand_logo_url = null;
-    else if (readBrandLogoUrl(raw) === null) {
-      refuse('Адреса лого має починатись на https:// або бути шляхом у нашому сховищі (/…). '
-        + 'http:// браузер гостя заблокує мовчки, і на сторінці буде порожньо.');
-    }
-  }
+  // Лого сюди БІЛЬШЕ НЕ ПИШЕТЬСЯ (0421).
+  //
+  // Воно переїхало в `property_brand_assets` рольовим рядком, і колонку
+  // `brand_logo_url` міграція очистила. Лишити її в `allowed` означало б
+  // писача без читача: PATCH відповідав би 200, екран казав би «Обʼєкт
+  // оновлено!», а гість і аркуш A4 далі не бачили б знака — рід П5
+  // (перемикач-обманка) у найтихішій формі. Двері лого тепер одні:
+  // `PUT /api/properties/<id>/brand-assets` з роллю `logo`.
   const updates: string[] = [];
   const values: unknown[] = [];
 

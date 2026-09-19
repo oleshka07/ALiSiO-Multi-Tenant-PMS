@@ -17,7 +17,10 @@
  * Персональні дані вирізаються на льоту — у файли потрапляє структура, не вміст.
  */
 
-import { chromium } from 'playwright'
+// `@playwright/test`, не `playwright`: другий лежить у node_modules лише
+// тому, що його тягне перший, і зник би разом зі зміною його залежностей —
+// зламався б цей скрипт, а причина була б не тут (`check-lockfile`).
+import { chromium } from '@playwright/test'
 import { mkdir, writeFile, readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'

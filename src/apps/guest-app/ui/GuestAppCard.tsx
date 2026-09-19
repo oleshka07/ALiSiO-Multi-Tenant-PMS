@@ -30,6 +30,20 @@ interface House {
   systemOfRecord: string;
 }
 
+/**
+ * Разові правки аркуша.
+ *
+ * Разові навмисно (рішення власника 18.09): телефон рецепції часто не той,
+ * що загальний у картці обʼєкта, але заводити другий телефон готелю окремою
+ * колонкою означало б два джерела одного факту — і відповідало б те, кого
+ * спитали останнім.
+ *
+ * Порожнє поле означає «як у готелю», а не «зітри»: форма шле всі поля
+ * завжди, і без цього правила порожній рядок прибрав би телефон з аркуша
+ * (той самий клас, що `property_type: ''` у формі обʼєкта).
+ */
+const EMPTY_SHEET = { hotelName: '', address: '', phone: '', headline: '', note: '' };
+
 export function GuestAppCard() {
   const t = useT();
   const [houses, setHouses] = useState<House[]>([]);
@@ -37,6 +51,12 @@ export function GuestAppCard() {
   const [message, setMessage] = useState<string | null>(null);
   /** Який будинок питає підтвердження заміни. Заміна вбиває наліпки. */
   const [confirming, setConfirming] = useState<string | null>(null);
+  /** Чий QR розгорнуто під посиланням. */
+  const [showQr, setShowQr] = useState<string | null>(null);
+  /** Чий аркуш зараз готують, і з якими правками. */
+  const [sheetFor, setSheetFor] = useState<string | null>(null);
+  const [sheet, setSheet] = useState(EMPTY_SHEET);
+  const [building, setBuilding] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -75,6 +95,40 @@ export function GuestAppCard() {
 
   const origin = typeof window === 'undefined' ? '' : window.location.origin;
 
+  /**
+   * Зібрати аркуш і відкрити його.
+   *
+   * Відповідь ЧИТАЄТЬСЯ: маршрут віддає названу відмову (404 на чужий обʼєкт,
+   * 409 поки немає ключа), і екран, який відкрив би вікно не глянувши в
+   * тіло, показав би порожню вкладку замість речення
+   * (`check-unread-write-response`).
+   */
+  async function buildSheet(propertyId: string) {
+    setBuilding(true);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/settings/apps/guest-app/sheet', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ propertyId, ...sheet }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        setMessage(body.error ?? t('Не вдалося зібрати аркуш'));
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      // Звільняємо не одразу: вкладка ще читає цей blob.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      setMessage(t('Не вдалося зібрати аркуш'));
+    } finally {
+      setBuilding(false);
+    }
+  }
+
   return (
     <div data-testid="guest-app-card" style={{ padding: '12px 18px 16px 18px', borderTop: '1px solid var(--border)', fontSize: 13 }}>
       <div style={{ color: 'var(--text-secondary)', marginBottom: 10 }}>
@@ -98,6 +152,78 @@ export function GuestAppCard() {
               <div data-testid={`guest-app-url-${h.propertyId}`} style={{ fontFamily: 'monospace', wordBreak: 'break-all', marginBottom: 6 }}>
                 {origin}/stay/{h.key}
               </div>
+              {/*
+                QR ПОРУЧ із посиланням, і це те саме зображення, що поїде на
+                папір: один маршрут малює обидва. Два генератори означали б,
+                що оператор перевірить телефоном один код, а надрукує інший.
+              */}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                <button type="button" className="btn btn-sm"
+                  onClick={() => setShowQr(showQr === h.propertyId ? null : h.propertyId)}>
+                  {showQr === h.propertyId ? t('Сховати QR') : t('Показати QR')}
+                </button>
+                <button type="button" className="btn btn-sm"
+                  onClick={() => { setSheetFor(sheetFor === h.propertyId ? null : h.propertyId); setSheet(EMPTY_SHEET); }}>
+                  {t('Аркуш A4 для друку')}
+                </button>
+              </div>
+
+              {showQr === h.propertyId && (
+                <div style={{ marginBottom: 10 }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/api/settings/apps/guest-app/qr?propertyId=${encodeURIComponent(h.propertyId)}`}
+                    alt={t('QR-код гостьового застосунку')}
+                    style={{ width: 180, height: 180, border: '1px solid var(--border)', background: '#FFF' }}
+                  />
+                </div>
+              )}
+
+              {sheetFor === h.propertyId && (
+                <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 10 }}>
+                  <div style={{ color: 'var(--text-secondary)', marginBottom: 8 }}>
+                    {t('Порожнє поле — беремо дані готелю. Правки діють лише для цього друку.')}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <div>
+                      <label className="form-label">{t('Назва на аркуші')}</label>
+                      <input className="form-input" value={sheet.hotelName}
+                        placeholder={h.name}
+                        onChange={(e) => setSheet({ ...sheet, hotelName: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="form-label">{t('Телефон на аркуші')}</label>
+                      <input className="form-input" value={sheet.phone}
+                        onChange={(e) => setSheet({ ...sheet, phone: e.target.value })} />
+                    </div>
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <label className="form-label">{t('Адреса на аркуші')}</label>
+                      <input className="form-input" value={sheet.address}
+                        onChange={(e) => setSheet({ ...sheet, address: e.target.value })} />
+                    </div>
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <label className="form-label">{t('Свій заклик замість нашого')}</label>
+                      <input className="form-input" value={sheet.headline}
+                        onChange={(e) => setSheet({ ...sheet, headline: e.target.value })} />
+                    </div>
+                  </div>
+                  {/*
+                    Мови названо словами, бо це не налаштування: аркуш іде
+                    мовою готелю і англійською (рішення власника 18.09).
+                    Сімома він не йде — застосунок за кодом бере мову з
+                    телефона сам, і дрібний шрифт на папері цього не додасть.
+                  */}
+                  <div style={{ color: 'var(--text-secondary)', fontSize: 12, margin: '8px 0' }}>
+                    {t('Аркуш друкується двома мовами: мовою готелю і англійською.')}
+                  </div>
+                  <button type="button" className="btn btn-sm" data-primary="true"
+                    disabled={building}
+                    onClick={() => { void buildSheet(h.propertyId); }}>
+                    {building ? t('Збираємо…') : t('Згенерувати PDF')}
+                  </button>
+                </div>
+              )}
+
               {confirming === h.propertyId ? (
                 <div style={{ color: 'var(--danger)' }}>
                   {t('Заміна зробить усі надруковані QR непрацюючими. Замінити?')}{' '}

@@ -5,7 +5,9 @@
  * орендаря і встановлює. Далі сторінка йде звичайним `runWithOrganization`.
  */
 
-import { readBrandPalette, readBrandLogoUrl, type BrandPaletteKey } from '@core/brand-palettes';
+import { logoFor } from '@core/brand-assets';
+import { brandAssetsOf } from '@properties/brand-assets';
+import { readBrandPalette, paletteBackground, type BrandPaletteKey } from '@core/brand-palettes';
 import { parseLanguage, type Language } from '@core/i18n/languages';
 import { getSql } from '@core/db/async';
 import { runWithPublicToken, runWithOrganization } from '@core/auth/tenant-context';
@@ -29,7 +31,8 @@ export interface GuestAppHome {
    * тут «дефолтну» палітру означало б перефарбувати кожного, хто нічого не
    * просив.
    *
-   * `logoUrl: null` — лого немає, показується назва готелю текстом.
+   * `logoUrl: null` — лого немає, показується назва готелю текстом. Роль
+   * обирається за яскравістю палітри: `logo_light` для темних наборів.
    */
   palette: BrandPaletteKey | null;
   logoUrl: string | null;
@@ -66,10 +69,10 @@ export async function propertyByAppKey(key: string): Promise<GuestAppHome | unde
   const row = await runWithPublicToken(key, () => getSql().row<{
     id: string; organization_id: string; name: string; country: string | null;
     kiosk_walkin_url: string | null; system_of_record: string;
-    brand_palette: string | null; brand_logo_url: string | null;
+    brand_palette: string | null;
   }>(
     `SELECT id, organization_id, name, country, kiosk_walkin_url, system_of_record,
-            brand_palette, brand_logo_url
+            brand_palette
        FROM properties WHERE guest_app_key = ?`,
     [key],
   ));
@@ -107,6 +110,25 @@ export async function propertyByAppKey(key: string): Promise<GuestAppHome | unde
     getSql().row<{ language: string | null }>(
       'SELECT language FROM organizations WHERE id = ?', [row.organization_id]));
 
+  // ── Зображення обʼєкта (0421) ───────────────────────────────────────────
+  //
+  // Теж під орендарем і тим самим взірцем: `property_brand_assets` під RLS,
+  // і читання під публічною перепусткою віддало б порожньо — мовчки.
+  //
+  // Лого береться за ЯСКРАВІСТЮ ТЛА: палітри `forest_stone` та `ink_amber`
+  // дають темну шапку, і темний знак на ній зникає. Готель, який завантажив
+  // одне лого, нічого не втрачає — `logoFor` віддасть його для обох тл.
+  const palette = readBrandPalette(row.brand_palette);
+  // Через ДВЕРІ модуля, не сирим SQL: `property_brand_assets` належить
+  // `modules/properties`, і запит звідси — пробій межі (`check-boundaries`).
+  const assets = await runWithOrganization(String(row.organization_id), () =>
+    brandAssetsOf(String(row.organization_id), String(row.id)));
+  // Яскравість тла — властивість ПАЛІТРИ, і живе вона в реєстрі палітр.
+  // Тут стояв літеральний перелік двох темних наборів; такий самий був
+  // потрібен гостьовому порталу, а дві копії одного факту розходяться рівно
+  // тоді, коли додадуть пʼяту палітру.
+  const background = paletteBackground(row.brand_palette);
+
   return {
     organizationId: row.organization_id,
     propertyId: row.id,
@@ -116,8 +138,8 @@ export async function propertyByAppKey(key: string): Promise<GuestAppHome | unde
     systemOfRecord: row.system_of_record,
     // Приводиться ТУТ, а не на екрані: екранів дві штуки і буде більше, а
     // невідоме значення, приведене в кожному окремо, приводиться по-різному.
-    palette: readBrandPalette(row.brand_palette),
-    logoUrl: readBrandLogoUrl(row.brand_logo_url),
+    palette,
+    logoUrl: logoFor(assets, background),
     // Рядка немає або мова чужа — англійська: нейтральніша за будь-яку
     // національну, коли про готель ми нічого не знаємо.
     hotelLanguage: parseLanguage(org?.language, 'en'),
