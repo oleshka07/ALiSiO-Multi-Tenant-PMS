@@ -694,7 +694,7 @@
       "losTiers": []
     },
     {
-      "code": "AP",
+      "code": "APP",
       "name": "Appartement",
       "category": "Zimmer",
       "maxAdults": 2,
@@ -857,14 +857,14 @@
       "zone": "Haupthaus"
     },
     {
-      "unitType": "AP",
+      "unitType": "APP",
       "code": "111",
       "name": "111",
       "floor": 3,
       "zone": "Altstadtgalerie"
     },
     {
-      "unitType": "AP",
+      "unitType": "APP",
       "code": "112",
       "name": "112",
       "floor": 3,
@@ -1498,14 +1498,14 @@
       "expectTotal": 592
     },
     {
-      "unitType": "AP",
+      "unitType": "APP",
       "persons": 1,
       "checkIn": "2027-01-10",
       "checkOut": "2027-01-12",
       "expectTotal": 80
     },
     {
-      "unitType": "AP",
+      "unitType": "APP",
       "persons": 2,
       "checkIn": "2027-03-05",
       "checkOut": "2027-03-08",
