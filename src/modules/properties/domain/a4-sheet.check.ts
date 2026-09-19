@@ -131,17 +131,21 @@ say('правка діє; порожнє поле означає «як у го�
 // ── 6. Дві мови, і НЕ дві однакові ──────────────────────────────────────
 assert.deepStrictEqual(sheet.blocks.map((b) => b.lang), ['de', 'en'],
   'німецький готель мусить дати свою мову і англійську, саме в такому порядку');
-assert.notStrictEqual(sheet.blocks[0].headline, sheet.blocks[1].headline,
-  'два блоки з однаковим текстом — це не переклад, а копія');
+assert.notStrictEqual(sheet.blocks[0].lead, sheet.blocks[1].lead,
+  'дві колонки з однаковим текстом — це не переклад, а копія');
+// Підпис колонки — РІДНОЮ назвою мови, і в кожної свій: без нього гість не
+// знає, котра колонка його, і читає обидві (або не читає жодної).
+assert.deepStrictEqual(sheet.blocks.map((b) => b.langName), ['Deutsch', 'English'],
+  'колонка без власного підпису мови не читається як окрема мова');
 assert.deepStrictEqual(other.blocks.map((b) => b.lang), ['en'],
   'англомовний готель дістав англійську ДВІЧІ — другий блок тут зайвий');
 say('дві мови для німецького готелю, одна для англомовного');
 
 // ── 7. Власний заклик — лише в блок СВОЄЇ мови ──────────────────────────
 const ownWords = buildSheet(HOUSE, ORIGIN, { headline: 'Hier einchecken' });
-assert.strictEqual(ownWords.blocks[0].headline, 'Hier einchecken');
-assert.strictEqual(ownWords.blocks[1].headline, sheet.blocks[1].headline,
-  'німецький заклик оператора потрапив в АНГЛІЙСЬКИЙ блок — це не переклад, це підміна');
+assert.strictEqual(ownWords.blocks[0].lead, 'Hier einchecken');
+assert.strictEqual(ownWords.blocks[1].lead, sheet.blocks[1].lead,
+  'німецький заклик оператора потрапив в АНГЛІЙСЬКУ колонку — це не переклад, це підміна');
 say('власний заклик стоїть у своїй мові й не вдає переклад');
 
 // ── 8. Підвал: чи аркуш іще чинний (КІ35) ───────────────────────────────

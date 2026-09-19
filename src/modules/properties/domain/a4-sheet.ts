@@ -67,18 +67,41 @@ export interface SheetOverrides {
   note?: string;
 }
 
-/** Один мовний блок аркуша. */
+/**
+ * Одна КОЛОНКА аркуша — одна мова.
+ *
+ * Спершу мови йшли рядками одна під одною, і власник другої на аркуші
+ * просто НЕ ПОБАЧИВ: англійський текст читався як дрібна примітка під
+ * німецьким, а не як «те саме іншою мовою». Колонка з підписом мови
+ * зверху каже це формою, без жодного пояснення — гість знаходить свою
+ * мову за секунду й не читає чужу.
+ */
 export interface SheetBlock {
   lang: Language;
-  headline: string;
-  steps: readonly string[];
-  note: string;
+  /** Підпис колонки — РІДНОЮ назвою мови: гість шукає слово, яке впізнає. */
+  langName: string;
+  /** Перший рядок, жирним: що взагалі зробити. */
+  lead: string;
+  /** Дві розвилки: бронь уже є / броні немає. Кожна — назва плюс дія. */
+  bullets: readonly { label: string; text: string }[];
+  /** Тихий хвіст: що буде далі. */
+  tail: string;
 }
 
 export interface SheetContent {
   hotelName: string;
   address: string;
   phone: string;
+  /** Велика дія вгорі, мовою готелю. Те, заради чого аркуш висить. */
+  title: string;
+  /** Під нею — та сама дія рештою мов аркуша, через крапку. */
+  subtitle: string;
+  /** «Потрібна допомога?» всіма мовами аркуша — підпис над телефоном. */
+  helpLabel: string;
+  /** Кого саме набирають. Без годин: ми їх не знаємо і не вигадуємо. */
+  helpRole: string;
+  /** Нижній рядок: підготуйте документ — усіма мовами аркуша. */
+  idNote: string;
   /** Адреса, яку друкуємо текстом. Вона ж — вміст QR. */
   url: string;
   /** Те саме, окремим полем: гейт звіряє рівність, а не однаковість імені. */
@@ -104,45 +127,106 @@ export interface SheetContent {
  *
  * Готель, якому наші слова не підходять, пише свої у вікні друку.
  */
-const SHEET_TEXT: Record<string, { headline: string; steps: string[]; note: string }> = {
+interface SheetWords {
+  /** Рідна назва мови — підпис колонки. */
+  langName: string;
+  /** Велика дія вгорі. Капс робить малювач, не ми. */
+  title: string;
+  /** Коротка та сама дія — для рядка підзаголовка з іншими мовами. */
+  short: string;
+  lead: string;
+  withBooking: { label: string; text: string };
+  noBooking: { label: string; text: string };
+  tail: string;
+  help: string;
+  role: string;
+  idNote: string;
+}
+
+const SHEET_TEXT: Record<string, SheetWords> = {
   de: {
-    headline: 'Scannen Sie den Code — und erledigen Sie alles vom Handy',
-    steps: [
-      'Freie Zimmer und Preise ansehen',
-      'Ihre Buchung finden',
-      'Ohne Warteschlange einchecken',
-    ],
-    note: 'Oder öffnen Sie die Adresse im Browser',
+    langName: 'Deutsch',
+    title: 'Selbst-Check-in',
+    short: 'Selbst-Check-in',
+    lead: 'Scannen Sie den QR-Code mit dem Handy.',
+    withBooking: { label: 'Mit Reservierung:', text: 'über Ihren Namen finden und einchecken.' },
+    noBooking: { label: 'Ohne Reservierung:', text: 'freies Zimmer wählen und sofort buchen.' },
+    tail: 'Danach erhalten Sie eine Bestätigung und Anreisehinweise.',
+    help: 'Brauchen Sie Hilfe?',
+    role: 'Rezeption',
+    idNote: 'Bitte halten Sie Ihren Ausweis bereit',
   },
   en: {
-    headline: 'Scan the code — and do it all from your phone',
-    steps: ['See free rooms and prices', 'Find your booking', 'Check in without queueing'],
-    note: 'Or open the address in your browser',
+    langName: 'English',
+    title: 'Self check-in',
+    short: 'Self-service check-in',
+    lead: 'Scan the QR code with your phone.',
+    withBooking: { label: 'I have a booking:', text: 'find it by your name and check in.' },
+    noBooking: { label: 'No booking yet:', text: 'pick a free room and book it right away.' },
+    tail: 'You will then receive a confirmation and arrival instructions.',
+    help: 'Need help?',
+    role: 'Reception',
+    idNote: 'Please have your ID or passport ready',
   },
   cs: {
-    headline: 'Naskenujte kód — a vyřiďte vše z telefonu',
-    steps: ['Volné pokoje a ceny', 'Najít svou rezervaci', 'Odbavení bez čekání'],
-    note: 'Nebo otevřete adresu v prohlížeči',
+    langName: 'Čeština',
+    title: 'Samoobslužné přihlášení',
+    short: 'Samoobslužné přihlášení',
+    lead: 'Naskenujte QR kód telefonem.',
+    withBooking: { label: 'Mám rezervaci:', text: 'najděte ji podle jména a dokončete přihlášení.' },
+    noBooking: { label: 'Nemám rezervaci:', text: 'vyberte volný pokoj a rovnou jej rezervujte.' },
+    tail: 'Poté obdržíte potvrzení a pokyny k ubytování.',
+    help: 'Potřebujete pomoc?',
+    role: 'Recepce',
+    idNote: 'Připravte si prosím doklad totožnosti',
   },
   pl: {
-    headline: 'Zeskanuj kod — i załatw wszystko z telefonu',
-    steps: ['Wolne pokoje i ceny', 'Znajdź swoją rezerwację', 'Zamelduj się bez kolejki'],
-    note: 'Albo otwórz adres w przeglądarce',
+    langName: 'Polski',
+    title: 'Samodzielne zameldowanie',
+    short: 'Samodzielne zameldowanie',
+    lead: 'Zeskanuj kod QR telefonem.',
+    withBooking: { label: 'Mam rezerwację:', text: 'znajdź ją po nazwisku i zamelduj się.' },
+    noBooking: { label: 'Nie mam rezerwacji:', text: 'wybierz wolny pokój i zarezerwuj od razu.' },
+    tail: 'Następnie otrzymasz potwierdzenie i wskazówki dojazdu.',
+    help: 'Potrzebujesz pomocy?',
+    role: 'Recepcja',
+    idNote: 'Prosimy przygotować dokument tożsamości',
   },
   nl: {
-    headline: 'Scan de code — en regel alles met uw telefoon',
-    steps: ['Vrije kamers en prijzen', 'Uw boeking vinden', 'Inchecken zonder wachtrij'],
-    note: 'Of open het adres in uw browser',
+    langName: 'Nederlands',
+    title: 'Zelf inchecken',
+    short: 'Zelf inchecken',
+    lead: 'Scan de QR-code met uw telefoon.',
+    withBooking: { label: 'Met boeking:', text: 'zoek hem op uw naam en check in.' },
+    noBooking: { label: 'Zonder boeking:', text: 'kies een vrije kamer en boek meteen.' },
+    tail: 'Daarna ontvangt u een bevestiging en aankomstinformatie.',
+    help: 'Hulp nodig?',
+    role: 'Receptie',
+    idNote: 'Houd uw identiteitsbewijs gereed',
   },
   fr: {
-    headline: 'Scannez le code — et faites tout depuis votre téléphone',
-    steps: ['Chambres libres et tarifs', 'Retrouver votre réservation', 'Arrivée sans file d’attente'],
-    note: 'Ou ouvrez l’adresse dans votre navigateur',
+    langName: 'Français',
+    title: 'Enregistrement autonome',
+    short: 'Enregistrement autonome',
+    lead: 'Scannez le QR code avec votre téléphone.',
+    withBooking: { label: 'J’ai une réservation :', text: 'retrouvez-la par votre nom et enregistrez-vous.' },
+    noBooking: { label: 'Pas de réservation :', text: 'choisissez une chambre libre et réservez aussitôt.' },
+    tail: 'Vous recevrez ensuite une confirmation et les informations d’arrivée.',
+    help: 'Besoin d’aide ?',
+    role: 'Réception',
+    idNote: 'Merci de préparer votre pièce d’identité',
   },
   uk: {
-    headline: 'Відскануйте код — і зробіть усе з телефона',
-    steps: ['Вільні номери й ціни', 'Знайти свою бронь', 'Заселитись без черги'],
-    note: 'Або відкрийте адресу в браузері',
+    langName: 'Українська',
+    title: 'Самостійне заселення',
+    short: 'Самостійне заселення',
+    lead: 'Відскануйте QR-код телефоном.',
+    withBooking: { label: 'Маю бронь:', text: 'знайдіть її за іменем і завершіть заселення.' },
+    noBooking: { label: 'Броні немає:', text: 'оберіть вільний номер і забронюйте одразу.' },
+    tail: 'Далі отримаєте підтвердження і вказівки до заїзду.',
+    help: 'Потрібна допомога?',
+    role: 'Рецепція',
+    idNote: 'Підготуйте, будь ласка, документ',
   },
 };
 
@@ -175,18 +259,28 @@ export function buildSheet(
     ? ['en']
     : [property.hotelLanguage, 'en'];
 
+  const words = (lang: Language): SheetWords => SHEET_TEXT[lang] ?? SHEET_TEXT.en;
+  const first = words(langs[0]);
+
   const blocks: SheetBlock[] = langs.map((lang) => {
-    const text = SHEET_TEXT[lang] ?? SHEET_TEXT.en;
+    const text = words(lang);
     return {
       lang,
-      // Власний заклик оператора йде ЛИШЕ в перший блок: він написав його
-      // однією мовою, і продублювати його в англійський означало б надрукувати
+      langName: text.langName,
+      // Власний заклик оператора йде ЛИШЕ в першу колонку: він написав його
+      // однією мовою, і продублювати його в англійську означало б надрукувати
       // те саме двічі, вдаючи переклад.
-      headline: lang === langs[0] ? pick(overrides.headline, text.headline) : text.headline,
-      steps: text.steps,
-      note: lang === langs[0] ? pick(overrides.note, text.note) : text.note,
+      lead: lang === langs[0] ? pick(overrides.headline, text.lead) : text.lead,
+      bullets: [text.withBooking, text.noBooking],
+      tail: lang === langs[0] ? pick(overrides.note, text.tail) : text.tail,
     };
   });
+
+  // Рядки, що збирають УСІ мови аркуша в один — як у зразку кемпінгу.
+  // Дублікати прибираються: готель, чия мова англійська, має один блок, і
+  // «Self check-in · Self check-in» виглядало б як помилка друку.
+  const joinAll = (take: (w: SheetWords) => string): string =>
+    [...new Set(langs.map((l) => take(words(l))))].join(' · ');
 
   return {
     hotelName: pick(overrides.hotelName, property.name),
@@ -194,6 +288,15 @@ export function buildSheet(
     phone: pick(overrides.phone, property.phone),
     url,
     qrPayload: url,
+    title: first.title,
+    // Підзаголовок — РЕШТА мов, без першої: заголовок уже сказав її великим
+    // кеглем, і «SELBST-CHECK-IN / Selbst-Check-in · Self-service check-in»
+    // читається як помилка друку, а не як дві мови. Одна мова на аркуші →
+    // рядок порожній, і малювач його не друкує.
+    subtitle: [...new Set(langs.slice(1).map((l) => words(l).short))].join(' · '),
+    helpLabel: joinAll((w) => w.help),
+    helpRole: joinAll((w) => w.role),
+    idNote: joinAll((w) => w.idNote),
     blocks,
     // Папір білий — тло світле завжди.
     logoUrl: logoFor(property.brand ?? {}, 'light'),

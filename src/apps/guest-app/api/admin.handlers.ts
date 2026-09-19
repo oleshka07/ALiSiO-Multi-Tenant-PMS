@@ -33,6 +33,7 @@ import { brandAssetsOf } from '@properties/brand-assets';
 import { buildSheet, renderSheetPdf, type SheetOverrides } from '@properties/a4-sheet';
 import { parseLanguage } from '@core/i18n/languages';
 import QRCode from 'qrcode';
+import { publicOrigin } from '@core/public-origin';
 
 const APP = 'guest_app';
 
@@ -133,10 +134,31 @@ async function sheetRowOf(organizationId: string, propertyId: string) {
   return row!;
 }
 
-/** Адреса цього сервера. Ключ і сам сервер різні на беті й на проді. */
+/**
+ * Адреса цього сервера — З ЗАГОЛОВКІВ, а не з сокета.
+ *
+ * Тут стояло `new URL(request.url)`, і перший же надрукований аркуш вийшов
+ * із `https://0.0.0.0:3000/stay/…` — і в підписі, і в QR. `0.0.0.0` це
+ * адреса, на якій процес СЛУХАЄ: у прод-образі Next standalone слухає саме
+ * її, а назовні стоїть nginx. У розробника `request.url` дає
+ * `localhost:3000`, що для нього правда, тож локально все виглядало
+ * правильно — видно було лише на папері, після друку.
+ *
+ * Немає звідки взяти — НАЗВАНА ВІДМОВА, не вигадана адреса: пачка паперу з
+ * мертвим кодом гірша за ненадруковану (той самий довід, що інваріант 17
+ * про ціну). Правило й фікстури — `core/public-origin.check`.
+ */
 function originOf(request: Request): string {
-  const url = new URL(request.url);
-  return `${url.protocol}//${url.host}`;
+  const origin = publicOrigin(request.headers);
+  if (!origin) {
+    // 409, не 5xx: `check-refusal-status` тримає названі відмови в 4xx, і
+    // слушно — `handleError` віддає їх ДОСЛІВНО, тож 5xx тут був би обходом
+    // маскування помилок. Стан середовища, у якому дію зробити не можна, —
+    // це те саме, що «спершу видайте ключ» поруч.
+    refuse('Не вдалося визначити адресу сервера, тож QR вів би в нікуди. '
+      + 'Назвіть APP_URL у налаштуваннях середовища і спробуйте ще раз.', 409);
+  }
+  return origin!;
 }
 
 /**
