@@ -239,8 +239,33 @@ export function proxy(request: NextRequest) {
   return response;
 }
 
+// ─── Що взагалі доходить до middleware ────────────────────────────────
+//
+// Виняток `api/apps/winhotel-import/snapshots` — не про право, а про РОЗМІР.
+// Під middleware Next буферизує тіло запиту, щоб віддати його копію і далі
+// маршрутові, і стеля цього буфера — 10 МБ (`getCloneableBody`,
+// `proxyClientMaxBodySize`). Перевищення НЕ відмова: буфер мовчки
+// обрізається на десятому мегабайті (`p1.push(null)`), маршрут дістає
+// початок файла, і в лог іде лише попередження. Знімок готелю — 80 МБ
+// gzip, тож 18.09.2026 на беті це виглядало так:
+//
+//   Request body exceeded 10MB for /api/apps/winhotel-import/snapshots.
+//   Only the first 10MB will be available unless configured.
+//
+// Тобто навіть із відкритим nginx sha256 не зійшовся б і агент отримав би
+// 400 на кожен нічний знімок. Піднімати стелю не можна: це 200 МБ у
+// памʼяті на сервері з 4 ГБ, де вже живуть два стеки й чужі проєкти.
+//
+// Безпечно саме для цього шляху, і лише для нього: він уже в
+// PUBLIC_PREFIXES — право доводить токен агента, не сесія, тож жодної
+// перевірки middleware тут і не робив; єдине, що він додавав, —
+// заголовок `x-device-type`, якого цей маршрут не читає (сесія Windows
+// о третій ночі не має типу пристрою).
+//
+// Тримає `scripts/check-body-limits.mjs`: кожен `location` у шаблоні
+// nginx, якому дозволено тіло понад ці 10 МБ, мусить бути тут виключений.
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|icons|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|woff|woff2|ttf|eot)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|icons|api/apps/winhotel-import/snapshots|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|woff|woff2|ttf|eot)$).*)',
   ],
 };

@@ -246,7 +246,14 @@ if ($Gbak) { Write-Log ('gbak: ' + $Gbak) } else { Write-Log 'gbak.exe nicht gef
 $Work = Join-Path $env:TEMP ('winhotel-agent-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 New-Item -ItemType Directory -Path $Work | Out-Null
 $Snapshot = $null   # Pfad zur .fbk oder .fdb im Arbeitsordner
-$Mode = $null       # backup | gbak | copy
+# $Taken, NICHT $Mode. $Mode ist der Parameter oben mit [ValidateSet], und
+# PowerShell prüft ein ValidateSet bei JEDER Zuweisung, nicht nur beim
+# Binden: `$Mode = $null` wird in einem [string] zum leeren String, der im
+# Set nicht vorkommt, und der terminierende Fehler passiert HIER — vor dem
+# try{} unten, also steht im Protokoll nichts und der Prozess endet mit 1.
+# Der Schnappschuss-Modus lief deswegen nirgendwo je durch; -Mode Delta war
+# nicht betroffen, weil er diese Zeile nicht erreicht (18.09.2026).
+$Taken = $null      # backup | gbak | copy
 
 try {
   # ── (a) fertiges Backup ─────────────────────────────────────────────────
@@ -256,7 +263,7 @@ try {
     if ($latest -and $latest.LastWriteTime -gt (Get-Date).AddHours(-24)) {
       $Snapshot = Join-Path $Work 'snapshot.fbk'
       Copy-Item -Path $latest.FullName -Destination $Snapshot
-      $Mode = 'backup'
+      $Taken = 'backup'
       Write-Log ('Modus (a): fertiges Backup ' + $latest.Name + ' vom ' + $latest.LastWriteTime.ToString('yyyy-MM-dd HH:mm'))
     } else {
       Write-Log 'Modus (a): kein .fbk jünger als 24 h im Backup-Ordner'
@@ -280,7 +287,7 @@ try {
       }
       if ($code -eq 0 -and (Test-Path $target)) {
         $Snapshot = $target
-        $Mode = 'gbak'
+        $Taken = 'gbak'
         Write-Log ('Modus (b): gbak -b erfolgreich, ' + [math]::Round((Get-Item $target).Length / 1MB) + ' MB')
         break
       }
@@ -297,7 +304,7 @@ try {
       $exclusive.Close()
       $Snapshot = Join-Path $Work 'snapshot.fdb'
       Copy-Item -Path $Database -Destination $Snapshot
-      $Mode = 'copy'
+      $Taken = 'copy'
       Write-Log ('Modus (c): Winhotel ist geschlossen, Datei kopiert, ' + [math]::Round((Get-Item $Snapshot).Length / 1MB) + ' MB')
     } catch {
       Write-Log 'Modus (c): winhotel.fdb ist in Benutzung (Winhotel oder Firebird läuft) — keine Kopie'
@@ -313,7 +320,7 @@ try {
   $gzip = New-Object System.IO.Compression.GZipStream($outStream, [System.IO.Compression.CompressionLevel]::Optimal)
   try { $in.CopyTo($gzip) } finally { $gzip.Dispose(); $outStream.Dispose(); $in.Dispose() }
   Remove-Item -Path $Snapshot -ErrorAction SilentlyContinue
-  $done = Send-Package -File $gz -SendMode $Mode
+  $done = Send-Package -File $gz -SendMode $Taken
   if (-not $done) { Fail 'Upload nicht gelungen — siehe Protokoll.' 4 }
   Write-Log 'Fertig.'
   exit 0
