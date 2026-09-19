@@ -8709,8 +8709,73 @@ function runMigrations(database: any) {
     console.error('[DB] discount link migration:', e.message);
   }
 
+  migrateFiscalUa(database);
+
   console.log('[DB] migrations complete');
   }
+
+/**
+ * Міграція 0500 — каса українського обʼєкта (модуль `fiscal_ua`,
+ * docs/tasks/2026-09-19-ua-fiscal.md). Дзеркало
+ * `db/postgres/migrations/0500-*.sql`; політики — лише на Postgres.
+ *
+ * `prro_settings`: один рядок на обʼєкт — драйвер, касир, реквізити каси.
+ * `prro_operations`: кожне звертання до каси, вдале і невдале — реєстр чеків
+ * і журнал збоїв в одній таблиці (збій це операція зі станом `failed`).
+ *
+ * Обидві з префіксом МОДУЛЯ: інваріант 22 — назва країни, її закону або її
+ * документа не заходить у таблиці ядра, а модуль юрисдикції називає своє
+ * своїми словами.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function migrateFiscalUa(database: any) {
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS prro_settings (
+        id                     TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id        TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        property_id            TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        driver                 TEXT NOT NULL DEFAULT 'none' CHECK (driver IN ('none', 'test')),
+        cashier_name           TEXT,
+        register_fiscal_number TEXT,
+        point_local_number     TEXT,
+        tax_number             TEXT,
+        created_at             TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at             TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (property_id)
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_prro_settings_org ON prro_settings(organization_id)');
+    // Окремим рядком, а не лише через UNIQUE у CREATE: індекс, дописаний
+    // тільки в міграцію, є в мігрованому середовищі й відсутній у нового
+    // клієнта (AGENTS §4). Тут він мусить бути з обох боків.
+    database.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_prro_settings_row ON prro_settings(property_id)');
+
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS prro_operations (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        property_id     TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        kind            TEXT NOT NULL CHECK (kind IN ('shift_open', 'receipt', 'shift_close')),
+        status          TEXT NOT NULL CHECK (status IN ('registered', 'failed')),
+        -- Без зовнішнього ключа навмисно (У3): запис у журнал не сміє вміти
+        -- впасти. Журнал, який мовчить, коли посилання не зійшлося, — тиша
+        -- рівно там, де потрібен слід.
+        payment_id      TEXT,
+        shift_id        TEXT,
+        fiscal_number   TEXT,
+        total           REAL,
+        error           TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_prro_operations_org ON prro_operations(organization_id, created_at)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_prro_operations_property ON prro_operations(property_id, created_at)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_prro_operations_payment ON prro_operations(payment_id)');
+  } catch (e: any) {
+    console.error('[DB] fiscal_ua migration:', e.message);
+  }
+}
 
 /**
  * Міграція 0400 — стан звʼязку застосунків і попит «хочу» (Блок «Застосунки»,

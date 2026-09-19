@@ -1848,6 +1848,40 @@ CREATE TABLE "property_photos" (
   PRIMARY KEY ("id")
 );
 
+CREATE TABLE "prro_operations" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "property_id" TEXT NOT NULL,
+  "kind" TEXT NOT NULL,
+  "status" TEXT NOT NULL,
+  "payment_id" TEXT,
+  "shift_id" TEXT,
+  "fiscal_number" TEXT,
+  "total" NUMERIC(14,2),
+  "error" TEXT,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  CHECK (kind IN ('shift_open', 'receipt', 'shift_close')),
+  CHECK (status IN ('registered', 'failed'))
+);
+
+CREATE TABLE "prro_settings" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "property_id" TEXT NOT NULL,
+  "driver" TEXT DEFAULT 'none' NOT NULL,
+  "cashier_name" TEXT,
+  "register_fiscal_number" TEXT,
+  "point_local_number" TEXT,
+  "tax_number" TEXT,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  UNIQUE ("property_id"),
+  UNIQUE ("property_id"),
+  CHECK (driver IN ('none', 'test'))
+);
+
 CREATE TABLE "rate_limits" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "token" TEXT NOT NULL,
@@ -2868,6 +2902,14 @@ ALTER TABLE "property_guest_config" ADD CONSTRAINT "fk_property_guest_config_pro
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "property_photos" ADD CONSTRAINT "fk_property_photos_property_id_1"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "prro_operations" ADD CONSTRAINT "fk_prro_operations_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "prro_operations" ADD CONSTRAINT "fk_prro_operations_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "prro_settings" ADD CONSTRAINT "fk_prro_settings_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "prro_settings" ADD CONSTRAINT "fk_prro_settings_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "rate_plans" ADD CONSTRAINT "fk_rate_plans_based_on_rate_plan_id_1"
   FOREIGN KEY ("based_on_rate_plan_id") REFERENCES "rate_plans" ("id");
 ALTER TABLE "rate_plans" ADD CONSTRAINT "fk_rate_plans_property_id_2"
@@ -3225,6 +3267,11 @@ CREATE INDEX "idx_property_amenities_org" ON "property_amenities" ("organization
 CREATE INDEX "idx_property_amenities_property" ON "property_amenities" ("property_id");
 CREATE INDEX "idx_property_brand_assets_org" ON "property_brand_assets" ("organization_id");
 CREATE UNIQUE INDEX "idx_property_brand_assets_role" ON "property_brand_assets" ("property_id", "role");
+CREATE INDEX "idx_prro_operations_org" ON "prro_operations" ("organization_id", "created_at");
+CREATE INDEX "idx_prro_operations_payment" ON "prro_operations" ("payment_id");
+CREATE INDEX "idx_prro_operations_property" ON "prro_operations" ("property_id", "created_at");
+CREATE INDEX "idx_prro_settings_org" ON "prro_settings" ("organization_id");
+CREATE UNIQUE INDEX "idx_prro_settings_row" ON "prro_settings" ("property_id");
 CREATE INDEX "idx_reservation_files_org" ON "reservation_files" ("organization_id");
 CREATE INDEX "idx_reservation_files_reservation" ON "reservation_files" ("reservation_id", "created_at");
 CREATE INDEX "idx_line_items_sub" ON "reservation_line_items" ("sub_booking_id");
@@ -3360,6 +3407,8 @@ CREATE INDEX IF NOT EXISTS "idx_price_rules_org" ON "price_rules" ("organization
 CREATE INDEX IF NOT EXISTS "idx_properties_org" ON "properties" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_property_amenities_org" ON "property_amenities" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_property_brand_assets_org" ON "property_brand_assets" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_prro_operations_org" ON "prro_operations" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_prro_settings_org" ON "prro_settings" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_reservation_files_org" ON "reservation_files" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_reservations_org" ON "reservations" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_season_prices_org" ON "season_prices" ("organization_id");
@@ -3539,6 +3588,10 @@ ALTER TABLE "properties" ALTER COLUMN "organization_id"
 ALTER TABLE "property_amenities" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "property_brand_assets" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "prro_operations" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "prro_settings" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "reservation_files" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -4153,6 +4206,18 @@ ALTER TABLE "property_photos" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "property_photos_tenant" ON "property_photos"
   USING ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))
   WITH CHECK ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')));
+
+ALTER TABLE "prro_operations" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "prro_operations" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "prro_operations_tenant" ON "prro_operations"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "prro_settings" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "prro_settings" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "prro_settings_tenant" ON "prro_settings"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
 ALTER TABLE "rate_plans" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "rate_plans" FORCE ROW LEVEL SECURITY;

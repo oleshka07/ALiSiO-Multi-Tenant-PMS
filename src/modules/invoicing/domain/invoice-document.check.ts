@@ -149,5 +149,45 @@ console.log('  ok  невідомий рядок лишається собою, 
 
 assert.strictEqual(localeForLanguage('de'), 'de-DE', 'German');
 assert.strictEqual(localeForLanguage('cs'), 'cs-CZ', 'Czech');
-assert.strictEqual(localeForLanguage('uk'), 'en-GB', 'no Ukrainian invoice form — English, not invented');
+assert.strictEqual(localeForLanguage('uk'), 'uk-UA', 'український готель друкує українською (У4)');
+assert.strictEqual(localeForLanguage('pl'), 'en-GB', 'польського бланка немає — англійський, не вигаданий');
+assert.strictEqual(localeForLanguage('fr'), 'en-GB', 'і французького теж');
 console.log('  ok  мова готелю перетворюється на локаль документа, без вигадок');
+
+// ─── Український бланк (У4) ────────────────────────────────────────────────
+//
+// Твердження про ВІСЬ МОВИ: локаль документа обирає країна обʼєкта, а не
+// мова оператора. Фікстура має ДВІ локалі з різними словами й різними
+// форматами числа й дати, інакше «українська локаль є» і «локаль будь-яка»
+// зелені однаково (інваріант 26).
+assert.strictEqual(chargeName('lodging', 'uk-UA'), 'Проживання', 'рядок фактури українською');
+assert.strictEqual(chargeName('city_tax', 'uk-UA'), 'Туристичний збір');
+assert.notStrictEqual(chargeName('lodging', 'uk-UA'), chargeName('lodging', 'de-DE'),
+  'український і німецький бланки не можуть давати те саме слово');
+assert.strictEqual(chargeName('sauna', 'uk-UA'), 'sauna', 'і тут нічого не вигадується');
+
+const uaDoc = buildInvoiceDocument({
+  ...BASE,
+  locale: 'uk-UA',
+  currency: 'UAH',
+  issueDate: '2026-09-05',
+  taxTotals: [{ vat_rate: 20, gross_amount: 1200, net_amount: 1000, tax_amount: 200 }],
+});
+assert.strictEqual(uaDoc.labels.invoice, 'Рахунок-фактура', 'заголовок документа українською');
+assert.strictEqual(uaDoc.labels.seller, 'Постачальник');
+assert.strictEqual(uaDoc.labels.outstanding, 'Залишок до сплати');
+assert.strictEqual(uaDoc.formatDate('2026-09-05'), '05.09.2026',
+  'ДСТУ 4163: крапки, нуль попереду. 5/09/2026 означало б, що локаль лишилась англійською');
+assert.notStrictEqual(uaDoc.formatDate('2026-09-05'), '5. 9. 2026', 'і не чеський вигляд');
+assert.ok(uaDoc.formatMoney(1200).includes('UAH'), 'валюта документа — його власна');
+console.log('  ok  У4: український бланк — свої назви, свій формат дати, своя валюта');
+
+// Мова ОПЕРАТОРА в документ не протікає, і це те саме твердження, яке
+// `check-i18n-leak` тримає з іншого боку: документ складається з локалі,
+// переданої всередину, і з нічого іншого. Німецький бланк лишається
+// німецьким, коли поруч український, — інакше правка тихо зламала б Ґрайц.
+const deAgain = buildInvoiceDocument({ ...BASE, locale: 'de-DE' });
+assert.strictEqual(deAgain.labels.invoice, 'Rechnung', 'німецький бланк не змінився від появи українського');
+assert.strictEqual(deAgain.formatDate('2026-09-05'), '05.09.2026');
+assert.strictEqual(chargeName('lodging', 'de-DE'), 'Übernachtung');
+console.log('  ok  поява української локалі не зрушила німецьку — вісь мови ізольована');

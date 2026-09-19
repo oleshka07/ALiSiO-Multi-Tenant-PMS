@@ -19,7 +19,7 @@
 // node, а `@core/…` знає лише бандлер.
 import { money } from '../../../core/money.ts';
 
-export type InvoiceLocale = 'de-DE' | 'cs-CZ' | 'en-GB';
+export type InvoiceLocale = 'de-DE' | 'cs-CZ' | 'uk-UA' | 'en-GB';
 
 export interface Party {
   name: string;
@@ -193,6 +193,37 @@ const LABELS: Record<InvoiceLocale, Labels> = {
     fiscalStart: 'Začátek transakce', fiscalEnd: 'Konec transakce',
     fiscalFailed: 'Podpis TSE není k dispozici',
   },
+  // ── Український бланк (19.09.2026, У4) ────────────────────────────────
+  //
+  // Що саме друкує український готель — рахунок-фактуру, акт наданих послуг
+  // чи обидва, і чи він платник ПДВ — ЧЕКПОІНТ власника, не рішення сесії
+  // (docs/research/prro-providers.md §5). Тому тут рівно те, що від ФОРМИ
+  // документа не залежить: мова, формат числа й дати, назви рядків. Слово
+  // `invoice` лишається «Рахунок-фактура» як найзагальніше з двох; якщо
+  // власник скаже «акт», зміниться цей рядок, а не механізм.
+  //
+  // Доти український готель друкував АНГЛІЙСЬКИЙ бланк — свідомо (PRODUCT.md
+  // §3.5: «надрукувати його у вигаданому форматі було б гірше»). Англійський
+  // бланк не був вигаданим, він був чужим; український із цими назвами не
+  // вигаданий теж — вигаданою була б СТРУКТУРА, і її тут не додано.
+  'uk-UA': {
+    invoice: 'Рахунок-фактура', storno: 'Коригування', number: 'Номер документа',
+    issueDate: 'Дата складання', servicePeriod: 'Період надання послуг',
+    seller: 'Постачальник', buyer: 'Отримувач',
+    taxNumber: 'Податковий номер', vatId: 'ІПН',
+    position: '№', description: 'Найменування', guest: 'Гість', room: 'Номер',
+    serviceDate: 'Дата послуги', quantity: 'Кількість', unitPrice: 'Ціна за од.',
+    lineTotal: 'Сума', vatRate: 'ПДВ',
+    recap: 'Зведення ПДВ', net: 'Без ПДВ', tax: 'ПДВ', gross: 'Разом',
+    total: 'Усього до сплати', paid: 'Сплачено', outstanding: 'Залишок до сплати',
+    reverses: 'Коригує документ',
+    smallAmountNote: 'Спрощений документ',
+    fiscalTitle: 'Фіскальні дані', fiscalRecordingSerial: 'Серійний номер системи',
+    fiscalTseSerial: 'Серійний номер реєстратора', fiscalTxNumber: 'Номер транзакції',
+    fiscalSignatureCounter: 'Лічильник підписів', fiscalSignature: 'Підпис',
+    fiscalStart: 'Початок транзакції', fiscalEnd: 'Кінець транзакції',
+    fiscalFailed: 'Фіскальний підпис недоступний',
+  },
   'en-GB': {
     invoice: 'Invoice', storno: 'Credit note', number: 'Invoice number',
     issueDate: 'Invoice date', servicePeriod: 'Period of supply',
@@ -249,6 +280,14 @@ const CHARGE_NAMES: Record<InvoiceLocale, Record<string, string>> = {
     // pobyt» was merged into it and no longer exists.
     city_tax: 'Poplatek z pobytu',
   },
+  'uk-UA': {
+    lodging: 'Проживання',
+    breakfast_food: 'Сніданок — страви',
+    breakfast_drinks: 'Сніданок — напої',
+    // Назва загальна: конкретний збір із власним іменем приходить рядком
+    // `fees_taxes`, і його назва виграє в цього словника (див. вище).
+    city_tax: 'Туристичний збір',
+  },
   'en-GB': {
     lodging: 'Accommodation',
     breakfast_food: 'Breakfast, food',
@@ -275,13 +314,19 @@ export function chargeName(kind: string, locale: InvoiceLocale): string {
  * `documentLanguage()` answers in the codes the rest of the product uses — de,
  * cs, en, uk, pl. A document needs a locale, because how a number is written is
  * a property of the place and not of the language. Anything without a document
- * form of its own falls to en-GB: a Ukrainian-language invoice is not something
- * this product issues, and printing one in a made-up format would be worse than
- * printing English.
+ * form of its own falls to en-GB.
+ *
+ * `uk` перестало падати в en-GB 19.09.2026 (У4). Доти український готель
+ * друкував англійський бланк, і це було свідомо: форму документа називає
+ * власник, а не код, і вигаданий формат гірший за чужий. Тепер назви рядків
+ * і формати числа й дати українські; СТРУКТУРА документа (рахунок-фактура,
+ * акт, податкова накладна) лишається чекпоінтом власника і в коді не
+ * вгадана.
  */
 export function localeForLanguage(language: string): InvoiceLocale {
   if (language === 'de') return 'de-DE';
   if (language === 'cs') return 'cs-CZ';
+  if (language === 'uk') return 'uk-UA';
   return 'en-GB';
 }
 
@@ -369,5 +414,9 @@ function formatDate(iso: string, locale: InvoiceLocale): string {
   // depend on which ICU data the server was built with.
   if (locale === 'de-DE') return `${day}.${m}.${y}`;
   if (locale === 'cs-CZ') return `${Number(day)}. ${Number(m)}. ${y}`;
+  // ДСТУ 4163: 19.09.2026 — крапки без пробілів, нуль попереду лишається.
+  // Збігається з німецьким виглядом, і це не привід їх зводити: правила
+  // різні, і чеський уже показав, що схожі формати розходяться (пробіли).
+  if (locale === 'uk-UA') return `${day}.${m}.${y}`;
   return `${day}/${m}/${y}`;
 }

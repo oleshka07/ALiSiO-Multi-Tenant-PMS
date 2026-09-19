@@ -57,7 +57,9 @@
       "@housekeeping": ["./src/modules/housekeeping/api"],
       "@housekeeping/*": ["./src/modules/housekeeping/api/*"],
       "@companies": ["./src/modules/companies/api"],
-      "@companies/*": ["./src/modules/companies/api/*"]
+      "@companies/*": ["./src/modules/companies/api/*"],
+      "@fiscal-ua": ["./src/modules/fiscal-ua/api"],
+      "@fiscal-ua/*": ["./src/modules/fiscal-ua/api/*"]
     }
   },
   "include": [

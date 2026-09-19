@@ -22,7 +22,7 @@ import '../../../../scripts/lib/module-aliases.mjs';
 const { runWithOrganization } = await import('@core/auth/tenant-context');
 const { getSql } = await import('@core/db/async');
 const { setFeature } = await import('@core/features');
-const { createFolio, reverseFolioPayment } = await import('./folio.repo.ts');
+const { createFolio, addCharges, reverseFolioPayment } = await import('./folio.repo.ts');
 const { recordPayment, listPayments, unsignedPayments } = await import('./folio-payments.repo.ts');
 const { ALL_PROPERTIES } = await import('@core/property-scope.ts');
 
@@ -31,7 +31,8 @@ const ORG = 'org_paych';
 
 async function cleanup() {
   for (const t of ['fin_folio_payments', 'fin_fiscal_outages', 'fin_fiscal_settings',
-    'fin_invoice_tax_totals', 'invoices', 'fin_folios', 'organization_features']) {
+    'fin_invoice_tax_totals', 'invoices', 'fin_folio_items', 'fin_folios',
+    'prro_operations', 'prro_settings', 'organization_features']) {
     await sql.run(`DELETE FROM ${t} WHERE organization_id = ?`, [ORG]).catch(() => {});
   }
   await sql.run("DELETE FROM properties WHERE id LIKE 'paych_%'", []);
@@ -48,6 +49,11 @@ try {
       ['paych_de', ORG, 'Kassenhaus', 'kassenhaus', 'DE']);
     await sql.run('INSERT INTO properties(id, organization_id, name, slug, country) VALUES (?,?,?,?,?)',
       ['paych_cz', ORG, 'Penzion', 'penzion', 'CZ']);
+    // Третя країна — і саме вона робить фікстуру невиродженою по осі
+    // юрисдикції (інваріант 26). З одним DE-обʼєктом «варта для НІМЕЦЬКОЇ
+    // каси» і «варта для будь-якої каси» зелені однаково.
+    await sql.run('INSERT INTO properties(id, organization_id, name, slug, country) VALUES (?,?,?,?,?)',
+      ['paych_ua', ORG, 'Готель на Дніпрі', 'dnipro', 'UA']);
 
     const deFolio = await createFolio({
       reservationId: null, propertyId: 'paych_de',
@@ -56,6 +62,10 @@ try {
     const czFolio = await createFolio({
       reservationId: null, propertyId: 'paych_cz',
       payerKind: 'guest', payerName: 'J. Novák',
+    });
+    const uaFolio = await createFolio({
+      reservationId: null, propertyId: 'paych_ua',
+      payerKind: 'guest', payerName: 'І. Коваленко',
     });
 
     // ── the guard: German till, fiscal off ─────────────────────────────────
@@ -66,6 +76,33 @@ try {
       recordPayment({ folioId: deFolio, amount: 100, method: 'card_terminal' }),
       /old till system/, 'карта на рецепції — теж касовий оборот, теж відмова');
     console.log('  ok  DE без фіскального модуля: готівка і термінал відмовлені');
+
+    // ── Та сама варта для УКРАЇНСЬКОЇ каси (У2) ────────────────────────────
+    //
+    // Причина та сама і вона не косметична: PMS, яка приймає готівку без
+    // ПРРО, — незареєстрована каса. Вісь береться з КРАЇНИ ОБʼЄКТА, не з
+    // мови оператора і не з валюти рахунку.
+    //
+    // Обидві половини тверджуються, і друга не менш важлива за першу:
+    // UA-обʼєкт без ключа відмовляє, а DE-обʼєкт від появи `fiscal_ua`
+    // НЕ змінюється — інакше ця правка тихо зламала б Ґрайц.
+    await assert.rejects(
+      recordPayment({ folioId: uaFolio, amount: 1000, method: 'cash' }),
+      /ПРРО/, 'готівка в UA без fiscal_ua мала бути відмовлена');
+    await assert.rejects(
+      recordPayment({ folioId: uaFolio, amount: 1000, method: 'card_terminal' }),
+      /ПРРО/, 'термінал на рецепції в UA — теж касовий оборот, теж відмова');
+    // Ключ СУСІДНЬОЇ юрисдикції українську касу не відмикає: якби варта
+    // питала «хоч якийсь фіскальний модуль», це твердження було б зелене.
+    await setFeature(ORG, 'fiscal_de', true);
+    await assert.rejects(
+      recordPayment({ folioId: uaFolio, amount: 1000, method: 'cash' }),
+      /ПРРО/, 'fiscal_de не відмикає українську касу — ключі не взаємозамінні');
+    await setFeature(ORG, 'fiscal_de', false);
+    // Переказ у UA — не касовий оборот, проходить без модуля, як і в DE.
+    assert.ok(await recordPayment({ folioId: uaFolio, amount: 1000, method: 'transfer' }),
+      'переказ у UA мусить проходити без ПРРО');
+    console.log('  ok  У2: UA без fiscal_ua — готівка й термінал відмовлені, ключ DE не рятує, переказ проходить');
 
     // ── З34: оплата, перенесена з попередньої системи, — не наш касовий оборот ──
     // Вона йде повз варту ЛИШЕ з позначкою походження; слово «import» без
@@ -206,6 +243,48 @@ try {
     // «нічого не знайдено», а не «знімемо з першого фоліо, яке трапилось».
     assert.strictEqual(await reverseFolioPayment('paych_nope'), 0,
       'неіснуючий платіж не сміє нічого знімати');
+
+    // ── UA з ключем: гроші проходять, чек лишає слід (У2, А5) ─────────────
+    //
+    // Наскрізь: писач оплати → модуль юрисдикції → журнал. Пристрій
+    // підставлений, бо провайдера ще не обрано; те, що доводиться тут, —
+    // ШЛЯХ, а не чужий аптайм.
+    await setFeature(ORG, 'fiscal_ua', true);
+    await addCharges([
+      { folioId: uaFolio, serviceDate: '2026-09-19', kind: 'lodging', description: 'Проживання',
+        quantity: 1, unitPriceGross: 1000, totalGross: 1000, vatRate: 20 },
+      { folioId: uaFolio, serviceDate: '2026-09-19', kind: 'city_tax', description: 'Туристичний збір',
+        quantity: 1, unitPriceGross: 60, totalGross: 60, vatRate: 0 },
+    ]);
+    const seen: any[] = [];
+    const till = {
+      async openShift() { return { shiftId: 'S1', openedAt: '2026-09-19T08:00:00Z' }; },
+      async registerReceipt(receipt: any) {
+        seen.push(receipt);
+        return { fiscalNumber: 'UA-1', registeredAt: '2026-09-19T09:00:00Z', shiftId: 'S1' };
+      },
+      async closeShift() {
+        return { fiscalNumber: 'Z-1', shiftId: 'S1', closedAt: '2026-09-19T20:00:00Z', receiptsCount: 1, total: 1060 };
+      },
+    };
+    const uaPaid = await recordPayment(
+      { folioId: uaFolio, amount: 1060, method: 'cash' }, { prro: till });
+    assert.ok(uaPaid, 'з ключем українська готівка мусить проходити');
+    assert.strictEqual(seen.length, 1, 'каса мусить отримати рівно один чек');
+    assert.strictEqual(seen[0].total, 1060, 'сума чека — рядки фоліо, не сума платіжки');
+    assert.strictEqual(seen[0].outsideVatBase, 60, 'збір поїхав у чек ПОЗА базою ПДВ (Т9)');
+    assert.deepStrictEqual(seen[0].vatAmounts, [{ rate: 20, amount: 1000 }],
+      'у базі ПДВ лише проживання — кошика зі ставкою 0 бути не може');
+    // Журнал читається ДВЕРИМА модуля, а не своїм SQL: `prro_operations` —
+    // його таблиця, і запит звідси був би пробоєм межі (`check-boundaries`
+    // назвав його з першого прогону).
+    const { prroJournal } = await import('@fiscal-ua/kernel');
+    const journal = await prroJournal(ALL_PROPERTIES);
+    assert.strictEqual(journal.length, 1, 'чек мусить лягти в журнал модуля');
+    assert.strictEqual(journal[0].status, 'registered');
+    assert.strictEqual(journal[0].fiscal_number, 'UA-1');
+    assert.strictEqual(journal[0].payment_id, uaPaid, 'рядок журналу називає той платіж, за який виданий');
+    console.log('  ok  У2: з ключем UA-готівка проходить, чек іде в касу і лишає рядок журналу');
 
     // ── the honest refusals ────────────────────────────────────────────────
     // A folio with no property cannot prove its till is not German — the

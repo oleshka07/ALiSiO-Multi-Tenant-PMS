@@ -32,9 +32,20 @@ import '../../../../scripts/lib/module-aliases.mjs';
 const { runWithOrganization } = await import('@core/auth/tenant-context');
 const { getSql } = await import('@core/db/async');
 const { createFolio, addCharges, issueInvoice } = await import('./folio.repo.ts');
+const { recordPayment } = await import('./folio-payments.repo.ts');
+const { setFeature } = await import('@core/features');
+const { documentLanguage } = await import('@core/i18n/resolve');
+const { localeForLanguage, buildInvoiceDocument } = await import('../domain/invoice-document.ts');
 
 const sql = getSql();
 const ORG = 'org_cur';
+/**
+ * Друга організація, і вона обовʼязкова, а не для повноти: твердження нижче —
+ * про ВІСЬ ВАЛЮТИ, і з однією валютою у фікстурі «взяли валюту готелю» та
+ * «підставили константу» зелені однаково (інваріант 26). Тут гривня проти
+ * крони, і жодне число не збігається.
+ */
+const UA_ORG = 'org_cur_ua';
 
 async function cleanup() {
   await sql.run('DELETE FROM fin_invoice_tax_totals WHERE organization_id = ?', [ORG]);
@@ -43,6 +54,15 @@ async function cleanup() {
   await sql.run('DELETE FROM fin_folio_items WHERE organization_id = ?', [ORG]);
   await sql.run('DELETE FROM fin_folios WHERE organization_id = ?', [ORG]);
   await sql.run('DELETE FROM fin_invoice_counters WHERE organization_id = ?', [ORG]).catch(() => {});
+  for (const t of ['fin_folio_payments', 'prro_operations', 'prro_settings', 'organization_features']) {
+    await sql.run(`DELETE FROM ${t} WHERE organization_id = ?`, [UA_ORG]).catch(() => {});
+  }
+  for (const t of ['fin_invoice_tax_totals', 'fin_invoice_lines', 'invoices',
+    'fin_folio_items', 'fin_folios', 'fin_invoice_counters']) {
+    await sql.run(`DELETE FROM ${t} WHERE organization_id = ?`, [UA_ORG]).catch(() => {});
+  }
+  await sql.run("DELETE FROM properties WHERE id LIKE 'uah_%'", []);
+  await sql.run('DELETE FROM organizations WHERE id = ?', [UA_ORG]).catch(() => {});
   await sql.run("DELETE FROM reservations WHERE id LIKE 'cur_%'", []);
   await sql.run("DELETE FROM units WHERE id LIKE 'cur_%'", []);
   await sql.run("DELETE FROM unit_types WHERE id LIKE 'cur_%'", []);
@@ -115,6 +135,81 @@ try {
     assert.strictEqual(anyEuro.length, 0,
       `${anyEuro.length} invoice(s) came out in EUR for a hotel that counts crowns`);
     console.log('  ok  жодна фактура цього готелю не вийшла в EUR');
+  });
+
+  // ── 5. Гривня проходить весь шлях: фоліо → рахунок → каса → документ ──
+  //
+  // Д27 у своєму роді: в ядрі обліку колись стояло `to_currency = 'CZK'`
+  // літералом, і готель з іншою базовою валютою не міг провести готівку
+  // ВЗАГАЛІ. Тому шлях перевіряється прогоном, а не читанням, і до самого
+  // кінця — включно з оплатою, яку той дефект і зупиняв.
+  await sql.run('INSERT INTO organizations(id, name, slug, language, default_currency) VALUES (?,?,?,?,?)',
+    [UA_ORG, 'Готель на Дніпрі', 'dnipro-cur', 'uk', 'UAH']);
+  await runWithOrganization(UA_ORG, async () => {
+    await sql.run('INSERT INTO properties(id, organization_id, name, slug, country) VALUES (?,?,?,?,?)',
+      ['uah_p', UA_ORG, 'Дніпро', 'dnipro-house', 'UA']);
+
+    const folioId = await createFolio({ propertyId: 'uah_p', payerName: 'І. Коваленко' });
+    const stored = await sql.row<any>('SELECT currency FROM fin_folios WHERE id = ?', [folioId]);
+    assert.strictEqual(stored.currency, 'UAH',
+      `фоліо українського готелю заморозило ${stored.currency}`);
+
+    await addCharges([
+      { folioId, serviceDate: '2026-09-19', kind: 'lodging', description: 'Проживання',
+        quantity: 1, unitPriceGross: 1000, totalGross: 1000, vatRate: 20 },
+      { folioId, serviceDate: '2026-09-19', kind: 'city_tax', description: 'Туристичний збір',
+        quantity: 1, unitPriceGross: 60, totalGross: 60, vatRate: 0 },
+    ]);
+    const inv = await issueInvoice({ folioId });
+    const invoice = await sql.row<any>('SELECT currency, amount FROM invoices WHERE id = ?', [inv.invoiceId]);
+    assert.strictEqual(invoice.currency, 'UAH',
+      `фактура вийшла в ${invoice.currency} — готель рахує гривні`);
+    assert.strictEqual(Number(invoice.amount), 1060, 'сума фактури — обидва рядки разом');
+
+    // Каса: без ключа модуля готівка НЕ проходить (та сама варта, що в DE),
+    // з ключем — проходить, і чек несе валюту ФОЛІО, а не константу.
+    await assert.rejects(recordPayment({ folioId, amount: 1060, method: 'cash' }), /ПРРО/,
+      'українська готівка без fiscal_ua мусить бути відмовлена і тут');
+    await setFeature(UA_ORG, 'fiscal_ua', true);
+    const seen: any[] = [];
+    const till = {
+      async openShift() { return { shiftId: 'S', openedAt: '2026-09-19T08:00:00Z' }; },
+      async registerReceipt(receipt: any) {
+        seen.push(receipt);
+        return { fiscalNumber: 'UA-CUR-1', registeredAt: '2026-09-19T09:00:00Z', shiftId: 'S' };
+      },
+      async closeShift() { return { fiscalNumber: 'Z', shiftId: 'S', closedAt: '2026-09-19T20:00:00Z', receiptsCount: 1, total: 1060 }; },
+    };
+    const payId = await recordPayment(
+      { folioId, amount: 1060, method: 'cash', invoiceId: inv.invoiceId }, { prro: till });
+    assert.ok(payId, 'з ключем гривнева готівка мусить пройти');
+    assert.strictEqual(seen.length, 1, 'каса мусить отримати чек');
+    assert.strictEqual(seen[0].currency, 'UAH',
+      `чек поїхав у ${seen[0].currency} — валюта береться з фоліо, не з константи`);
+    assert.strictEqual(seen[0].total, 1060);
+    assert.strictEqual(seen[0].outsideVatBase, 60, 'збір і тут поза базою ПДВ');
+
+    // Документ: мова — від КРАЇНИ обʼєкта, і формат числа несе саме UAH.
+    const language = await documentLanguage('uah_p');
+    assert.strictEqual(language, 'uk', 'мова документа українського обʼєкта');
+    const locale = localeForLanguage(language);
+    assert.strictEqual(locale, 'uk-UA', 'локаль документа — українська, не англійська (У4)');
+    const doc = buildInvoiceDocument({
+      number: 'UA-1', issueDate: '2026-09-19', status: 'issued', currency: 'UAH', locale,
+      seller: { name: 'Готель на Дніпрі' }, buyer: null, lines: [],
+      taxTotals: [{ vat_rate: 20, gross_amount: 1000, net_amount: 833.33, tax_amount: 166.67 }],
+    });
+    assert.ok(doc.formatMoney(1060).includes('UAH'),
+      `документ надрукував «${doc.formatMoney(1060)}» — гривня мусить бути названа`);
+    assert.strictEqual(doc.labels.invoice, 'Рахунок-фактура');
+    assert.strictEqual(doc.formatDate('2026-09-19'), '19.09.2026');
+
+    // І жодного сліду чужої валюти на всьому шляху цього готелю.
+    const foreign = await sql.rows<any>(
+      "SELECT id, currency FROM invoices WHERE organization_id = ? AND currency <> 'UAH'", [UA_ORG]);
+    assert.strictEqual(foreign.length, 0,
+      `${foreign.length} документ(ів) українського готелю вийшли не в гривні`);
+    console.log('  ok  UAH проходить увесь шлях: фоліо → фактура → каса → документ');
   });
 
   console.log('фактура рахує ті гроші, у яких узято бронь');

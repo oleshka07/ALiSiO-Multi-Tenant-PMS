@@ -49,6 +49,13 @@ const EXPECTED_DEFAULT: Record<Key, boolean> = {
   // 31.08.2026, обґрунтування в core/features.ts.
   booking_engine: true,
   fiscal_de: false,
+  // OFF (19.09.2026, П15 + У1): платний модуль юрисдикції. Дефолт ON тут був
+  // би не зручністю, а незареєстрованою касою в кожного клієнта — те саме
+  // речення, що для `fiscal_de`, і з тієї ж причини. Міграції з явним
+  // `enabled = FALSE` немає і не треба: новий ключ із дефолтом OFF нічого ні
+  // в кого не забирає, бо його ще ні в кого немає (рядки 0045/0049/0065
+  // існують для зворотного випадку — коли дефолт МІНЯЄТЬСЯ з ON на OFF).
+  fiscal_ua: false,
   online_payments: false,
   // OFF (10.09.2026): вмикає лише готель, який переїжджає з Winhotel; поки
   // вимкнено, приймальний маршрут знімка відповідає 404.
@@ -125,6 +132,10 @@ console.log('  ok  каталог для екрана збігається з р
 const INTEGRATIONS: Partial<Record<Key, string>> = {
   booking_engine: 'src/modules/widget/api/widget-site.handlers.ts',
   fiscal_de: 'src/modules/invoicing/data/folio-payments.repo.ts',
+  // Варта каси — реєстр юрисдикцій: він називає ключ, писач оплати питає
+  // його за країною обʼєкта. Файл названий саме цей, бо ключ стоїть у ньому,
+  // а не в писачі (У2).
+  fiscal_ua: 'src/modules/invoicing/domain/fiscal/till-jurisdiction.ts',
   // Вимикач шлюзів живе в реєстрі застосунків (Блок «Застосунки», 09.09.2026):
   // `INTEGRATION_FEATURE` тепер виводиться з `apps.ts`, і саме там кожен шлюз
   // називає `online_payments`; збереження ключа питає цю мапу.

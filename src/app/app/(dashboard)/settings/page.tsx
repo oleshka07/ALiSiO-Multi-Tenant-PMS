@@ -42,6 +42,9 @@ const GROUPS: { title: string; desc: string; items: SettingsLink[] }[] = [
       { title: 'Послуги', desc: 'Сніданок, паркінг, трансфер — ціни та доступність', icon: <Sparkles size={22} />, href: '/app/settings/services', color: 'orange' },
       { title: 'Оплати', desc: 'Способи оплати на рецепції та шлюз онлайн-оплати', icon: <CreditCard size={22} />, href: '/app/settings/payments', color: 'green' },
       { title: 'Фактурування', desc: 'Ставки ПДВ, серії нумерації, бланк документа', icon: <Receipt size={22} />, href: '/app/settings/invoicing', color: 'orange', feature: 'invoicing' },
+      // Модуль юрисдикції: картки немає в того, хто ключа не купив, — за тим
+      // самим `organization_features`, який стереже маршрути (У1).
+      { title: 'Фіскалізація України (ПРРО)', desc: 'Реквізити каси, драйвер реєстратора, журнал чеків і збоїв', icon: <Receipt size={22} />, href: '/app/settings/fiscal-ua', color: 'orange', permission: 'manage_finance_settings', feature: 'fiscal_ua' },
       { title: 'Користувачі та ролі', desc: 'Хто має доступ і що кому дозволено', icon: <Users size={22} />, href: '/app/settings/users', color: 'purple', permission: 'manage_users' },
     ],
   },

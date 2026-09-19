@@ -28,6 +28,7 @@ import { propertyOrSharedFilter, type PropertyScope } from '@core/property-scope
 import { hasFeature } from '@core/features';
 import { integrationCredentials } from '@core/integration-credentials';
 import type { FiscalDevice, FiscalSignature, VatAmount } from '../domain/fiscal/fiscal-device';
+import { tillFiscalRule, type TillFiscalFeature } from '../domain/fiscal/till-jurisdiction';
 import { fiskalyDevice } from './fiskaly-sign-de';
 
 export const PAYMENT_METHODS = ['cash', 'card_terminal', 'transfer', 'voucher'] as const;
@@ -57,7 +58,18 @@ export interface FolioPayment {
  * `deps.device` exists for exactly one caller: the check, which must prove
  * the signing path without a live TSE. Production resolves fiskaly from the
  * organization's credentials and the property's fin_fiscal_settings.
+ *
+ * `deps.prro` — те саме для української каси: сцена підставляє пристрій,
+ * прод бере драйвер із `prro_settings` обʼєкта. Тип `unknown`, а не
+ * `PrroDevice`: статичний імпорт типу з продаваного модуля зробив би
+ * фактурування залежним від нього на завантаженні — рівно те, чого
+ * уникає ліниве `import()` нижче. Модуль звіряє форму сам.
  */
+export interface TillDeps {
+  device?: FiscalDevice;
+  prro?: unknown;
+}
+
 /**
  * Що саме лягло в книгу гостя — без другого читання.
  *
@@ -79,7 +91,7 @@ export interface RecordedPayment {
 
 /** Те саме, що `recordPaymentDetailed`, але коротко — для тих, кому досить id. */
 export async function recordPayment(input: Parameters<typeof recordPaymentDetailed>[0],
-  deps?: { device?: FiscalDevice }): Promise<string> {
+  deps?: TillDeps): Promise<string> {
   return (await recordPaymentDetailed(input, deps)).id;
 }
 
@@ -105,7 +117,7 @@ export async function recordPaymentDetailed(input: {
    */
   source?: 'import' | null;
   origin?: string | null;
-}, deps?: { device?: FiscalDevice }): Promise<RecordedPayment> {
+}, deps?: TillDeps): Promise<RecordedPayment> {
   const organizationId = await requireOrganizationId();
   const sql = getSql();
 
@@ -160,7 +172,8 @@ export async function recordPaymentDetailed(input: {
   // through the stay otherwise. Both in one query so the answer cannot
   // disagree with the invoice's own jurisdiction resolution.
   const folio = await sql.row<any>(
-    `SELECT f.id, f.reservation_id, COALESCE(r.property_id, f.property_id) AS property_id
+    `SELECT f.id, f.reservation_id, f.currency,
+            COALESCE(r.property_id, f.property_id) AS property_id
        FROM fin_folios f
        LEFT JOIN reservations r ON r.id = f.reservation_id
       WHERE f.id = ? AND f.organization_id = ?`,
@@ -168,6 +181,8 @@ export async function recordPaymentDetailed(input: {
   if (!folio) refuse('Folio not found', 404);
 
   let mustSign = false;
+  /** Ключ юрисдикції, чия каса реєструє чек ПІСЛЯ вставки рядка. */
+  let registerWith: TillFiscalFeature | null = null;
   // Дві правки одного рядка, і обидві чинні: імпортована оплата — не наш
   // касовий оборот (варту й підпис не проходить), а КЛАС береться з рядка
   // довідника (Д61), не з поля запиту.
@@ -181,13 +196,19 @@ export async function recordPaymentDetailed(input: {
     }
     const place = await sql.row<any>(
       'SELECT country FROM properties WHERE id = ?', [folio.property_id]);
-    const country = String(place?.country || '').toUpperCase();
-    if (country === 'DE') {
-      if (!(await hasFeature(organizationId, 'fiscal_de'))) {
-        refuse(
-          'Cash and card payments for a German property are still recorded in the old till system — the fiscal module (TSE) is not enabled yet', 409);
-      }
-      mustSign = true;
+    // Одна мапа на всі юрисдикції, замість гілки на кожну (У2): країна, якої
+    // в ній немає, каси не питає ні про що — і це написано рядком, а не
+    // відсутністю рядка.
+    const rule = tillFiscalRule(place?.country);
+    if (rule) {
+      if (!(await hasFeature(organizationId, rule.feature))) refuse(rule.refusal, 409);
+      // Німецька каса підписує ДО вставки рядка (підпис лягає з ним в один
+      // INSERT — белег не можна видати раніше, ніж підписано). Українська
+      // реєструє чек ПІСЛЯ: у неї рядок журналу називає платіж, тобто платіж
+      // мусить уже існувати. Обидва шляхи однакові в головному — виїзд не
+      // стоїть, а невдача лишає слід.
+      if (rule.feature === 'fiscal_de') mustSign = true;
+      else registerWith = rule.feature;
     }
   }
 
@@ -277,6 +298,23 @@ export async function recordPaymentDetailed(input: {
      signature?.startTime ?? null, signature?.endTime ?? null,
      signature?.qrPayload ?? null, signature?.clientId ?? null,
      signature?.processType ?? null, signature?.processData ?? null]);
+
+  // ── Каса юрисдикції, яка реєструє чек ПІСЛЯ рядка ─────────────────────
+  //
+  // Ліниве `import()`, а не статичний імпорт: `fiscal_ua` — ПРОДАВАНИЙ
+  // модуль, а фактурування є в кожного готеля. Базова частина, яка тягне
+  // платний модуль на завантаженні, порушує правило «модуль вимикається без
+  // шкоди решті» (друга вісь `check-boundaries`); те саме рішення, що в
+  // `core/security/route-guard.ts` про `@finance`.
+  //
+  // Не кидає НІКОЛИ — так само, як падіння TSE вище не зупиняє виїзд.
+  if (registerWith === 'fiscal_ua') {
+    await registerUkrainianReceipt({
+      organizationId, propertyId: String(folio.property_id), folioId: input.folioId,
+      paymentId: id, currency: String(folio.currency || ''), device: deps?.prro,
+    });
+  }
+
   return {
     id,
     method: method as PaymentMethod,
@@ -284,6 +322,55 @@ export async function recordPaymentDetailed(input: {
     reservationId: folio.reservation_id ? String(folio.reservation_id) : null,
     invoiceId,
   };
+}
+
+/**
+ * Чек українською касою за щойно записаною оплатою.
+ *
+ * Рядки фоліо збирає ТУТ — це таблиці цього модуля, і модуль юрисдикції до
+ * них не ходить (він бере їх параметром). Далі все, що стосується чека, —
+ * його справа: збірка, пристрій, журнал.
+ *
+ * Оплати беруться ВСІ касові по цьому фоліо, а не лише щойно записана: чек
+ * фіскалізує рахунок, а не рядок платіжки, і гість, що поклав половину
+ * готівкою і половину карткою, отримує один чек із двома способами.
+ */
+async function registerUkrainianReceipt(input: {
+  organizationId: string;
+  propertyId: string;
+  folioId: string;
+  paymentId: string;
+  currency: string;
+  device?: unknown;
+}): Promise<void> {
+  const sql = getSql();
+  try {
+    const items = await sql.rows<any>(
+      `SELECT kind, description, quantity, unit_price_gross, total_gross, vat_rate
+         FROM fin_folio_items
+        WHERE folio_id = ? AND organization_id = ? AND voided_by_item_id IS NULL
+        ORDER BY service_date, created_at`,
+      [input.folioId, input.organizationId]);
+    // Вісь обʼєкта названа в САМОМУ запиті, хоч фоліо вже його довело
+    // (INC-029): каса стоїть у будинку, і чек не сміє зібратись із оборотів
+    // двох. Мовчазне читання тут виглядало б так само правильно — і саме з
+    // цього почався INC-029.
+    const payments = await sql.rows<any>(
+      `SELECT method, amount FROM fin_folio_payments
+        WHERE folio_id = ? AND organization_id = ? AND property_id = ?
+          AND method IN ('cash', 'card_terminal')
+        ORDER BY paid_at, created_at`,
+      [input.folioId, input.organizationId, input.propertyId]);
+    const { registerTillReceipt } = await import('@fiscal-ua/kernel');
+    await registerTillReceipt({
+      propertyId: input.propertyId, paymentId: input.paymentId,
+      items, payments, currency: input.currency,
+    }, input.device as never);
+  } catch (e) {
+    // Сюди доходить лише те, що зламалось ДО журналу (сам `registerTillReceipt`
+    // не кидає). Виїзд однаково не стоїть, а слід лишається в лозі контейнера.
+    console.error('modules/invoicing registerUkrainianReceipt', e);
+  }
 }
 
 /** The unsigned till operations reception must see — acceptance §6.4 п.3. */
