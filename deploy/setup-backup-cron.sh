@@ -27,8 +27,15 @@ set -euo pipefail
 ENV_NAME="${1:-}"
 case "$ENV_NAME" in
   prod|beta) ;;
-  *) echo "usage: $0 {prod|beta}" >&2; exit 2 ;;
+  *) echo "usage: $0 {prod|beta} [--list]" >&2; exit 2 ;;
 esac
+
+# `--list` друкує рядки, які цей скрипт ПОСТАВИВ БИ, і виходить, не чіпаючи
+# crontab. Це не зручність: `deploy/check-cron.sh` звіряє живий розклад саме з
+# цим виводом, а не з власною копією списку. Дві копії списку розійшлися б —
+# і розійшлися б мовчки, бо перевірка порівнювала б розклад сама з собою.
+LIST_ONLY=''
+[ "${2:-}" = '--list' ] && LIST_ONLY=1
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MARK="# alisio-backup-${ENV_NAME}"
@@ -85,6 +92,11 @@ if [ "$ENV_NAME" = "prod" ]; then
   WANT="${WANT}
 15 4 * * 0 cd ${ROOT} && ./deploy/restore-test.sh prod >> ${LOG} 2>&1 ${MARK}
 30 * * * * cd ${ROOT} && ./deploy/check-disk.sh >> ${LOG} 2>&1 ${MARK}"
+fi
+
+if [ -n "$LIST_ONLY" ]; then
+  printf '%s\n' "$WANT"
+  exit 0
 fi
 
 CURRENT="$(crontab -l 2>/dev/null || true)"

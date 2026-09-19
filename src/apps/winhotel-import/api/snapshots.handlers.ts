@@ -53,6 +53,9 @@ import {
   insertSnapshot,
   listSnapshots,
   markImportFailed,
+  noteSnapshotSeenAgain,
+  recordFailedAttempt,
+  discardFailedAttempt,
   markImported,
   markImporting,
   newSnapshotId,
@@ -81,9 +84,45 @@ export function parseWindow(header: string | null): { from: string; to: string }
  * Відмова, яку організація побачить на картці, — і той самий текст клієнту.
  * Статус — літералом у кожній гілці: `check-refusal-status` читає число, а не
  * тип, і `refuse(msg, status)` зі змінною для нього — статус невідомий.
+ *
+ * ── І РЯДОК У ТАБЛИЦІ, до того як віддати відмову (0423) ─────────────────
+ *
+ * До INC-053 тут було лише `reportError`: провал нічного знімка в таблиці був
+ * НЕВИДИМИЙ. Разом із мовчазним дублікатом це давало екран, який показує
+ * тільки те, що вдалося, — при тому що створений він, щоб показувати, чи
+ * ланцюг живий. З таблиці не було видно навіть того, падав знімок чи не
+ * запускався.
+ *
+ * `attempt` передається не завжди, і це навмисно: ключ рядка — `sha256`, і
+ * поки заголовок sha не придатний, ключа в спроби немає. Рядок без ключа
+ * означав би НОВИЙ рядок на кожен зламаний заголовок, тобто ще один спосіб
+ * зробити таблицю нечитною — цього разу переповненням. Така відмова лишається
+ * в здоровʼї застосунку, і там її видно.
  */
-async function refuseReported(organizationId: string, message: string, status: 400 | 409): Promise<never> {
+async function refuseReported(
+  organizationId: string,
+  message: string,
+  status: 400 | 409,
+  attempt?: { takenAt: string | null; mode: SnapshotMode; sha256: string; sizeBytes: number },
+): Promise<never> {
   await reportError(APP, organizationId, message);
+  if (attempt) {
+    // Провал самої спроби записати провал не має підміняти відмову клієнтові:
+    // агент мусить дістати свій статус і текст, а не 500 через журнал.
+    try {
+      await recordFailedAttempt({
+        id: newSnapshotId(),
+        organizationId,
+        takenAt: attempt.takenAt,
+        mode: attempt.mode,
+        sha256: attempt.sha256,
+        sizeBytes: attempt.sizeBytes,
+        error: message,
+      });
+    } catch (e) {
+      console.error(`[winhotel-import] ${organizationId}: не вдалося записати невдалу спробу:`, (e as Error).message);
+    }
+  }
   if (status === 409) refuse(message, 409);
   return refuse(message, 400);
 }
@@ -121,21 +160,35 @@ export async function receiveSnapshot(request: Request): Promise<Response> {
       const sha256 = (request.headers.get('x-winhotel-sha256') ?? '').trim().toLowerCase();
       if (!SHA_HEX.test(sha256)) await refuseReported(organizationId, 'Заголовок X-Winhotel-Sha256 має бути sha256 у hex', 400);
       const mode = (request.headers.get('x-winhotel-mode') ?? '').trim().toLowerCase() as SnapshotMode;
+      // Режим поза набором — рядка НЕ заводимо: на колонці стоїть CHECK, і
+      // спроба записати невідоме слово впала б замість того, щоб про нього
+      // розповісти. Відмова лишається у здоровʼї застосунку.
       if (!SNAPSHOT_MODES.includes(mode)) await refuseReported(organizationId, `Режим знімка «${mode || '—'}» невідомий: очікуємо backup, gbak, copy або delta`, 400);
       const takenAt = takenAtFrom(request.headers.get('x-winhotel-taken-at'));
       // Дельта без вікна — не дельта: імпорт не знав би, що вважати «повним»
       // у ній, і скасовував би все, чого не бачить (задача 8 §3).
       const window = mode === 'delta' ? parseWindow(request.headers.get('x-winhotel-window')) : null;
-      if (mode === 'delta' && !window) await refuseReported(organizationId, 'Дельта без вікна дат: заголовок X-Winhotel-Window має бути YYYY-MM-DD..YYYY-MM-DD', 400);
+      // Відтепер і mode, і sha придатні — спроба має ключ, і кожна наступна
+      // відмова лишає по собі рядок, який видно в таблиці.
+      const attempt = { takenAt, mode, sha256, sizeBytes: 0 };
+      if (mode === 'delta' && !window) await refuseReported(organizationId, 'Дельта без вікна дат: заголовок X-Winhotel-Window має бути YYYY-MM-DD..YYYY-MM-DD', 400, attempt);
 
       const same = await findSnapshotBySha(organizationId, sha256);
-      if (same) {
+      // Невдала спроба з тим самим sha — НЕ дублікат: це попередня спроба
+      // ЦЬОГО знімка. Інакше агент, який виправив помилку і надіслав ті самі
+      // байти ще раз, діставав би «duplicate, нічого робити», і знімок не
+      // прийняли б ніколи — журнал відмов зламав би прийом (INC-053).
+      if (same && same.status !== 'failed') {
+        // Той самий знімок удруге — рядка не створюємо, але слід лишаємо:
+        // без нього оператор бачив розрив у часовому ряду й не міг
+        // відрізнити «агент не бігав» від «бігав і приніс те саме».
+        await noteSnapshotSeenAgain(organizationId, same.id);
         return NextResponse.json({ snapshotId: same.id, status: same.status, duplicate: true }, { status: 200 });
       }
       if (mode !== 'delta') {
         const today = await snapshotsReceivedToday(organizationId);
         if (today.length) {
-          await refuseReported(organizationId, `За сьогодні знімок уже прийнято (${today[0].id}); наступний — завтра`, 409);
+          await refuseReported(organizationId, `За сьогодні знімок уже прийнято (${today[0].id}); наступний — завтра`, 409, attempt);
         }
       }
 
@@ -152,17 +205,20 @@ export async function receiveSnapshot(request: Request): Promise<Response> {
       }
       if (received.size === 0) {
         discardSnapshotFiles(p);
-        await refuseReported(organizationId, 'Порожнє тіло: знімок не надійшов', 400);
+        await refuseReported(organizationId, 'Порожнє тіло: знімок не надійшов', 400, attempt);
       }
       if (received.sha256 !== sha256) {
         discardSnapshotFiles(p);
         const host = (request.headers.get('x-winhotel-hostname') ?? '').slice(0, 60);
         console.error(`[winhotel-import] ${organizationId}: sha256 не збігся (${received.size} байт${host ? `, ${host}` : ''})`);
-        await refuseReported(organizationId, 'Контрольна сума не збігається із заголовком — файл пошкоджено дорогою', 400);
+        await refuseReported(organizationId, 'Контрольна сума не збігається із заголовком — файл пошкоджено дорогою', 400, { ...attempt, sizeBytes: received.size });
       }
 
       fs.renameSync(p.part, archive);
       try {
+        // Попередня невдала спроба з тим самим sha поступається місцем: вона
+        // означала «не приїхало», а воно щойно приїхало.
+        if (same) await discardFailedAttempt(organizationId, same.id);
         await insertSnapshot({ id, organizationId, takenAt, mode, sha256, sizeBytes: received.size });
       } catch (e) {
         // Два агенти принесли те саме одночасно: унікальний індекс по
@@ -170,7 +226,11 @@ export async function receiveSnapshot(request: Request): Promise<Response> {
         // прибираємо.
         discardSnapshotFiles(p);
         const winner = await findSnapshotBySha(organizationId, sha256);
-        if (winner) return NextResponse.json({ snapshotId: winner.id, status: winner.status, duplicate: true }, { status: 200 });
+        // Так само, як вище: переможцем вважається тільки СПРАВЖНІЙ знімок.
+        if (winner && winner.status !== 'failed') {
+          await noteSnapshotSeenAgain(organizationId, winner.id);
+          return NextResponse.json({ snapshotId: winner.id, status: winner.status, duplicate: true }, { status: 200 });
+        }
         throw e;
       }
       // `.ready` — останнім: міст бере лише файл, за який хтось поручився.

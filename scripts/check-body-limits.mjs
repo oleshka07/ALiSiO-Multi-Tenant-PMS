@@ -50,7 +50,17 @@ import fs from 'node:fs';
 
 const strict = process.argv.includes('--strict');
 
-const NGINX = 'deploy/nginx/alisio.conf';
+// УСІ конфігурації nginx у дереві, а не один названий файл.
+//
+// INC-052. Перша редакція читала рівно `deploy/nginx/alisio.conf`, і цього
+// було досить рівно доти, доки стелю оголошували там. Але
+// `deploy/nginx/alisio-proxy.conf` інклюдиться в УСІ ЧОТИРИ `location /`
+// (`alisio.conf:45, 50, 92, 97`), а `client_max_body_size` у контексті
+// `location` цілком законна. Мутація контролера — дописати
+// `client_max_body_size 300m;` у кінець сніпета — лишала гейт ЗЕЛЕНИМ, при
+// тому що вікно тихого обрізання ставало 10…300 МБ для кожного маршруту
+// обох середовищ. Тобто гейт стеріг ФАЙЛ, а не конфігурацію.
+const NGINX_DIR = 'deploy/nginx';
 const PROXY = 'src/proxy.ts';
 
 // Стеля буфера тіла під middleware. `DEFAULT_BODY_CLONE_SIZE_LIMIT` у
@@ -187,23 +197,59 @@ function matcherPatterns(source) {
 
 const problems = [];
 
-if (!fs.existsSync(NGINX)) problems.push({ what: `не знайдено ${NGINX}` });
+if (!fs.existsSync(NGINX_DIR)) problems.push({ what: `не знайдено теки ${NGINX_DIR}` });
 if (!fs.existsSync(PROXY)) problems.push({ what: `не знайдено ${PROXY}` });
 
 let oversized = 0;
 let serverGaps = 0;
 let servers = [];
 let patterns = null;
+let configs = 0;
+let snippets = 0;
 
 if (!problems.length) {
-  servers = parseNginx(fs.readFileSync(NGINX, 'utf8'));
   patterns = matcherPatterns(fs.readFileSync(PROXY, 'utf8'));
-
-  if (!servers.length) {
-    problems.push({ what: `у ${NGINX} не знайдено жодного серверного блоку — гейт нічого не стереже` });
-  }
   if (!patterns) {
     problems.push({ what: `у ${PROXY} не знайдено matcher — гейт не знає, що виключено` });
+  }
+
+  for (const entry of fs.readdirSync(NGINX_DIR).sort()) {
+    if (!entry.endsWith('.conf')) continue;
+    const file = `${NGINX_DIR}/${entry}`;
+    const text = fs.readFileSync(file, 'utf8');
+    const found = parseNginx(text);
+
+    if (found.length) {
+      // Файл оголошує серверні блоки — тут стеля на своєму місці, і нижче
+      // вона звіряється з matcher по кожному `location`.
+      configs++;
+      for (const srv of found) servers.push({ ...srv, file });
+      continue;
+    }
+
+    // ── Сніпет: стеля тут ЗАБОРОНЕНА ───────────────────────────────────────
+    //
+    // Не тому, що nginx її не дозволяє (дозволяє), а тому, що сніпет
+    // інклюдиться в кілька блоків одночасно: стеля, оголошена тут, мовчки
+    // накриває кожен `location`, який його включив, і жоден із них цього не
+    // каже. Стеля належить блокові, який її декларує, — тоді її видно поруч
+    // зі шляхом, для якого вона зроблена, і `matcher` можна з нею звірити.
+    snippets++;
+    const clean = stripComments(text);
+    for (const m of clean.matchAll(/client_max_body_size\s+([^;]+);/g)) {
+      const line = clean.slice(0, m.index).split('\n').length;
+      problems.push({
+        what: `${file}:${line}: \`client_max_body_size ${m[1].trim()}\` у СНІПЕТІ`,
+        fix:
+          'сніпет інклюдиться в кілька блоків — стеля з нього накриває кожен із них мовчки.\n' +
+          '      Оголосіть її в тому `location`, для якого вона зроблена: там її видно поруч\n' +
+          '      зі шляхом, і саме там її звіряють із matcher у src/proxy.ts.',
+      });
+    }
+  }
+
+  if (!servers.length && !problems.length) {
+    problems.push({ what: `у ${NGINX_DIR} не знайдено жодного серверного блоку — гейт нічого не стереже` });
   }
 }
 
@@ -231,7 +277,7 @@ if (patterns && servers.length) {
       if (server.bodyLimit !== parseSize(SERVER_DEFAULT_ACK)) {
         problems.push({
           what:
-            `${NGINX}: server ${name} → client_max_body_size на рівні блоку — ` +
+            `${server.file}: server ${name} → client_max_body_size на рівні блоку — ` +
             `${Math.round(server.bodyLimit / 1024 / 1024)} МБ, зафіксовано ${SERVER_DEFAULT_ACK}`,
           fix:
             'серверна стеля вища за буфер middleware (10 МБ) — між ними вікно тихого\n' +
@@ -250,7 +296,7 @@ if (patterns && servers.length) {
       if (!limit || limit <= NEXT_BODY_LIMIT) continue;
       oversized++;
 
-      const where = `${NGINX}: server ${name} → location ${loc.op ? loc.op + ' ' : ''}${loc.path}`;
+      const where = `${server.file}: server ${name} → location ${loc.op ? loc.op + ' ' : ''}${loc.path}`;
 
       if (matches(loc.path)) {
         problems.push({
@@ -285,7 +331,8 @@ if (patterns && servers.length) {
 console.log('check-body-limits');
 if (problems.length === 0) {
   console.log(
-    `  чисто — ${servers.length} серверних блоків, ${oversized} location зі стелею понад 10 МБ;`,
+    `  чисто — ${configs} конфіг(и) і ${snippets} сніпет(и) у ${NGINX_DIR}: ` +
+    `${servers.length} серверних блоків, ${oversized} location зі стелею понад 10 МБ;`,
   );
   console.log('  усі виключені з middleware і проксюють на порт свого середовища');
   if (serverGaps) {

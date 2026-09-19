@@ -153,15 +153,30 @@ try {
   const text = ((await res.json()) as { error: string }).error;
   assert.match(text, /Контрольна сума/, `текст відмови: «${text}»`);
   assert.deepStrictEqual(filesOf(A).filter((f) => !f.endsWith('.keep')), [], `після 400 у теці A лишилось ${JSON.stringify(filesOf(A))}`);
-  assert.strictEqual((await rowsOf(A)).length, 0, 'після 400 у A зʼявився рядок');
+  // ФАЙЛА немає, а РЯДОК є — і це протилежне тому, що тут стояло до INC-053.
+  //
+  // Доти відмова не лишала в таблиці нічого: провал нічного знімка був
+  // невидимий, і з екрана не було видно навіть того, падав він чи не
+  // запускався. Екран стану, який показує лише успіхи, не відповідає на те
+  // єдине питання, заради якого існує: чи ланцюг живий.
+  let afterBad = await rowsOf(A);
+  assert.strictEqual(afterBad.length, 1, `після 400 рядків ${afterBad.length}, чекали 1 (невдала спроба)`);
+  assert.strictEqual(afterBad[0].status, 'failed', `стан невдалої спроби ${afterBad[0].status}`);
+  assert.match(afterBad[0].error ?? '', /Контрольна сума/, `текст у рядку: «${afterBad[0].error}»`);
+  assert.strictEqual(afterBad[0].sha256, bad, 'невдала спроба записана не під своїм sha');
   let conn = (await runWithOrganization(A, () => listConnections(A, ALL_PROPERTIES))).find((c) => c.app === 'winhotel_import');
   assert.ok(conn && conn.status === 'error' && /Контрольна сума/.test(conn.last_error ?? ''), `стан звʼязку після 400: ${JSON.stringify(conn)}`);
-  // Режим невідомий і sha не hex — теж названі відмови, до першого байта.
+  // Режим невідомий і sha не hex — теж названі відмови, до першого байта. У
+  // них рядка НЕ буває, і це не недогляд: ключ рядка — sha256, а тут він або
+  // непридатний, або режим не пройшов би CHECK на колонці. Рядок без ключа
+  // означав би новий рядок на кожен зламаний заголовок.
   res = await post(good(tokenA, { 'x-winhotel-mode': 'ftp' }));
   assert.strictEqual(res.status, 400, `невідомий режим: очікували 400, отримали ${res.status}`);
   res = await post(good(tokenA, { 'x-winhotel-sha256': 'zz' }));
   assert.strictEqual(res.status, 400, `sha не hex: очікували 400, отримали ${res.status}`);
-  console.log('  ok  3. sha256 не збігається — 400 з текстом, файл видалено, рядка немає, картка каже чому');
+  afterBad = await rowsOf(A);
+  assert.strictEqual(afterBad.length, 1, `відмова без придатного ключа завела рядок: ${afterBad.length}`);
+  console.log('  ok  3. sha256 не збігається — 400 з текстом, файл видалено, РЯДОК failed із текстом, картка каже чому');
 
   // ── 4. Справжній знімок → 201, файл + .ready, рядок received, картка connected ──
   res = await post(good(tokenA));
@@ -177,12 +192,19 @@ try {
   const ready = JSON.parse(fs.readFileSync(p.ready, 'utf8')) as { mode: string; sha256: string; takenAt: string };
   assert.strictEqual(ready.mode, 'gbak');
   assert.strictEqual(ready.sha256, sha);
+  // Рядки шукаються за sha, а не за позицією: поруч тепер лежить невдала
+  // спроба з п. 3, і «перший у списку» означав би різне на різних рушіях
+  // (AGENTS §7: твердження про рядок, якого може бути кілька, пишеться про
+  // кількість, а не про значення першого знайденого).
   let rows = await rowsOf(A);
-  assert.strictEqual(rows.length, 1, `після прийому рядків ${rows.length}`);
-  assert.strictEqual(rows[0].status, 'received');
-  assert.strictEqual(Number(rows[0].size_bytes), body.length);
-  assert.strictEqual(rows[0].sha256, sha);
-  assert.strictEqual(String(rows[0].taken_at).slice(0, 16), '2026-09-10 03:00', `taken_at = ${rows[0].taken_at}`);
+  const okRow = rows.find((r) => r.sha256 === sha)!;
+  assert.ok(okRow, `прийнятого знімка немає серед ${rows.length} рядків`);
+  assert.strictEqual(rows.length, 2, `після прийому рядків ${rows.length}, чекали 2 (невдала спроба + знімок)`);
+  assert.strictEqual(okRow.status, 'received');
+  assert.strictEqual(Number(okRow.size_bytes), body.length);
+  assert.strictEqual(Number(okRow.seen_count), 1, 'свіжий знімок мав би лічильник 1');
+  assert.strictEqual(okRow.last_seen_at, null, 'свіжий знімок не має повторів');
+  assert.strictEqual(String(okRow.taken_at).slice(0, 16), '2026-09-10 03:00', `taken_at = ${okRow.taken_at}`);
   conn = (await runWithOrganization(A, () => listConnections(A, ALL_PROPERTIES))).find((c) => c.app === 'winhotel_import');
   assert.strictEqual(conn?.status, 'connected', `стан звʼязку після прийому: ${conn?.status}`);
   assert.strictEqual(conn?.last_error, null, 'після успіху last_error не порожній');
@@ -195,14 +217,24 @@ try {
   assert.strictEqual(again.snapshotId, created.snapshotId, 'повтор віддав інший id');
   assert.strictEqual(again.duplicate, true);
   rows = await rowsOf(A);
-  assert.strictEqual(rows.length, 1, `після повтору рядків ${rows.length}`);
+  assert.strictEqual(rows.filter((r) => r.sha256 === sha).length, 1, 'повтор створив другий рядок');
   assert.strictEqual(filesOf(A).filter((f) => f.endsWith('.fbk.gz')).length, 1, 'після повтору файлів два');
+  // Повтор не створює рядка — але й не мовчить. Без лічильника оператор бачив
+  // РОЗРИВ у часовому ряду й читав його як «агент не бігав», хоча агент бігав
+  // і приніс те саме (INC-053). Два значення на осі: 1 у п. 4, 2 тут.
+  const repeated = rows.find((r) => r.sha256 === sha)!;
+  assert.strictEqual(Number(repeated.seen_count), 2, `після повтору лічильник ${repeated.seen_count}`);
+  assert.ok(repeated.last_seen_at, 'після повтору немає часу останнього разу');
   const other = zlib.gzipSync(Buffer.concat([raw, Buffer.from('x')]));
   const otherSha = crypto.createHash('sha256').update(other).digest('hex');
   res = await post(good(tokenA, { 'x-winhotel-sha256': otherSha }), other);
   assert.strictEqual(res.status, 409, `другий знімок за добу: очікували 409, отримали ${res.status}`);
-  assert.strictEqual((await rowsOf(A)).length, 1, 'другий знімок за добу створив рядок');
-  console.log('  ok  5. повтор того самого sha256 — 200 і той самий id; другий інший за добу — 409');
+  const afterConflict = await rowsOf(A);
+  assert.strictEqual(afterConflict.filter((r) => r.sha256 === sha).length, 1, 'другий знімок за добу зачепив прийнятий рядок');
+  const conflictRow = afterConflict.find((r) => r.sha256 === otherSha);
+  assert.ok(conflictRow && conflictRow.status === 'failed', 'відмова «один на добу» не лишила сліду в таблиці');
+  assert.match(conflictRow!.error ?? '', /уже прийнято/, `текст 409 у рядку: «${conflictRow!.error}»`);
+  console.log('  ok  5. повтор того самого sha256 — 200, той самий id і лічильник 2; другий інший за добу — 409 і рядок failed');
 
   // ── 6. Чужа організація не бачить знімка A ───────────────────────────────
   assert.strictEqual((await rowsOf(B)).length, 0, 'B бачить знімок A через репозиторій');
@@ -216,8 +248,12 @@ try {
   // ── 7. Маркери мосту переводять стан: .extracted з числами, .failed з текстом ──
   fs.writeFileSync(p.extracting, 'now');
   await runWithOrganization(A, () => repo.syncMarkers(A));
-  rows = await rowsOf(A);
-  assert.strictEqual(rows[0].status, 'extracting', `після .extracting стан ${rows[0].status}`);
+  // За ID, не за позицією. Поруч тепер лежать рядки `failed` (INC-053), і
+  // «перший у списку» означає різне на різних рушіях: на SQLite тут випадково
+  // опинявся потрібний рядок, на Postgres — найновіший, тобто відмова
+  // «один на добу» (AGENTS §7).
+  const statusOf = async (id: string) => (await runWithOrganization(A, () => repo.findSnapshot(A, id)))?.status;
+  assert.strictEqual(await statusOf(created.snapshotId), 'extracting', `після .extracting стан ${await statusOf(created.snapshotId)}`);
   fs.mkdirSync(p.out, { recursive: true });
   const aggregates = { snapshot: { id: created.snapshotId }, entities: { bookings: 5, units: 4 }, numbers: { bookings_live: { label: 'x', value: '4' } } };
   fs.writeFileSync(path.join(p.out, 'aggregates.json'), JSON.stringify(aggregates));
@@ -225,14 +261,18 @@ try {
   fs.writeFileSync(p.extracted, '{}');
   fs.rmSync(p.extracting);
   await runWithOrganization(A, () => repo.syncMarkers(A));
-  rows = await rowsOf(A);
-  assert.strictEqual(rows[0].status, 'extracted', `після .extracted стан ${rows[0].status}`);
-  const counts = JSON.parse(rows[0].counts_json ?? '{}') as { winhotel: Record<string, number> };
-  assert.strictEqual(counts.winhotel?.bookings, 5, `counts_json = ${rows[0].counts_json}`);
+  const extractedRow = (await runWithOrganization(A, () => repo.findSnapshot(A, created.snapshotId)))!;
+  assert.strictEqual(extractedRow.status, 'extracted', `після .extracted стан ${extractedRow.status}`);
+  const counts = JSON.parse(extractedRow.counts_json ?? '{}') as { winhotel: Record<string, number> };
+  assert.strictEqual(counts.winhotel?.bookings, 5, `counts_json = ${extractedRow.counts_json}`);
   assert.strictEqual(counts.winhotel?.units, 4);
   // Другий знімок (наступної «доби» — підставляємо рядок напряму) падає в мосту.
   const failedId = repo.newSnapshotId(new Date('2026-09-11T03:00:00Z'));
-  await runWithOrganization(A, () => repo.insertSnapshot({ id: failedId, organizationId: A, takenAt: null, mode: 'copy', sha256: otherSha, sizeBytes: 7 }));
+  // Власний sha, не `otherSha`: той тепер зайнятий рядком `failed`, який
+  // лишила відмова «один на добу» (INC-053), а `UNIQUE (organization_id,
+  // sha256)` двох рядків на один sha не дає.
+  const bridgeSha = crypto.createHash('sha256').update('bridge failure fixture').digest('hex');
+  await runWithOrganization(A, () => repo.insertSnapshot({ id: failedId, organizationId: A, takenAt: null, mode: 'copy', sha256: bridgeSha, sizeBytes: 7 }));
   const pf = snapshotPaths(A, failedId);
   fs.writeFileSync(pf.failed, 'gbak -c відмовив (код 1): bad backup header');
   await runWithOrganization(A, () => repo.syncMarkers(A));
@@ -673,9 +713,18 @@ try {
   let dres = await post(good(tokenA, { 'x-winhotel-sha256': deltaSha2, 'x-winhotel-mode': 'delta' }), deltaBody);
   assert.strictEqual(dres.status, 400, `дельта без X-Winhotel-Window: очікували 400, отримали ${dres.status}`);
   assert.match((await dres.json()).error ?? '', /вікна/);
-  assert.ok(!(await rowsOf(A)).some((r) => r.sha256 === deltaSha2), 'дельта без вікна лишила рядок');
+  // Відмова лишає слід (INC-053): рядок `failed` із текстом.
+  const refused = (await rowsOf(A)).find((r) => r.sha256 === deltaSha2);
+  assert.ok(refused && refused.status === 'failed', 'дельта без вікна не лишила сліду в таблиці');
+  assert.match(refused!.error ?? '', /вікна/, `текст відмови в рядку: «${refused!.error}»`);
+  // І ГОЛОВНЕ: слід не має ставати на заваді. Агент виправив заголовок і шле
+  // ТІ САМІ байти — невдала спроба займає той самий sha, тож без окремого
+  // правила прийом відповів би «duplicate, нічого робити», і знімок не
+  // прийняли б НІКОЛИ. Журнал відмов, який ламає прийом, гірший за його
+  // відсутність.
   dres = await post(good(tokenA, { 'x-winhotel-sha256': deltaSha2, 'x-winhotel-mode': 'delta', 'x-winhotel-window': '2026-09-12..2026-09-16' }), deltaBody);
-  assert.strictEqual(dres.status, 201, `дельта з вікном: очікували 201, отримали ${dres.status} ${await dres.text()}`);
+  assert.strictEqual(dres.status, 201, `виправлена дельта з тим самим sha: очікували 201, отримали ${dres.status} ${await dres.text()}`);
+  assert.strictEqual((await rowsOf(A)).filter((r) => r.sha256 === deltaSha2).length, 1, 'виправлена дельта лишила два рядки на один sha');
   const deltaRow = (await rowsOf(A)).find((r) => r.sha256 === deltaSha2)!;
   assert.strictEqual(deltaRow.mode, 'delta');
   assert.ok(fs.existsSync(snapshotPaths(A, deltaRow.id).deltaArchive), 'дельта не лягла як .delta.gz');

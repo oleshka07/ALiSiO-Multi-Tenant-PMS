@@ -2433,6 +2433,8 @@ CREATE TABLE "winhotel_snapshots" (
   "counts_json" JSONB,
   "received_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "imported_at" TIMESTAMPTZ,
+  "seen_count" BIGINT DEFAULT 1 NOT NULL,
+  "last_seen_at" TIMESTAMPTZ,
   PRIMARY KEY ("id"),
   UNIQUE ("organization_id", "sha256"),
   CHECK (mode IN ('backup', 'gbak', 'copy', 'delta')),

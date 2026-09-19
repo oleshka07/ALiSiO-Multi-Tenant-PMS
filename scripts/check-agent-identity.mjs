@@ -164,6 +164,51 @@ function isDomainAccount(value) {
 
 const isSidLiteral = (v) => /^S-1-[0-9-]+$/.test(v.trim());
 
+/**
+ * Приведення до типу, який Windows розуміє як SID, у будь-якому написанні:
+ * `[SecurityIdentifier]`, `[Security.Principal.SecurityIdentifier]`,
+ * `[System.Security.Principal.SecurityIdentifier]`.
+ */
+const SID_CAST = /\[\s*(?:System\.)?(?:Security\.Principal\.)?SecurityIdentifier\s*\]\s*$/i;
+/** `New-Object …SecurityIdentifier(` — та сама особа, інше написання. */
+const SID_CTOR = /SecurityIdentifier\s*\(\s*$/i;
+
+/** Провідне приведення виразу: `[X]решта` → { cast:'[X]', rest:'решта' }. */
+function castOf(arg) {
+  const m = /^\s*(\[[^\]]*\])\s*/.exec(arg);
+  return m ? { cast: m[1].trim(), rest: arg.slice(m[0].length) } : { cast: null, rest: arg.trim() };
+}
+
+/**
+ * Чи КОЖЕН рядковий літерал виразу і є SID-ом, і побудований як SID.
+ *
+ * Друга половина — суть INC-051. `isSidLiteral` стереже ВІЗЕРУНОК («текст
+ * схожий на SID»), а властивість інша: «Windows розвʼяже цю особу в ЦЬОМУ
+ * API». Для конструкторів правил доступу голий рядок її не має — перевантаження
+ * `FileSystemAccessRule(string identity, …)` трактує рядок як ІМʼЯ облікового
+ * запису у формі `DOMAIN\account` (документація .NET), тобто будує
+ * `NTAccount('S-1-5-18')`, а такого імені не існує: `IdentityNotMappedException`
+ * — рівно та відмова, по якій цей гейт заводили.
+ *
+ * Тому тут дивимось, що стоїть ПЕРЕД літералом: приведення або конструктор.
+ */
+function sidTyped(expr) {
+  const lits = scan(expr).literals;
+  if (!lits.length) return false;
+  return lits.every((l) => {
+    if (!isSidLiteral(l.value)) return false;
+    const before = expr.slice(0, l.start);
+    return SID_CAST.test(before) || SID_CTOR.test(before);
+  });
+}
+
+/** Чи кожен літерал виразу — SID (як його побудовано, тут не питається). */
+function sidValued(expr) {
+  const lits = scan(expr).literals;
+  if (!lits.length) return false;
+  return lits.every((l) => isSidLiteral(l.value));
+}
+
 /** Текст у дужках, що починаються на позиції `open`, з урахуванням вкладеності. */
 function balanced(masked, source, open) {
   let depth = 0;
@@ -180,17 +225,15 @@ function balanced(masked, source, open) {
 /** Літерали всередині шматка коду (той самий сканер — рекурсія на рівні тексту). */
 const literalsOf = (fragment) => scan(fragment).literals.map((l) => l.value);
 
-/**
- * Чи тримає вираз ЛИШЕ SID-и: щонайменше один `S-1-…` і жодного літерала,
- * який SID-ом не є. Порожній вираз не рахується за доведений.
- */
-function sidOnly(expr) {
-  const lits = literalsOf(expr);
-  if (!lits.length) return false;
-  return lits.every(isSidLiteral);
-}
-
-const FIX_B = "передайте SID: 'S-1-5-18' або [Security.Principal.SecurityIdentifier]'S-1-5-32-544'";
+// Дві підказки, а не одна, і це не косметика. Стара казала «передайте SID:
+// 'S-1-5-18' АБО [SecurityIdentifier]'S-1-5-32-544'» — тобто вела в дефект:
+// наступний, хто зламав би ACL і прочитав підказку, написав би голий рядок і
+// дістав зелене (INC-051). Підказка — частина гейта, і неправильна підказка
+// шкодить так само, як пропущена знахідка.
+const FIX_TYPED = "у конструкторі правила доступу — [Security.Principal.SecurityIdentifier]'S-1-5-32-544'; "
+  + 'ГОЛИЙ РЯДОК тут означає імʼя облікового запису, і SID у ньому не розвʼязується';
+const FIX_VALUE = "-UserId приймає і рядок SID ('S-1-5-18'), і [SecurityIdentifier]; "
+  + 'імʼя облікового запису — ні: воно локалізоване';
 
 const findings = [];
 let identitySites = 0;
@@ -243,8 +286,8 @@ for (const entry of entries) {
       const comma = innerMasked.indexOf(',');
       const arg = (comma === -1 ? inner : inner.slice(0, comma)).trim();
       identitySites++;
-      const verdict = identityVerdict(arg, code, masked);
-      if (verdict) findings.push({ file, line: lineAt(m.index), what: `${name}: ${verdict} (${note})`, fix: FIX_B });
+      const verdict = identityVerdict(arg, code, masked, 'typed');
+      if (verdict) findings.push({ file, line: lineAt(m.index), what: `${name}: ${verdict} (${note})`, fix: FIX_TYPED });
     }
   }
 
@@ -263,23 +306,59 @@ for (const entry of entries) {
   for (const m of masked.matchAll(/-(UserId|GroupId)\s+(\S+)/g)) {
     const arg = code.slice(m.index + m[0].length - m[2].length, m.index + m[0].length).trim();
     identitySites++;
-    const verdict = identityVerdict(arg, code, masked);
+    const verdict = identityVerdict(arg, code, masked, 'value');
     if (verdict) {
-      findings.push({ file, line: lineAt(m.index), what: `-${m[1]}: ${verdict}`, fix: FIX_B });
+      findings.push({ file, line: lineAt(m.index), what: `-${m[1]}: ${verdict}`, fix: FIX_VALUE });
     }
   }
 }
 
-/** null — усе гаразд; інакше речення про те, що саме не SID. */
-function identityVerdict(arg, code, masked) {
-  const cleaned = arg.replace(/^\[[^\]]*\]\s*/, '').trim();
+/**
+ * null — усе гаразд; інакше речення про те, чому Windows цю особу не розвʼяже.
+ *
+ * `mode` — ВЛАСТИВІСТЬ, якої вимагає саме це API, і вона різна:
+ *
+ *   'typed'  конструктори правил доступу. Потрібен `[SecurityIdentifier]`:
+ *            перевантаження з рядком — це імʼя облікового запису.
+ *   'value'  `New-ScheduledTaskPrincipal -UserId`. Приймає і голий рядок
+ *            SID — доведено живцем на сервері готелю 18.09.2026, установка
+ *            пройшла саме з ним, — і `[SecurityIdentifier]` (він приводиться
+ *            до тієї самої форми `S-1-…`). Не приймає ІМЕНІ: воно локалізоване.
+ *
+ * Одне правило на обидва місця було б неправильним в один бік або в другий:
+ * суворе зламало б робочу установку, мʼяке пропускає справжній дефект.
+ */
+function identityVerdict(arg, code, masked, mode) {
+  const { cast, rest } = castOf(arg.trim());
 
-  const lits = literalsOf(cleaned);
-  if (lits.length) {
-    return lits.every(isSidLiteral) ? null : `особа названа як ${lits.map((l) => `'${l}'`).join(', ')}`;
+  if (cast && /NTAccount/i.test(cast)) {
+    return 'приведення до NTAccount — це ІМʼЯ облікового запису, не SID';
   }
 
-  const varName = /^\$([A-Za-z_]\w*)$/.exec(cleaned)?.[1];
+  // Приведення до SecurityIdentifier робить типованою і змінну, і літерал.
+  if (cast && SID_CAST.test(cast)) {
+    const inner = scan(rest).literals;
+    if (inner.length && !inner.every((l) => isSidLiteral(l.value))) {
+      return `приведення до SecurityIdentifier над ${inner.map((l) => `'${l.value}'`).join(', ')} — це не SID, приведення кине помилку`;
+    }
+    if (inner.length) return null;
+    // `[SecurityIdentifier]$var` — далі питаємо про саму змінну, вже мʼякше.
+    mode = 'value';
+  }
+
+  const whole = cast ? `${cast}${rest}` : rest;
+  const lits = literalsOf(rest);
+  if (lits.length) {
+    if (!lits.every(isSidLiteral)) {
+      return `особа названа як ${lits.map((l) => `'${l}'`).join(', ')}`;
+    }
+    if (mode === 'typed' && !sidTyped(whole)) {
+      return `особа задана ГОЛИМ РЯДКОМ ${lits.map((l) => `'${l}'`).join(', ')}: перевантаження з рядком трактує його як імʼя облікового запису (DOMAIN\\account), і SID у ньому не розвʼязується`;
+    }
+    return null;
+  }
+
+  const varName = /^\$([A-Za-z_]\w*)$/.exec(rest)?.[1];
   if (!varName) return `особу задає вираз \`${arg}\`, у якому SID не видно`;
 
   const bindings = [];
@@ -297,8 +376,16 @@ function identityVerdict(arg, code, masked) {
   }
 
   if (!bindings.length) return `особа приходить зі змінної \`$${varName}\`, якій гейт не бачить жодного присвоєння`;
-  const bad = bindings.filter((b) => !sidOnly(b));
-  if (bad.length) return `\`$${varName}\` отримує не лише SID-и (${bad.length} з ${bindings.length} присвоєнь)`;
+
+  // Кожне присвоєння мусить витримати ТУ САМУ вимогу, що й місце виклику:
+  // змінна не пом'якшує правила, вона лише переносить значення.
+  const ok = mode === 'typed' ? sidTyped : sidValued;
+  const bad = bindings.filter((b) => !ok(b));
+  if (bad.length) {
+    return mode === 'typed'
+      ? `\`$${varName}\` отримує особу не як [SecurityIdentifier] (${bad.length} з ${bindings.length} присвоєнь) — рядок тут означає ІМʼЯ`
+      : `\`$${varName}\` отримує не лише SID-и (${bad.length} з ${bindings.length} присвоєнь)`;
+  }
   return null;
 }
 

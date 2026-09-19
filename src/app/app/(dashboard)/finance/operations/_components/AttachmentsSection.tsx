@@ -1,6 +1,7 @@
 'use client';
 
 import { useT } from '@core/i18n/client';
+import { formatBytes } from '@core/format/bytes';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Paperclip, Upload, Trash2, FileText, Image as ImageIcon, FileArchive, ExternalLink } from 'lucide-react';
 
@@ -15,13 +16,6 @@ interface Attachment {
 
 interface Props {
   operationId: string | null; // null when operation is not yet created
-}
-
-function fmtSize(bytes: number | null): string {
-  if (bytes == null) return '—';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
 function MimeIcon({ mime }: { mime: string | null }) {
@@ -142,7 +136,7 @@ export default function AttachmentsSection({ operationId }: Props) {
                 {a.file_name}
                 <ExternalLink size={10} style={{ opacity: 0.5 }} />
               </a>
-              <span style={{ fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{fmtSize(a.size_bytes)}</span>
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{formatBytes(a.size_bytes)}</span>
               {a.uploaded_by_name && (
                 <span style={{ fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{a.uploaded_by_name}</span>
               )}
