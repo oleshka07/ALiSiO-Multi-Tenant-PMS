@@ -1512,39 +1512,173 @@
       "expectTotal": 135
     }
   ],
-  "_guestPageNote": "Зміст гостьової сторінки, 20.08.2026. Тільки перевірені факти: гараж — прайс 2027 (10 €/ніч/місце) + пропозиція 02/2024 (в'їзд «Siebenhitze» / «Neuer Weg») + аудит рецепції (висота ~2 м, квиток на рецепції, або повідомити наступного дня); сніданок 15 €/особу і діти до 6 років безкоштовно — прайс 2027; свіжі яйця на замовлення — аудит рецепції (це закриває повторюваний негативний відгук «не було яєць»); тварини 10 €/день без корму — прайс 2027; телефон — з фактури й чека термінала. НЕ заповнено, бо фактів немає (зібрати під час поїздки в готель): wifiNetwork/wifiPassword, restaurantName/restaurantHours, mapsUrl (точка В'ЇЗДУ в гараж, не готелю — Google веде до дверей і гості кружляють), rules (правила будинку), години сніданку, години рецепції у вихідні, процедура пізнього заїзду. Порожнє поле навмисно відсутнє, а не порожнє: applier пише лише названі поля, тож рецепція може ввести решту руками, і файл цього не затре. checkInTime/checkOutTime у property досі типові — тому в FAQ їх свідомо немає: неперевірений час у гостя на екрані гірший за його відсутність.",
+  "_guestPageNote": "Заповнено контролером 18.09 з відкритих джерел готелю: /anfahrt/, /gaestemappe/auf-einen-blick-von-a-z/, /gaestemappe/kulinarisches/, /hotel/, /agb/ і сторінки «Parken» міста Greiz. Порожні поля — не забуті, а ті, яких у джерелах немає: wifiNetwork/wifiPassword, parkingPhotoUrl, territoryMapUrl, videoGuideUrl, whatsappPhone, weatherLat/weatherLon. Див. docs/tasks/inbox/guest-page-schlossberg.md.",
   "guestPage": {
     "emergencyPhone": "+49 3661 622123",
     "petsPolicy": "welcome",
-    "parkingInfo": "Tiefgarage (Schlossgarage Greiz): 10,00 € pro Nacht und Stellplatz.\n\nDie Einfahrt liegt in der Straße „Siebenhitze“ / „Neuer Weg“ — nicht am Hoteleingang. Bitte fahren Sie außen herum; die Navigation meldet sonst „Ziel erreicht“, während Sie noch vor dem Haus stehen.\n\nDurchfahrtshöhe ca. 2,00 m. Die Stellplätze des Hotels liegen direkt am Aufzug — praktisch mit Gepäck.\n\nIhr Parkticket erhalten Sie an der Rezeption. Sie brauchen es zum Ausfahren; alternativ melden Sie die Nutzung am nächsten Tag an der Rezeption.",
+    "parkingInfo": "Tiefgarage „Schlossgarage“ — direkt unter dem Hotel. Vom Stellplatz fahren Sie mit dem Fahrstuhl ohne Umweg zu uns herauf.\n\nEINFAHRT: Straße „Neuer Weg“, Richtung Kreiskrankenhaus — NICHT am Hoteleingang in der Marienstraße. Wenn Ihre Navigation „Ziel erreicht“ meldet, während Sie noch vor dem Haupteingang stehen, fahren Sie bitte außen herum zum Neuen Weg. Der Knopf unten führt Sie direkt zur Einfahrt.\n\nPreis: 10,00 € pro PKW-Stellplatz und Übernachtung.\n\nDas Ausfahrtticket erhalten Sie an der Rezeption. Bitte holen Sie es vor der Abreise — ohne Ticket öffnet die Schranke nicht.",
+    "parkingMapsUrl": "https://www.google.com/maps/dir/?api=1&destination=50.6581808%2C12.1993444",
+    "mapsUrl": "https://www.google.com/maps/search/?api=1&query=Schlossberghotel%20Greiz%2C%20Marienstra%C3%9Fe%201-5%2C%2007973%20Greiz",
+    "restaurantName": "Frühstück im Schlossberghotel",
+    "restaurantHours": "Mo–Fr 7.00–10.00 Uhr · Sa, So und Feiertage 7.30–10.00 Uhr\nDer Frühstücksraum liegt in der unteren Etage neben der Rezeption. Täglich reichhaltiges Frühstücksbuffet. Eier nach Wunsch — sprechen Sie unser Frühstücksteam an.",
+    "rules": [
+      {
+        "icon": "🕒",
+        "text": "Anreise ab 15.00 Uhr"
+      },
+      {
+        "icon": "🧳",
+        "text": "Abreise bis 11.00 Uhr — Gepäck bleibt nach Absprache an der Rezeption"
+      },
+      {
+        "icon": "🔑",
+        "text": "Zimmerschlüssel bitte bei sich behalten — er öffnet auch die Haustür"
+      },
+      {
+        "icon": "🐕",
+        "text": "Hunde und Katzen willkommen, 10,00 € pro Tag"
+      },
+      {
+        "icon": "🧺",
+        "text": "Handtücher werden auf Wunsch nicht täglich gewechselt"
+      },
+      {
+        "icon": "🅿️",
+        "text": "Tiefgarage 10,00 € pro Nacht — Einfahrt Neuer Weg"
+      }
+    ],
     "faqItems": [
       {
-        "q": "Was kostet das Frühstück?",
-        "a": "15,00 € pro Person. Kinder unter 6 Jahren frühstücken kostenfrei."
+        "q": "Wo kann ich parken?",
+        "a": "In der Tiefgarage „Schlossgarage“ direkt unter dem Hotel, 10,00 € pro Nacht. Die Einfahrt liegt in der Straße „Neuer Weg“, Richtung Kreiskrankenhaus — bitte nicht am Hoteleingang in der Marienstraße suchen. Vom Stellplatz kommen Sie mit dem Fahrstuhl direkt ins Haus. Das Ausfahrtticket erhalten Sie an der Rezeption."
+      },
+      {
+        "q": "Ich komme spät an — ist die Rezeption besetzt?",
+        "a": "Check-in ist 24 Stunden möglich. Die Rezeption ist Mo–Fr 7.00–18.00 Uhr und Sa, So sowie feiertags 7.00–15.00 Uhr besetzt; außerhalb dieser Zeiten erhalten Sie Ihren Schlüssel über den Schlüsselautomaten vor der Eingangstür. Bereitschaft bei nicht besetzter Rezeption: 03661 622123."
+      },
+      {
+        "q": "Wann gibt es Frühstück?",
+        "a": "Mo–Fr 7.00–10.00 Uhr, Sa, So und feiertags 7.30–10.00 Uhr, im Frühstücksraum in der unteren Etage neben der Rezeption. 15,00 € pro Person; Kinder unter 6 Jahren frühstücken kostenfrei."
       },
       {
         "q": "Gibt es Eier zum Frühstück?",
-        "a": "Ja. Rührei, Spiegelei oder Omelett bereiten wir frisch auf Wunsch zu — sprechen Sie einfach unser Frühstücksteam an. Auch mit Käse, Speck oder Tomate."
+        "a": "Ja. Rührei, Spiegelei oder Omelett bereiten wir frisch auf Wunsch zu — auch mit Käse, Speck oder Tomate. Sprechen Sie einfach unser Frühstücksteam an."
+      },
+      {
+        "q": "Ich reise sehr früh ab — bekomme ich etwas mit?",
+        "a": "Ja. Bei früher Abreise stellen wir Ihnen gern ein Lunchpaket zusammen — bitte am Vorabend an der Rezeption Bescheid geben."
       },
       {
         "q": "Darf mein Hund mit?",
-        "a": "Ja. Wir berechnen 10,00 € pro Tag (ohne Futter)."
+        "a": "Ja, Hunde und Katzen sind willkommen. Wir berechnen 10,00 € pro Tag (ohne Futter)."
       },
       {
-        "q": "Wo kann ich parken?",
-        "a": "In der Schlossgarage Greiz, 10,00 € pro Nacht. Die Einfahrt liegt in der Straße „Siebenhitze“ / „Neuer Weg“ — bitte nicht am Hoteleingang suchen. Das Parkticket erhalten Sie an der Rezeption."
+        "q": "Gibt es WLAN?",
+        "a": "Ja, kostenfrei im ganzen Haus. Eine Garantie für jederzeitigen Empfang in allen Zimmern können wir nicht übernehmen — bei Problemen hilft die Rezeption weiter."
+      },
+      {
+        "q": "Was kann ich mir an der Rezeption ausleihen?",
+        "a": "Bügeleisen und Bügelbrett, Schuhputzutensilien, eine rutschfeste Duschmatte und einen Regenschirm. Antiallergiedecken und -kopfkissen, Wolldecken, zusätzliche Kopfkissen und Babybetten stellen wir kostenfrei zur Verfügung. Ein kleines Sortiment an Hygieneartikeln ist ebenfalls erhältlich."
+      },
+      {
+        "q": "Wo bekomme ich Getränke?",
+        "a": "Am Getränkeautomaten gegenüber der Rezeption. Kaffee, Tee und Milch gibt es frisch am Automaten im Frühstücksbereich."
+      },
+      {
+        "q": "Können Sie ein Taxi rufen?",
+        "a": "Gern. Taxi Balkow 03661 6444, City-Taxi 03661 3114. Bei sehr kurzfristiger Bestellung können wir die Verfügbarkeit leider nicht garantieren."
+      },
+      {
+        "q": "Ich muss meine Buchung stornieren — was kostet das?",
+        "a": "Bis 30 Tage vor Anreise fallen 8 % an; je näher die Anreise rückt, desto höher der Anteil, innerhalb von 48 Stunden 100 %. Eine Stornierung später als 24 Stunden vor Anreise ist in jedem Fall entgeltpflichtig. Rufen Sie uns an — wir finden meist eine Lösung: 03661 622123."
+      },
+      {
+        "q": "Ich habe meinen Zimmerschlüssel verloren.",
+        "a": "Bitte melden Sie sich sofort an der Rezeption. Für einen verlorenen Schlüssel berechnen wir 25,00 €."
+      },
+      {
+        "q": "Notfall — welche Nummern gelten?",
+        "a": "Polizei 110, Rettungsdienst und Notarzt 112. Hotelbereitschaft bei nicht besetzter Rezeption: 03661 622123."
       }
     ],
     "usefulInfo": [
       {
         "icon": "🏰",
-        "title": "Oberes Schloss",
-        "desc": "Zu Fuß vom Haus erreichbar — einer der beiden Gründe, aus denen Gäste nach Greiz kommen."
+        "title": "Oberes Schloss Greiz",
+        "desc": "Auf dem Schlossberg über dem Hotel — der kürzeste Weg ist zu Fuß.",
+        "url": "https://www.google.com/maps/search/?api=1&query=Oberes%20Schloss%20Greiz"
       },
       {
-        "icon": "🏰",
-        "title": "Unteres Schloss",
-        "desc": "Im Stadtzentrum, wenige Minuten vom Hotel."
+        "icon": "🏯",
+        "title": "Unteres Schloss & Greiz-Information",
+        "desc": "Am Burgplatz, wenige Minuten zu Fuß. Die Touristinformation ist Di–So 10–17 Uhr geöffnet, Telefon 03661 689815.",
+        "url": "https://www.google.com/maps/search/?api=1&query=Unteres%20Schloss%20Greiz%2C%20Burgplatz%2012"
+      },
+      {
+        "icon": "🌳",
+        "title": "Fürstlich Greizer Park",
+        "desc": "Englischer Landschaftspark an der Weißen Elster mit Sommerpalais und Parksee — die schönste Runde vor dem Frühstück.",
+        "url": "https://www.google.com/maps/search/?api=1&query=F%C3%BCrstlich%20Greizer%20Park"
+      },
+      {
+        "icon": "🖼",
+        "title": "Sommerpalais mit Satiricum",
+        "desc": "Im Greizer Park: Buchkunst, Grafik und eine der bekanntesten Karikatur-Sammlungen Deutschlands.",
+        "url": "https://www.google.com/maps/search/?api=1&query=Sommerpalais%20Greiz"
+      },
+      {
+        "icon": "🌉",
+        "title": "Göltzschtalbrücke",
+        "desc": "Die größte Ziegelsteinbrücke der Welt und das Wahrzeichen des Vogtlandes — ein Ausflug von etwa einem halben Tag.",
+        "url": "https://www.google.com/maps/search/?api=1&query=G%C3%B6ltzschtalbr%C3%BCcke"
+      },
+      {
+        "icon": "🎭",
+        "title": "Vogtlandhalle Greiz",
+        "desc": "Konzerte, Theater und Veranstaltungen in der Carolinenstraße.",
+        "url": "https://www.google.com/maps/search/?api=1&query=Vogtlandhalle%20Greiz"
+      },
+      {
+        "icon": "🥘",
+        "title": "Harmonie Schlosscafé & Restaurant",
+        "desc": "Burgplatz 12 · 03661 3866 — direkt am Unteren Schloss.",
+        "url": "https://www.google.com/maps/search/?api=1&query=Harmonie%20Schlosscaf%C3%A9%20Greiz%2C%20Burgplatz%2012"
+      },
+      {
+        "icon": "🍽",
+        "title": "Stadtmühle Greiz",
+        "desc": "Burgplatz 10 · 03661 4586033 — regionale Küche an der Elster.",
+        "url": "https://www.google.com/maps/search/?api=1&query=Stadtm%C3%BChle%20Greiz%2C%20Burgplatz%2010"
+      },
+      {
+        "icon": "🍸",
+        "title": "pm lounge",
+        "desc": "Brückenstraße 24 · 03661 631204.",
+        "url": "https://www.google.com/maps/search/?api=1&query=pm%20lounge%20Greiz%2C%20Br%C3%BCckenstra%C3%9Fe%2024"
+      },
+      {
+        "icon": "🇬🇷",
+        "title": "Irodion — griechische Spezialitäten",
+        "desc": "Markt 13 · 03661 4553855.",
+        "url": "https://www.google.com/maps/search/?api=1&query=Restaurant%20Irodion%20Greiz%2C%20Markt%2013"
+      },
+      {
+        "icon": "🍕",
+        "title": "Pizzeria Da Papu",
+        "desc": "Bahnhofstraße 7 · 03661 458746.",
+        "url": "https://www.google.com/maps/search/?api=1&query=Pizzeria%20Da%20Papu%20Greiz%2C%20Bahnhofstra%C3%9Fe%207"
+      },
+      {
+        "icon": "🍺",
+        "title": "Gasthaus „Zur Salzmest“",
+        "desc": "Schulstraße 1 · 03661 676067 — bodenständig und regional.",
+        "url": "https://www.google.com/maps/search/?api=1&query=Gasthaus%20Zur%20Salzmest%20Greiz%2C%20Schulstra%C3%9Fe%201"
+      },
+      {
+        "icon": "🚶",
+        "title": "Wandern rund um Greiz",
+        "desc": "Das Tal der Weißen Elster und die waldreichen Höhenzüge beginnen vor der Haustür. Karten und Tipps an der Rezeption.",
+        "url": "https://www.google.com/maps/search/?api=1&query=Wanderwege%20Greiz%20Vogtland"
       }
     ]
   }

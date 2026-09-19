@@ -33,11 +33,22 @@ $Agent = Join-Path $ScriptDir 'winhotel-agent.ps1'
 if (-not (Test-Path $Agent)) { throw ('winhotel-agent.ps1 nicht gefunden in ' + $ScriptDir) }
 
 # ── Token-Datei: nur Administratoren und SYSTEM ────────────────────────────
+#
+# Die Konten werden über ihre SID benannt, nicht über den Namen. Well-known
+# accounts heißen in jeder Windows-Sprache anders — 'BUILTIN\Administrators'
+# ist auf einem deutschen Windows 'VORDEFINIERT\Administratoren' und
+# 'NT AUTHORITY\SYSTEM' ist 'NT-AUTORITÄT\SYSTEM'. Der englische Name lässt
+# sich dort nicht auflösen: IdentityNotMappedException, und die Installation
+# bricht ab, bevor irgendetwas eingerichtet ist (Schlossberghotel, 18.09.2026).
+# Die SID ist in allen Sprachen dieselbe:
+#   S-1-5-32-544  Administratoren (lokale Gruppe)
+#   S-1-5-18      SYSTEM
 $tokenFile = Join-Path $ScriptDir 'agent.token'
 Set-Content -Path $tokenFile -Value $Token -Encoding ASCII -NoNewline
 $acl = Get-Acl $tokenFile
 $acl.SetAccessRuleProtection($true, $false)
-foreach ($who in @('BUILTIN\Administrators', 'NT AUTHORITY\SYSTEM')) {
+foreach ($who in @([Security.Principal.SecurityIdentifier]'S-1-5-32-544',
+                   [Security.Principal.SecurityIdentifier]'S-1-5-18')) {
   $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($who, 'FullControl', 'Allow')
   $acl.AddAccessRule($rule)
 }
@@ -56,7 +67,9 @@ if ($Password) { $args += @('-Password', ('"' + $Password + '"')) }
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ($args -join ' ') -WorkingDirectory $ScriptDir
 $trigger = New-ScheduledTaskTrigger -Daily -At $Time
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 2) -MultipleInstances IgnoreNew
-$principal = New-ScheduledTaskPrincipal -UserId 'NT AUTHORITY\SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+# Auch hier die SID und nicht der Name: 'NT AUTHORITY\SYSTEM' wäre der
+# nächste Schritt gewesen, der auf einem deutschen Windows abbricht.
+$principal = New-ScheduledTaskPrincipal -UserId 'S-1-5-18' -LogonType ServiceAccount -RunLevel Highest
 
 if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
   Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
