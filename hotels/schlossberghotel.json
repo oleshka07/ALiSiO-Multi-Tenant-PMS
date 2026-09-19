@@ -1515,6 +1515,7 @@
   "_guestPageNote": "Заповнено контролером 18.09 з відкритих джерел готелю: /anfahrt/, /gaestemappe/auf-einen-blick-von-a-z/, /gaestemappe/kulinarisches/, /hotel/, /agb/ і сторінки «Parken» міста Greiz. Порожні поля — не забуті, а ті, яких у джерелах немає: wifiNetwork/wifiPassword, parkingPhotoUrl, territoryMapUrl, videoGuideUrl, whatsappPhone, weatherLat/weatherLon. Див. docs/tasks/inbox/guest-page-schlossberg.md.",
   "guestPage": {
     "emergencyPhone": "+49 3661 622123",
+    "receptionHours": "Mo–Fr 7.00–18.00 Uhr · Sa, So und Feiertage 7.00–15.00 Uhr\nCheck-in rund um die Uhr: außerhalb dieser Zeiten erhalten Sie Ihren Schlüssel über den Schlüsselautomaten vor der Eingangstür.",
     "petsPolicy": "welcome",
     "parkingInfo": "Tiefgarage „Schlossgarage“ — direkt unter dem Hotel. Vom Stellplatz fahren Sie mit dem Fahrstuhl ohne Umweg zu uns herauf.\n\nEINFAHRT: Straße „Neuer Weg“, Richtung Kreiskrankenhaus — NICHT am Hoteleingang in der Marienstraße. Wenn Ihre Navigation „Ziel erreicht“ meldet, während Sie noch vor dem Haupteingang stehen, fahren Sie bitte außen herum zum Neuen Weg. Der Knopf unten führt Sie direkt zur Einfahrt.\n\nPreis: 10,00 € pro PKW-Stellplatz und Übernachtung.\n\nDas Ausfahrtticket erhalten Sie an der Rezeption. Bitte holen Sie es vor der Abreise — ohne Ticket öffnet die Schranke nicht.",
     "parkingMapsUrl": "https://www.google.com/maps/dir/?api=1&destination=50.6581808%2C12.1993444",
