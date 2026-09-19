@@ -30,7 +30,10 @@ import { getSql } from '@core/db/async';
 import { ownsProperty } from '@properties/kernel';
 import { generateGuestAppKey } from '../domain/key';
 import { brandAssetsOf } from '@properties/brand-assets';
-import { buildSheet, renderSheetPdf, type SheetOverrides } from '@properties/a4-sheet';
+import {
+  buildSheet, renderSheetPdf, receptionContact, whatsappLink,
+  type SheetOverrides,
+} from '@properties/a4-sheet';
 import { parseLanguage } from '@core/i18n/languages';
 import QRCode from 'qrcode';
 import { publicOrigin } from '@core/public-origin';
@@ -209,6 +212,10 @@ export const guestAppSheet = withOwner(async (request: Request, _ctx: unknown, a
     const org = await getSql().row<{ language: string | null }>(
       'SELECT language FROM organizations WHERE id = ?', [actor.organizationId]);
     const brand = await brandAssetsOf(actor.organizationId, row.id);
+    // Години й WhatsApp — з конфігурації обʼєкта (0422), тими самими дверима.
+    // Другого списку контактів не заводимо: два рядки «як нам подзвонити»
+    // розійшлися б, і розбіжність побачив би гість із надрукованим аркушем.
+    const reception = await receptionContact(actor.organizationId, row.id);
 
     const overrides: SheetOverrides = {
       hotelName: typeof body.hotelName === 'string' ? body.hotelName : undefined,
@@ -226,6 +233,11 @@ export const guestAppSheet = withOwner(async (request: Request, _ctx: unknown, a
       guestAppKey: row.guest_app_key!,
       hotelLanguage: parseLanguage(org?.language, 'en'),
       brand,
+      receptionHours: reception.hours,
+      // Посилання будує модуль: `wa.me` хоче самі цифри, і номер, у якому
+      // їх замало, дає `null` — код, що веде на сторінку помилки, гірший за
+      // порожнє місце в панелі.
+      whatsappUrl: whatsappLink(reception.whatsapp),
     }, originOf(request), overrides);
 
     const pdf = await renderSheetPdf(sheet);

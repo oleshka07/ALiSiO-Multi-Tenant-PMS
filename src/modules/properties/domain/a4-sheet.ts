@@ -55,6 +55,10 @@ export interface SheetProperty {
    * тож тло завжди світле. Роль існує для темних палітр на екрані.
    */
   brand?: BrandAssets;
+  /** Години, коли на телефон рецепції відповідають (0422). Порожньо — не друкуємо. */
+  receptionHours?: string | null;
+  /** Готове посилання на чат. Будує `whatsappLink`, тут воно вже перевірене. */
+  whatsappUrl?: string | null;
 }
 
 /** Що оператор поправив у вікні друку. Порожнє поле = «як у готелю». */
@@ -111,9 +115,18 @@ export interface SheetContent {
   logoUrl: string | null;
   /** Обкладинка; порожньо — аркуш без неї. */
   coverUrl: string | null;
-  /** Дрібним у підвалі: чи цей аркуш іще чинний (КІ35). */
-  keyTail: string;
-  printedOn: string;
+  /**
+   * Години рецепції — рядок ГОТЕЛЮ, не наш переказ (0422).
+   *
+   * Порожньо — під телефоном їх просто немає. Підставити «цілодобово» тому,
+   * що поле порожнє, означало б надрукувати обіцянку, якої готель не давав.
+   */
+  hours: string | null;
+  /**
+   * Другий QR — чат WhatsApp. Порожньо, коли номера немає або в ньому
+   * замало цифр: код, що веде на сторінку помилки, гірший за порожнє місце.
+   */
+  whatsappUrl: string | null;
 }
 
 /**
@@ -248,7 +261,6 @@ export function buildSheet(
   property: SheetProperty,
   origin: string,
   overrides: SheetOverrides = {},
-  today: Date = new Date(),
 ): SheetContent {
   const url = sheetUrl(origin, property.guestAppKey);
 
@@ -301,7 +313,7 @@ export function buildSheet(
     // Папір білий — тло світле завжди.
     logoUrl: logoFor(property.brand ?? {}, 'light'),
     coverUrl: property.brand?.cover ?? null,
-    keyTail: property.guestAppKey.slice(-4),
-    printedOn: today.toISOString().slice(0, 10),
+    hours: (property.receptionHours ?? '').trim() || null,
+    whatsappUrl: property.whatsappUrl ?? null,
   };
 }

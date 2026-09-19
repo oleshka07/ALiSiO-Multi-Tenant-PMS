@@ -1833,6 +1833,7 @@ CREATE TABLE "property_guest_config" (
   "parking_photo_url" TEXT,
   "parking_maps_url" TEXT,
   "whatsapp_phone" TEXT,
+  "reception_hours" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("property_id")
 );

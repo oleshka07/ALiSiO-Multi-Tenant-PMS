@@ -115,6 +115,7 @@ export default function GuestPageSettingsPage() {
   const [pWeatherLon, setPWeatherLon] = useState('');
   const [pEmergency, setPEmergency] = useState('');
   const [pWhatsapp, setPWhatsapp] = useState('');
+  const [pHours, setPHours] = useState('');
   const [pVideoGuide, setPVideoGuide] = useState('');
 
   // ═══ UNIT TYPE STATE ═══
@@ -248,6 +249,7 @@ export default function GuestPageSettingsPage() {
     setPWeatherLon(cfg.weather_lon?.toString() || '');
     setPEmergency(cfg.emergency_phone || '');
     setPWhatsapp(cfg.whatsapp_phone || '');
+    setPHours(cfg.reception_hours || '');
     setPVideoGuide(cfg.video_guide_url || '');
   };
 
@@ -284,6 +286,7 @@ export default function GuestPageSettingsPage() {
           weather_lat: pWeatherLat ? parseFloat(pWeatherLat) : null,
           weather_lon: pWeatherLon ? parseFloat(pWeatherLon) : null,
           emergency_phone: pEmergency || null, whatsapp_phone: pWhatsapp || null,
+          reception_hours: pHours || null,
           video_guide_url: pVideoGuide || null,
         }),
       });
@@ -497,6 +500,14 @@ export default function GuestPageSettingsPage() {
                       <input className="form-input" value={pWhatsapp} placeholder="+420…" onChange={e => setPWhatsapp(e.target.value)} />
                       <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
                         {t('Порожньо — вкладки WhatsApp у гостя не буде.')}
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">{t('Години рецепції')}</label>
+                      <input className="form-input" value={pHours} placeholder="8:00 – 22:00"
+                        onChange={e => setPHours(e.target.value)} />
+                      <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
+                        {t('Друкується під телефоном на аркуші A4. Порожньо — годин на аркуші не буде: краще нічого, ніж обіцянка, якої ви не давали.')}
                       </div>
                     </div>
                     <div className="form-group">

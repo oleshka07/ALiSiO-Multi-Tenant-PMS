@@ -3435,7 +3435,8 @@ function runMigrations(database: any) {
         updated_at TEXT NOT NULL DEFAULT (datetime('now')),
         parking_photo_url TEXT,
         parking_maps_url TEXT,
-        whatsapp_phone TEXT
+        whatsapp_phone TEXT,
+        reception_hours TEXT
       )
     `);
     // Seed from first existing guest_page_config
@@ -3481,6 +3482,28 @@ function runMigrations(database: any) {
     }
   } catch (e: any) {
     console.log('[DB] whatsapp_phone migration note:', e.message);
+  }
+
+  // --- Migration: property_guest_config.reception_hours (0422) ---
+  //
+  // Коли на телефон рецепції хтось відповідає. Телефон без годин це
+  // обіцянка, якої ніхто не давав: гість, що дзвонить о 02:40 і слухає
+  // гудки, вважає, що готель не відповідає, а не що рецепція зачинена.
+  //
+  // ТЕКСТ, не пара часів: це рядок для людини, за ним нічого не вирішує
+  // жоден код. Пара from/to змусила б готель із «8:00-12:00, 15:00-22:00»
+  // або «цілодобово» вигадувати, що вписати, і вигадане поїхало б на папір.
+  //
+  // Додано і в CREATE вище, і сюди: на порожній базі ALTER мовчки падає, і
+  // новий клієнт лишився б без колонки, яку читає аркуш.
+  try {
+    const pgcCols3 = (database.prepare('PRAGMA table_info(property_guest_config)').all() as any[]).map((c: any) => c.name);
+    if (!pgcCols3.includes('reception_hours')) {
+      database.exec('ALTER TABLE property_guest_config ADD COLUMN reception_hours TEXT');
+      console.log('[DB] 0422: property_guest_config.reception_hours');
+    }
+  } catch (e: any) {
+    console.log('[DB] reception_hours migration note:', e.message);
   }
 
   // `guest_chat_messages` тут БУЛА і не створюється більше.

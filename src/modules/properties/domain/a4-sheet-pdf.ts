@@ -68,6 +68,14 @@ export async function renderSheetPdf(sheet: SheetContent): Promise<Buffer> {
     errorCorrectionLevel: 'M',
     color: { dark: '#000000', light: '#FFFFFF' },
   });
+  // Другий код — чат. Малюється дрібним у панелі допомоги, тож і рівень
+  // корекції вищий: маленький код частіше знімають під кутом і з рук.
+  const chatQr = sheet.whatsappUrl
+    ? await QRCode.toBuffer(sheet.whatsappUrl, {
+      margin: 2, width: 400, errorCorrectionLevel: 'Q',
+      color: { dark: '#000000', light: '#FFFFFF' },
+    })
+    : null;
   const logo = localImage(sheet.logoUrl);
 
   const doc = new PDFDocument({ size: 'A4', margin: mm(MARGIN_MM) });
@@ -122,12 +130,16 @@ export async function renderSheetPdf(sheet: SheetContent): Promise<Buffer> {
   doc.roundedRect(qrX - pad, y - pad, qrSide + pad * 2, qrSide + pad * 2, mm(3))
     .lineWidth(1).strokeColor(HAIRLINE).stroke();
   doc.image(qr, qrX, y, { width: qrSide, height: qrSide });
-  y += qrSide + pad + mm(4);
+  y += qrSide + pad + mm(9);
 
-  // Адреса текстом: у кого не спрацювала камера — набирає руками. І видно,
-  // що код веде САМЕ СЮДИ, а не кудись іще.
-  doc.font('body').fontSize(10).fillColor(MUTED).text(sheet.url, left, y, centre);
-  y = doc.y + mm(8);
+  // Адреси текстом під кодом БІЛЬШЕ НЕМАЄ (рішення власника 19.09).
+  //
+  // У зразку кемпінгу вона є — і там це `alisio.swipescape.eu/checkin`, тобто
+  // рядок, який людина справді може набрати. У нас ключ обʼєкта це 16
+  // випадкових символів (`…/stay/avstta7hamqxcpva`): набрати його руками
+  // однаково ніхто не зможе, тож рядок не був запасним шляхом — він був
+  // шумом на видному місці. Куди веде код, доводить `a4-sheet.check`
+  // декодуванням, а не підпис на папері.
 
   // ── Колонки мов ────────────────────────────────────────────────────────
   //
@@ -173,27 +185,55 @@ export async function renderSheetPdf(sheet: SheetContent): Promise<Buffer> {
   //
   // Знизу сторінки, а не «після колонок»: аркуш має однаковий вигляд і в
   // готелю з довгими німецькими рядками, і з короткими англійськими.
-  const idY = doc.page.height - mm(MARGIN_MM) - mm(4);
-  const panelH = mm(24);
-  const panelY = idY - mm(6) - panelH;
+  // Нижнє поле знімається ПЕРЕД підвалом, і це не косметика.
+  //
+  // pdfkit розриває сторінку сам, щойно текст не вміщається в поле — а
+  // підвал ставиться в саме поле навмисно. Перша версія цього блоку дала
+  // рівно це: рядок «підготуйте документ» поїхав на ДРУГУ сторінку, і
+  // «аркуш A4» друкувався на двох, другий — з одним рядком. Побачив би це
+  // той, хто натиснув «друк», а не той, хто писав код.
+  doc.page.margins.bottom = 0;
 
-  if (sheet.phone) {
+  const idY = doc.page.height - mm(MARGIN_MM) - mm(3);
+  const panelH = mm(26);
+  const panelY = idY - mm(7) - panelH;
+
+  // Панель є, лише коли є КОМУ дзвонити. Порожня плашка з написом
+  // «потрібна допомога?» і без номера — знущання з того, кому вона потрібна.
+  if (sheet.phone || chatQr) {
     doc.roundedRect(left, panelY, width, panelH, mm(3)).fillColor(PANEL).fill();
+
+    // Праворуч — код чату; текст звужується рівно на його ширину, щоб
+    // довгий номер не заліз під картинку.
+    const chatSide = mm(20);
+    const chatX = left + width - mm(7) - chatSide;
+    if (chatQr) {
+      doc.image(chatQr, chatX, panelY + mm(3), { width: chatSide, height: chatSide });
+      doc.font('body').fontSize(6.5).fillColor(MUTED)
+        .text('WhatsApp', chatX, panelY + mm(23.5), { width: chatSide, align: 'center' });
+    }
+    const textW = width - mm(16) - (chatQr ? chatSide + mm(4) : 0);
+
     doc.font('body').fontSize(8.5).fillColor(MUTED)
-      .text(sheet.helpLabel, left + mm(8), panelY + mm(4), { width: width - mm(16) });
-    doc.font('bold').fontSize(20).fillColor(INK)
-      .text(sheet.phone, left + mm(8), panelY + mm(9), { width: width - mm(16) });
+      .text(sheet.helpLabel, left + mm(8), panelY + mm(4.5), { width: textW });
+    doc.font('bold').fontSize(19).fillColor(INK)
+      .text(sheet.phone, left + mm(8), panelY + mm(9.5), { width: textW });
+
+    // Роль, ГОДИНИ і адреса одним тихим рядком (0422). Години тут не
+    // прикраса: телефон без них — обіцянка, якої готель не давав, і гість,
+    // що дзвонить о 02:40 у гудки, вважає, що готель не відповідає.
+    // Порожні частини просто зникають, а не лишають « · · ».
+    const line = [sheet.helpRole, sheet.hours, sheet.address].filter(Boolean).join(' · ');
     doc.font('body').fontSize(8.5).fillColor(MUTED)
-      .text(sheet.helpRole, left + mm(8), panelY + mm(18), { width: width - mm(16) });
+      .text(line, left + mm(8), panelY + mm(19), { width: textW });
   }
 
+  // Останній рядок — документ. Підвального рядка з адресою, хвостом ключа й
+  // датою більше немає (рішення власника 19.09): адреса тепер у панелі
+  // допомоги, де вона потрібна, а хвіст із датою були службовою позначкою
+  // на видному місці. Ціна названа: відрізнити старий надрукований аркуш
+  // від чинного тепер можна лише перевіривши код телефоном.
   doc.font('body').fontSize(8).fillColor(MUTED).text(sheet.idNote, left, idY, centre);
-
-  // Хвіст ключа й дата, найдрібнішим: знайшли старий аркуш на складі —
-  // видно, чи він іще чинний (заміна ключа вбиває надруковані, КІ35).
-  doc.fontSize(6.5).fillColor('#aaaaaa')
-    .text(`${sheet.address || sheet.hotelName} · …${sheet.keyTail} · ${sheet.printedOn}`,
-      left, idY + mm(4), centre);
 
   doc.end();
   return done;
