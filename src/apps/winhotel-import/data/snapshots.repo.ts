@@ -36,9 +36,13 @@ export interface SnapshotRow {
   counts_json: string | null;
   received_at: string;
   imported_at: string | null;
+  /** Скільки разів агент приніс ЦЕЙ САМИЙ знімок; 1 — принесли один раз (0423). */
+  seen_count: number;
+  /** Коли той самий знімок бачили востаннє; null — повторів не було. */
+  last_seen_at: string | null;
 }
 
-const COLUMNS = 'id, organization_id, taken_at, mode, sha256, size_bytes, status, error, counts_json, received_at, imported_at';
+const COLUMNS = 'id, organization_id, taken_at, mode, sha256, size_bytes, status, error, counts_json, received_at, imported_at, seen_count, last_seen_at';
 
 /**
  * `counts_json` — JSONB на Postgres (драйвер віддає обʼєкт) і TEXT на SQLite
@@ -96,6 +100,83 @@ export async function insertSnapshot(row: {
     INSERT INTO winhotel_snapshots (id, organization_id, taken_at, mode, sha256, size_bytes, status, received_at)
     VALUES (?, ?, ?, ?, ?, ?, 'received', CURRENT_TIMESTAMP)
   `, [row.id, row.organizationId, row.takenAt, row.mode, row.sha256, row.sizeBytes]);
+}
+
+/**
+ * Той самий знімок принесли ще раз: лічильник на рядку-переможці.
+ *
+ * Дублікат раніше не лишав сліду взагалі, і оператор бачив РОЗРИВ у часовому
+ * ряду, не відрізняючи «агент не бігав» від «бігав і приніс те саме»
+ * (INC-053). Нового рядка не створюємо — `UNIQUE (organization_id, sha256)`
+ * і тримає «один знімок = один рядок», — але мовчати про повтор не можна.
+ *
+ * Стан рядка НЕ ЧІПАЄТЬСЯ: повтор нічого не змінює в тому, що вже
+ * відбулося зі знімком (його могли вже витягти чи імпортувати).
+ */
+export async function noteSnapshotSeenAgain(organizationId: string, id: string): Promise<void> {
+  await getSql().run(
+    `UPDATE winhotel_snapshots
+        SET seen_count = seen_count + 1, last_seen_at = CURRENT_TIMESTAMP
+      WHERE organization_id = ? AND id = ?`,
+    [organizationId, id],
+  );
+}
+
+/**
+ * Спроба, яка НЕ стала знімком: рядок зі станом `failed` і текстом відмови.
+ *
+ * До 0423 відмова не лишала в таблиці нічого — `reportError` писав у здоровʼя
+ * застосунку і маршрут віддавав 400. Тобто провал нічного знімка був у
+ * таблиці НЕВИДИМИЙ, і разом із мовчазним дублікатом це давало екран, який
+ * показує лише те, що вдалося, — при тому що створений він, щоб показувати,
+ * чи ланцюг живий (INC-053).
+ *
+ * Ключ той самий, що в успішного знімка, — `sha256`, — тож повторна та сама
+ * відмова НЕ плодить рядків: вона піднімає лічильник і оновлює текст. Саме
+ * тому спроба без придатного sha сюди не потрапляє (див. виклик у хендлері):
+ * ключа в неї немає, а рядок без ключа означав би новий рядок на кожен
+ * зламаний заголовок.
+ */
+export async function recordFailedAttempt(row: {
+  id: string; organizationId: string; takenAt: string | null; mode: SnapshotMode; sha256: string;
+  sizeBytes: number; error: string;
+}): Promise<void> {
+  const text = row.error.slice(0, ERROR_TEXT_MAX);
+  const existing = await findSnapshotBySha(row.organizationId, row.sha256);
+  if (existing) {
+    await getSql().run(
+      `UPDATE winhotel_snapshots
+          SET status = 'failed', error = ?, seen_count = seen_count + 1, last_seen_at = CURRENT_TIMESTAMP
+        WHERE organization_id = ? AND id = ?`,
+      [text, row.organizationId, existing.id],
+    );
+    return;
+  }
+  await getSql().run(`
+    INSERT INTO winhotel_snapshots (id, organization_id, taken_at, mode, sha256, size_bytes, status, error, received_at)
+    VALUES (?, ?, ?, ?, ?, ?, 'failed', ?, CURRENT_TIMESTAMP)
+  `, [row.id, row.organizationId, row.takenAt, row.mode, row.sha256, row.sizeBytes, text]);
+}
+
+/**
+ * Невдала спроба поступається місцем успішній.
+ *
+ * Рядок `failed` ключований тим самим `sha256`, що й успішний знімок, — інакше
+ * повторна та сама відмова плодила б рядки. Але це означає, що спроба ЗАЙМАЄ
+ * ключ: агент, який виправив помилку і надіслав ті самі байти ще раз, інакше
+ * дістав би «duplicate, нічого робити», і знімок не прийняли б НІКОЛИ. Тобто
+ * журнал відмов зламав би те, заради чого існує прийом.
+ *
+ * Тому перед прийомом попередня НЕВДАЛА спроба з тим самим sha видаляється:
+ * вона була видима, поки означала «не приїхало», і перестає щось означати в
+ * ту мить, коли те саме приїхало. Успішних рядків це не чіпає — умова
+ * `status = 'failed'` стоїть у самому запиті, а не в голові викликача.
+ */
+export async function discardFailedAttempt(organizationId: string, id: string): Promise<void> {
+  await getSql().run(
+    `DELETE FROM winhotel_snapshots WHERE organization_id = ? AND id = ? AND status = 'failed'`,
+    [organizationId, id],
+  );
 }
 
 export async function listSnapshots(organizationId: string, limit = 10): Promise<SnapshotRow[]> {

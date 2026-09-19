@@ -8802,11 +8802,33 @@ function migrateWinhotelImport(database: any) {
         counts_json     TEXT,
         received_at     TEXT NOT NULL DEFAULT (datetime('now')),
         imported_at     TEXT,
+        seen_count      INTEGER NOT NULL DEFAULT 1,
+        last_seen_at    TEXT,
         UNIQUE(organization_id, sha256)
       )
     `);
     database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_snapshots_org ON winhotel_snapshots(organization_id)');
     database.exec('CREATE INDEX IF NOT EXISTS idx_winhotel_snapshots_received ON winhotel_snapshots(organization_id, received_at)');
+    // 0423: скільки разів агент приніс ТОЙ САМИЙ знімок, і коли востаннє.
+    //
+    // Дублікат раніше не лишав сліду взагалі: при збігу sha256 маршрут
+    // віддавав наявний рядок і нового не створював. Вночі готель не працює,
+    // вікно дельти не змінюється, байти ті самі — і оператор бачив РОЗРИВ у
+    // часовому ряду, не відрізняючи «агент не бігав» від «бігав і приніс те
+    // саме» (INC-053). Захист від подвійного завантаження правильний, мовчання
+    // про нього — ні.
+    //
+    // І в CREATE, і тут: колонка, дописана лише в міграцію, є в мігрованому
+    // середовищі й відсутня в нового клієнта (AGENTS §4).
+    const snapCols = (database.prepare('PRAGMA table_info(winhotel_snapshots)').all() as { name: string }[]).map((c) => c.name);
+    if (!snapCols.includes('seen_count')) {
+      database.exec('ALTER TABLE winhotel_snapshots ADD COLUMN seen_count INTEGER NOT NULL DEFAULT 1');
+      console.log('[DB] 0423: winhotel_snapshots.seen_count');
+    }
+    if (!snapCols.includes('last_seen_at')) {
+      database.exec('ALTER TABLE winhotel_snapshots ADD COLUMN last_seen_at TEXT');
+      console.log('[DB] 0423: winhotel_snapshots.last_seen_at');
+    }
     // 0405: режим `delta`. SQLite не вміє змінити CHECK — таблиця перебудовується,
     // індекси знімаються до підміни й повертаються після (AGENTS §4).
     const ddl = String((database.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'winhotel_snapshots'").get() as any)?.sql ?? '');
@@ -8825,6 +8847,8 @@ function migrateWinhotelImport(database: any) {
           counts_json     TEXT,
           received_at     TEXT NOT NULL DEFAULT (datetime('now')),
           imported_at     TEXT,
+          seen_count      INTEGER NOT NULL DEFAULT 1,
+          last_seen_at    TEXT,
           UNIQUE(organization_id, sha256)
         )
       `);

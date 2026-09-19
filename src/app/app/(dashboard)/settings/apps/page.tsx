@@ -1,6 +1,7 @@
 'use client';
 
 import { useT } from '@core/i18n/client';
+import { formatBytes } from '@core/format/bytes';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Check, Loader2, ToggleLeft, ToggleRight, Heart } from 'lucide-react';
@@ -49,6 +50,7 @@ interface HealthRow {
 interface WinhotelSnapshot {
   id: string; taken_at: string | null; mode: string; sha256: string; size_bytes: number; status: string;
   error: string | null; counts_json: string | null; received_at: string; imported_at: string | null;
+  seen_count?: number; last_seen_at?: string | null;
 }
 interface WinhotelCard { hasToken: boolean; last: WinhotelSnapshot | null; snapshots: WinhotelSnapshot[] }
 /** `counts_json.import` — фаза («триває») або звіт частини Б (§2.6): числа, staging, звірка. */
@@ -86,7 +88,12 @@ const SNAPSHOT_STATUS: Record<string, { word: string; badge: string }> = {
 const SNAPSHOT_MODE: Record<string, string> = {
   backup: 'готовий бекап', gbak: 'gbak', copy: 'копія файла', delta: 'дельта дня',
 };
-const mb = (bytes: number) => `${(Number(bytes) / 1048576).toFixed(1)} MB`;
+// Розмір — спільним форматером, а не власним. Попередній друкував
+// `(bytes / 1048576).toFixed(1)` і давав «0.0 MB» для всього меншого за
+// ~50 КБ. Дельта дня важить десятки кілобайтів (вимір на живому готелі
+// 18.09.2026 — 31 610 байтів), тож увесь рід знімків показувався нулем — і
+// СПРАВЖНІЙ нуль виглядав так само. Стовпець існує рівно щоб сказати «щось
+// приїхало» (INC-053). Тримає `src/core/format/bytes.check.ts`.
 
 /** Слово і колір стану — одна мапа на картки й на здоровʼя. */
 const STATUS: Record<string, { word: string; badge: string }> = {
@@ -345,7 +352,7 @@ export default function AppsSettingsPage() {
                       <div style={{ color: 'var(--text-secondary)', marginBottom: 8 }}>
                         {winhotel?.last ? (
                           <>
-                            {t('Останній знімок')}: {fmt(winhotel.last.taken_at ?? winhotel.last.received_at)} · {t(SNAPSHOT_MODE[winhotel.last.mode] ?? winhotel.last.mode)} · {mb(winhotel.last.size_bytes)} ·{' '}
+                            {t('Останній знімок')}: {fmt(winhotel.last.taken_at ?? winhotel.last.received_at)} · {t(SNAPSHOT_MODE[winhotel.last.mode] ?? winhotel.last.mode)} · {formatBytes(winhotel.last.size_bytes)} ·{' '}
                             <span className={`badge ${(SNAPSHOT_STATUS[winhotel.last.status] ?? SNAPSHOT_STATUS.received).badge}`} data-testid="winhotel-last-status">
                               {t((SNAPSHOT_STATUS[winhotel.last.status] ?? SNAPSHOT_STATUS.received).word)}
                             </span>
@@ -397,9 +404,17 @@ export default function AppsSettingsPage() {
                                 const failedMatch = (imp?.reconcile?.mustMatch ?? []).filter((m) => !m.ok);
                                 return (
                                   <tr key={snap.id} data-testid={`winhotel-snapshot-${snap.id}`}>
-                                    <td title={snap.id}>{fmt(snap.taken_at ?? snap.received_at)}</td>
+                                    <td title={snap.id}>
+                                      {fmt(snap.taken_at ?? snap.received_at)}
+                                      {Number(snap.seen_count ?? 1) > 1 && (
+                                        <div style={{ color: 'var(--text-tertiary)', marginTop: 2 }} data-testid={`winhotel-repeat-${snap.id}`}>
+                                          {t('те саме, ще раз')}: {Number(snap.seen_count) - 1}
+                                          {snap.last_seen_at ? ` · ${t('востаннє')} ${fmt(snap.last_seen_at)}` : ''}
+                                        </div>
+                                      )}
+                                    </td>
                                     <td>{t(SNAPSHOT_MODE[snap.mode] ?? snap.mode)}</td>
-                                    <td>{mb(snap.size_bytes)}</td>
+                                    <td>{formatBytes(snap.size_bytes)}</td>
                                     <td>
                                       {importing
                                         ? <span className="badge badge-warning" data-testid={`winhotel-importing-${snap.id}`}>{t('імпорт триває')}</span>

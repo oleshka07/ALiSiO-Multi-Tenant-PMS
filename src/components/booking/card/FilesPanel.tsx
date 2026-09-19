@@ -9,6 +9,7 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useT } from '@core/i18n/client';
+import { formatBytes } from '@core/format/bytes';
 import { EmptyState, LoadingState, ErrorState } from '@/components/ui/State';
 import { Paperclip, Upload, Trash2, ExternalLink, Loader2 } from 'lucide-react';
 
@@ -22,13 +23,6 @@ interface Props {
 }
 
 const KINDS = ['document', 'photo', 'other'] as const;
-
-function sizeLabel(bytes: number): string {
-  if (!bytes) return '';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 export default function FilesPanel({ bookingId, showToast, onCountChange }: Props) {
   const tUi = useT();
@@ -120,7 +114,7 @@ export default function FilesPanel({ bookingId, showToast, onCountChange }: Prop
                 <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.original_name}</div>
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <span className="badge badge-info" style={{ fontSize: 10 }}>{kindLabel(f.kind)}</span>
-                  {f.size_bytes ? <span>{sizeLabel(Number(f.size_bytes))}</span> : null}
+                  {f.size_bytes ? <span>{formatBytes(f.size_bytes)}</span> : null}
                   <span>{String(f.created_at).slice(0, 10)}</span>
                   {f.uploaded_by_name && <span>{f.uploaded_by_name}</span>}
                 </div>

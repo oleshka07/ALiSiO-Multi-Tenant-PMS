@@ -378,10 +378,22 @@ async function applyStructure(organizationId, plan) {
   // ввела руками.
   const guestPage = plan.guestPage || plan.guest_page;
   if (guestPage) {
+    // УСІ змістові колонки `property_guest_config`, а не ті, про які памʼятали.
+    // Список відставав від таблиці, і відставання було мовчазним за побудовою:
+    // поле, якого тут немає, просто пропускається — ні помилки, ні згадки в
+    // звіті скрипта. На живій беті 19.09 це виглядало так: `parking_info`
+    // доїхав, `parking_maps_url` — ні, і кнопка карти паркування не вмикалась
+    // узагалі. Рівність із `db/postgres/schema.sql` тримає
+    // `scripts/check-table-writers.mjs`; додали колонку — гейт назве її тут.
+    //
+    // `weather_lat`/`weather_lon` — єдині числові: нижче вони йдуть через
+    // `String(v)`, і це правильно для обох рушіїв (параметр набуває типу
+    // колонки), але памʼятати про це треба, якщо конвертацію колись міняти.
     const COLS = ['wifi_network', 'wifi_password', 'restaurant_name', 'restaurant_hours',
       'restaurant_menu_url', 'rules', 'useful_info', 'faq_items', 'maps_url',
       'territory_map_url', 'pets_policy', 'parking_info', 'video_guide_url',
-      'emergency_phone'];
+      'emergency_phone', 'weather_lat', 'weather_lon', 'parking_photo_url',
+      'parking_maps_url', 'whatsapp_phone', 'reception_hours'];
     const has = await sql.row(
       'SELECT * FROM property_guest_config WHERE property_id = ?', [property.id]);
     const patch = {};
