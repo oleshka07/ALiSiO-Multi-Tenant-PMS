@@ -47,29 +47,35 @@ const ORG = 'org_cur';
  */
 const UA_ORG = 'org_cur_ua';
 
+/**
+ * Прибирання йде ПІД ОРЕНДАРЕМ, і це не стиль (урок 19.09.2026).
+ *
+ * На SQLite політик немає, тож `DELETE FROM reservations` без контексту
+ * прибирав рядки, і сцена була зелена. На Postgres той самий рядок видаляє
+ * НУЛЬ — політика його не бачить, — а «нічого не видалено» помилкою не є.
+ * Падає наступний `DELETE FROM organizations`: FK на `reservations` не
+ * каскадний, і повідомлення показує на організацію, тобто НЕ туди, де
+ * причина. Саме тому цей файл не міг стояти в `check:pg` доти.
+ *
+ * Той самий взірець, що в `company-guests.check.ts`.
+ */
 async function cleanup() {
-  await sql.run('DELETE FROM fin_invoice_tax_totals WHERE organization_id = ?', [ORG]);
-  await sql.run('DELETE FROM fin_invoice_lines WHERE organization_id = ?', [ORG]);
-  await sql.run('DELETE FROM invoices WHERE organization_id = ?', [ORG]);
-  await sql.run('DELETE FROM fin_folio_items WHERE organization_id = ?', [ORG]);
-  await sql.run('DELETE FROM fin_folios WHERE organization_id = ?', [ORG]);
-  await sql.run('DELETE FROM fin_invoice_counters WHERE organization_id = ?', [ORG]).catch(() => {});
-  for (const t of ['fin_folio_payments', 'prro_operations', 'prro_settings', 'organization_features']) {
-    await sql.run(`DELETE FROM ${t} WHERE organization_id = ?`, [UA_ORG]).catch(() => {});
+  const TENANT_TABLES = [
+    'fin_invoice_tax_totals', 'fin_invoice_lines', 'invoices',
+    'fin_folio_payments', 'fin_folio_items', 'fin_folios', 'fin_invoice_counters',
+    'prro_operations', 'prro_settings', 'organization_features',
+  ];
+  for (const [org, prefix] of [[ORG, 'cur_'], [UA_ORG, 'uah_']] as const) {
+    await runWithOrganization(org, async () => {
+      for (const t of TENANT_TABLES) {
+        await sql.run(`DELETE FROM ${t} WHERE organization_id = ?`, [org]).catch(() => {});
+      }
+      for (const t of ['reservations', 'units', 'unit_types', 'categories', 'guests', 'properties']) {
+        await sql.run(`DELETE FROM ${t} WHERE id LIKE '${prefix}%'`, []).catch(() => {});
+      }
+    });
+    await sql.run('DELETE FROM organizations WHERE id = ?', [org]).catch(() => {});
   }
-  for (const t of ['fin_invoice_tax_totals', 'fin_invoice_lines', 'invoices',
-    'fin_folio_items', 'fin_folios', 'fin_invoice_counters']) {
-    await sql.run(`DELETE FROM ${t} WHERE organization_id = ?`, [UA_ORG]).catch(() => {});
-  }
-  await sql.run("DELETE FROM properties WHERE id LIKE 'uah_%'", []);
-  await sql.run('DELETE FROM organizations WHERE id = ?', [UA_ORG]).catch(() => {});
-  await sql.run("DELETE FROM reservations WHERE id LIKE 'cur_%'", []);
-  await sql.run("DELETE FROM units WHERE id LIKE 'cur_%'", []);
-  await sql.run("DELETE FROM unit_types WHERE id LIKE 'cur_%'", []);
-  await sql.run("DELETE FROM categories WHERE id LIKE 'cur_%'", []);
-  await sql.run("DELETE FROM guests WHERE id LIKE 'cur_%'", []);
-  await sql.run("DELETE FROM properties WHERE id LIKE 'cur_%'", []);
-  await sql.run('DELETE FROM organizations WHERE id = ?', [ORG]);
 }
 
 await cleanup();
